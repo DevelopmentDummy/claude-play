@@ -6,6 +6,16 @@ export interface PersonaInfo {
   displayName: string; // from persona.md first line or name
 }
 
+export interface ProfileInfo {
+  slug: string;
+  name: string;
+}
+
+export interface Profile {
+  name: string;
+  description: string;
+}
+
 export interface SessionInfo {
   id: string; // directory name
   persona: string;
@@ -64,6 +74,7 @@ interface SessionMeta {
   title: string;
   createdAt: string;
   claudeSessionId?: string;
+  profileSlug?: string;
 }
 
 interface BuilderMeta {
@@ -98,6 +109,11 @@ export class SessionManager {
   private ensureDirs(): void {
     fs.mkdirSync(path.join(this.dataDir, "personas"), { recursive: true });
     fs.mkdirSync(path.join(this.dataDir, "sessions"), { recursive: true });
+    fs.mkdirSync(path.join(this.dataDir, "profiles"), { recursive: true });
+  }
+
+  private profilesDir(): string {
+    return path.join(this.dataDir, "profiles");
   }
 
   private personasDir(): string {
@@ -204,9 +220,61 @@ export class SessionManager {
     }
   }
 
+  // ── Profile ──────────────────────────────────────────────
+
+  private profileSlug(name: string): string {
+    return name.trim().replace(/\s+/g, "-");
+  }
+
+  listProfiles(): ProfileInfo[] {
+    const dir = this.profilesDir();
+    if (!fs.existsSync(dir)) return [];
+    return fs
+      .readdirSync(dir)
+      .filter((f) => f.endsWith(".json"))
+      .map((f) => {
+        try {
+          const data = JSON.parse(
+            fs.readFileSync(path.join(dir, f), "utf-8")
+          ) as Profile;
+          return { slug: f.replace(/\.json$/, ""), name: data.name };
+        } catch {
+          return null;
+        }
+      })
+      .filter((p): p is ProfileInfo => p !== null);
+  }
+
+  getProfile(slug: string): Profile | null {
+    const filePath = path.join(this.profilesDir(), `${slug}.json`);
+    if (!fs.existsSync(filePath)) return null;
+    try {
+      return JSON.parse(fs.readFileSync(filePath, "utf-8")) as Profile;
+    } catch {
+      return null;
+    }
+  }
+
+  saveProfile(profile: Profile): string {
+    const slug = this.profileSlug(profile.name);
+    fs.writeFileSync(
+      path.join(this.profilesDir(), `${slug}.json`),
+      JSON.stringify(profile, null, 2),
+      "utf-8"
+    );
+    return slug;
+  }
+
+  deleteProfile(slug: string): void {
+    const filePath = path.join(this.profilesDir(), `${slug}.json`);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  }
+
   // ── Session ──────────────────────────────────────────────
 
-  createSession(personaName: string, title?: string): SessionInfo {
+  createSession(personaName: string, title?: string, profile?: Profile): SessionInfo {
     if (!this.personaExists(personaName)) {
       throw new Error(`Persona "${personaName}" not found`);
     }
@@ -235,6 +303,7 @@ export class SessionManager {
       persona: personaName,
       title: title || personaName,
       createdAt: new Date().toISOString(),
+      ...(profile ? { profileSlug: this.profileSlug(profile.name) } : {}),
     };
     fs.writeFileSync(
       path.join(sessionDir, "session.json"),
@@ -255,6 +324,16 @@ export class SessionManager {
     const memoryPath = path.join(sessionDir, "memory.md");
     if (!fs.existsSync(memoryPath)) {
       fs.writeFileSync(memoryPath, "", "utf-8");
+    }
+
+    // If profile is provided, inject user info into CLAUDE.md
+    if (profile) {
+      const claudeMdPath = path.join(sessionDir, "CLAUDE.md");
+      if (fs.existsSync(claudeMdPath)) {
+        const existing = fs.readFileSync(claudeMdPath, "utf-8");
+        const userSection = `\n\n## 사용자 정보\n사용자의 이름: ${profile.name}\n${profile.description}\n`;
+        fs.writeFileSync(claudeMdPath, existing + userSection, "utf-8");
+      }
     }
 
     // If opening.md exists, append opening context to CLAUDE.md

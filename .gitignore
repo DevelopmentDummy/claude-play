@@ -4,3 +4,4 @@ node_modules/
 .claude/
 data/personas/
 data/sessions/
+data/profiles/

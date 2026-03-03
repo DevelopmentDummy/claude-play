@@ -6,6 +6,32 @@ import { PanelEngine } from "./panel-engine";
 import { SSEManager } from "./sse-manager";
 import { getDataDir, getAppRoot } from "./data-dir";
 
+const DIALOG_OPEN = "<dialog_response>";
+const DIALOG_CLOSE = "</dialog_response>";
+
+/** Extract content inside <dialog_response> tags; returns raw text if no tags found */
+function extractDialog(raw: string): string {
+  const parts: string[] = [];
+  let searchFrom = 0;
+
+  while (true) {
+    const openIdx = raw.indexOf(DIALOG_OPEN, searchFrom);
+    if (openIdx === -1) break;
+    const contentStart = openIdx + DIALOG_OPEN.length;
+    const closeIdx = raw.indexOf(DIALOG_CLOSE, contentStart);
+    if (closeIdx !== -1) {
+      parts.push(raw.substring(contentStart, closeIdx).trim());
+      searchFrom = closeIdx + DIALOG_CLOSE.length;
+    } else {
+      parts.push(raw.substring(contentStart).trim());
+      break;
+    }
+  }
+
+  // If no tags found, return original text (backward compat / non-RP sessions)
+  return parts.length > 0 ? parts.join("\n\n") : raw;
+}
+
 export interface HistoryMessage {
   id: string;
   role: "user" | "assistant";
@@ -158,12 +184,16 @@ function initServices(): Services {
 
     if (msg.type === "result") {
       if (segments.length > 0 || tools.length > 0) {
-        svc.chatHistory.push({
-          id: `hist-a-${++historyId}`,
-          role: "assistant",
-          content: segments.join(""),
-          tools: tools.length > 0 ? [...tools] : undefined,
-        });
+        const rawContent = segments.join("");
+        const dialogContent = extractDialog(rawContent);
+        if (dialogContent) {
+          svc.chatHistory.push({
+            id: `hist-a-${++historyId}`,
+            role: "assistant",
+            content: dialogContent,
+            tools: tools.length > 0 ? [...tools] : undefined,
+          });
+        }
       } else if (msg.result) {
         const result = msg.result as Record<string, unknown>;
         const text =

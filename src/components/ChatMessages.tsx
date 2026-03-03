@@ -13,6 +13,95 @@ interface ChatMessagesProps {
   hideTools?: boolean;
 }
 
+const OPEN_TAG = "<dialog_response>";
+const CLOSE_TAG = "</dialog_response>";
+
+/**
+ * Extract content inside <dialog_response> tags.
+ * Handles multiple blocks and unclosed tags (mid-stream).
+ */
+function extractDialogResponse(raw: string): string {
+  const parts: string[] = [];
+  let searchFrom = 0;
+
+  while (true) {
+    const openIdx = raw.indexOf(OPEN_TAG, searchFrom);
+    if (openIdx === -1) break;
+
+    const contentStart = openIdx + OPEN_TAG.length;
+    const closeIdx = raw.indexOf(CLOSE_TAG, contentStart);
+
+    if (closeIdx !== -1) {
+      parts.push(raw.substring(contentStart, closeIdx).trim());
+      searchFrom = closeIdx + CLOSE_TAG.length;
+    } else {
+      // Unclosed tag — still streaming
+      parts.push(raw.substring(contentStart).trim());
+      break;
+    }
+  }
+
+  // No tags found — return original text (opening messages, backward compat)
+  return parts.length > 0 ? parts.join("\n\n") : raw;
+}
+
+function renderInline(text: string, keyPrefix: string): React.ReactNode[] {
+  const regex = /(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/g;
+  const nodes: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match;
+
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      nodes.push(
+        <span key={`${keyPrefix}-${lastIndex}`}>
+          {text.slice(lastIndex, match.index)}
+        </span>
+      );
+    }
+
+    const m = match[0];
+    if (m.startsWith("**") && m.endsWith("**")) {
+      nodes.push(
+        <strong key={`${keyPrefix}-${match.index}`} className="font-semibold">
+          {m.slice(2, -2)}
+        </strong>
+      );
+    } else if (m.startsWith("`") && m.endsWith("`")) {
+      nodes.push(
+        <code
+          key={`${keyPrefix}-${match.index}`}
+          className="bg-code-bg px-1 py-0.5 rounded text-[13px] font-mono"
+        >
+          {m.slice(1, -1)}
+        </code>
+      );
+    } else {
+      // *action/narration*
+      nodes.push(
+        <em
+          key={`${keyPrefix}-${match.index}`}
+          className="italic text-[#e8a862]"
+        >
+          {m.slice(1, -1)}
+        </em>
+      );
+    }
+
+    lastIndex = match.index + m.length;
+  }
+
+  if (lastIndex < text.length) {
+    nodes.push(
+      <span key={`${keyPrefix}-${lastIndex}`}>
+        {text.slice(lastIndex)}
+      </span>
+    );
+  }
+
+  return nodes;
+}
+
 function renderMarkdown(text: string): React.ReactNode[] {
   const parts = text.split(/(```[\s\S]*?```)/g);
   const nodes: React.ReactNode[] = [];
@@ -31,25 +120,25 @@ function renderMarkdown(text: string): React.ReactNode[] {
         </pre>
       );
     } else {
-      const inlineParts = part.split(/(`[^`]+`)/g);
-      inlineParts.forEach((ip, j) => {
-        if (ip.startsWith("`") && ip.endsWith("`")) {
-          nodes.push(
-            <code
-              key={`${i}-${j}`}
-              className="bg-code-bg px-1 py-0.5 rounded text-[13px] font-mono"
-            >
-              {ip.slice(1, -1)}
-            </code>
-          );
-        } else {
-          nodes.push(<span key={`${i}-${j}`}>{ip}</span>);
-        }
-      });
+      nodes.push(...renderInline(part, `${i}`));
     }
   });
 
   return nodes;
+}
+
+function StreamingDots() {
+  return (
+    <span className="inline-flex items-center gap-0.5 ml-1 align-middle">
+      {[0, 0.2, 0.4].map((delay, i) => (
+        <span
+          key={i}
+          className="inline-block w-1 h-1 rounded-full bg-text-dim animate-[thinking-bounce_1.4s_infinite_ease-in-out_both]"
+          style={{ animationDelay: `${delay}s` }}
+        />
+      ))}
+    </span>
+  );
 }
 
 export default function ChatMessages({
@@ -72,27 +161,47 @@ export default function ChatMessages({
     style.marginRight = "auto";
   }
 
+  const lastIdx = messages.length - 1;
+
   return (
     <main
       className="flex-1 overflow-y-auto p-4 flex flex-col gap-3"
       style={style}
     >
-      {messages.map((msg) => (
-        <div
-          key={msg.id}
-          className={`max-w-[85%] px-4 py-3 rounded-2xl leading-relaxed whitespace-pre-wrap break-words animate-[messageIn_0.25s_ease-out] ${
-            msg.role === "user"
-              ? "self-end bg-user-bubble backdrop-blur-[12px] rounded-br-[4px] shadow-sm"
-              : "self-start bg-assistant-bubble backdrop-blur-[12px] rounded-bl-[4px] shadow-sm"
-          }`}
-        >
-          {renderMarkdown(msg.content)}
-          {!hideTools && msg.tools?.map((tool, i) => (
-            <ToolBlock key={i} name={tool.name} input={tool.input} />
-          ))}
-        </div>
-      ))}
-      {isStreaming && messages[messages.length - 1]?.role !== "assistant" && (
+      {messages.map((msg, idx) => {
+        const isLastAssistant =
+          isStreaming && idx === lastIdx && msg.role === "assistant";
+
+        // In RP mode (hideTools), extract only <dialog_response> content
+        const displayContent =
+          hideTools && msg.role === "assistant"
+            ? extractDialogResponse(msg.content)
+            : msg.content;
+
+        // Skip empty assistant messages in RP mode (e.g. tool-only turns)
+        if (hideTools && msg.role === "assistant" && !displayContent) {
+          return null;
+        }
+
+        return (
+          <div
+            key={msg.id}
+            className={`max-w-[85%] px-4 py-3 rounded-2xl leading-relaxed whitespace-pre-wrap break-words animate-[messageIn_0.25s_ease-out] ${
+              msg.role === "user"
+                ? "self-end bg-user-bubble backdrop-blur-[12px] rounded-br-[4px] shadow-sm"
+                : "self-start bg-assistant-bubble backdrop-blur-[12px] rounded-bl-[4px] shadow-sm"
+            }`}
+          >
+            {renderMarkdown(displayContent)}
+            {isLastAssistant && <StreamingDots />}
+            {!hideTools &&
+              msg.tools?.map((tool, i) => (
+                <ToolBlock key={i} name={tool.name} input={tool.input} />
+              ))}
+          </div>
+        );
+      })}
+      {isStreaming && messages[lastIdx]?.role !== "assistant" && (
         <ThinkingIndicator />
       )}
       <div ref={bottomRef} />
