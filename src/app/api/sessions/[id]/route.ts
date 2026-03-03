@@ -6,7 +6,15 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const { sessions } = getServices();
-  sessions.deleteSession(id);
+  const svc = getServices();
+
+  // Stop Claude and panels if they're using this session's directory
+  if (svc.currentSessionId === id) {
+    svc.currentSessionId = null;
+  }
+  svc.claude.kill();
+  svc.panels.stop();
+
+  svc.sessions.deleteSession(id);
   return NextResponse.json({ ok: true });
 }

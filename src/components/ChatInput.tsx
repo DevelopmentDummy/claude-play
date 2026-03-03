@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useCallback } from "react";
+import { useRef, useCallback, useEffect } from "react";
 
 interface ChatInputProps {
   disabled: boolean;
@@ -29,6 +29,13 @@ export default function ChatInput({ disabled, onSend }: ChatInputProps) {
     },
     [handleSend]
   );
+
+  // Refocus textarea when streaming ends (disabled → enabled)
+  useEffect(() => {
+    if (!disabled) {
+      inputRef.current?.focus();
+    }
+  }, [disabled]);
 
   const handleInput = useCallback(() => {
     const el = inputRef.current;

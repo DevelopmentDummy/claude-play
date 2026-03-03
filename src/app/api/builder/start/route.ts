@@ -15,6 +15,7 @@ export async function POST(req: Request) {
   svc.builderPersonaName = name;
   svc.isBuilderActive = true;
   svc.currentSessionId = null;
+  svc.clearHistory();
 
   // Copy builder prompt as CLAUDE.md
   const builderPrompt = svc.sessions.getBuilderPrompt();

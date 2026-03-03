@@ -35,6 +35,7 @@ export async function POST(req: Request) {
   }
 
   const resumeId = svc.sessions.getBuilderSessionId(name);
+  svc.loadHistory(); // Load from chat-history.json (empty if new)
   svc.claude.spawn(personaDir, resumeId);
 
   return NextResponse.json({ name, dir: personaDir, resumed: !!resumeId });

@@ -26,12 +26,14 @@ export default function BuilderPage() {
     setError,
     sendMessage,
     handleClaudeMessage,
+    loadHistory,
   } = useChat();
 
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [sseEnabled, setSseEnabled] = useState(false);
   const initRef = useRef(false);
 
-  // SSE handlers — refresh overview on result
+  // SSE handlers — only connect after init completes
   useSSE({
     "claude:message": (data) => {
       handleClaudeMessage(data);
@@ -43,7 +45,7 @@ export default function BuilderPage() {
     "claude:error": (e) => setError(e as string),
     "claude:status": (s) => setStatus(s as string),
     "panels:update": () => {},
-  });
+  }, sseEnabled);
 
   // Initialize builder on mount (spawn Claude) — ref prevents Strict Mode double-call
   useEffect(() => {
@@ -64,8 +66,13 @@ export default function BuilderPage() {
         return;
       }
 
-      // Set status directly since SSE "connected" event may have been missed
+      // Load previous chat history from server (file-backed)
+      await loadHistory();
+
       setStatus("connected");
+
+      // Now enable SSE for real-time updates
+      setSseEnabled(true);
     };
 
     init();

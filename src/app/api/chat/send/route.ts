@@ -3,7 +3,8 @@ import { getServices } from "@/lib/services";
 
 export async function POST(req: Request) {
   const { text } = (await req.json()) as { text: string };
-  const { claude } = getServices();
-  claude.send(text);
+  const svc = getServices();
+  svc.addUserToHistory(text);
+  svc.claude.send(text);
   return NextResponse.json({ ok: true });
 }

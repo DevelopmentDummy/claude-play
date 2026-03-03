@@ -220,7 +220,7 @@ export class SessionManager {
 
     // Copy persona files to session (excluding builder-only files and CLAUDE.md which is the builder prompt)
     const personaDir = this.getPersonaDir(personaName);
-    const SKIP_FILES = new Set(["builder-session.json", "panel-spec.md", "skills", ".claude", "CLAUDE.md", "session-instructions.md"]);
+    const SKIP_FILES = new Set(["builder-session.json", "panel-spec.md", "skills", ".claude", "CLAUDE.md", "session-instructions.md", "chat-history.json"]);
     this.copyDirRecursive(personaDir, sessionDir, SKIP_FILES);
 
     // Copy session-instructions.md as CLAUDE.md for the session

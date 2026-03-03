@@ -4,7 +4,10 @@ import { useEffect, useRef, useCallback } from "react";
 
 type SSEHandler = (data: unknown) => void;
 
-export function useSSE(handlers: Record<string, SSEHandler>) {
+export function useSSE(
+  handlers: Record<string, SSEHandler>,
+  enabled: boolean = true
+) {
   const handlersRef = useRef(handlers);
   handlersRef.current = handlers;
 
@@ -39,7 +42,8 @@ export function useSSE(handlers: Record<string, SSEHandler>) {
   }, []);
 
   useEffect(() => {
+    if (!enabled) return;
     const es = connect();
     return () => es.close();
-  }, [connect]);
+  }, [connect, enabled]);
 }

@@ -83,6 +83,43 @@ export class PanelEngine {
     this.render();
   }
 
+  /** Get current panels without triggering onUpdate */
+  getCurrentPanels(): PanelData[] {
+    if (!this.sessionDir) return [];
+
+    const panelsDir = path.join(this.sessionDir, "panels");
+    if (!fs.existsSync(panelsDir)) return [];
+
+    const files = fs
+      .readdirSync(panelsDir)
+      .filter((f) => f.endsWith(".html"))
+      .sort();
+
+    const panels: PanelData[] = [];
+    for (const file of files) {
+      const rawName = file.replace(/\.html$/, "");
+      const name = rawName.replace(/^\d+-/, "");
+      try {
+        if (!this.templateCache.has(name)) {
+          const source = fs.readFileSync(
+            path.join(panelsDir, file),
+            "utf-8"
+          );
+          this.templateCache.set(name, Handlebars.compile(source));
+        }
+        const template = this.templateCache.get(name)!;
+        const html = template(this.variables, { allowProtoPropertiesByDefault: true });
+        panels.push({ name, html });
+      } catch {
+        panels.push({
+          name,
+          html: `<div style="color:#ff4d6a;padding:8px;">Panel "${name}" render error</div>`,
+        });
+      }
+    }
+    return panels;
+  }
+
   /** Stop watching */
   stop(): void {
     for (const w of this.watchers) {

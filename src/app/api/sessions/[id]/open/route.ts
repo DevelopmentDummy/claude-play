@@ -40,7 +40,17 @@ export async function POST(
   // Resume previous Claude session if available
   const resumeId = svc.sessions.getClaudeSessionId(id);
   const isResume = !!resumeId;
+  svc.loadHistory(); // Load from chat-history.json (empty if new)
+
+  // Save opening as first history entry for new sessions
+  if (svc.chatHistory.length === 0 && opening) {
+    svc.addOpeningToHistory(opening);
+  }
+
   svc.claude.spawn(sessionDir, resumeId);
 
-  return NextResponse.json({ ...info, opening, isResume, layout });
+  // Include initial panels in response (SSE may not be connected yet)
+  const panels = svc.panels.getCurrentPanels();
+
+  return NextResponse.json({ ...info, opening, isResume, layout, panels });
 }

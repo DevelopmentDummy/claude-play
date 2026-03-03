@@ -10,6 +10,7 @@ interface ChatMessagesProps {
   isStreaming: boolean;
   maxWidth?: number | null;
   align?: "stretch" | "center";
+  hideTools?: boolean;
 }
 
 function renderMarkdown(text: string): React.ReactNode[] {
@@ -56,6 +57,7 @@ export default function ChatMessages({
   isStreaming,
   maxWidth,
   align,
+  hideTools,
 }: ChatMessagesProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -85,7 +87,7 @@ export default function ChatMessages({
           }`}
         >
           {renderMarkdown(msg.content)}
-          {msg.tools?.map((tool, i) => (
+          {!hideTools && msg.tools?.map((tool, i) => (
             <ToolBlock key={i} name={tool.name} input={tool.input} />
           ))}
         </div>

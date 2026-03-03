@@ -159,6 +159,21 @@ export function useChat() {
     toolsRef.current = [];
   }, []);
 
+  const loadHistory = useCallback(async (): Promise<number> => {
+    try {
+      const res = await fetch("/api/chat/history");
+      if (res.ok) {
+        const history = await res.json() as ChatMessage[];
+        if (history.length > 0) {
+          setMessages(history);
+          msgIdRef.current = history.length;
+        }
+        return history.length;
+      }
+    } catch { /* ignore */ }
+    return 0;
+  }, []);
+
   return {
     messages,
     isStreaming,
@@ -170,5 +185,6 @@ export function useChat() {
     handleClaudeMessage,
     addOpeningMessage,
     clearMessages,
+    loadHistory,
   };
 }

@@ -30,21 +30,23 @@ export default function ChatPage() {
     handleClaudeMessage,
     addOpeningMessage,
     clearMessages,
+    loadHistory,
   } = useChat();
   const { applyLayout, resetLayout } = useLayout();
 
   const [panels, setPanels] = useState<Panel[]>([]);
   const [layout, setLayout] = useState<LayoutConfig | null>(null);
   const [title, setTitle] = useState("");
+  const [sseEnabled, setSseEnabled] = useState(false);
   const initRef = useRef(false);
 
-  // SSE handlers
+  // SSE handlers — only connect after session open completes
   useSSE({
     "claude:message": handleClaudeMessage,
     "claude:error": (e) => setError(e as string),
     "claude:status": (s) => setStatus(s as string),
     "panels:update": (p) => setPanels(p as Panel[]),
-  });
+  }, sseEnabled);
 
   // Open session on mount — ref prevents Strict Mode double-call
   useEffect(() => {
@@ -56,7 +58,7 @@ export default function ChatPage() {
       resetLayout();
 
       const res = await fetch(
-        `/api/sessions/${encodeURIComponent(sessionId)}/open`,
+        `/api/sessions/${sessionId}/open`,
         { method: "POST" }
       );
 
@@ -71,9 +73,20 @@ export default function ChatPage() {
       applyLayout(data.layout);
       setStatus("connected");
 
-      if (!data.isResume && data.opening) {
+      // Set initial panels from response (SSE may not be connected yet)
+      if (data.panels?.length) {
+        setPanels(data.panels);
+      }
+
+      // Load chat history from server (file-backed, survives restarts)
+      const historyCount = await loadHistory();
+
+      if (historyCount === 0 && data.opening) {
         addOpeningMessage(data.opening);
       }
+
+      // Now enable SSE for real-time updates
+      setSseEnabled(true);
     };
 
     openSession();
@@ -110,6 +123,7 @@ export default function ChatPage() {
           isStreaming={isStreaming}
           maxWidth={layout?.chat?.maxWidth}
           align={layout?.chat?.align}
+          hideTools
         />
         <PanelArea
           panels={panels}
