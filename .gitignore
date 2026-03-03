@@ -2,3 +2,5 @@ node_modules/
 .next/
 .env.local
 .claude/
+data/personas/
+data/sessions/
