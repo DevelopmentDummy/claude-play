@@ -15,6 +15,9 @@ export async function DELETE(
   svc.claude.kill();
   svc.panels.stop();
 
+  // Brief delay for Windows to release file handles after process kill
+  await new Promise((r) => setTimeout(r, 300));
+
   svc.sessions.deleteSession(id);
   return NextResponse.json({ ok: true });
 }

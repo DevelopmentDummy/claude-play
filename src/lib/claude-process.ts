@@ -1,4 +1,4 @@
-import { spawn, ChildProcess } from "child_process";
+import { spawn, execSync, ChildProcess } from "child_process";
 import { EventEmitter } from "events";
 
 export interface ClaudeProcessEvents {
@@ -128,7 +128,16 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
 
   kill(): void {
     if (this.proc) {
-      this.proc.kill();
+      const pid = this.proc.pid;
+      if (pid && process.platform === "win32") {
+        // On Windows, shell: true creates cmd.exe wrapper;
+        // proc.kill() only kills the shell, not the child process tree
+        try {
+          execSync(`taskkill /T /F /PID ${pid}`, { stdio: "ignore" });
+        } catch { /* already exited */ }
+      } else {
+        this.proc.kill();
+      }
       this.proc = null;
       this.buffer = "";
     }
