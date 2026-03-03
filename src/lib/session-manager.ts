@@ -154,7 +154,7 @@ export class SessionManager {
         "worldview.md",
         "variables.json",
         "opening.md",
-        "CLAUDE.md",
+        "session-instructions.md",
         "layout.json",
       ];
 
@@ -218,9 +218,17 @@ export class SessionManager {
     // Create session directory
     fs.mkdirSync(sessionDir, { recursive: true });
 
-    // Copy persona files to session
+    // Copy persona files to session (excluding builder-only files and CLAUDE.md which is the builder prompt)
     const personaDir = this.getPersonaDir(personaName);
-    this.copyDirRecursive(personaDir, sessionDir);
+    const SKIP_FILES = new Set(["builder-session.json", "panel-spec.md", "skills", ".claude", "CLAUDE.md", "session-instructions.md"]);
+    this.copyDirRecursive(personaDir, sessionDir, SKIP_FILES);
+
+    // Copy session-instructions.md as CLAUDE.md for the session
+    const sessionInstructionsSrc = path.join(personaDir, "session-instructions.md");
+    const sessionClaudeMd = path.join(sessionDir, "CLAUDE.md");
+    if (fs.existsSync(sessionInstructionsSrc)) {
+      fs.copyFileSync(sessionInstructionsSrc, sessionClaudeMd);
+    }
 
     // Write session metadata
     const meta: SessionMeta = {
@@ -435,9 +443,10 @@ export class SessionManager {
 
   // ── Helpers ──────────────────────────────────────────────
 
-  private copyDirRecursive(src: string, dest: string): void {
+  private copyDirRecursive(src: string, dest: string, skip?: Set<string>): void {
     const entries = fs.readdirSync(src, { withFileTypes: true });
     for (const entry of entries) {
+      if (skip && skip.has(entry.name)) continue;
       const srcPath = path.join(src, entry.name);
       const destPath = path.join(dest, entry.name);
       if (entry.isDirectory()) {

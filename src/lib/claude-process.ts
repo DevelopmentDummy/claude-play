@@ -91,9 +91,6 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
         const parsed = JSON.parse(trimmed);
 
         // Capture session_id from init message
-        if (parsed && typeof parsed === "object" && parsed.type === "system") {
-          console.log("[claude-process] system message:", JSON.stringify(parsed).slice(0, 300));
-        }
         if (
           parsed &&
           typeof parsed === "object" &&
@@ -101,7 +98,6 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
           parsed.subtype === "init" &&
           parsed.session_id
         ) {
-          console.log("[claude-process] captured sessionId:", parsed.session_id);
           this.emit("sessionId", parsed.session_id);
         }
 

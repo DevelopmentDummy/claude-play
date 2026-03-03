@@ -4,9 +4,9 @@
   "private": true,
   "description": "Next.js chat UI bridging to Claude Code CLI via NDJSON pipes",
   "scripts": {
-    "dev": "next dev -p 3340",
+    "dev": "next dev -p 3340 -H 0.0.0.0",
     "build": "next build",
-    "start": "next start -p 3340"
+    "start": "next start -p 3340 -H 0.0.0.0"
   },
   "dependencies": {
     "handlebars": "^4.7.8",

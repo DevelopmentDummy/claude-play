@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useSSE } from "@/hooks/useSSE";
 import { useChat } from "@/hooks/useChat";
 import StatusBar from "@/components/StatusBar";
@@ -14,6 +14,9 @@ export default function BuilderPage() {
   const { name } = useParams<{ name: string }>();
   const decodedName = decodeURIComponent(name);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const mode = searchParams.get("mode") || "edit";
+
   const {
     messages,
     isStreaming,
@@ -26,12 +29,12 @@ export default function BuilderPage() {
   } = useChat();
 
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const initRef = useRef(false);
 
   // SSE handlers — refresh overview on result
   useSSE({
     "claude:message": (data) => {
       handleClaudeMessage(data);
-      // Refresh overview when Claude finishes a turn
       const msg = data as Record<string, unknown>;
       if (msg.type === "result") {
         setRefreshTrigger((n) => n + 1);
@@ -42,26 +45,61 @@ export default function BuilderPage() {
     "panels:update": () => {},
   });
 
-  const handleBack = useCallback(async () => {
-    if (confirm("Cancel persona creation? The incomplete persona will be deleted.")) {
-      await fetch("/api/builder/cancel", { method: "POST" });
-      router.push("/");
-    }
-  }, [router]);
+  // Initialize builder on mount (spawn Claude) — ref prevents Strict Mode double-call
+  useEffect(() => {
+    if (initRef.current) return;
+    initRef.current = true;
 
-  const handleFinish = useCallback(async () => {
-    await fetch("/api/builder/finish", { method: "POST" });
+    const init = async () => {
+      const endpoint =
+        mode === "new" ? "/api/builder/start" : "/api/builder/edit";
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: decodedName }),
+      });
+
+      if (!res.ok) {
+        setError("Failed to start builder");
+        return;
+      }
+
+      // Set status directly since SSE "connected" event may have been missed
+      setStatus("connected");
+    };
+
+    init();
+  }, [mode, decodedName, setError, setStatus]);
+
+  const handleBack = useCallback(() => {
     router.push("/");
   }, [router]);
+
+  // Re-initialize builder (kill + respawn Claude with fresh builder prompt)
+  const handleReinit = useCallback(async () => {
+    const endpoint =
+      mode === "new" ? "/api/builder/start" : "/api/builder/edit";
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: decodedName }),
+    });
+    if (res.ok) {
+      setStatus("connected");
+      setRefreshTrigger((n) => n + 1);
+    } else {
+      setError("Failed to reinitialize builder");
+    }
+  }, [mode, decodedName, setStatus, setError]);
 
   return (
     <div className="flex flex-col h-screen">
       <StatusBar
-        title={`Building: ${decodedName}`}
+        title={`${mode === "new" ? "Building" : "Editing"}: ${decodedName}`}
         status={status}
         isBuilderMode={true}
         onBack={handleBack}
-        onFinish={handleFinish}
+        onReinit={handleReinit}
       />
       <ErrorBanner error={error} onDismiss={() => setError(null)} />
       <div className="flex-1 flex min-h-0">
@@ -69,9 +107,11 @@ export default function BuilderPage() {
           personaName={decodedName}
           refreshTrigger={refreshTrigger}
         />
-        <ChatMessages messages={messages} isStreaming={isStreaming} />
+        <div className="flex-1 flex flex-col min-w-0">
+          <ChatMessages messages={messages} isStreaming={isStreaming} />
+          <ChatInput disabled={isStreaming} onSend={sendMessage} />
+        </div>
       </div>
-      <ChatInput disabled={isStreaming} onSend={sendMessage} />
     </div>
   );
 }

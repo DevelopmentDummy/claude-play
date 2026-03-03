@@ -91,9 +91,10 @@
 - 캐릭터 고유의 특수 변수를 추가한다 (예: 마법사라면 `mana`, 탐정이라면 `clues_found`)
 - 변수명은 영문 snake_case로 작성한다
 
-### 4. `CLAUDE.md` — 대화 세션용 지시문
+### 4. `session-instructions.md` — 대화 세션용 지시문
 
 실제 RP 대화 시 Claude에게 주어지는 지시사항. **이 파일이 가장 중요하다.**
+**주의: 반드시 `session-instructions.md`라는 이름으로 생성하라.** `CLAUDE.md`는 빌더 시스템이 사용하는 파일이므로 절대 수정하지 마라.
 
 ```markdown
 너는 {이름}(이)라는 캐릭터를 연기한다.
@@ -125,7 +126,7 @@
 {캐릭터 고유의 추가 지시사항}
 ```
 
-**CLAUDE.md 작성 원칙:**
+**session-instructions.md 작성 원칙:**
 - 파일 참조 경로를 정확히 명시한다
 - 상태 변수 업데이트 규칙을 구체적으로 정한다 (변화 범위, 조건 등)
 - 캐릭터의 말투와 행동 패턴을 강조한다
@@ -326,8 +327,8 @@ allowed-tools: Read, Edit, Write, Glob (필요한 것만)
 - [ ] `persona.md` 첫 줄이 `# {이름}` 인가?
 - [ ] `variables.json`이 유효한 JSON인가?
 - [ ] 게이지형 변수에 `_max` 짝이 있는가?
-- [ ] `CLAUDE.md`에 파일 참조 경로가 정확한가? (`panel-spec.md` 포함)
-- [ ] `CLAUDE.md`에 변수 업데이트 가이드가 있는가?
+- [ ] `session-instructions.md`에 파일 참조 경로가 정확한가? (`panel-spec.md` 포함)
+- [ ] `session-instructions.md`에 변수 업데이트 가이드가 있는가?
 - [ ] 패널 파일명이 `{두자리숫자}-{이름}.html` 형식인가?
 - [ ] 패널의 `{{변수명}}`이 `variables.json`의 키와 일치하는가?
 - [ ] 패널의 `{{percentage a b}}`에서 a, b가 유효한 변수명인가?

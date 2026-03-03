@@ -40,10 +40,15 @@ function initServices(): Services {
 
   // Capture Claude session ID and persist it
   claude.on("sessionId", (claudeSessionId: string) => {
-    if (svc.isBuilderActive && svc.builderPersonaName) {
-      sessions.saveBuilderSessionId(svc.builderPersonaName, claudeSessionId);
-    } else if (svc.currentSessionId) {
-      sessions.saveClaudeSessionId(svc.currentSessionId, claudeSessionId);
+    console.log("[services] sessionId event:", claudeSessionId);
+    try {
+      if (svc.isBuilderActive && svc.builderPersonaName) {
+        sessions.saveBuilderSessionId(svc.builderPersonaName, claudeSessionId);
+      } else if (svc.currentSessionId) {
+        sessions.saveClaudeSessionId(svc.currentSessionId, claudeSessionId);
+      }
+    } catch (err) {
+      console.error("[services] ERROR saving sessionId:", err);
     }
   });
 

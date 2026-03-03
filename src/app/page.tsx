@@ -57,26 +57,12 @@ export default function LobbyPage() {
     loadLobby();
   };
 
-  const startBuilder = async (name: string) => {
-    const res = await fetch("/api/builder/start", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name }),
-    });
-    if (res.ok) {
-      router.push(`/builder/${encodeURIComponent(name)}`);
-    }
+  const startBuilder = (name: string) => {
+    router.push(`/builder/${encodeURIComponent(name)}?mode=new`);
   };
 
-  const editPersona = async (name: string) => {
-    const res = await fetch("/api/builder/edit", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name }),
-    });
-    if (res.ok) {
-      router.push(`/builder/${encodeURIComponent(name)}`);
-    }
+  const editPersona = (name: string) => {
+    router.push(`/builder/${encodeURIComponent(name)}?mode=edit`);
   };
 
   return (

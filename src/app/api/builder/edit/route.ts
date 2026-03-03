@@ -23,12 +23,10 @@ export async function POST(req: Request) {
   svc.isBuilderActive = true;
   svc.currentSessionId = null;
 
-  // Ensure builder prompt is in place
+  // Always overwrite CLAUDE.md with builder prompt (session instructions are in session-instructions.md)
   const claudeMdPath = path.join(personaDir, "CLAUDE.md");
-  if (!fs.existsSync(claudeMdPath)) {
-    const builderPrompt = svc.sessions.getBuilderPrompt();
-    fs.writeFileSync(claudeMdPath, builderPrompt, "utf-8");
-  }
+  const builderPrompt = svc.sessions.getBuilderPrompt();
+  fs.writeFileSync(claudeMdPath, builderPrompt, "utf-8");
 
   // Copy panel-spec.md
   const panelSpecSrc = path.join(getAppRoot(), "panel-spec.md");

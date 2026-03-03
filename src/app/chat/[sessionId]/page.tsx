@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useSSE } from "@/hooks/useSSE";
 import { useChat } from "@/hooks/useChat";
@@ -36,7 +36,7 @@ export default function ChatPage() {
   const [panels, setPanels] = useState<Panel[]>([]);
   const [layout, setLayout] = useState<LayoutConfig | null>(null);
   const [title, setTitle] = useState("");
-  const [initialized, setInitialized] = useState(false);
+  const initRef = useRef(false);
 
   // SSE handlers
   useSSE({
@@ -46,9 +46,10 @@ export default function ChatPage() {
     "panels:update": (p) => setPanels(p as Panel[]),
   });
 
-  // Open session on mount
+  // Open session on mount — ref prevents Strict Mode double-call
   useEffect(() => {
-    if (initialized) return;
+    if (initRef.current) return;
+    initRef.current = true;
 
     const openSession = async () => {
       clearMessages();
@@ -68,24 +69,15 @@ export default function ChatPage() {
       setTitle(data.title || data.persona);
       setLayout(data.layout);
       applyLayout(data.layout);
+      setStatus("connected");
 
       if (!data.isResume && data.opening) {
         addOpeningMessage(data.opening);
       }
-
-      setInitialized(true);
     };
 
     openSession();
-  }, [
-    sessionId,
-    initialized,
-    clearMessages,
-    resetLayout,
-    applyLayout,
-    setError,
-    addOpeningMessage,
-  ]);
+  }, [sessionId, clearMessages, resetLayout, applyLayout, setError, setStatus, addOpeningMessage]);
 
   const handleBack = useCallback(() => {
     resetLayout();
@@ -102,7 +94,6 @@ export default function ChatPage() {
         status={status}
         isBuilderMode={false}
         onBack={handleBack}
-        onFinish={() => {}}
       />
       <ErrorBanner error={error} onDismiss={() => setError(null)} />
       <div

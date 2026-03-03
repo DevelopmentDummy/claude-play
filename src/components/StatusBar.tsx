@@ -5,7 +5,7 @@ interface StatusBarProps {
   status: string;
   isBuilderMode: boolean;
   onBack: () => void;
-  onFinish: () => void;
+  onReinit?: () => void;
 }
 
 export default function StatusBar({
@@ -13,7 +13,7 @@ export default function StatusBar({
   status,
   isBuilderMode,
   onBack,
-  onFinish,
+  onReinit,
 }: StatusBarProps) {
   const statusColors: Record<string, string> = {
     connected: "bg-success shadow-[0_0_8px_rgba(77,255,145,0.4)]",
@@ -42,12 +42,13 @@ export default function StatusBar({
       <span className="text-xs text-text-dim">
         {statusLabels[status] || status}
       </span>
-      {isBuilderMode && (
+      {isBuilderMode && onReinit && (
         <button
-          onClick={onFinish}
-          className="px-3 py-1 border border-accent rounded-md bg-accent text-white cursor-pointer text-xs font-medium shadow-[0_2px_12px_var(--accent-glow)] hover:bg-accent-hover hover:-translate-y-px transition-all duration-fast"
+          onClick={onReinit}
+          className="px-3 py-1 border border-border rounded-md bg-transparent text-text-dim cursor-pointer text-xs hover:bg-surface-light hover:text-text hover:-translate-y-px transition-all duration-fast"
+          title="Kill and respawn Claude process"
         >
-          Complete
+          Reconnect
         </button>
       )}
     </header>
