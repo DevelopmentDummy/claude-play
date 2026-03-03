@@ -1,0 +1,53 @@
+<style>
+  .panel { font-size: 12px; color: #d0d0e0; }
+  .section-title { font-size: 10px; color: #b8a9e8; margin: 0 0 8px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
+  .stat { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
+  .label { width: 42px; color: #9090b0; flex-shrink: 0; font-size: 11px; }
+  .bar-bg { flex: 1; height: 7px; background: #1a1a2e; border-radius: 4px; overflow: hidden; }
+  .bar { height: 100%; border-radius: 4px; transition: width 0.4s ease; }
+  .bar.affection { background: linear-gradient(90deg, #e86b9d, #ff9dc4); }
+  .bar.devotion { background: linear-gradient(90deg, #b86bff, #d4a0ff); }
+  .bar.trust { background: linear-gradient(90deg, #6ba8ff, #a0d0ff); }
+  .bar.jealousy { background: linear-gradient(90deg, #ff6b6b, #ff9a9a); }
+  .bar.condition { background: linear-gradient(90deg, #4ddb8a, #8affbe); }
+  .val { width: 44px; text-align: right; font-size: 10px; color: #7878a0; }
+  .divider { border: none; border-top: 1px solid #2a2a40; margin: 10px 0; }
+  .tags { display: flex; flex-wrap: wrap; gap: 4px; }
+  .tag { background: #1e1e34; padding: 3px 8px; border-radius: 6px; font-size: 11px; color: #a0a0c0; }
+</style>
+<div class="panel">
+  <div class="section-title">Relationship</div>
+  <div class="stat">
+    <span class="label">애정</span>
+    <div class="bar-bg"><div class="bar affection" style="width:{{percentage affection affection_max}}%"></div></div>
+    <span class="val">{{affection}}/{{affection_max}}</span>
+  </div>
+  <div class="stat">
+    <span class="label">헌신</span>
+    <div class="bar-bg"><div class="bar devotion" style="width:{{percentage devotion devotion_max}}%"></div></div>
+    <span class="val">{{devotion}}/{{devotion_max}}</span>
+  </div>
+  <div class="stat">
+    <span class="label">신뢰</span>
+    <div class="bar-bg"><div class="bar trust" style="width:{{percentage trust trust_max}}%"></div></div>
+    <span class="val">{{trust}}/{{trust_max}}</span>
+  </div>
+  <div class="stat">
+    <span class="label">질투</span>
+    <div class="bar-bg"><div class="bar jealousy" style="width:{{percentage jealousy jealousy_max}}%"></div></div>
+    <span class="val">{{jealousy}}/{{jealousy_max}}</span>
+  </div>
+  <hr class="divider">
+  <div class="section-title">Condition</div>
+  <div class="stat">
+    <span class="label">컨디션</span>
+    <div class="bar-bg"><div class="bar condition" style="width:{{percentage condition condition_max}}%"></div></div>
+    <span class="val">{{condition}}/{{condition_max}}</span>
+  </div>
+  <hr class="divider">
+  <div class="tags">
+    <span class="tag">📍 {{location}}</span>
+    <span class="tag">🕐 {{time}}</span>
+    <span class="tag">{{#if (eq weather "맑음")}}☀️{{/if}}{{#if (eq weather "흐림")}}☁️{{/if}}{{#if (eq weather "비")}}🌧️{{/if}}{{#if (eq weather "눈")}}🌨️{{/if}}{{#if (eq weather "밤")}}🌙{{/if}} {{weather}}</span>
+  </div>
+</div>

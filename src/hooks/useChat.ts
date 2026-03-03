@@ -1,0 +1,174 @@
+"use client";
+
+import { useState, useCallback, useRef } from "react";
+
+export interface ChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  tools?: Array<{ name: string; input: unknown }>;
+}
+
+export function useChat() {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [status, setStatus] = useState<string>("disconnected");
+  const [error, setError] = useState<string | null>(null);
+
+  const segmentsRef = useRef<string[]>([]);
+  const toolsRef = useRef<Array<{ name: string; input: unknown }>>([]);
+  const msgIdRef = useRef(0);
+
+  const addUserMessage = useCallback((text: string) => {
+    const id = `user-${++msgIdRef.current}`;
+    setMessages((prev) => [...prev, { id, role: "user", content: text }]);
+  }, []);
+
+  const appendAssistantText = useCallback((text: string) => {
+    segmentsRef.current.push(text);
+    const fullText = segmentsRef.current.join("");
+
+    setMessages((prev) => {
+      const last = prev[prev.length - 1];
+      if (last && last.role === "assistant" && last.id.startsWith("stream-")) {
+        return [
+          ...prev.slice(0, -1),
+          { ...last, content: fullText, tools: [...toolsRef.current] },
+        ];
+      }
+      const id = `stream-${++msgIdRef.current}`;
+      return [
+        ...prev,
+        { id, role: "assistant", content: fullText, tools: [...toolsRef.current] },
+      ];
+    });
+  }, []);
+
+  const addToolUse = useCallback(
+    (name: string, input: unknown) => {
+      toolsRef.current.push({ name, input });
+      // Trigger re-render with updated tools
+      setMessages((prev) => {
+        const last = prev[prev.length - 1];
+        if (last && last.role === "assistant" && last.id.startsWith("stream-")) {
+          return [
+            ...prev.slice(0, -1),
+            { ...last, tools: [...toolsRef.current] },
+          ];
+        }
+        const id = `stream-${++msgIdRef.current}`;
+        return [
+          ...prev,
+          { id, role: "assistant", content: "", tools: [...toolsRef.current] },
+        ];
+      });
+    },
+    []
+  );
+
+  const finishAssistantTurn = useCallback(() => {
+    segmentsRef.current = [];
+    toolsRef.current = [];
+    setIsStreaming(false);
+  }, []);
+
+  const handleClaudeMessage = useCallback(
+    (data: unknown) => {
+      if (!data || typeof data !== "object") return;
+      const msg = data as Record<string, unknown>;
+      const type = msg.type;
+
+      if (type === "stream_event") {
+        const event = msg.event as Record<string, unknown> | undefined;
+        if (!event) return;
+
+        if (event.type === "content_block_delta") {
+          const delta = event.delta as Record<string, unknown> | undefined;
+          if (delta?.type === "text_delta" && typeof delta.text === "string") {
+            appendAssistantText(delta.text);
+          }
+        }
+
+        if (event.type === "content_block_start") {
+          const block = event.content_block as Record<string, unknown> | undefined;
+          if (block?.type === "tool_use") {
+            addToolUse(block.name as string, block.input);
+          }
+        }
+      }
+
+      if (type === "assistant") {
+        const message = msg.message as Record<string, unknown> | undefined;
+        if (!message) return;
+        if (typeof message.content === "string") {
+          appendAssistantText(message.content);
+        } else if (Array.isArray(message.content)) {
+          for (const block of message.content) {
+            const b = block as Record<string, unknown>;
+            if (b.type === "text") appendAssistantText(b.text as string);
+            else if (b.type === "tool_use") addToolUse(b.name as string, b.input);
+          }
+        }
+      }
+
+      if (type === "result") {
+        if (segmentsRef.current.length === 0 && msg.result) {
+          const result = msg.result as Record<string, unknown>;
+          const text =
+            typeof result === "string"
+              ? result
+              : typeof result.text === "string"
+                ? result.text
+                : null;
+          if (text) appendAssistantText(text);
+        }
+        finishAssistantTurn();
+        setStatus("connected");
+      }
+    },
+    [appendAssistantText, addToolUse, finishAssistantTurn]
+  );
+
+  const sendMessage = useCallback(
+    async (text: string) => {
+      addUserMessage(text);
+      setIsStreaming(true);
+      setError(null);
+      try {
+        await fetch("/api/chat/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text }),
+        });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to send");
+        setIsStreaming(false);
+      }
+    },
+    [addUserMessage]
+  );
+
+  const addOpeningMessage = useCallback((text: string) => {
+    const id = `opening-${++msgIdRef.current}`;
+    setMessages((prev) => [...prev, { id, role: "assistant", content: text }]);
+  }, []);
+
+  const clearMessages = useCallback(() => {
+    setMessages([]);
+    segmentsRef.current = [];
+    toolsRef.current = [];
+  }, []);
+
+  return {
+    messages,
+    isStreaming,
+    status,
+    error,
+    setStatus,
+    setError,
+    sendMessage,
+    handleClaudeMessage,
+    addOpeningMessage,
+    clearMessages,
+  };
+}

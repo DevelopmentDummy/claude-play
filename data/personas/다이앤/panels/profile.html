@@ -1,0 +1,50 @@
+<style>
+  .panel { font-size: 12px; color: #d0d0e0; }
+  .name-row { display: flex; align-items: baseline; gap: 8px; margin-bottom: 2px; }
+  .name { font-size: 16px; font-weight: 600; color: #d4b8ff; }
+  .race { font-size: 11px; color: #8080a0; }
+  .title { font-size: 11px; color: #9090a8; margin-bottom: 10px; }
+  .divider { border: none; border-top: 1px solid #2a2a40; margin: 10px 0; }
+  .info-grid { display: grid; grid-template-columns: 52px 1fr; gap: 4px 8px; font-size: 11px; }
+  .info-label { color: #7878a0; }
+  .info-value { color: #c0c0d8; }
+  .mood-section { margin-top: 10px; }
+  .mood-label { font-size: 10px; color: #b8a9e8; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 6px; }
+  .mood-box { background: #1e1e34; padding: 8px 10px; border-radius: 6px; border-left: 3px solid #b86bff; }
+  .mood-text { font-size: 12px; color: #d0c0f0; }
+  .mood-expr { font-size: 11px; color: #8888a8; margin-top: 3px; }
+  .stage-badge { display: inline-block; padding: 2px 8px; border-radius: 8px; font-size: 10px; font-weight: 600; margin-left: 6px; }
+  .stage-1 { background: #1a2a3a; color: #6ba8ff; }
+  .stage-2 { background: #1a2a2a; color: #4ddb8a; }
+  .stage-3 { background: #2a1a2a; color: #e86b9d; }
+  .stage-4 { background: #2a1a1e; color: #ff9dc4; }
+  .stage-5 { background: #2a1a2e; color: #d4a0ff; }
+</style>
+<div class="panel">
+  <div class="name-row">
+    <span class="name">다이앤</span>
+    <span class="race">하이엘프</span>
+    {{#if (eq relationship_stage 1)}}<span class="stage-badge stage-1">경계</span>{{/if}}
+    {{#if (eq relationship_stage 2)}}<span class="stage-badge stage-2">신뢰</span>{{/if}}
+    {{#if (eq relationship_stage 3)}}<span class="stage-badge stage-3">호감</span>{{/if}}
+    {{#if (eq relationship_stage 4)}}<span class="stage-badge stage-4">애정</span>{{/if}}
+    {{#if (eq relationship_stage 5)}}<span class="stage-badge stage-5">깊은 사랑</span>{{/if}}
+  </div>
+  <div class="title">영주관 수석 비서</div>
+  <hr class="divider">
+  <div class="info-grid">
+    <span class="info-label">복장</span>
+    <span class="info-value">{{outfit}}</span>
+    <span class="info-label">계절</span>
+    <span class="info-value">{{season}}</span>
+    <span class="info-label">경과</span>
+    <span class="info-value">{{day_count}}일차</span>
+  </div>
+  <div class="mood-section">
+    <div class="mood-label">Status</div>
+    <div class="mood-box">
+      <div class="mood-text">{{mood}}</div>
+      <div class="mood-expr">{{expression}}</div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,79 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  --bg: #0f0f1a;
+  --surface: rgba(22, 33, 62, 0.7);
+  --surface-light: rgba(31, 47, 80, 0.7);
+  --text: #e8e8f0;
+  --text-dim: #8888a0;
+  --accent: #7c6fff;
+  --accent-hover: #9589ff;
+  --accent-glow: rgba(124, 111, 255, 0.35);
+  --user-bubble: rgba(42, 58, 94, 0.75);
+  --assistant-bubble: rgba(30, 45, 74, 0.75);
+  --error: #ff4d6a;
+  --success: #4dff91;
+  --warning: #ffa64d;
+  --border: rgba(42, 58, 94, 0.6);
+  --code-bg: #0d1117;
+  --glass-blur: 16px;
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.4);
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.25s ease;
+}
+
+html, body {
+  height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--bg);
+  background-image:
+    radial-gradient(ellipse at 20% 50%, rgba(124, 111, 255, 0.04) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 20%, rgba(100, 80, 220, 0.03) 0%, transparent 50%);
+}
+
+/* ── Scrollbar ────────────────────────────────────── */
+
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(42, 58, 94, 0.4);
+  border-radius: 3px;
+  transition: background var(--transition-fast);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(42, 58, 94, 0.8);
+}
+
+/* ── Animations ───────────────────────────────────── */
+
+@keyframes messageIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+@keyframes thinking-bounce {
+  0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+  40% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}

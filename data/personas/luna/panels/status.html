@@ -1,0 +1,30 @@
+<style>
+  .status-panel { font-size: 12px; }
+  .stat-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .stat-label { width: 50px; color: #8888a0; }
+  .stat-bar-bg { flex: 1; height: 8px; background: #1a1a2e; border-radius: 4px; overflow: hidden; }
+  .stat-bar { height: 100%; border-radius: 4px; transition: width 0.3s; }
+  .stat-bar.affection { background: #ff6b9d; }
+  .stat-bar.trust { background: #6bc5ff; }
+  .stat-value { width: 40px; text-align: right; font-size: 11px; color: #8888a0; }
+  .info-row { display: flex; gap: 6px; margin-top: 8px; font-size: 11px; color: #8888a0; }
+  .info-tag { background: #1a1a2e; padding: 2px 8px; border-radius: 4px; }
+</style>
+<div class="status-panel">
+  <div class="stat-row">
+    <span class="stat-label">호감</span>
+    <div class="stat-bar-bg"><div class="stat-bar affection" style="width: {{percentage affection affection_max}}%"></div></div>
+    <span class="stat-value">{{affection}}/{{affection_max}}</span>
+  </div>
+  <div class="stat-row">
+    <span class="stat-label">신뢰</span>
+    <div class="stat-bar-bg"><div class="stat-bar trust" style="width: {{percentage trust trust_max}}%"></div></div>
+    <span class="stat-value">{{trust}}/{{trust_max}}</span>
+  </div>
+  <div class="info-row">
+    <span class="info-tag">📍 {{location}}</span>
+    <span class="info-tag">🕐 {{time}}</span>
+    <span class="info-tag">{{weather}}</span>
+    <span class="info-tag">🌙 {{moon_phase}}</span>
+  </div>
+</div>
