@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 interface FileInfo {
   name: string;
@@ -8,10 +8,47 @@ interface FileInfo {
   preview: string | null;
 }
 
+interface PanelPreview {
+  name: string;
+  html: string;
+}
+
 interface OverviewData {
   files: FileInfo[];
   panels: string[];
+  panelData: PanelPreview[];
   skills: string[];
+  hasProfile?: boolean;
+  hasIcon?: boolean;
+}
+
+/** Inline Shadow DOM renderer for panel preview */
+function PanelPreviewSlot({ name, html }: PanelPreview) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const shadowRef = useRef<ShadowRoot | null>(null);
+
+  useEffect(() => {
+    if (containerRef.current && !shadowRef.current) {
+      shadowRef.current = containerRef.current.attachShadow({ mode: "open" });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (shadowRef.current) {
+      shadowRef.current.innerHTML =
+        `<style>:host{display:block;padding:14px 18px 18px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:12px;line-height:1.7;color:#e0e0e0;}</style>` +
+        html;
+    }
+  }, [html]);
+
+  return (
+    <div className="bg-[rgba(15,15,26,0.25)] rounded-lg overflow-hidden border border-white/[0.06]">
+      <div className="px-3 py-1.5 text-[10px] font-semibold text-accent/80 uppercase tracking-wider">
+        {name}
+      </div>
+      <div ref={containerRef} className="max-h-[200px] overflow-hidden" />
+    </div>
+  );
 }
 
 interface BuilderOverviewProps {
@@ -59,6 +96,43 @@ export default function BuilderOverview({
         Persona Overview
       </h3>
 
+      {/* Profile Image & Icon Preview */}
+      <div className="mb-4 flex gap-3 items-end">
+        <div className="flex-1">
+          <div className="text-[11px] font-semibold text-text-dim uppercase tracking-wider mb-1.5">
+            Profile
+          </div>
+          {data.hasProfile ? (
+            <img
+              src={`/api/personas/${encodeURIComponent(personaName)}/images?file=profile.png&t=${refreshTrigger}`}
+              alt="Profile"
+              className="w-full rounded-xl border border-white/[0.06] object-cover"
+              style={{ maxHeight: "280px" }}
+            />
+          ) : (
+            <div className="w-full aspect-[2/3] rounded-xl border border-dashed border-white/[0.1] flex items-center justify-center text-text-dim/30 text-xs">
+              Not generated
+            </div>
+          )}
+        </div>
+        <div className="shrink-0">
+          <div className="text-[11px] font-semibold text-text-dim uppercase tracking-wider mb-1.5">
+            Icon
+          </div>
+          {data.hasIcon ? (
+            <img
+              src={`/api/personas/${encodeURIComponent(personaName)}/images?file=icon.png&t=${refreshTrigger}`}
+              alt="Icon"
+              className="w-16 h-16 rounded-full border border-white/[0.06] object-cover"
+            />
+          ) : (
+            <div className="w-16 h-16 rounded-full border border-dashed border-white/[0.1] flex items-center justify-center text-text-dim/30 text-[10px]">
+              N/A
+            </div>
+          )}
+        </div>
+      </div>
+
       {data.files.map((file) => (
         <div
           key={file.name}
@@ -99,19 +173,14 @@ export default function BuilderOverview({
         </div>
       ))}
 
-      {data.panels.length > 0 && (
+      {data.panelData && data.panelData.length > 0 && (
         <div className="mb-2.5">
           <h4 className="text-[11px] font-semibold text-text-dim uppercase tracking-wider mb-1.5">
-            Panels ({data.panels.length})
+            Panels ({data.panelData.length})
           </h4>
-          <div className="flex flex-wrap gap-1.5">
-            {data.panels.map((p) => (
-              <span
-                key={p}
-                className="inline-block px-2.5 py-0.5 bg-surface-light border border-border rounded-xl text-xs text-text"
-              >
-                {p}
-              </span>
+          <div className="flex flex-col gap-2">
+            {data.panelData.map((p) => (
+              <PanelPreviewSlot key={p.name} name={p.name} html={p.html} />
             ))}
           </div>
         </div>

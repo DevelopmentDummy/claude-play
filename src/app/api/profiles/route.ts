@@ -7,11 +7,12 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const { name, description } = (await req.json()) as {
+  const { name, description, isPrimary } = (await req.json()) as {
     name: string;
     description: string;
+    isPrimary?: boolean;
   };
   const { sessions } = getServices();
-  const slug = sessions.saveProfile({ name, description });
-  return NextResponse.json({ slug, name, description });
+  const slug = sessions.saveProfile({ name, description, ...(isPrimary ? { isPrimary } : {}) });
+  return NextResponse.json({ slug, name, description, isPrimary });
 }

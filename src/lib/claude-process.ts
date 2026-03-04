@@ -1,5 +1,7 @@
 import { spawn, execSync, ChildProcess } from "child_process";
 import { EventEmitter } from "events";
+import * as fs from "fs";
+import * as path from "path";
 
 export interface ClaudeProcessEvents {
   message: [data: unknown];
@@ -12,6 +14,7 @@ export interface ClaudeProcessEvents {
 export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
   private proc: ChildProcess | null = null;
   private buffer = "";
+  private logStream: fs.WriteStream | null = null;
 
   /**
    * Spawn claude -p in the given directory.
@@ -45,6 +48,12 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
       args.push("--resume", resumeId);
     }
 
+    // Start stream log for debugging
+    if (this.logStream) { try { this.logStream.end(); } catch { /* */ } }
+    const logPath = path.join(cwd, "claude-stream.log");
+    this.logStream = fs.createWriteStream(logPath, { flags: "a" });
+    this.logStream.write(`\n--- spawn ${new Date().toISOString()} args: ${args.join(" ")} ---\n`);
+
     this.proc = spawn("claude", args, {
       env,
       cwd,
@@ -73,6 +82,14 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
     this.proc.on("exit", (code) => {
       this.proc = null;
       this.buffer = "";
+
+      // If resume failed (quick exit), retry without resume
+      if (resumeId && code !== 0) {
+        console.log("[claude-process] Resume failed, retrying without --resume");
+        this.spawn(cwd);
+        return;
+      }
+
       this.emit("exit", code);
       this.emit("status", "disconnected");
     });
@@ -89,6 +106,11 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
       if (!trimmed) continue;
       try {
         const parsed = JSON.parse(trimmed);
+
+        // Log system/init messages for debugging compaction behavior
+        if (this.logStream && parsed?.type === "system") {
+          this.logStream.write(`[system] ${trimmed}\n`);
+        }
 
         // Capture session_id from init message
         if (

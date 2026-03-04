@@ -1,5 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
+import Handlebars from "handlebars";
 
 export interface PersonaInfo {
   name: string; // directory name
@@ -9,11 +10,13 @@ export interface PersonaInfo {
 export interface ProfileInfo {
   slug: string;
   name: string;
+  isPrimary?: boolean;
 }
 
 export interface Profile {
   name: string;
   description: string;
+  isPrimary?: boolean;
 }
 
 export interface SessionInfo {
@@ -21,12 +24,16 @@ export interface SessionInfo {
   persona: string;
   title: string;
   createdAt: string;
+  hasIcon?: boolean;
 }
 
 export interface PersonaOverview {
   files: Array<{ name: string; exists: boolean; preview: string | null }>;
   panels: string[];
+  panelData: Array<{ name: string; html: string }>;
   skills: string[];
+  hasProfile?: boolean;
+  hasIcon?: boolean;
 }
 
 export interface LayoutConfig {
@@ -90,6 +97,8 @@ const CLAUDE_SETTINGS = {
       "Bash(cat *)",
       "Bash(ls *)",
       "Bash(mkdir *)",
+      "Bash(curl *)",
+      "Bash(bash ./*.sh *)",
       "Glob",
       "Grep",
     ],
@@ -110,6 +119,7 @@ export class SessionManager {
     fs.mkdirSync(path.join(this.dataDir, "personas"), { recursive: true });
     fs.mkdirSync(path.join(this.dataDir, "sessions"), { recursive: true });
     fs.mkdirSync(path.join(this.dataDir, "profiles"), { recursive: true });
+    fs.mkdirSync(path.join(this.dataDir, "tools"), { recursive: true });
   }
 
   private profilesDir(): string {
@@ -190,14 +200,41 @@ export class SessionManager {
       });
 
       let panels: string[] = [];
+      let panelData: Array<{ name: string; html: string }> = [];
       const panelsDir = path.join(dir, "panels");
       if (fs.existsSync(panelsDir)) {
         try {
-          panels = fs
+          const panelFiles = fs
             .readdirSync(panelsDir)
-            .filter((f) => f.endsWith(".html"));
+            .filter((f) => f.endsWith(".html"))
+            .sort();
+          panels = panelFiles;
+
+          // Load variables.json for Handlebars rendering
+          let variables: Record<string, unknown> = {};
+          const varsPath = path.join(dir, "variables.json");
+          if (fs.existsSync(varsPath)) {
+            try {
+              variables = JSON.parse(fs.readFileSync(varsPath, "utf-8"));
+            } catch { /* ignore */ }
+          }
+
+          // Render each panel
+          panelData = panelFiles.map((file) => {
+            const rawName = file.replace(/\.html$/, "");
+            const name = rawName.replace(/^\d+-/, "");
+            try {
+              const source = fs.readFileSync(path.join(panelsDir, file), "utf-8");
+              const template = Handlebars.compile(source);
+              const html = template(variables, { allowProtoPropertiesByDefault: true });
+              return { name, html };
+            } catch {
+              return { name, html: `<div style="color:#ff4d6a;padding:8px;">Panel "${name}" render error</div>` };
+            }
+          });
         } catch {
           panels = [];
+          panelData = [];
         }
       }
 
@@ -214,9 +251,18 @@ export class SessionManager {
         }
       }
 
-      return { files, panels, skills };
+      // Check for profile/icon images
+      const imagesDir = path.join(dir, "images");
+      const hasProfile = fs.existsSync(path.join(imagesDir, "profile.png"));
+      const hasIcon = fs.existsSync(path.join(imagesDir, "icon.png"));
+
+      return {
+        files, panels, panelData, skills,
+        ...(hasProfile ? { hasProfile: true } : {}),
+        ...(hasIcon ? { hasIcon: true } : {}),
+      };
     } catch {
-      return { files: [], panels: [], skills: [] };
+      return { files: [], panels: [], panelData: [], skills: [] };
     }
   }
 
@@ -237,7 +283,9 @@ export class SessionManager {
           const data = JSON.parse(
             fs.readFileSync(path.join(dir, f), "utf-8")
           ) as Profile;
-          return { slug: f.replace(/\.json$/, ""), name: data.name };
+          const info: ProfileInfo = { slug: f.replace(/\.json$/, ""), name: data.name };
+          if (data.isPrimary) info.isPrimary = true;
+          return info;
         } catch {
           return null;
         }
@@ -257,6 +305,24 @@ export class SessionManager {
 
   saveProfile(profile: Profile): string {
     const slug = this.profileSlug(profile.name);
+    // If setting as primary, clear other profiles' isPrimary
+    if (profile.isPrimary) {
+      const dir = this.profilesDir();
+      if (fs.existsSync(dir)) {
+        for (const f of fs.readdirSync(dir).filter((f) => f.endsWith(".json"))) {
+          const fSlug = f.replace(/\.json$/, "");
+          if (fSlug === slug) continue;
+          const fp = path.join(dir, f);
+          try {
+            const data = JSON.parse(fs.readFileSync(fp, "utf-8")) as Profile;
+            if (data.isPrimary) {
+              delete data.isPrimary;
+              fs.writeFileSync(fp, JSON.stringify(data, null, 2), "utf-8");
+            }
+          } catch { /* skip */ }
+        }
+      }
+    }
     fs.writeFileSync(
       path.join(this.profilesDir(), `${slug}.json`),
       JSON.stringify(profile, null, 2),
@@ -358,11 +424,14 @@ export class SessionManager {
 
     // Copy persona skills/ to sessionDir/.claude/skills/
     const personaSkillsSrc = path.join(personaDir, "skills");
+    const skillsDest = path.join(claudeDir, "skills");
+    fs.mkdirSync(skillsDest, { recursive: true });
     if (fs.existsSync(personaSkillsSrc)) {
-      const skillsDest = path.join(claudeDir, "skills");
-      fs.mkdirSync(skillsDest, { recursive: true });
       this.copyDirRecursive(personaSkillsSrc, skillsDest);
     }
+
+    // Copy global tool skills (data/tools/*/skills/*) to session
+    this.copyToolSkills(skillsDest);
 
     return { id, ...meta };
   }
@@ -381,7 +450,9 @@ export class SessionManager {
           const meta: SessionMeta = JSON.parse(
             fs.readFileSync(metaPath, "utf-8")
           );
-          return { id: d.name, ...meta };
+          const iconPath = path.join(dir, d.name, "images", "icon.png");
+          const hasIcon = fs.existsSync(iconPath);
+          return { id: d.name, ...meta, ...(hasIcon ? { hasIcon: true } : {}) };
         } catch {
           return null;
         }
@@ -517,6 +588,40 @@ export class SessionManager {
       };
     } catch {
       return { ...DEFAULT_LAYOUT };
+    }
+  }
+
+  // ── Tools ──────────────────────────────────────────────
+
+  /** Copy skills from all global tools (data/tools/X/skills/) into the session skills dir */
+  private copyToolSkills(skillsDest: string): void {
+    const toolsDir = path.join(this.dataDir, "tools");
+    if (!fs.existsSync(toolsDir)) return;
+
+    const port = process.env.PORT || "3340";
+
+    for (const toolEntry of fs.readdirSync(toolsDir, { withFileTypes: true })) {
+      if (!toolEntry.isDirectory()) continue;
+      const toolSkillsDir = path.join(toolsDir, toolEntry.name, "skills");
+      if (!fs.existsSync(toolSkillsDir)) continue;
+
+      for (const skillEntry of fs.readdirSync(toolSkillsDir, { withFileTypes: true })) {
+        if (!skillEntry.isDirectory()) continue;
+        const src = path.join(toolSkillsDir, skillEntry.name);
+        const dest = path.join(skillsDest, skillEntry.name);
+        fs.mkdirSync(dest, { recursive: true });
+        this.copyDirRecursive(src, dest);
+
+        // Replace {{PORT}} in SKILL.md and shell scripts
+        for (const file of fs.readdirSync(dest)) {
+          const filePath = path.join(dest, file);
+          if (file === "SKILL.md" || file.endsWith(".sh")) {
+            let content = fs.readFileSync(filePath, "utf-8");
+            content = content.replace(/\{\{PORT\}\}/g, port);
+            fs.writeFileSync(filePath, content, "utf-8");
+          }
+        }
+      }
     }
   }
 

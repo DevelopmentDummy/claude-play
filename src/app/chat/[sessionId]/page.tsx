@@ -31,12 +31,15 @@ export default function ChatPage() {
     addOpeningMessage,
     clearMessages,
     loadHistory,
+    loadMore,
+    hasMore,
   } = useChat();
   const { applyLayout, resetLayout } = useLayout();
 
   const [panels, setPanels] = useState<Panel[]>([]);
   const [layout, setLayout] = useState<LayoutConfig | null>(null);
   const [title, setTitle] = useState("");
+  const [profileImage, setProfileImage] = useState<string | null>(null);
   const [sseEnabled, setSseEnabled] = useState(false);
   const initRef = useRef(false);
 
@@ -78,6 +81,8 @@ export default function ChatPage() {
         setPanels(data.panels);
       }
 
+      setProfileImage(data.profileImage ? `/api/sessions/${sessionId}/files?path=${data.profileImage}` : null);
+
       // Load chat history from server (file-backed, survives restarts)
       const historyCount = await loadHistory();
 
@@ -99,6 +104,14 @@ export default function ChatPage() {
 
   const panelPosition = layout?.panels?.position || "right";
   const panelSize = layout?.panels?.size || 280;
+  const hasPanel = panels.length > 0 || !!profileImage;
+
+  // Chat maxWidth: use layout value if explicitly > 0, otherwise always default 720px
+  const layoutMaxWidth = layout?.chat?.maxWidth;
+  const chatMaxWidth = (layoutMaxWidth && layoutMaxWidth > 0) ? layoutMaxWidth : 860;
+  // Center align by default when maxWidth is active
+  const layoutAlign = layout?.chat?.align;
+  const chatAlign = (layoutAlign && layoutAlign !== "stretch") ? layoutAlign : "center";
 
   return (
     <div className="flex flex-col h-screen">
@@ -109,29 +122,43 @@ export default function ChatPage() {
         onBack={handleBack}
       />
       <ErrorBanner error={error} onDismiss={() => setError(null)} />
-      <div
-        className={`flex-1 flex min-h-0 ${
-          panelPosition === "left"
-            ? "flex-row-reverse"
-            : panelPosition === "bottom"
-              ? "flex-col"
-              : "flex-row"
-        }`}
-      >
-        <ChatMessages
-          messages={messages}
-          isStreaming={isStreaming}
-          maxWidth={layout?.chat?.maxWidth}
-          align={layout?.chat?.align}
-          hideTools
-        />
-        <PanelArea
-          panels={panels}
-          position={panelPosition}
-          size={panelSize}
-        />
+      <div className="flex-1 relative min-h-0">
+        {/* Chat column: always centered in full width */}
+        <div
+          className="absolute inset-0 flex flex-col min-h-0"
+          style={{
+            maxWidth: `${chatMaxWidth}px`,
+            marginLeft: "auto",
+            marginRight: "auto",
+          }}
+        >
+          <ChatMessages
+            messages={messages}
+            isStreaming={isStreaming}
+            hideTools
+            sessionId={sessionId}
+            hasMore={hasMore}
+            onLoadMore={loadMore}
+          />
+          <ChatInput disabled={isStreaming} onSend={sendMessage} />
+        </div>
+        {/* Panel overlay on the side */}
+        {hasPanel && (
+          <div
+            className={`absolute top-0 bottom-0 ${
+              panelPosition === "left" ? "left-0" : "right-0"
+            } ${panelPosition === "bottom" ? "left-0 right-0 bottom-0 top-auto" : ""}`}
+            style={panelPosition === "bottom" ? { height: `${panelSize}px` } : { width: `${panelSize}px` }}
+          >
+            <PanelArea
+              panels={panels}
+              position={panelPosition}
+              size={panelSize}
+              profileImageUrl={profileImage}
+            />
+          </div>
+        )}
       </div>
-      <ChatInput disabled={isStreaming} onSend={sendMessage} />
     </div>
   );
 }

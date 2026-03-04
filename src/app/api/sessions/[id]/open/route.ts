@@ -52,5 +52,15 @@ export async function POST(
   // Include initial panels in response (SSE may not be connected yet)
   const panels = svc.panels.getCurrentPanels();
 
-  return NextResponse.json({ ...info, opening, isResume, layout, panels });
+  // Check for profile image
+  const profileExts = [".png", ".jpg", ".jpeg", ".webp"];
+  let profileImage: string | null = null;
+  for (const ext of profileExts) {
+    if (fs.existsSync(path.join(sessionDir, `profile${ext}`))) {
+      profileImage = `profile${ext}`;
+      break;
+    }
+  }
+
+  return NextResponse.json({ ...info, opening, isResume, layout, panels, profileImage });
 }

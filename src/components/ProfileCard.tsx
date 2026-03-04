@@ -2,21 +2,44 @@
 
 interface ProfileCardProps {
   name: string;
+  isPrimary?: boolean;
+  onEdit: () => void;
   onDelete: () => void;
 }
 
-export default function ProfileCard({ name, onDelete }: ProfileCardProps) {
+export default function ProfileCard({ name, isPrimary, onEdit, onDelete }: ProfileCardProps) {
   return (
-    <div className="group relative p-3.5 px-[18px] bg-surface backdrop-blur-[16px] border border-border rounded-xl min-w-[180px] transition-all duration-normal shadow-sm hover:border-accent hover:-translate-y-0.5 hover:shadow-[var(--shadow-md),0_0_20px_var(--accent-glow)]">
-      <div className="font-medium">{name}</div>
+    <div
+      className={`group relative inline-flex items-center gap-2.5 px-4 py-2 rounded-full cursor-pointer
+        bg-surface/50 border transition-all duration-fast
+        hover:bg-surface/70 hover:border-border/60 ${
+          isPrimary ? "border-accent/40" : "border-border/40"
+        }`}
+      onClick={onEdit}
+    >
+      <div
+        className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0"
+        style={{
+          background: isPrimary ? "rgba(var(--accent-rgb, 124,111,255),0.2)" : "rgba(136,136,160,0.15)",
+          color: isPrimary ? "var(--accent)" : "var(--text-dim)",
+        }}
+      >
+        {name.charAt(0).toUpperCase()}
+      </div>
+      <span className="text-[13px] text-text font-medium">{name}</span>
+      {isPrimary && (
+        <span className="text-[10px] text-accent/70">{"\u2605"}</span>
+      )}
       <button
-        className="absolute top-2 right-2 px-3 py-1 border border-border rounded-md bg-transparent text-text-dim cursor-pointer text-xs opacity-0 group-hover:opacity-100 transition-all duration-fast hover:bg-surface-light hover:text-text hover:-translate-y-px"
+        className="text-sm text-text-dim/40 cursor-pointer ml-0.5
+          opacity-0 group-hover:opacity-100 transition-opacity duration-fast
+          hover:text-error"
         onClick={(e) => {
           e.stopPropagation();
           onDelete();
         }}
       >
-        Delete
+        &times;
       </button>
     </div>
   );

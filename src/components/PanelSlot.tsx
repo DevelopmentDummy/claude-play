@@ -20,14 +20,14 @@ export default function PanelSlot({ name, html }: PanelSlotProps) {
   useEffect(() => {
     if (shadowRef.current) {
       shadowRef.current.innerHTML =
-        `<style>:host{display:block;padding:8px 12px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:13px;color:#e0e0e0;}</style>` +
+        `<style>:host{display:block;padding:14px 18px 18px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:13px;line-height:1.6;color:#e0e0e0;}</style>` +
         html;
     }
   }, [html]);
 
   return (
-    <div className="bg-[rgba(15,15,26,0.4)]">
-      <div className="px-3 py-1.5 text-[11px] font-semibold text-accent uppercase tracking-wider bg-surface">
+    <div className="bg-[rgba(15,15,26,0.25)] rounded-xl overflow-hidden border border-white/[0.06]">
+      <div className="px-4 py-2.5 text-[11px] font-semibold text-accent/80 uppercase tracking-wider">
         {name}
       </div>
       <div ref={containerRef} />

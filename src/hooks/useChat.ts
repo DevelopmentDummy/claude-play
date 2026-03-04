@@ -14,10 +14,13 @@ export function useChat() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [status, setStatus] = useState<string>("disconnected");
   const [error, setError] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
 
   const segmentsRef = useRef<string[]>([]);
   const toolsRef = useRef<Array<{ name: string; input: unknown }>>([]);
   const msgIdRef = useRef(0);
+  const totalRef = useRef(0);
+  const loadedOffsetRef = useRef(0);
 
   const addUserMessage = useCallback((text: string) => {
     const id = `user-${++msgIdRef.current}`;
@@ -163,12 +166,36 @@ export function useChat() {
     try {
       const res = await fetch("/api/chat/history");
       if (res.ok) {
-        const history = await res.json() as ChatMessage[];
-        if (history.length > 0) {
-          setMessages(history);
-          msgIdRef.current = history.length;
+        const data = await res.json() as { messages: ChatMessage[]; total: number; offset: number };
+        totalRef.current = data.total;
+        loadedOffsetRef.current = data.offset;
+        if (data.messages.length > 0) {
+          setMessages(data.messages);
+          msgIdRef.current = data.messages.length;
         }
-        return history.length;
+        setHasMore(data.offset > 0);
+        return data.messages.length;
+      }
+    } catch { /* ignore */ }
+    return 0;
+  }, []);
+
+  const loadMore = useCallback(async (): Promise<number> => {
+    if (loadedOffsetRef.current <= 0) return 0;
+    const batchSize = 10;
+    const newOffset = Math.max(0, loadedOffsetRef.current - batchSize);
+    const limit = loadedOffsetRef.current - newOffset;
+
+    try {
+      const res = await fetch(`/api/chat/history?offset=${newOffset}&limit=${limit}`);
+      if (res.ok) {
+        const data = await res.json() as { messages: ChatMessage[]; total: number; offset: number };
+        loadedOffsetRef.current = newOffset;
+        setHasMore(newOffset > 0);
+        if (data.messages.length > 0) {
+          setMessages((prev) => [...data.messages, ...prev]);
+          return data.messages.length;
+        }
       }
     } catch { /* ignore */ }
     return 0;
@@ -179,6 +206,7 @@ export function useChat() {
     isStreaming,
     status,
     error,
+    hasMore,
     setStatus,
     setError,
     sendMessage,
@@ -186,5 +214,6 @@ export function useChat() {
     addOpeningMessage,
     clearMessages,
     loadHistory,
+    loadMore,
   };
 }
