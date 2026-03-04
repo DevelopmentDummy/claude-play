@@ -37,6 +37,9 @@ export async function POST(
   // Read layout config
   const layout = svc.sessions.readLayout(sessionDir);
 
+  // Refresh CLAUDE.md from persona's latest session-instructions.md
+  svc.sessions.refreshSessionClaudeMd(id);
+
   // Resume previous Claude session if available
   const resumeId = svc.sessions.getClaudeSessionId(id);
   const isResume = !!resumeId;
@@ -52,15 +55,35 @@ export async function POST(
   // Include initial panels in response (SSE may not be connected yet)
   const panels = svc.panels.getCurrentPanels();
 
-  // Check for profile image
-  const profileExts = [".png", ".jpg", ".jpeg", ".webp"];
-  let profileImage: string | null = null;
-  for (const ext of profileExts) {
-    if (fs.existsSync(path.join(sessionDir, `profile${ext}`))) {
-      profileImage = `profile${ext}`;
-      break;
+  // Sync profile/icon images from persona to session (may have been added after session creation)
+  const imagesDir = path.join(sessionDir, "images");
+  const personaDir = svc.sessions.getPersonaDir(info.persona);
+  const personaImagesDir = path.join(personaDir, "images");
+  if (fs.existsSync(personaImagesDir)) {
+    if (!fs.existsSync(imagesDir)) fs.mkdirSync(imagesDir, { recursive: true });
+    for (const name of ["profile", "icon"]) {
+      for (const ext of [".png", ".jpg", ".jpeg", ".webp"]) {
+        const src = path.join(personaImagesDir, `${name}${ext}`);
+        const dst = path.join(imagesDir, `${name}${ext}`);
+        if (fs.existsSync(src) && !fs.existsSync(dst)) {
+          fs.copyFileSync(src, dst);
+        }
+      }
     }
   }
 
-  return NextResponse.json({ ...info, opening, isResume, layout, panels, profileImage });
+  // Check for profile image and icon in images/ directory
+  const profileExts = [".png", ".jpg", ".jpeg", ".webp"];
+  let profileImage: string | null = null;
+  let iconImage: string | null = null;
+  for (const ext of profileExts) {
+    if (!profileImage && fs.existsSync(path.join(imagesDir, `profile${ext}`))) {
+      profileImage = `images/profile${ext}`;
+    }
+    if (!iconImage && fs.existsSync(path.join(imagesDir, `icon${ext}`))) {
+      iconImage = `images/icon${ext}`;
+    }
+  }
+
+  return NextResponse.json({ ...info, opening, isResume, layout, panels, profileImage, iconImage });
 }

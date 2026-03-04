@@ -60,7 +60,7 @@ export interface LayoutConfig {
 }
 
 const DEFAULT_LAYOUT: LayoutConfig = {
-  panels: { position: "right", size: 280 },
+  panels: { position: "right", size: 380 },
   chat: { maxWidth: null, align: "stretch" },
   theme: {
     accent: "#7c6fff",
@@ -508,6 +508,51 @@ export class SessionManager {
     const dir = this.getSessionDir(id);
     if (fs.existsSync(dir)) {
       fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  /** Regenerate CLAUDE.md from persona's latest session-instructions.md */
+  refreshSessionClaudeMd(id: string): void {
+    const sessionDir = this.getSessionDir(id);
+    const metaPath = path.join(sessionDir, "session.json");
+    if (!fs.existsSync(metaPath)) return;
+
+    let meta: SessionMeta;
+    try {
+      meta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
+    } catch { return; }
+
+    const personaDir = this.getPersonaDir(meta.persona);
+    if (!fs.existsSync(personaDir)) return;
+
+    // 1. Copy latest session-instructions.md as CLAUDE.md
+    const instructionsSrc = path.join(personaDir, "session-instructions.md");
+    const claudeMdPath = path.join(sessionDir, "CLAUDE.md");
+    if (fs.existsSync(instructionsSrc)) {
+      fs.copyFileSync(instructionsSrc, claudeMdPath);
+    } else {
+      return; // No instructions, nothing to do
+    }
+
+    // 2. Re-inject profile info if session had one
+    if (meta.profileSlug) {
+      const profile = this.getProfile(meta.profileSlug);
+      if (profile) {
+        const existing = fs.readFileSync(claudeMdPath, "utf-8");
+        const userSection = `\n\n## 사용자 정보\n사용자의 이름: ${profile.name}\n${profile.description}\n`;
+        fs.writeFileSync(claudeMdPath, existing + userSection, "utf-8");
+      }
+    }
+
+    // 3. Re-append opening context
+    const openingPath = path.join(sessionDir, "opening.md");
+    if (fs.existsSync(openingPath)) {
+      const openingContent = fs.readFileSync(openingPath, "utf-8").trim();
+      if (openingContent) {
+        const existing = fs.readFileSync(claudeMdPath, "utf-8");
+        const appendix = `\n\n## 오프닝 메시지\n아래 메시지는 세션 시작 시 사용자에게 이미 표시되었다. 이 메시지를 반복하지 마라.\n\n${openingContent}\n`;
+        fs.writeFileSync(claudeMdPath, existing + appendix, "utf-8");
+      }
     }
   }
 

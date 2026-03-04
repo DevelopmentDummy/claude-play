@@ -6,6 +6,8 @@ interface StatusBarProps {
   isBuilderMode: boolean;
   onBack: () => void;
   onReinit?: () => void;
+  onPanelToggle?: () => void;
+  showPanelButton?: boolean;
 }
 
 export default function StatusBar({
@@ -14,6 +16,8 @@ export default function StatusBar({
   isBuilderMode,
   onBack,
   onReinit,
+  onPanelToggle,
+  showPanelButton,
 }: StatusBarProps) {
   const statusColors: Record<string, string> = {
     connected: "bg-success shadow-[0_0_8px_rgba(77,255,145,0.4)]",
@@ -36,8 +40,17 @@ export default function StatusBar({
         &larr;
       </button>
       <span className="font-medium text-[13px]">{title}</span>
+      {showPanelButton && onPanelToggle && (
+        <button
+          onClick={onPanelToggle}
+          className="ml-auto px-2.5 py-1 border border-border rounded-md bg-transparent text-text-dim cursor-pointer text-sm hover:bg-surface-light hover:text-text transition-all duration-150"
+          title="Toggle panel"
+        >
+          ☰
+        </button>
+      )}
       <span
-        className={`w-2.5 h-2.5 rounded-full ml-auto shrink-0 ${statusColors[status] || statusColors.disconnected}`}
+        className={`w-2.5 h-2.5 rounded-full ${showPanelButton ? "" : "ml-auto"} shrink-0 ${statusColors[status] || statusColors.disconnected}`}
       />
       <span className="text-xs text-text-dim">
         {statusLabels[status] || status}

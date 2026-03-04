@@ -36,17 +36,17 @@ function PanelPreviewSlot({ name, html }: PanelPreview) {
   useEffect(() => {
     if (shadowRef.current) {
       shadowRef.current.innerHTML =
-        `<style>:host{display:block;padding:14px 18px 18px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:12px;line-height:1.7;color:#e0e0e0;}</style>` +
+        `<style>:host{display:block;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:12px;line-height:1.7;color:#e0e0e0;}</style>` +
         html;
     }
   }, [html]);
 
   return (
     <div className="bg-[rgba(15,15,26,0.25)] rounded-lg overflow-hidden border border-white/[0.06]">
-      <div className="px-3 py-1.5 text-[10px] font-semibold text-accent/80 uppercase tracking-wider">
+      <div className="px-3.5 py-2 text-[10px] font-semibold text-accent/80 uppercase tracking-wider">
         {name}
       </div>
-      <div ref={containerRef} className="max-h-[200px] overflow-hidden" />
+      <div ref={containerRef} className="max-h-[200px] overflow-hidden mx-3.5 mb-3.5" />
     </div>
   );
 }
