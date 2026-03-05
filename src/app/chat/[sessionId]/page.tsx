@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { useSSE } from "@/hooks/useSSE";
+import { useWebSocket } from "@/hooks/useWebSocket";
 import { useChat } from "@/hooks/useChat";
 import { useLayout, type LayoutConfig } from "@/hooks/useLayout";
 import { useIsMobile } from "@/hooks/useIsMobile";
@@ -29,7 +29,7 @@ export default function ChatPage() {
     error,
     setStatus,
     setError,
-    sendMessage,
+    prepareSend,
     handleClaudeMessage,
     addOpeningMessage,
     clearMessages,
@@ -44,23 +44,36 @@ export default function ChatPage() {
   const [layout, setLayout] = useState<LayoutConfig | null>(null);
   const [title, setTitle] = useState("");
   const [profileImage, setProfileImage] = useState<string | null>(null);
-  const [sseEnabled, setSseEnabled] = useState(false);
+  const [wsEnabled, setWsEnabled] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [currentModel, setCurrentModel] = useState(searchParams.get("model") || "");
   const isMobile = useIsMobile();
   const initRef = useRef(false);
 
-  // SSE handlers — only connect after session open completes
-  useSSE({
-    "claude:message": handleClaudeMessage,
-    "claude:error": (e) => setError(e as string),
-    "claude:status": (s) => setStatus(s as string),
-    "panels:update": (p) => {
-      const update = p as { panels: Panel[]; context: Record<string, unknown> };
-      setPanels(update.panels);
-      setPanelData(update.context);
+  // WebSocket connection — only connect after session open completes
+  const { sendChat, send: wsSend } = useWebSocket({
+    sessionId,
+    handlers: {
+      "claude:message": handleClaudeMessage,
+      "claude:error": (e) => setError(e as string),
+      "claude:status": (s) => setStatus(s as string),
+      "panels:update": (p) => {
+        const update = p as { panels: Panel[]; context: Record<string, unknown> };
+        setPanels(update.panels);
+        setPanelData(update.context);
+      },
     },
-  }, sseEnabled);
+    enabled: wsEnabled,
+  });
+
+  // Send via WebSocket: update local UI state + send through WS
+  const sendMessage = useCallback(
+    (text: string) => {
+      prepareSend(text);
+      sendChat(text);
+    },
+    [prepareSend, sendChat]
+  );
 
   // Open session on mount — ref prevents Strict Mode double-call
   useEffect(() => {
@@ -92,7 +105,7 @@ export default function ChatPage() {
       applyLayout(data.layout, imageBase);
       setStatus("connected");
 
-      // Set initial panels + context from response (SSE may not be connected yet)
+      // Set initial panels + context from response (WS may not be connected yet)
       if (data.panels?.length) {
         setPanels(data.panels);
       }
@@ -109,17 +122,18 @@ export default function ChatPage() {
         addOpeningMessage(data.opening);
       }
 
-      // Now enable SSE for real-time updates
-      setSseEnabled(true);
+      // Now enable WebSocket for real-time updates
+      setWsEnabled(true);
     };
 
     openSession();
   }, [sessionId, clearMessages, resetLayout, applyLayout, setError, setStatus, addOpeningMessage]);
 
   const handleBack = useCallback(() => {
+    wsSend("session:leave");
     resetLayout();
     router.push("/");
-  }, [router, resetLayout]);
+  }, [router, resetLayout, wsSend]);
 
   const handleModelChange = useCallback(async (model: string) => {
     setCurrentModel(model);

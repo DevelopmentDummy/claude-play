@@ -132,11 +132,20 @@ export function useChat() {
     [appendAssistantText, addToolUse, finishAssistantTurn]
   );
 
-  const sendMessage = useCallback(
-    async (text: string) => {
+  /** Prepare local UI state for sending (adds user message, sets streaming). Does NOT send to server. */
+  const prepareSend = useCallback(
+    (text: string) => {
       addUserMessage(text);
       setIsStreaming(true);
       setError(null);
+    },
+    [addUserMessage]
+  );
+
+  /** Send via REST (legacy fallback, used by builder) */
+  const sendMessage = useCallback(
+    async (text: string) => {
+      prepareSend(text);
       try {
         await fetch("/api/chat/send", {
           method: "POST",
@@ -148,7 +157,7 @@ export function useChat() {
         setIsStreaming(false);
       }
     },
-    [addUserMessage]
+    [prepareSend]
   );
 
   const addOpeningMessage = useCallback((text: string) => {
@@ -209,6 +218,7 @@ export function useChat() {
     hasMore,
     setStatus,
     setError,
+    prepareSend,
     sendMessage,
     handleClaudeMessage,
     addOpeningMessage,

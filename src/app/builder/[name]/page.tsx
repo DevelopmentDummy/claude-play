@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { useSSE } from "@/hooks/useSSE";
+import { useWebSocket } from "@/hooks/useWebSocket";
 import { useChat } from "@/hooks/useChat";
 import StatusBar from "@/components/StatusBar";
 import ErrorBanner from "@/components/ErrorBanner";
@@ -24,7 +24,7 @@ export default function BuilderPage() {
     error,
     setStatus,
     setError,
-    sendMessage,
+    prepareSend,
     handleClaudeMessage,
     loadHistory,
     loadMore,
@@ -32,22 +32,34 @@ export default function BuilderPage() {
   } = useChat();
 
   const [refreshTrigger, setRefreshTrigger] = useState(0);
-  const [sseEnabled, setSseEnabled] = useState(false);
+  const [wsEnabled, setWsEnabled] = useState(false);
   const initRef = useRef(false);
 
-  // SSE handlers — only connect after init completes
-  useSSE({
-    "claude:message": (data) => {
-      handleClaudeMessage(data);
-      const msg = data as Record<string, unknown>;
-      if (msg.type === "result") {
-        setRefreshTrigger((n) => n + 1);
-      }
+  // WebSocket connection — only connect after init completes
+  const { sendChat, send: wsSend } = useWebSocket({
+    isBuilder: true,
+    handlers: {
+      "claude:message": (data) => {
+        handleClaudeMessage(data);
+        const msg = data as Record<string, unknown>;
+        if (msg.type === "result") {
+          setRefreshTrigger((n) => n + 1);
+        }
+      },
+      "claude:error": (e) => setError(e as string),
+      "claude:status": (s) => setStatus(s as string),
+      "panels:update": () => {},
     },
-    "claude:error": (e) => setError(e as string),
-    "claude:status": (s) => setStatus(s as string),
-    "panels:update": () => {},
-  }, sseEnabled);
+    enabled: wsEnabled,
+  });
+
+  const sendMessage = useCallback(
+    (text: string) => {
+      prepareSend(text);
+      sendChat(text);
+    },
+    [prepareSend, sendChat]
+  );
 
   // Initialize builder on mount (spawn Claude) — ref prevents Strict Mode double-call
   useEffect(() => {
@@ -73,16 +85,17 @@ export default function BuilderPage() {
 
       setStatus("connected");
 
-      // Now enable SSE for real-time updates
-      setSseEnabled(true);
+      // Now enable WebSocket for real-time updates
+      setWsEnabled(true);
     };
 
     init();
   }, [mode, decodedName, setError, setStatus]);
 
   const handleBack = useCallback(() => {
+    wsSend("session:leave");
     router.push("/");
-  }, [router]);
+  }, [router, wsSend]);
 
   // Re-initialize builder (kill + respawn Claude with fresh builder prompt)
   const handleReinit = useCallback(async () => {

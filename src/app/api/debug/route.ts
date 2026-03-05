@@ -8,6 +8,6 @@ export async function GET() {
     isBuilderActive: svc.isBuilderActive,
     builderPersonaName: svc.builderPersonaName,
     currentSessionId: svc.currentSessionId,
-    sseClients: svc.sse.clientCount,
+    historyLength: svc.chatHistory.length,
   });
 }

@@ -3,7 +3,7 @@ import * as path from "path";
 import { ClaudeProcess } from "./claude-process";
 import { SessionManager } from "./session-manager";
 import { PanelEngine } from "./panel-engine";
-import { SSEManager } from "./sse-manager";
+import { wsBroadcastAll } from "./ws-server";
 import { getDataDir, getAppRoot } from "./data-dir";
 
 const DIALOG_OPEN = "<dialog_response>";
@@ -43,7 +43,6 @@ export interface Services {
   claude: ClaudeProcess;
   sessions: SessionManager;
   panels: PanelEngine;
-  sse: SSEManager;
   builderPersonaName: string | null;
   currentSessionId: string | null;
   isBuilderActive: boolean;
@@ -57,11 +56,14 @@ export interface Services {
 const HISTORY_FILE = "chat-history.json";
 const GLOBAL_KEY = "__claude_bridge__";
 
+function broadcast(event: string, data: unknown): void {
+  wsBroadcastAll(event, data);
+}
+
 function initServices(): Services {
-  const sse = new SSEManager();
   const claude = new ClaudeProcess();
   const sessions = new SessionManager(getDataDir(), getAppRoot());
-  const panels = new PanelEngine((update) => sse.broadcast("panels:update", update));
+  const panels = new PanelEngine((update) => broadcast("panels:update", update));
 
   // Accumulator for assistant turn
   let segments: string[] = [];
@@ -96,7 +98,6 @@ function initServices(): Services {
     claude,
     sessions,
     panels,
-    sse,
     builderPersonaName: null,
     currentSessionId: null,
     isBuilderActive: false,
@@ -145,9 +146,9 @@ function initServices(): Services {
     },
   };
 
-  // Claude events → SSE + history accumulation
+  // Claude events → WS broadcast + history accumulation
   claude.on("message", (d) => {
-    sse.broadcast("claude:message", d);
+    broadcast("claude:message", d);
 
     const msg = d as Record<string, unknown>;
 
@@ -214,9 +215,9 @@ function initServices(): Services {
     }
   });
 
-  claude.on("error", (e) => sse.broadcast("claude:error", e));
-  claude.on("status", (s) => sse.broadcast("claude:status", s));
-  claude.on("exit", () => sse.broadcast("claude:status", "disconnected"));
+  claude.on("error", (e) => broadcast("claude:error", e));
+  claude.on("status", (s) => broadcast("claude:status", s));
+  claude.on("exit", () => broadcast("claude:status", "disconnected"));
 
   // Capture Claude session ID and persist it
   claude.on("sessionId", (claudeSessionId: string) => {
