@@ -149,7 +149,6 @@ export default function LobbyPage() {
   };
 
   const deleteProfile = async (slug: string) => {
-    if (!confirm("Delete this profile?")) return;
     await fetch(`/api/profiles/${encodeURIComponent(slug)}`, {
       method: "DELETE",
     });
@@ -157,7 +156,6 @@ export default function LobbyPage() {
   };
 
   const deleteSession = async (id: string) => {
-    if (!confirm(`Delete this session?`)) return;
     await fetch(`/api/sessions/${encodeURIComponent(id)}`, {
       method: "DELETE",
     });
