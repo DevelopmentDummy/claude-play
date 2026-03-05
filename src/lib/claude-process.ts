@@ -154,6 +154,11 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
 
   kill(): void {
     if (this.proc) {
+      // Remove all listeners from the old process streams to prevent stale events
+      this.proc.stdout?.removeAllListeners();
+      this.proc.stderr?.removeAllListeners();
+      this.proc.removeAllListeners();
+
       const pid = this.proc.pid;
       if (pid && process.platform === "win32") {
         // On Windows, shell: true creates cmd.exe wrapper;
