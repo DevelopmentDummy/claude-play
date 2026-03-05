@@ -8,6 +8,47 @@ import { getDataDir, getAppRoot } from "./data-dir";
 
 const DIALOG_OPEN = "<dialog_response>";
 const DIALOG_CLOSE = "</dialog_response>";
+const SPECIAL_TOKEN_REGEX = /\$(?:IMAGE|PANEL):[^$]+\$/g;
+
+function extractSpecialTokens(raw: string): string[] {
+  const matches = raw.match(SPECIAL_TOKEN_REGEX) || [];
+  const unique: string[] = [];
+  const seen = new Set<string>();
+  for (const token of matches) {
+    if (seen.has(token)) continue;
+    seen.add(token);
+    unique.push(token);
+  }
+  return unique;
+}
+
+function sanitizeFilename(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  const slash = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+  return slash >= 0 ? trimmed.slice(slash + 1) : trimmed;
+}
+
+function detectImageToken(toolName: string, input: unknown): string | null {
+  const imageToolNames = new Set([
+    "mcp__claude_bridge__generate_image",
+    "mcp__claude_bridge__generate_image_gemini",
+    "mcp__claude_bridge__comfyui_generate",
+    "mcp__claude_bridge__gemini_generate",
+  ]);
+  if (!imageToolNames.has(toolName)) return null;
+  if (!input || typeof input !== "object") return null;
+
+  const body = input as Record<string, unknown>;
+  const fromPath = typeof body.path === "string" ? body.path.trim() : "";
+  if (fromPath.startsWith("images/")) {
+    return `$IMAGE:${fromPath}$`;
+  }
+
+  const filename = typeof body.filename === "string" ? sanitizeFilename(body.filename) : "";
+  if (!filename) return null;
+  return `$IMAGE:images/${filename}$`;
+}
 
 /** Extract content inside <dialog_response> tags; returns raw text if no tags found */
 function extractDialog(raw: string): string {
@@ -28,8 +69,15 @@ function extractDialog(raw: string): string {
     }
   }
 
+  if (parts.length > 0) {
+    const base = parts.join("\n\n").trim();
+    const tokens = extractSpecialTokens(raw).filter((token) => !base.includes(token));
+    if (tokens.length === 0) return base;
+    return `${base}\n\n${tokens.join("\n")}`;
+  }
+
   // If no tags found, return original text (backward compat / non-RP sessions)
-  return parts.length > 0 ? parts.join("\n\n") : raw;
+  return raw;
 }
 
 export interface HistoryMessage {
@@ -46,6 +94,7 @@ export interface Services {
   builderPersonaName: string | null;
   currentSessionId: string | null;
   isBuilderActive: boolean;
+  isOOC: boolean;
   chatHistory: HistoryMessage[];
   addUserToHistory: (text: string) => void;
   addOpeningToHistory: (text: string) => void;
@@ -68,6 +117,7 @@ function initServices(): Services {
   // Accumulator for assistant turn
   let segments: string[] = [];
   let tools: Array<{ name: string; input: unknown }> = [];
+  let autoImageTokens: Set<string> = new Set();
   let historyId = 0;
 
   /** Resolve the directory where chat-history.json should live */
@@ -101,6 +151,7 @@ function initServices(): Services {
     builderPersonaName: null,
     currentSessionId: null,
     isBuilderActive: false,
+    isOOC: false,
     chatHistory: [],
     addUserToHistory(text: string) {
       svc.chatHistory.push({
@@ -122,6 +173,7 @@ function initServices(): Services {
       svc.chatHistory = [];
       segments = [];
       tools = [];
+      autoImageTokens.clear();
       // Delete history file if exists
       const dir = historyDir();
       if (dir) {
@@ -164,7 +216,16 @@ function initServices(): Services {
       if (event.type === "content_block_start") {
         const block = event.content_block as Record<string, unknown> | undefined;
         if (block?.type === "tool_use") {
-          tools.push({ name: block.name as string, input: block.input });
+          const toolName = block.name as string;
+          tools.push({ name: toolName, input: block.input });
+          const imageToken = detectImageToken(toolName, block.input);
+          if (imageToken && !autoImageTokens.has(imageToken)) {
+            autoImageTokens.add(imageToken);
+            const joined = segments.join("");
+            if (!joined.includes(imageToken)) {
+              segments.push(`\n${imageToken}\n`);
+            }
+          }
         }
       }
     }
@@ -178,40 +239,58 @@ function initServices(): Services {
         for (const block of message.content) {
           const b = block as Record<string, unknown>;
           if (b.type === "text") segments.push(b.text as string);
-          else if (b.type === "tool_use") tools.push({ name: b.name as string, input: b.input });
+          else if (b.type === "tool_use") {
+            const toolName = b.name as string;
+            tools.push({ name: toolName, input: b.input });
+            const imageToken = detectImageToken(toolName, b.input);
+            if (imageToken && !autoImageTokens.has(imageToken)) {
+              autoImageTokens.add(imageToken);
+              const joined = segments.join("");
+              if (!joined.includes(imageToken)) {
+                segments.push(`\n${imageToken}\n`);
+              }
+            }
+          }
         }
       }
     }
 
     if (msg.type === "result") {
-      if (segments.length > 0 || tools.length > 0) {
-        const rawContent = segments.join("");
-        const dialogContent = extractDialog(rawContent);
-        if (dialogContent) {
-          svc.chatHistory.push({
-            id: `hist-a-${++historyId}`,
-            role: "assistant",
-            content: dialogContent,
-            tools: tools.length > 0 ? [...tools] : undefined,
-          });
+      if (!svc.isOOC) {
+        if (segments.length > 0 || tools.length > 0) {
+          const rawContent = segments.join("");
+          const dialogContent = extractDialog(rawContent);
+          if (dialogContent) {
+            svc.chatHistory.push({
+              id: `hist-a-${++historyId}`,
+              role: "assistant",
+              content: dialogContent,
+              tools: tools.length > 0 ? [...tools] : undefined,
+            });
+          }
+        } else if (msg.result) {
+          const result = msg.result as Record<string, unknown>;
+          const text =
+            typeof result === "string" ? result
+            : typeof result.text === "string" ? result.text
+            : null;
+          if (text) {
+            svc.chatHistory.push({
+              id: `hist-a-${++historyId}`,
+              role: "assistant",
+              content: text,
+            });
+          }
         }
-      } else if (msg.result) {
-        const result = msg.result as Record<string, unknown>;
-        const text =
-          typeof result === "string" ? result
-          : typeof result.text === "string" ? result.text
-          : null;
-        if (text) {
-          svc.chatHistory.push({
-            id: `hist-a-${++historyId}`,
-            role: "assistant",
-            content: text,
-          });
-        }
+        saveHistory();
       }
+      svc.isOOC = false;
       segments = [];
       tools = [];
-      saveHistory();
+      autoImageTokens.clear();
+
+      // Force panel refresh at end of turn — picks up any file changes Claude made
+      svc.panels.reload();
     }
   });
 

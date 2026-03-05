@@ -29,6 +29,7 @@ export interface PanelUpdate {
 export class PanelEngine {
   private sessionDir: string | null = null;
   private watchers: fs.FSWatcher[] = [];
+  private dataFileWatchers = new Map<string, fs.FSWatcher>();
   private templateCache = new Map<string, HandlebarsTemplateDelegate>();
   private variables: Record<string, unknown> = {};
   private dataFiles: Record<string, unknown> = {};
@@ -110,9 +111,14 @@ export class PanelEngine {
       this.watchers.push(watcher);
     }
 
-    // Watch session dir for new/changed JSON data files
+    // Watch each existing data JSON file individually (more reliable on Windows)
+    this.watchDataFiles();
+
+    // Also watch session dir for NEW json files appearing
     const dirWatcher = fs.watch(sessionDir, (_event, filename) => {
       if (filename && filename.endsWith(".json") && !SYSTEM_JSON.has(filename)) {
+        // A new data file may have appeared — re-watch all data files
+        this.watchDataFiles();
         this.loadDataFiles();
         this.scheduleRender();
       }
@@ -167,6 +173,7 @@ export class PanelEngine {
       w.close();
     }
     this.watchers = [];
+    this.dataFileWatchers.clear();
     this.sessionDir = null;
     this.templateCache.clear();
     this.variables = {};
@@ -177,12 +184,44 @@ export class PanelEngine {
     }
   }
 
+  /** Force reload all data and re-render (called at end of Claude turn) */
+  reload(): void {
+    this.loadVariables();
+    this.loadDataFiles();
+    this.watchDataFiles();
+    console.log("[panel-engine] reload — dataFiles keys:", Object.keys(this.dataFiles), "inventory items:", (this.dataFiles.inventory as Record<string, unknown>)?.items ? "yes" : "no");
+    this.render();
+  }
+
   /** Debounced render to coalesce rapid file changes */
   private scheduleRender(): void {
     if (this.debounceTimer) clearTimeout(this.debounceTimer);
     this.debounceTimer = setTimeout(() => {
       this.render();
     }, 100);
+  }
+
+  /** Watch individual data JSON files for reliable change detection */
+  private watchDataFiles(): void {
+    if (!this.sessionDir) return;
+    try {
+      const entries = fs.readdirSync(this.sessionDir);
+      for (const entry of entries) {
+        if (!entry.endsWith(".json") || SYSTEM_JSON.has(entry)) continue;
+        if (this.dataFileWatchers.has(entry)) continue;
+        const filePath = path.join(this.sessionDir, entry);
+        try {
+          const stat = fs.statSync(filePath);
+          if (!stat.isFile()) continue;
+          const watcher = fs.watch(filePath, () => {
+            this.loadDataFiles();
+            this.scheduleRender();
+          });
+          this.dataFileWatchers.set(entry, watcher);
+          this.watchers.push(watcher);
+        } catch { /* skip */ }
+      }
+    } catch { /* ignore */ }
   }
 
   private loadVariables(): void {

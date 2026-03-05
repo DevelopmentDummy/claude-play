@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import ImageModal from "./ImageModal";
 
 interface InlineImageProps {
   sessionId: string;
@@ -14,19 +15,29 @@ const MAX_POLLS = 60;
 
 export default function InlineImage({ sessionId, path: imgPath }: InlineImageProps) {
   const [state, setState] = useState<ImageState>("loading");
+  const [showModal, setShowModal] = useState(false);
+  const [cacheBuster] = useState(() => Date.now());
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollCountRef = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
+    pollCountRef.current = 0;
 
     const poll = async () => {
       if (cancelled) return;
 
       try {
         const res = await fetch(
-          `/api/sessions/${sessionId}/files?path=${encodeURIComponent(imgPath)}`,
-          { method: "HEAD" }
+          `/api/sessions/${sessionId}/files?path=${encodeURIComponent(imgPath)}&v=${cacheBuster}`,
+          {
+            method: "HEAD",
+            cache: "no-store",
+            headers: {
+              "Cache-Control": "no-cache",
+              Pragma: "no-cache",
+            },
+          }
         );
 
         if (cancelled) return;
@@ -78,15 +89,18 @@ export default function InlineImage({ sessionId, path: imgPath }: InlineImagePro
     );
   }
 
-  const src = `/api/sessions/${sessionId}/files?path=${encodeURIComponent(imgPath)}`;
+  const src = `/api/sessions/${sessionId}/files?path=${encodeURIComponent(imgPath)}&v=${cacheBuster}`;
 
   return (
-    <a href={src} target="_blank" rel="noopener noreferrer" className="block my-2">
-      <img
-        src={src}
-        alt={imgPath}
-        className="max-w-full rounded-lg max-h-[400px] object-contain cursor-pointer hover:opacity-90 transition-opacity"
-      />
-    </a>
+    <>
+      <div className="block my-2 cursor-zoom-in" onClick={() => setShowModal(true)}>
+        <img
+          src={src}
+          alt={imgPath}
+          className="max-w-full rounded-lg max-h-[400px] object-contain hover:opacity-90 transition-opacity"
+        />
+      </div>
+      {showModal && <ImageModal src={src} onClose={() => setShowModal(false)} />}
+    </>
   );
 }

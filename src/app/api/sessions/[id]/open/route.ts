@@ -42,6 +42,7 @@ export async function POST(
   // Refresh session files from persona's latest versions
   svc.sessions.refreshSessionClaudeMd(id);
   svc.sessions.syncPersonaToSession(id);
+  svc.sessions.ensureClaudeRuntimeConfig(sessionDir, info.persona, "session");
 
   // Resume previous Claude session if available
   const resumeId = svc.sessions.getClaudeSessionId(id);
@@ -60,7 +61,8 @@ export async function POST(
 
   // --resume and --model can be combined: resumes the conversation with a different model
   const effectiveModel = model || svc.sessions.getSessionModel(id);
-  svc.claude.spawn(sessionDir, resumeId, effectiveModel);
+  const runtimeSystemPrompt = svc.sessions.buildServiceSystemPrompt(info.persona);
+  svc.claude.spawn(sessionDir, resumeId, effectiveModel, runtimeSystemPrompt);
 
   // Include initial panels + context in response (SSE may not be connected yet)
   const { panels, context: panelContext } = svc.panels.getCurrentPanels();

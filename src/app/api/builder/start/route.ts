@@ -12,6 +12,7 @@ export async function POST(req: Request) {
   svc.panels.stop();
 
   const personaDir = svc.sessions.createPersonaDir(name);
+  svc.sessions.ensureClaudeRuntimeConfig(personaDir, name, "builder");
   svc.builderPersonaName = name;
   svc.isBuilderActive = true;
   svc.currentSessionId = null;
@@ -27,7 +28,8 @@ export async function POST(req: Request) {
     fs.copyFileSync(panelSpecSrc, path.join(personaDir, "panel-spec.md"));
   }
 
-  svc.claude.spawn(personaDir);
+  const runtimeSystemPrompt = svc.sessions.buildBuilderSystemPrompt(name);
+  svc.claude.spawn(personaDir, undefined, undefined, runtimeSystemPrompt);
 
   return NextResponse.json({ name, dir: personaDir });
 }

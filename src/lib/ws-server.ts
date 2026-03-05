@@ -152,7 +152,12 @@ function handleMessage(
     case "chat:send": {
       const text = msg.text as string;
       if (!text?.trim()) return;
-      svc.addUserToHistory(text);
+      const isOOC = text.startsWith("OOC:");
+      if (isOOC) {
+        svc.isOOC = true;
+      } else {
+        svc.addUserToHistory(text);
+      }
       svc.claude.send(text);
       break;
     }

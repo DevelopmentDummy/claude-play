@@ -7,6 +7,35 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   tools?: Array<{ name: string; input: unknown }>;
+  ooc?: boolean;
+}
+
+function sanitizeFilename(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  const slash = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+  return slash >= 0 ? trimmed.slice(slash + 1) : trimmed;
+}
+
+function detectImageToken(toolName: string, input: unknown): string | null {
+  const imageToolNames = new Set([
+    "mcp__claude_bridge__generate_image",
+    "mcp__claude_bridge__generate_image_gemini",
+    "mcp__claude_bridge__comfyui_generate",
+    "mcp__claude_bridge__gemini_generate",
+  ]);
+  if (!imageToolNames.has(toolName)) return null;
+
+  if (!input || typeof input !== "object") return null;
+  const body = input as Record<string, unknown>;
+  const fromPath = typeof body.path === "string" ? body.path.trim() : "";
+  if (fromPath.startsWith("images/")) {
+    return `$IMAGE:${fromPath}$`;
+  }
+
+  const filename = typeof body.filename === "string" ? sanitizeFilename(body.filename) : "";
+  if (!filename) return null;
+  return `$IMAGE:images/${filename}$`;
 }
 
 export function useChat() {
@@ -18,31 +47,34 @@ export function useChat() {
 
   const segmentsRef = useRef<string[]>([]);
   const toolsRef = useRef<Array<{ name: string; input: unknown }>>([]);
+  const autoImageTokensRef = useRef<Set<string>>(new Set());
   const msgIdRef = useRef(0);
   const totalRef = useRef(0);
   const loadedOffsetRef = useRef(0);
+  const oocRef = useRef(false);
 
-  const addUserMessage = useCallback((text: string) => {
+  const addUserMessage = useCallback((text: string, ooc?: boolean) => {
     const id = `user-${++msgIdRef.current}`;
-    setMessages((prev) => [...prev, { id, role: "user", content: text }]);
+    setMessages((prev) => [...prev, { id, role: "user", content: text, ooc: ooc || undefined }]);
   }, []);
 
   const appendAssistantText = useCallback((text: string) => {
     segmentsRef.current.push(text);
     const fullText = segmentsRef.current.join("");
+    const isOOC = oocRef.current;
 
     setMessages((prev) => {
       const last = prev[prev.length - 1];
       if (last && last.role === "assistant" && last.id.startsWith("stream-")) {
         return [
           ...prev.slice(0, -1),
-          { ...last, content: fullText, tools: [...toolsRef.current] },
+          { ...last, content: fullText, tools: [...toolsRef.current], ooc: isOOC || undefined },
         ];
       }
       const id = `stream-${++msgIdRef.current}`;
       return [
         ...prev,
-        { id, role: "assistant", content: fullText, tools: [...toolsRef.current] },
+        { id, role: "assistant", content: fullText, tools: [...toolsRef.current], ooc: isOOC || undefined },
       ];
     });
   }, []);
@@ -50,19 +82,30 @@ export function useChat() {
   const addToolUse = useCallback(
     (name: string, input: unknown) => {
       toolsRef.current.push({ name, input });
+      const imageToken = detectImageToken(name, input);
+      if (imageToken && !autoImageTokensRef.current.has(imageToken)) {
+        autoImageTokensRef.current.add(imageToken);
+        if (!segmentsRef.current.join("").includes(imageToken)) {
+          segmentsRef.current.push(`\n${imageToken}\n`);
+        }
+      }
+
+      const fullText = segmentsRef.current.join("");
+      const isOOC = oocRef.current;
+
       // Trigger re-render with updated tools
       setMessages((prev) => {
         const last = prev[prev.length - 1];
         if (last && last.role === "assistant" && last.id.startsWith("stream-")) {
           return [
             ...prev.slice(0, -1),
-            { ...last, tools: [...toolsRef.current] },
+            { ...last, content: fullText, tools: [...toolsRef.current], ooc: isOOC || undefined },
           ];
         }
         const id = `stream-${++msgIdRef.current}`;
         return [
           ...prev,
-          { id, role: "assistant", content: "", tools: [...toolsRef.current] },
+          { id, role: "assistant", content: fullText, tools: [...toolsRef.current], ooc: isOOC || undefined },
         ];
       });
     },
@@ -72,6 +115,8 @@ export function useChat() {
   const finishAssistantTurn = useCallback(() => {
     segmentsRef.current = [];
     toolsRef.current = [];
+    autoImageTokensRef.current.clear();
+    oocRef.current = false;
     setIsStreaming(false);
   }, []);
 
@@ -135,7 +180,9 @@ export function useChat() {
   /** Prepare local UI state for sending (adds user message, sets streaming). Does NOT send to server. */
   const prepareSend = useCallback(
     (text: string) => {
-      addUserMessage(text);
+      const isOOC = text.startsWith("OOC:");
+      oocRef.current = isOOC;
+      addUserMessage(text, isOOC);
       setIsStreaming(true);
       setError(null);
     },
@@ -169,6 +216,7 @@ export function useChat() {
     setMessages([]);
     segmentsRef.current = [];
     toolsRef.current = [];
+    autoImageTokensRef.current.clear();
   }, []);
 
   const loadHistory = useCallback(async (): Promise<number> => {

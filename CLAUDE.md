@@ -32,14 +32,17 @@ No test framework is configured.
 - `data/profiles/{slug}.json` — User profiles injected into session CLAUDE.md
 - `data/tools/{name}/skills/` — Global tools with skills auto-copied to sessions
 
-**Session creation flow**: Persona directory is recursively copied to a new session directory. `session-instructions.md` becomes the session's `CLAUDE.md`. Builder-specific files (builder-session.json, CLAUDE.md for builder) are skipped during copy.
+**Session creation flow**: Persona directory is recursively copied to a new session directory. `session-instructions.md` becomes the session's `CLAUDE.md`, then service-level guides (`session-primer.yaml` active prompt block, `session-shared.md`) are appended. Builder-specific files (builder-session.json, CLAUDE.md for builder) are skipped during copy.
+Session runtime setup also writes `.claude/settings.json` and `.mcp.json` so Claude always boots with the local `claude_bridge` MCP server for that folder.
+Runtime setup also ensures `policy-context.json` exists per folder for MCP policy-context lookups.
 
 ## Key Conventions
 
 - **`<dialog_response>` tags**: Claude wraps RP dialogue in these. Both backend (`services.ts`) and frontend (`ChatMessages.tsx`) strip them to show only the RP content. Tool calls and meta-commentary are hidden from the user.
 - **Panel numbering**: Panel files like `01-status.html` — numeric prefix controls display order and is stripped from the UI name.
-- **CLAUDE.md dual use**: Builder sessions use `builder-prompt.md` as CLAUDE.md. RP sessions use `session-instructions.md` as CLAUDE.md. These are completely different prompts.
+- **CLAUDE.md dual use**: Builder sessions use `builder-prompt.md` as CLAUDE.md. RP sessions start from `session-instructions.md` and then append shared service guides. These are completely different prompts.
 - **Session resume**: Claude session IDs are saved to `session.json` and passed to `claude -p --resume` on reconnect.
+- **MCP bootstrap**: Claude is launched with `--mcp-config <cwd>/.mcp.json --strict-mcp-config` when that file exists.
 - **Permission sandboxing**: Each session has `.claude/settings.json` restricting Claude tools to the session directory.
 - **Shadow DOM isolation**: PanelSlot renders panel HTML inside Shadow DOM to isolate CSS.
 - **Windows process killing**: Uses `taskkill /T /F /PID` because `shell: true` wraps the process in cmd.exe.

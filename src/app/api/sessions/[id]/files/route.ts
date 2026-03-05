@@ -59,7 +59,7 @@ export async function GET(
   return new NextResponse(data, {
     headers: {
       "Content-Type": contentType,
-      "Cache-Control": "public, max-age=3600",
+      "Cache-Control": "no-store, max-age=0",
     },
   });
 }
@@ -99,7 +99,7 @@ export async function HEAD(
     status: 200,
     headers: {
       "Content-Type": contentType,
-      "Cache-Control": "public, max-age=3600",
+      "Cache-Control": "no-store, max-age=0",
     },
   });
 }

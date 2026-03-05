@@ -19,6 +19,7 @@ export async function POST(req: Request) {
   }
 
   const personaDir = svc.sessions.getPersonaDir(name);
+  svc.sessions.ensureClaudeRuntimeConfig(personaDir, name, "builder");
   svc.builderPersonaName = name;
   svc.isBuilderActive = true;
   svc.currentSessionId = null;
@@ -36,7 +37,8 @@ export async function POST(req: Request) {
 
   const resumeId = svc.sessions.getBuilderSessionId(name);
   svc.loadHistory(); // Load from chat-history.json (empty if new)
-  svc.claude.spawn(personaDir, resumeId);
+  const runtimeSystemPrompt = svc.sessions.buildBuilderSystemPrompt(name);
+  svc.claude.spawn(personaDir, resumeId, undefined, runtimeSystemPrompt);
 
   return NextResponse.json({ name, dir: personaDir, resumed: !!resumeId });
 }

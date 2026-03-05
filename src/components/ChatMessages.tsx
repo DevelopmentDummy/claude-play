@@ -26,6 +26,19 @@ interface ChatMessagesProps {
 
 const OPEN_TAG = "<dialog_response>";
 const CLOSE_TAG = "</dialog_response>";
+const SPECIAL_TOKEN_REGEX = /\$(?:IMAGE|PANEL):[^$]+\$/g;
+
+function extractSpecialTokens(raw: string): string[] {
+  const matches = raw.match(SPECIAL_TOKEN_REGEX) || [];
+  const unique: string[] = [];
+  const seen = new Set<string>();
+  for (const token of matches) {
+    if (seen.has(token)) continue;
+    seen.add(token);
+    unique.push(token);
+  }
+  return unique;
+}
 
 /**
  * Extract content inside <dialog_response> tags.
@@ -47,7 +60,7 @@ function extractDialogResponse(raw: string): string {
       parts.push(raw.substring(contentStart, closeIdx).trim());
       searchFrom = closeIdx + CLOSE_TAG.length;
     } else {
-      // Unclosed tag — still streaming; strip any partial close tag at the end
+      // Unclosed tag -- still streaming; strip any partial close tag at the end
       let tail = raw.substring(contentStart);
       for (let len = Math.min(CLOSE_TAG.length - 1, tail.length); len >= 1; len--) {
         if (tail.endsWith(CLOSE_TAG.substring(0, len))) {
@@ -60,7 +73,12 @@ function extractDialogResponse(raw: string): string {
     }
   }
 
-  if (parts.length > 0) return parts.join("\n\n");
+  if (parts.length > 0) {
+    const base = parts.join("\n\n").trim();
+    const tokens = extractSpecialTokens(raw).filter((token) => !base.includes(token));
+    if (tokens.length === 0) return base;
+    return `${base}\n\n${tokens.join("\n")}`;
+  }
 
   // Check for a partial opening tag at the end of the string (tag still being streamed in).
   // If the tail of the string matches a prefix of OPEN_TAG, hide it and return
@@ -73,8 +91,35 @@ function extractDialogResponse(raw: string): string {
     }
   }
 
-  // No tags found — return original text (opening messages, backward compat)
+  // No tags found -- return original text (opening messages, backward compat)
   return raw;
+}
+
+/**
+ * Streaming-safe extraction for the live assistant turn.
+ * Falls back to showing the tail after OPEN_TAG while text is still arriving.
+ */
+function extractDialogResponseLive(raw: string): string {
+  const strict = extractDialogResponse(raw);
+  if (strict) return strict;
+
+  const openIdx = raw.indexOf(OPEN_TAG);
+  if (openIdx === -1) return strict;
+
+  const contentStart = openIdx + OPEN_TAG.length;
+  let tail = raw.substring(contentStart);
+
+  // Strip partially streamed closing tag suffix.
+  for (let len = Math.min(CLOSE_TAG.length - 1, tail.length); len >= 1; len--) {
+    if (tail.endsWith(CLOSE_TAG.substring(0, len))) {
+      tail = tail.substring(0, tail.length - len);
+      break;
+    }
+  }
+
+  const tokens = extractSpecialTokens(raw).filter((token) => !tail.includes(token));
+  if (tokens.length === 0) return tail;
+  return tail ? `${tail}\n\n${tokens.join("\n")}` : tokens.join("\n");
 }
 
 function renderInline(text: string, keyPrefix: string, sessionId?: string, panels?: PanelInfo[]): React.ReactNode[] {
@@ -249,7 +294,7 @@ export default function ChatMessages({
     // Don't trigger until initial scroll-to-bottom is done
     if (!initialScrollDone.current) return;
 
-    // Near top — trigger load
+    // Near top -- trigger load
     if (el.scrollTop < 80) {
       isLoadingMore.current = true;
       shouldAutoScroll.current = false;
@@ -286,26 +331,37 @@ export default function ChatMessages({
         const isLastAssistant =
           isStreaming && idx === lastIdx && msg.role === "assistant";
 
-        // In RP mode (hideTools), extract only <dialog_response> content
+        // OOC messages: show raw content (no dialog_response extraction)
+        // Normal RP messages: extract <dialog_response> content only
         const displayContent =
-          hideTools && msg.role === "assistant"
-            ? extractDialogResponse(msg.content)
-            : msg.content;
+          msg.ooc
+            ? msg.content
+            : hideTools && msg.role === "assistant"
+              ? (isLastAssistant ? extractDialogResponseLive(msg.content) : extractDialogResponse(msg.content))
+              : msg.content;
 
-        // Skip empty assistant messages in RP mode (e.g. tool-only turns)
-        if (hideTools && msg.role === "assistant" && !displayContent) {
+        // Skip empty assistant messages in RP mode (e.g. tool-only turns),
+        // but keep the live streaming turn visible so users can see progress.
+        if (hideTools && msg.role === "assistant" && !displayContent && !msg.ooc && !isLastAssistant) {
           return null;
         }
+
+        const oocStyle = msg.ooc
+          ? "border border-dashed border-yellow-500/40"
+          : "";
 
         return (
           <div
             key={msg.id}
-            className={`max-w-[85%] px-4 py-3 rounded-2xl leading-relaxed whitespace-pre-wrap break-words animate-[messageIn_0.25s_ease-out] ${
+            className={`max-w-[85%] px-4 py-3 rounded-2xl leading-relaxed whitespace-pre-wrap break-words animate-[messageIn_0.25s_ease-out] ${oocStyle} ${
               msg.role === "user"
                 ? "self-end bg-user-bubble backdrop-blur-[12px] rounded-br-[4px] shadow-sm"
                 : "self-start bg-assistant-bubble backdrop-blur-[12px] rounded-bl-[4px] shadow-sm"
             }`}
           >
+            {msg.ooc && (
+              <div className="text-[10px] font-semibold text-yellow-500/70 uppercase tracking-wider mb-1">OOC</div>
+            )}
             {renderMarkdown(displayContent, sessionId, panels)}
             {isLastAssistant && <StreamingDots />}
             {!hideTools &&
@@ -322,3 +378,4 @@ export default function ChatMessages({
     </main>
   );
 }
+

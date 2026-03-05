@@ -15,13 +15,27 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
   private proc: ChildProcess | null = null;
   private buffer = "";
   private logStream: fs.WriteStream | null = null;
+ 
+  private normalizeMcpConfig(mcpConfigPath: string): void {
+    try {
+      const raw = fs.readFileSync(mcpConfigPath, "utf-8");
+      const text = raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw;
+      const parsed = JSON.parse(text) as Record<string, unknown>;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed) && !("mcpServers" in parsed)) {
+        const normalized = { mcpServers: parsed };
+        fs.writeFileSync(mcpConfigPath, JSON.stringify(normalized, null, 2), "utf-8");
+      }
+    } catch {
+      // Keep original file untouched; Claude will report detailed config errors.
+    }
+  }
 
   /**
    * Spawn claude -p in the given directory.
    * If resumeId is provided, resumes that session with --resume.
    * CLAUDE.md in cwd is auto-loaded by Claude Code.
    */
-  spawn(cwd: string, resumeId?: string, model?: string): void {
+  spawn(cwd: string, resumeId?: string, model?: string, appendSystemPrompt?: string): void {
     if (this.proc) {
       this.kill();
     }
@@ -52,8 +66,14 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
       args.push("--resume", resumeId);
     }
 
+    const runtimeSystemPrompt = (appendSystemPrompt || "").trim();
+    if (runtimeSystemPrompt) {
+      args.push("--append-system-prompt", runtimeSystemPrompt);
+    }
+
     const mcpConfigPath = path.join(cwd, ".mcp.json");
     if (fs.existsSync(mcpConfigPath)) {
+      this.normalizeMcpConfig(mcpConfigPath);
       args.push("--mcp-config", mcpConfigPath, "--strict-mcp-config");
     }
 

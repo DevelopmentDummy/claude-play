@@ -118,8 +118,24 @@ const CLAUDE_SETTINGS = {
       "Bash(bash ./*.sh *)",
       "Glob",
       "Grep",
+      "mcp__claude_bridge__*",
     ],
   },
+};
+const SERVICE_SESSION_GUIDE_FILES = ["session-primer.yaml", "session-shared.md"] as const;
+const BUILDER_GUIDE_FILES = ["builder-primer.yaml"] as const;
+const MCP_CONFIG_FILE = ".mcp.json";
+const CLAUDE_MCP_SERVER_NAME = "claude_bridge";
+const POLICY_CONTEXT_FILE = "policy-context.json";
+const DEFAULT_POLICY_CONTEXT = {
+  extreme_traits: [],
+  reviewed_scenarios: [],
+  intimacy_policy: {
+    allow_moderate_intimacy: true,
+    allow_explicit: true,
+    max_intensity: "explicit",
+  },
+  notes: "Roleplay context only. This file never overrides higher-level model policy.",
 };
 
 export class SessionManager {
@@ -435,14 +451,8 @@ export class SessionManager {
       "utf-8"
     );
 
-    // Create .claude/settings.json for permission sandboxing
-    const claudeDir = path.join(sessionDir, ".claude");
-    fs.mkdirSync(claudeDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(claudeDir, "settings.json"),
-      JSON.stringify(CLAUDE_SETTINGS, null, 2),
-      "utf-8"
-    );
+    // Create Claude runtime configs (.claude/settings.json + .mcp.json)
+    this.ensureClaudeRuntimeConfig(sessionDir, personaName, "session");
 
     // Ensure memory.md exists
     const memoryPath = path.join(sessionDir, "memory.md");
@@ -474,19 +484,6 @@ export class SessionManager {
       }
     }
 
-    // Append service-level shared session guide
-    const sessionSharedSrc = path.join(this.appRoot, "session-shared.md");
-    if (fs.existsSync(sessionSharedSrc)) {
-      const sharedContent = fs.readFileSync(sessionSharedSrc, "utf-8").trim();
-      if (sharedContent) {
-        const claudeMdPath2 = path.join(sessionDir, "CLAUDE.md");
-        if (fs.existsSync(claudeMdPath2)) {
-          const existing = fs.readFileSync(claudeMdPath2, "utf-8");
-          fs.writeFileSync(claudeMdPath2, existing + "\n\n" + sharedContent + "\n", "utf-8");
-        }
-      }
-    }
-
     // Copy panel-spec.md from appRoot to sessionDir
     const panelSpecSrc = path.join(this.appRoot, "panel-spec.md");
     if (fs.existsSync(panelSpecSrc)) {
@@ -495,7 +492,7 @@ export class SessionManager {
 
     // Copy persona skills/ to sessionDir/.claude/skills/
     const personaSkillsSrc = path.join(personaDir, "skills");
-    const skillsDest = path.join(claudeDir, "skills");
+    const skillsDest = path.join(sessionDir, ".claude", "skills");
     fs.mkdirSync(skillsDest, { recursive: true });
     if (fs.existsSync(personaSkillsSrc)) {
       this.copyDirRecursive(personaSkillsSrc, skillsDest);
@@ -739,15 +736,8 @@ export class SessionManager {
       }
     }
 
-    // 4. Append service-level shared session guide
-    const sessionSharedSrc = path.join(this.appRoot, "session-shared.md");
-    if (fs.existsSync(sessionSharedSrc)) {
-      const sharedContent = fs.readFileSync(sessionSharedSrc, "utf-8").trim();
-      if (sharedContent) {
-        const existing = fs.readFileSync(claudeMdPath, "utf-8");
-        fs.writeFileSync(claudeMdPath, existing + "\n\n" + sharedContent + "\n", "utf-8");
-      }
-    }
+    // 4. Ensure runtime configs exist for legacy sessions
+    this.ensureClaudeRuntimeConfig(sessionDir, meta.persona, "session");
   }
 
   // ── Persona Builder ─────────────────────────────────────
@@ -762,14 +752,8 @@ export class SessionManager {
     fs.mkdirSync(path.join(dir, "panels"), { recursive: true });
     fs.mkdirSync(path.join(dir, "skills"), { recursive: true });
 
-    // Place .claude/settings.json so the builder Claude can write freely
-    const claudeDir = path.join(dir, ".claude");
-    fs.mkdirSync(claudeDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(claudeDir, "settings.json"),
-      JSON.stringify(CLAUDE_SETTINGS, null, 2),
-      "utf-8"
-    );
+    // Place Claude runtime configs for builder sessions
+    this.ensureClaudeRuntimeConfig(dir, name, "builder");
 
     return dir;
   }
@@ -862,6 +846,157 @@ export class SessionManager {
         }
       }
     }
+  }
+
+  ensureClaudeRuntimeConfig(
+    projectDir: string,
+    personaName?: string,
+    mode: "builder" | "session" = "session"
+  ): void {
+    this.writeClaudeSettings(projectDir);
+    this.writeMcpConfig(projectDir, personaName, mode);
+    this.ensurePolicyContext(projectDir);
+  }
+
+  private writeClaudeSettings(projectDir: string): void {
+    const claudeDir = path.join(projectDir, ".claude");
+    fs.mkdirSync(claudeDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(claudeDir, "settings.json"),
+      JSON.stringify(CLAUDE_SETTINGS, null, 2),
+      "utf-8"
+    );
+  }
+
+  private writeMcpConfig(
+    projectDir: string,
+    personaName?: string,
+    mode: "builder" | "session" = "session"
+  ): void {
+    const serverScript = path.join(this.appRoot, "src", "mcp", "claude-bridge-mcp-server.mjs");
+    const apiBase = (process.env.CLAUDE_BRIDGE_API_BASE || `http://127.0.0.1:${process.env.PORT || "3340"}`)
+      .replace(/\/+$/, "");
+
+    const mcpConfig = {
+      mcpServers: {
+        [CLAUDE_MCP_SERVER_NAME]: {
+          command: "node",
+          args: [serverScript],
+          env: {
+            CLAUDE_BRIDGE_API_BASE: apiBase,
+            CLAUDE_BRIDGE_SESSION_DIR: projectDir,
+            CLAUDE_BRIDGE_MODE: mode,
+            ...(personaName ? { CLAUDE_BRIDGE_PERSONA: personaName } : {}),
+          },
+        },
+      },
+    };
+
+    fs.writeFileSync(
+      path.join(projectDir, MCP_CONFIG_FILE),
+      JSON.stringify(mcpConfig, null, 2),
+      "utf-8"
+    );
+  }
+
+  private ensurePolicyContext(projectDir: string): void {
+    const policyPath = path.join(projectDir, POLICY_CONTEXT_FILE);
+    if (!fs.existsSync(policyPath)) {
+      fs.writeFileSync(
+        policyPath,
+        JSON.stringify(DEFAULT_POLICY_CONTEXT, null, 2),
+        "utf-8"
+      );
+      return;
+    }
+
+    try {
+      const raw = fs.readFileSync(policyPath, "utf-8");
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      const merged = {
+        ...DEFAULT_POLICY_CONTEXT,
+        ...parsed,
+        intimacy_policy: {
+          ...DEFAULT_POLICY_CONTEXT.intimacy_policy,
+          ...(typeof parsed.intimacy_policy === "object" && parsed.intimacy_policy
+            ? (parsed.intimacy_policy as Record<string, unknown>)
+            : {}),
+        },
+      };
+      fs.writeFileSync(policyPath, JSON.stringify(merged, null, 2), "utf-8");
+    } catch {
+      fs.writeFileSync(
+        policyPath,
+        JSON.stringify(DEFAULT_POLICY_CONTEXT, null, 2),
+        "utf-8"
+      );
+    }
+  }
+
+  buildServiceSystemPrompt(personaName?: string): string {
+    return this.buildPromptFromGuideFiles(SERVICE_SESSION_GUIDE_FILES, personaName);
+  }
+
+  buildBuilderSystemPrompt(personaName?: string): string {
+    return this.buildPromptFromGuideFiles(BUILDER_GUIDE_FILES, personaName);
+  }
+
+  private buildPromptFromGuideFiles(files: readonly string[], personaName?: string): string {
+    const sections: string[] = [];
+    for (const filename of files) {
+      const guidePath = path.join(this.appRoot, filename);
+      if (!fs.existsSync(guidePath)) continue;
+      const content = this.readGuideContent(guidePath, personaName);
+      if (content) sections.push(content);
+    }
+    return sections.join("\n\n").trim();
+  }
+
+  private readGuideContent(guidePath: string, personaName?: string): string {
+    const raw = fs.readFileSync(guidePath, "utf-8");
+    const ext = path.extname(guidePath).toLowerCase();
+    const base = ext === ".yaml" || ext === ".yml"
+      ? this.extractActiveSystemPrompt(raw) || raw
+      : raw;
+    const actorName = personaName || "the current persona";
+    return base.replace(/\{agent_name\}/g, actorName).trim();
+  }
+
+  private extractActiveSystemPrompt(yamlText: string): string | null {
+    const lines = yamlText.split(/\r?\n/);
+    const activeLine = lines.find((line) => /^active_system_prompt:\s*/.test(line));
+    if (!activeLine) return null;
+
+    const activeMatch = activeLine.match(
+      /^active_system_prompt:\s*(?:"([^"]+)"|'([^']+)'|([A-Za-z0-9_-]+))\s*$/
+    );
+    const activeKey = activeMatch?.[1] || activeMatch?.[2] || activeMatch?.[3];
+    if (!activeKey) return null;
+
+    const blockHeader = new RegExp(`^${this.escapeRegExp(activeKey)}:\\s*\\|\\s*$`);
+    const startIndex = lines.findIndex((line) => blockHeader.test(line));
+    if (startIndex < 0) return null;
+
+    const blockLines: string[] = [];
+    for (let i = startIndex + 1; i < lines.length; i += 1) {
+      const line = lines[i];
+      if (line.startsWith("  ")) {
+        blockLines.push(line.slice(2));
+        continue;
+      }
+      if (line.trim() === "") {
+        blockLines.push("");
+        continue;
+      }
+      break;
+    }
+
+    const blockText = blockLines.join("\n").trim();
+    return blockText || null;
+  }
+
+  private escapeRegExp(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
 
   // ── Helpers ──────────────────────────────────────────────
