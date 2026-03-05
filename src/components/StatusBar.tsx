@@ -8,6 +8,8 @@ interface StatusBarProps {
   onReinit?: () => void;
   onPanelToggle?: () => void;
   showPanelButton?: boolean;
+  model?: string;
+  onModelChange?: (model: string) => void;
 }
 
 export default function StatusBar({
@@ -18,6 +20,8 @@ export default function StatusBar({
   onReinit,
   onPanelToggle,
   showPanelButton,
+  model,
+  onModelChange,
 }: StatusBarProps) {
   const statusColors: Record<string, string> = {
     connected: "bg-success shadow-[0_0_8px_rgba(77,255,145,0.4)]",
@@ -49,12 +53,35 @@ export default function StatusBar({
           ☰
         </button>
       )}
-      <span
-        className={`w-2.5 h-2.5 rounded-full ${showPanelButton ? "" : "ml-auto"} shrink-0 ${statusColors[status] || statusColors.disconnected}`}
-      />
-      <span className="text-xs text-text-dim">
-        {statusLabels[status] || status}
-      </span>
+      <div className={`flex items-center gap-2 ${showPanelButton ? "" : "ml-auto"}`}>
+        {/* Model selector */}
+        {onModelChange && (
+          <select
+            value={model || ""}
+            onChange={(e) => onModelChange(e.target.value)}
+            className="px-2 py-1 rounded-md text-xs text-text-dim bg-transparent border border-border/60 outline-none cursor-pointer appearance-none
+              hover:border-border hover:text-text transition-all duration-fast
+              focus:border-accent focus:shadow-[0_0_0_2px_var(--accent-glow)]"
+            style={{
+              backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M3 5l3 3 3-3'/%3E%3C/svg%3E")`,
+              backgroundRepeat: "no-repeat",
+              backgroundPosition: "right 6px center",
+              paddingRight: "20px",
+            }}
+          >
+            <option value="">Default</option>
+            <option value="sonnet">Sonnet</option>
+            <option value="opus">Opus</option>
+            <option value="haiku">Haiku</option>
+          </select>
+        )}
+        <span
+          className={`w-2.5 h-2.5 rounded-full shrink-0 ${statusColors[status] || statusColors.disconnected}`}
+        />
+        <span className="text-xs text-text-dim">
+          {statusLabels[status] || status}
+        </span>
+      </div>
       {isBuilderMode && onReinit && (
         <button
           onClick={onReinit}

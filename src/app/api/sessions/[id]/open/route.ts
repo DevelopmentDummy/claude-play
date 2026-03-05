@@ -4,10 +4,12 @@ import * as path from "path";
 import { getServices } from "@/lib/services";
 
 export async function POST(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const body = await req.json().catch(() => ({}));
+  const model = (body as { model?: string }).model || undefined;
   const svc = getServices();
 
   svc.claude.kill();
@@ -50,7 +52,7 @@ export async function POST(
     svc.addOpeningToHistory(opening);
   }
 
-  svc.claude.spawn(sessionDir, resumeId);
+  svc.claude.spawn(sessionDir, resumeId, model);
 
   // Include initial panels + context in response (SSE may not be connected yet)
   const { panels, context: panelContext } = svc.panels.getCurrentPanels();

@@ -27,7 +27,7 @@ interface PersonaStartModalProps {
   accentColor: string;
   profiles: ProfileOption[];
   onClose: () => void;
-  onStart: (profileSlug?: string) => void;
+  onStart: (profileSlug?: string, model?: string) => void;
 }
 
 function stripPanelPrefix(name: string): string {
@@ -49,6 +49,7 @@ export default function PersonaStartModal({
   const [personaContent, setPersonaContent] = useState<string | null>(null);
   const [openingContent, setOpeningContent] = useState<string | null>(null);
   const [hasProfileImage, setHasProfileImage] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<string>("");
 
   useEffect(() => {
     if (open) {
@@ -240,7 +241,7 @@ export default function PersonaStartModal({
           </div>
         </div>
 
-        {/* ── Footer: profile select + start (sticky) ── */}
+        {/* ── Footer: profile + model select + start (sticky) ── */}
         <div className="relative px-7 py-5 border-t border-border/40 shrink-0 bg-surface/80 backdrop-blur-sm">
           <div className="flex items-center gap-3">
             <div className="flex-1 relative">
@@ -271,10 +272,36 @@ export default function PersonaStartModal({
               </select>
             </div>
 
+            <div className="flex-1 relative">
+              <label className="block text-[11px] text-text-dim/50 uppercase tracking-wider font-medium mb-1.5">
+                Model
+              </label>
+              <select
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl text-sm text-text bg-[rgba(15,15,26,0.6)]
+                  border border-border/60 outline-none cursor-pointer appearance-none
+                  transition-all duration-fast
+                  focus:border-[var(--accent)] focus:shadow-[0_0_0_3px_var(--accent-glow)]
+                  hover:border-border"
+                style={{
+                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M3 5l3 3 3-3'/%3E%3C/svg%3E")`,
+                  backgroundRepeat: "no-repeat",
+                  backgroundPosition: "right 12px center",
+                  paddingRight: "32px",
+                }}
+              >
+                <option value="">Default</option>
+                <option value="sonnet">Sonnet</option>
+                <option value="opus">Opus</option>
+                <option value="haiku">Haiku</option>
+              </select>
+            </div>
+
             <div className="pt-5">
               <button
                 disabled={selectedProfile === "__none__"}
-                onClick={() => onStart(selectedProfile)}
+                onClick={() => onStart(selectedProfile, selectedModel || undefined)}
                 className="px-6 py-2.5 rounded-xl text-sm font-medium
                   border transition-all duration-fast
                   disabled:opacity-35 disabled:cursor-not-allowed disabled:translate-y-0

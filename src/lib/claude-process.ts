@@ -21,7 +21,7 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
    * If resumeId is provided, resumes that session with --resume.
    * CLAUDE.md in cwd is auto-loaded by Claude Code.
    */
-  spawn(cwd: string, resumeId?: string): void {
+  spawn(cwd: string, resumeId?: string, model?: string): void {
     if (this.proc) {
       this.kill();
     }
@@ -43,6 +43,10 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
       "stream-json",
       "--verbose",
     ];
+
+    if (model) {
+      args.push("--model", model);
+    }
 
     if (resumeId) {
       args.push("--resume", resumeId);

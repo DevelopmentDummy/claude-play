@@ -86,7 +86,7 @@ export default function LobbyPage() {
     });
   };
 
-  const startSession = async (personaName: string, profileSlug?: string) => {
+  const startSession = async (personaName: string, profileSlug?: string, model?: string) => {
     const res = await fetch("/api/sessions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -94,7 +94,8 @@ export default function LobbyPage() {
     });
     if (res.ok) {
       const session = await res.json();
-      router.push(`/chat/${encodeURIComponent(session.id)}`);
+      const q = model ? `?model=${encodeURIComponent(model)}` : "";
+      router.push(`/chat/${encodeURIComponent(session.id)}${q}`);
     }
   };
 
@@ -343,10 +344,10 @@ export default function LobbyPage() {
         onClose={() =>
           setStartModal({ open: false, personaName: "", personaDisplayName: "", accentColor: "" })
         }
-        onStart={(profileSlug) => {
+        onStart={(profileSlug, model) => {
           const pName = startModal.personaName;
           setStartModal({ open: false, personaName: "", personaDisplayName: "", accentColor: "" });
-          startSession(pName, profileSlug);
+          startSession(pName, profileSlug, model);
         }}
       />
     </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useSSE } from "@/hooks/useSSE";
 import { useChat } from "@/hooks/useChat";
 import { useLayout, type LayoutConfig } from "@/hooks/useLayout";
@@ -21,6 +21,7 @@ interface Panel {
 export default function ChatPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const {
     messages,
     isStreaming,
@@ -45,6 +46,7 @@ export default function ChatPage() {
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [sseEnabled, setSseEnabled] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [currentModel, setCurrentModel] = useState(searchParams.get("model") || "");
   const isMobile = useIsMobile();
   const initRef = useRef(false);
 
@@ -71,7 +73,11 @@ export default function ChatPage() {
 
       const res = await fetch(
         `/api/sessions/${sessionId}/open`,
-        { method: "POST" }
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: currentModel || undefined }),
+        }
       );
 
       if (!res.ok) {
@@ -114,6 +120,24 @@ export default function ChatPage() {
     resetLayout();
     router.push("/");
   }, [router, resetLayout]);
+
+  const handleModelChange = useCallback(async (model: string) => {
+    setCurrentModel(model);
+    setStatus("disconnected");
+    const res = await fetch(
+      `/api/sessions/${sessionId}/open`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: model || undefined }),
+      }
+    );
+    if (res.ok) {
+      setStatus("connected");
+    } else {
+      setError("Failed to reconnect with new model");
+    }
+  }, [sessionId, setStatus, setError]);
 
   const panelPosition = layout?.panels?.position || "right";
   const panelSize = layout?.panels?.size || 280;
@@ -171,6 +195,8 @@ export default function ChatPage() {
         onBack={handleBack}
         showPanelButton={hasSidebar && isMobile}
         onPanelToggle={() => setDrawerOpen((v) => !v)}
+        model={currentModel}
+        onModelChange={handleModelChange}
       />
       <ErrorBanner error={error} onDismiss={() => setError(null)} />
       <div className="flex-1 relative min-h-0">
