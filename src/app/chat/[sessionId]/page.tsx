@@ -101,6 +101,7 @@ export default function ChatPage() {
       const data = await res.json();
       setTitle(data.title || data.persona);
       setLayout(data.layout);
+      if (data.model) setCurrentModel(data.model);
       const imageBase = `/api/sessions/${sessionId}/files?path=images/`;
       applyLayout(data.layout, imageBase);
       setStatus("connected");

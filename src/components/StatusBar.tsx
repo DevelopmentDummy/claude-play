@@ -69,10 +69,10 @@ export default function StatusBar({
               paddingRight: "20px",
             }}
           >
-            <option value="">Default</option>
-            <option value="sonnet">Sonnet</option>
-            <option value="opus">Opus</option>
-            <option value="haiku">Haiku</option>
+            <option value="" className="bg-[#1a1a2e] text-[#ccc]">Default</option>
+            <option value="sonnet" className="bg-[#1a1a2e] text-[#ccc]">Sonnet</option>
+            <option value="opus" className="bg-[#1a1a2e] text-[#ccc]">Opus</option>
+            <option value="haiku" className="bg-[#1a1a2e] text-[#ccc]">Haiku</option>
           </select>
         )}
         <span

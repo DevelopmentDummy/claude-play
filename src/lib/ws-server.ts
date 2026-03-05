@@ -9,12 +9,23 @@ interface WSClient {
   isBuilder: boolean;
 }
 
-let wss: WebSocketServer | null = null;
-const clients = new Set<WSClient>();
+// Use globalThis to share state across module instances (server.ts vs Next.js routes)
+const WS_KEY = "__claude_bridge_ws__";
+interface WSGlobal {
+  clients: Set<WSClient>;
+  disconnectTimer: ReturnType<typeof setTimeout> | null;
+}
+
+function getWSState(): WSGlobal {
+  const g = globalThis as unknown as Record<string, WSGlobal>;
+  if (!g[WS_KEY]) {
+    g[WS_KEY] = { clients: new Set(), disconnectTimer: null };
+  }
+  return g[WS_KEY];
+}
 
 /** Grace period before killing Claude process after last client disconnects */
 const DISCONNECT_GRACE_MS = 5000;
-let disconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
 /** Broadcast to all clients bound to a specific session (or builder persona) */
 export function wsBroadcast(
@@ -22,6 +33,7 @@ export function wsBroadcast(
   data: unknown,
   filter?: { sessionId?: string; isBuilder?: boolean }
 ): void {
+  const { clients } = getWSState();
   const payload = JSON.stringify({ event, data });
   for (const client of clients) {
     if (client.ws.readyState !== WebSocket.OPEN) continue;
@@ -37,8 +49,9 @@ export function wsBroadcast(
   }
 }
 
-/** Broadcast to ALL connected clients (for backward compat during migration) */
+/** Broadcast to ALL connected clients */
 export function wsBroadcastAll(event: string, data: unknown): void {
+  const { clients } = getWSState();
   const payload = JSON.stringify({ event, data });
   for (const client of clients) {
     if (client.ws.readyState !== WebSocket.OPEN) continue;
@@ -52,20 +65,20 @@ export function wsBroadcastAll(event: string, data: unknown): void {
 
 /** Check if any clients are still connected; if none, schedule process cleanup */
 function scheduleCleanupIfEmpty(): void {
-  if (disconnectTimer) {
-    clearTimeout(disconnectTimer);
-    disconnectTimer = null;
+  const state = getWSState();
+  if (state.disconnectTimer) {
+    clearTimeout(state.disconnectTimer);
+    state.disconnectTimer = null;
   }
 
-  const hasActiveClients = [...clients].some(
+  const hasActiveClients = [...state.clients].some(
     (c) => c.ws.readyState === WebSocket.OPEN
   );
 
   if (!hasActiveClients) {
-    disconnectTimer = setTimeout(() => {
-      disconnectTimer = null;
-      // Double-check no one reconnected during grace period
-      const stillEmpty = ![...clients].some(
+    state.disconnectTimer = setTimeout(() => {
+      state.disconnectTimer = null;
+      const stillEmpty = ![...state.clients].some(
         (c) => c.ws.readyState === WebSocket.OPEN
       );
       if (stillEmpty) {
@@ -80,14 +93,16 @@ function scheduleCleanupIfEmpty(): void {
 
 /** Cancel any pending cleanup (called when a new client connects) */
 function cancelCleanup(): void {
-  if (disconnectTimer) {
-    clearTimeout(disconnectTimer);
-    disconnectTimer = null;
+  const state = getWSState();
+  if (state.disconnectTimer) {
+    clearTimeout(state.disconnectTimer);
+    state.disconnectTimer = null;
   }
 }
 
 export function setupWebSocket(server: HTTPServer): void {
-  wss = new WebSocketServer({ noServer: true });
+  const wss = new WebSocketServer({ noServer: true });
+  const state = getWSState();
 
   server.on("upgrade", (req, socket, head) => {
     const { pathname, query } = parse(req.url || "", true);
@@ -96,13 +111,13 @@ export function setupWebSocket(server: HTTPServer): void {
       return;
     }
 
-    wss!.handleUpgrade(req, socket, head, (ws) => {
+    wss.handleUpgrade(req, socket, head, (ws) => {
       const sessionId = (query.sessionId as string) || null;
       const isBuilder = query.builder === "true";
 
       const client: WSClient = { ws, sessionId, isBuilder };
-      clients.add(client);
-      cancelCleanup(); // New client arrived, cancel any pending kill
+      state.clients.add(client);
+      cancelCleanup();
 
       ws.on("message", (raw) => {
         try {
@@ -114,7 +129,7 @@ export function setupWebSocket(server: HTTPServer): void {
       });
 
       ws.on("close", () => {
-        clients.delete(client);
+        state.clients.delete(client);
         scheduleCleanupIfEmpty();
       });
 
@@ -143,14 +158,12 @@ function handleMessage(
     }
 
     case "session:bind": {
-      // Allow client to re-bind to a different session
       client.sessionId = (msg.sessionId as string) || null;
       client.isBuilder = !!(msg.isBuilder);
       break;
     }
 
     case "session:leave": {
-      // Client explicitly leaving — kill immediately
       console.log("[ws] Client sent session:leave — killing Claude process");
       svc.claude.kill();
       svc.panels.stop();

@@ -98,6 +98,7 @@ interface SessionMeta {
   createdAt: string;
   claudeSessionId?: string;
   profileSlug?: string;
+  model?: string;
 }
 
 interface BuilderMeta {
@@ -562,6 +563,40 @@ export class SessionManager {
     } catch { /* ignore */ }
   }
 
+  /** Save model choice to session */
+  saveSessionModel(id: string, model: string): void {
+    const metaPath = path.join(this.getSessionDir(id), "session.json");
+    if (!fs.existsSync(metaPath)) return;
+    try {
+      const meta: SessionMeta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
+      meta.model = model || undefined;
+      fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), "utf-8");
+    } catch { /* ignore */ }
+  }
+
+  /** Get saved model for session */
+  getSessionModel(id: string): string | undefined {
+    const metaPath = path.join(this.getSessionDir(id), "session.json");
+    if (!fs.existsSync(metaPath)) return undefined;
+    try {
+      const meta: SessionMeta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
+      return meta.model;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** Clear saved Claude session ID (e.g. when switching models) */
+  clearClaudeSessionId(id: string): void {
+    const metaPath = path.join(this.getSessionDir(id), "session.json");
+    if (!fs.existsSync(metaPath)) return;
+    try {
+      const meta: SessionMeta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
+      delete meta.claudeSessionId;
+      fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), "utf-8");
+    } catch { /* ignore */ }
+  }
+
   /** Get saved Claude session ID for resume */
   getClaudeSessionId(id: string): string | undefined {
     const metaPath = path.join(this.getSessionDir(id), "session.json");
@@ -571,6 +606,85 @@ export class SessionManager {
       return meta.claudeSessionId;
     } catch {
       return undefined;
+    }
+  }
+
+  /** Sync updated files from persona to session (panels, variables, opening, layout, skills) */
+  syncPersonaToSession(id: string): void {
+    const sessionDir = this.getSessionDir(id);
+    const metaPath = path.join(sessionDir, "session.json");
+    if (!fs.existsSync(metaPath)) return;
+
+    let meta: SessionMeta;
+    try {
+      meta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
+    } catch { return; }
+
+    const personaDir = this.getPersonaDir(meta.persona);
+    if (!fs.existsSync(personaDir)) return;
+
+    // Sync panels/ directory (overwrite with persona's latest)
+    const personaPanels = path.join(personaDir, "panels");
+    const sessionPanels = path.join(sessionDir, "panels");
+    if (fs.existsSync(personaPanels)) {
+      if (!fs.existsSync(sessionPanels)) fs.mkdirSync(sessionPanels, { recursive: true });
+      for (const file of fs.readdirSync(personaPanels)) {
+        const src = path.join(personaPanels, file);
+        const dst = path.join(sessionPanels, file);
+        if (fs.statSync(src).isFile()) {
+          fs.copyFileSync(src, dst);
+        }
+      }
+    }
+
+    // Merge variables.json: add new keys from persona, keep existing session values
+    const personaVarsPath = path.join(personaDir, "variables.json");
+    const sessionVarsPath = path.join(sessionDir, "variables.json");
+    if (fs.existsSync(personaVarsPath)) {
+      try {
+        const personaVars = JSON.parse(fs.readFileSync(personaVarsPath, "utf-8"));
+        let sessionVars: Record<string, unknown> = {};
+        if (fs.existsSync(sessionVarsPath)) {
+          sessionVars = JSON.parse(fs.readFileSync(sessionVarsPath, "utf-8"));
+        }
+        // Only add keys that don't already exist in session
+        let changed = false;
+        for (const [key, val] of Object.entries(personaVars)) {
+          if (!(key in sessionVars)) {
+            sessionVars[key] = val;
+            changed = true;
+          }
+        }
+        if (changed) {
+          fs.writeFileSync(sessionVarsPath, JSON.stringify(sessionVars, null, 2), "utf-8");
+        }
+      } catch { /* ignore parse errors */ }
+    }
+
+    // Overwrite-safe files (these are templates/config, not runtime state)
+    const overwriteFiles = ["opening.md", "layout.json", "worldview.md"];
+    for (const file of overwriteFiles) {
+      const src = path.join(personaDir, file);
+      const dst = path.join(sessionDir, file);
+      if (fs.existsSync(src)) {
+        fs.copyFileSync(src, dst);
+      }
+    }
+
+    // Sync skills/ directory
+    const personaSkills = path.join(personaDir, "skills");
+    const sessionSkills = path.join(sessionDir, "skills");
+    if (fs.existsSync(personaSkills)) {
+      if (!fs.existsSync(sessionSkills)) fs.mkdirSync(sessionSkills, { recursive: true });
+      for (const entry of fs.readdirSync(personaSkills, { withFileTypes: true })) {
+        const src = path.join(personaSkills, entry.name);
+        const dst = path.join(sessionSkills, entry.name);
+        if (entry.isDirectory()) {
+          this.copyDirRecursive(src, dst);
+        } else {
+          fs.copyFileSync(src, dst);
+        }
+      }
     }
   }
 
@@ -753,6 +867,7 @@ export class SessionManager {
   // ── Helpers ──────────────────────────────────────────────
 
   private copyDirRecursive(src: string, dest: string, skip?: Set<string>): void {
+    if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
     const entries = fs.readdirSync(src, { withFileTypes: true });
     for (const entry of entries) {
       if (skip && skip.has(entry.name)) continue;

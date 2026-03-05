@@ -39,8 +39,9 @@ export async function POST(
   // Read layout config
   const layout = svc.sessions.readLayout(sessionDir);
 
-  // Refresh CLAUDE.md from persona's latest session-instructions.md
+  // Refresh session files from persona's latest versions
   svc.sessions.refreshSessionClaudeMd(id);
+  svc.sessions.syncPersonaToSession(id);
 
   // Resume previous Claude session if available
   const resumeId = svc.sessions.getClaudeSessionId(id);
@@ -52,7 +53,14 @@ export async function POST(
     svc.addOpeningToHistory(opening);
   }
 
-  svc.claude.spawn(sessionDir, resumeId, model);
+  // Save model choice to session.json so it persists across refreshes
+  if (model) {
+    svc.sessions.saveSessionModel(id, model);
+  }
+
+  // --resume and --model can be combined: resumes the conversation with a different model
+  const effectiveModel = model || svc.sessions.getSessionModel(id);
+  svc.claude.spawn(sessionDir, resumeId, effectiveModel);
 
   // Include initial panels + context in response (SSE may not be connected yet)
   const { panels, context: panelContext } = svc.panels.getCurrentPanels();
@@ -87,5 +95,5 @@ export async function POST(
     }
   }
 
-  return NextResponse.json({ ...info, opening, isResume, layout, panels, panelContext, profileImage, iconImage });
+  return NextResponse.json({ ...info, opening, isResume, layout, panels, panelContext, profileImage, iconImage, model: effectiveModel || "" });
 }
