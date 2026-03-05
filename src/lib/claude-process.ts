@@ -52,6 +52,11 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
       args.push("--resume", resumeId);
     }
 
+    const mcpConfigPath = path.join(cwd, ".mcp.json");
+    if (fs.existsSync(mcpConfigPath)) {
+      args.push("--mcp-config", mcpConfigPath, "--strict-mcp-config");
+    }
+
     // Start stream log for debugging
     if (this.logStream) { try { this.logStream.end(); } catch { /* */ } }
     const logPath = path.join(cwd, "claude-stream.log");
@@ -62,7 +67,7 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
       env,
       cwd,
       stdio: ["pipe", "pipe", "pipe"],
-      shell: true,
+      shell: false,
     });
 
     this.emit("status", "connected");
