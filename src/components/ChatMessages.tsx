@@ -5,6 +5,12 @@ import type { ChatMessage } from "@/hooks/useChat";
 import ToolBlock from "./ToolBlock";
 import ThinkingIndicator from "./ThinkingIndicator";
 import InlineImage from "./InlineImage";
+import InlinePanel from "./InlinePanel";
+
+interface PanelInfo {
+  name: string;
+  html: string;
+}
 
 interface ChatMessagesProps {
   messages: ChatMessage[];
@@ -13,6 +19,7 @@ interface ChatMessagesProps {
   align?: "stretch" | "center";
   hideTools?: boolean;
   sessionId?: string;
+  panels?: PanelInfo[];
   hasMore?: boolean;
   onLoadMore?: () => Promise<number>;
 }
@@ -22,7 +29,8 @@ const CLOSE_TAG = "</dialog_response>";
 
 /**
  * Extract content inside <dialog_response> tags.
- * Handles multiple blocks and unclosed tags (mid-stream).
+ * Handles multiple blocks, unclosed tags (mid-stream),
+ * and partial opening tags still being streamed.
  */
 function extractDialogResponse(raw: string): string {
   const parts: string[] = [];
@@ -39,18 +47,38 @@ function extractDialogResponse(raw: string): string {
       parts.push(raw.substring(contentStart, closeIdx).trim());
       searchFrom = closeIdx + CLOSE_TAG.length;
     } else {
-      // Unclosed tag — still streaming
-      parts.push(raw.substring(contentStart).trim());
+      // Unclosed tag — still streaming; strip any partial close tag at the end
+      let tail = raw.substring(contentStart);
+      for (let len = Math.min(CLOSE_TAG.length - 1, tail.length); len >= 1; len--) {
+        if (tail.endsWith(CLOSE_TAG.substring(0, len))) {
+          tail = tail.substring(0, tail.length - len);
+          break;
+        }
+      }
+      parts.push(tail.trim());
       break;
     }
   }
 
+  if (parts.length > 0) return parts.join("\n\n");
+
+  // Check for a partial opening tag at the end of the string (tag still being streamed in).
+  // If the tail of the string matches a prefix of OPEN_TAG, hide it and return
+  // any previously completed content, or empty string to suppress raw tag display.
+  for (let len = Math.min(OPEN_TAG.length - 1, raw.length); len >= 1; len--) {
+    if (raw.endsWith(OPEN_TAG.substring(0, len))) {
+      // Return text before the partial tag, or empty if nothing before it
+      const before = raw.substring(0, raw.length - len).trim();
+      return before || "";
+    }
+  }
+
   // No tags found — return original text (opening messages, backward compat)
-  return parts.length > 0 ? parts.join("\n\n") : raw;
+  return raw;
 }
 
-function renderInline(text: string, keyPrefix: string, sessionId?: string): React.ReactNode[] {
-  const regex = /(\$IMAGE:[^$]+\$|\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/g;
+function renderInline(text: string, keyPrefix: string, sessionId?: string, panels?: PanelInfo[]): React.ReactNode[] {
+  const regex = /(\$PANEL:[^$]+\$|\$IMAGE:[^$]+\$|\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`|\u2018[^\u2019]+\u2019|'[^']+['''])/g;
   const nodes: React.ReactNode[] = [];
   let lastIndex = 0;
   let match;
@@ -65,7 +93,19 @@ function renderInline(text: string, keyPrefix: string, sessionId?: string): Reac
     }
 
     const m = match[0];
-    if (m.startsWith("$IMAGE:") && m.endsWith("$") && sessionId) {
+    if (m.startsWith("$PANEL:") && m.endsWith("$") && panels) {
+      const panelName = m.slice(7, -1);
+      const panel = panels.find((p) => p.name === panelName);
+      if (panel) {
+        nodes.push(
+          <InlinePanel
+            key={`${keyPrefix}-panel-${match.index}`}
+            html={panel.html}
+            sessionId={sessionId}
+          />
+        );
+      }
+    } else if (m.startsWith("$IMAGE:") && m.endsWith("$") && sessionId) {
       const imgPath = m.slice(7, -1);
       nodes.push(
         <InlineImage
@@ -88,6 +128,16 @@ function renderInline(text: string, keyPrefix: string, sessionId?: string): Reac
         >
           {m.slice(1, -1)}
         </code>
+      );
+    } else if (m.startsWith("\u2018") || m.startsWith("\u2019") || m.startsWith("'")) {
+      // 'thought/inner monologue'
+      nodes.push(
+        <span
+          key={`${keyPrefix}-${match.index}`}
+          className="text-[#7eb8e0] italic"
+        >
+          {m}
+        </span>
       );
     } else {
       // *action/narration*
@@ -115,7 +165,7 @@ function renderInline(text: string, keyPrefix: string, sessionId?: string): Reac
   return nodes;
 }
 
-function renderMarkdown(text: string, sessionId?: string): React.ReactNode[] {
+function renderMarkdown(text: string, sessionId?: string, panels?: PanelInfo[]): React.ReactNode[] {
   const parts = text.split(/(```[\s\S]*?```)/g);
   const nodes: React.ReactNode[] = [];
 
@@ -133,7 +183,7 @@ function renderMarkdown(text: string, sessionId?: string): React.ReactNode[] {
         </pre>
       );
     } else {
-      nodes.push(...renderInline(part, `${i}`, sessionId));
+      nodes.push(...renderInline(part, `${i}`, sessionId, panels));
     }
   });
 
@@ -161,6 +211,7 @@ export default function ChatMessages({
   align,
   hideTools,
   sessionId,
+  panels,
   hasMore,
   onLoadMore,
 }: ChatMessagesProps) {
@@ -255,7 +306,7 @@ export default function ChatMessages({
                 : "self-start bg-assistant-bubble backdrop-blur-[12px] rounded-bl-[4px] shadow-sm"
             }`}
           >
-            {renderMarkdown(displayContent, sessionId)}
+            {renderMarkdown(displayContent, sessionId, panels)}
             {isLastAssistant && <StreamingDots />}
             {!hideTools &&
               msg.tools?.map((tool, i) => (

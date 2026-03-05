@@ -53,7 +53,7 @@ export default function SessionCard({
 
       <button
         className="absolute top-2.5 right-2.5 w-6 h-6 flex items-center justify-center rounded-md text-sm text-text-dim/40 cursor-pointer
-          opacity-0 group-hover:opacity-100 transition-opacity duration-fast
+          opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-fast
           hover:text-error hover:bg-error/10"
         onClick={(e) => {
           e.stopPropagation();

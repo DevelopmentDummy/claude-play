@@ -50,7 +50,7 @@ export async function POST(req: Request) {
     // Session mode: save to session directory
     targetDir = svc.sessions.getSessionDir(svc.currentSessionId);
     workflowsDir = path.join(
-      targetDir, ".claude", "skills", "generate-image", "workflows"
+      process.cwd(), "data", "tools", "comfyui", "skills", "generate-image", "workflows"
     );
   } else {
     return NextResponse.json(

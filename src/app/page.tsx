@@ -50,7 +50,10 @@ export default function LobbyPage() {
     description: string;
     isPrimary?: boolean;
   } | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    if (typeof window !== "undefined") return window.innerWidth >= 768;
+    return true;
+  });
   const [startModal, setStartModal] = useState<{
     open: boolean;
     personaName: string;
@@ -168,10 +171,19 @@ export default function LobbyPage() {
   };
 
   return (
-    <div className="flex h-screen">
+    <div className="flex h-screen relative">
+      {/* ── Mobile sidebar backdrop ── */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-30 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       {/* ── Sidebar: Sessions ── */}
       <aside
-        className={`shrink-0 flex flex-col border-r border-border bg-surface/50 backdrop-blur-[16px] transition-all duration-normal overflow-hidden ${
+        className={`shrink-0 flex flex-col border-r border-border bg-surface/50 backdrop-blur-[16px] transition-all duration-normal overflow-hidden
+          fixed inset-y-0 left-0 z-40 md:relative md:z-auto ${
           sidebarOpen ? "w-[280px]" : "w-0 border-r-0"
         }`}
       >
@@ -202,9 +214,10 @@ export default function LobbyPage() {
                 persona={s.persona}
                 createdAt={s.createdAt}
                 hasIcon={s.hasIcon}
-                onOpen={() =>
-                  router.push(`/chat/${encodeURIComponent(s.id)}`)
-                }
+                onOpen={() => {
+                  router.push(`/chat/${encodeURIComponent(s.id)}`);
+                  if (window.innerWidth < 768) setSidebarOpen(false);
+                }}
                 onDelete={() => deleteSession(s.id)}
               />
             ))
@@ -215,7 +228,7 @@ export default function LobbyPage() {
       {/* ── Main Content ── */}
       <main className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <header className="relative flex items-center gap-3 px-6 py-4 border-b border-border bg-surface/30 backdrop-blur-[16px]">
+        <header className="relative flex items-center gap-3 px-4 py-3 md:px-6 md:py-4 border-b border-border bg-surface/30 backdrop-blur-[16px]">
           {!sidebarOpen && (
             <button
               onClick={() => setSidebarOpen(true)}
@@ -233,7 +246,7 @@ export default function LobbyPage() {
           </div>
 
           {/* right side: profiles */}
-          <div className="ml-auto flex items-center gap-2.5">
+          <div className="ml-auto flex items-center gap-1.5 md:gap-2.5 overflow-x-auto">
             {profiles.map((p) => (
               <ProfileCard
                 key={p.slug}
@@ -259,10 +272,10 @@ export default function LobbyPage() {
 
         {/* Persona Area */}
         <div className="flex-1 overflow-y-auto">
-          <div className="max-w-[860px] mx-auto px-8 py-12">
+          <div className="max-w-[860px] mx-auto px-4 py-8 md:px-8 md:py-12">
             {/* Hero text */}
-            <div className="text-center mb-10 animate-[slideUp_0.4s_ease_both]">
-              <h2 className="text-3xl font-light text-text tracking-tight mb-2.5" style={{ letterSpacing: "-0.03em" }}>
+            <div className="text-center mb-8 md:mb-10 animate-[slideUp_0.4s_ease_both]">
+              <h2 className="text-2xl md:text-3xl font-light text-text tracking-tight mb-2.5" style={{ letterSpacing: "-0.03em" }}>
                 Who would you like to meet?
               </h2>
               <p className="text-base text-text-dim/70">
@@ -272,8 +285,8 @@ export default function LobbyPage() {
 
             {/* Persona Grid */}
             <div
-              className="grid gap-5 mb-8 animate-[slideUp_0.4s_ease_0.08s_both]"
-              style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}
+              className="grid gap-3 md:gap-5 mb-8 animate-[slideUp_0.4s_ease_0.08s_both]"
+              style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(180px, 100%), 1fr))" }}
             >
               {personas.map((p, i) => (
                 <PersonaCard

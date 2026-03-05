@@ -12,9 +12,12 @@ interface PanelAreaProps {
   position: "right" | "left" | "bottom" | "hidden";
   size: number;
   profileImageUrl?: string | null;
+  sessionId?: string;
+  panelData?: Record<string, unknown>;
+  onSendMessage?: (text: string) => void;
 }
 
-export default function PanelArea({ panels, position, size, profileImageUrl }: PanelAreaProps) {
+export default function PanelArea({ panels, position, size, profileImageUrl, sessionId, panelData, onSendMessage }: PanelAreaProps) {
   if (position === "hidden" || (panels.length === 0 && !profileImageUrl)) return null;
 
   const isBottom = position === "bottom";
@@ -38,7 +41,14 @@ export default function PanelArea({ panels, position, size, profileImageUrl }: P
         />
       )}
       {panels.map((panel) => (
-        <PanelSlot key={panel.name} name={panel.name} html={panel.html} />
+        <PanelSlot
+          key={panel.name}
+          name={panel.name}
+          html={panel.html}
+          sessionId={sessionId}
+          panelData={panelData}
+          onSendMessage={onSendMessage}
+        />
       ))}
     </aside>
   );

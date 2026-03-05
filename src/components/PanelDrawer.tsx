@@ -15,6 +15,9 @@ interface PanelDrawerProps {
   panelPosition: "right" | "left" | "bottom" | "hidden";
   panelSize: number;
   profileImageUrl?: string | null;
+  sessionId?: string;
+  panelData?: Record<string, unknown>;
+  onSendMessage?: (text: string) => void;
 }
 
 export default function PanelDrawer({
@@ -24,6 +27,9 @@ export default function PanelDrawer({
   panelPosition,
   panelSize,
   profileImageUrl,
+  sessionId,
+  panelData,
+  onSendMessage,
 }: PanelDrawerProps) {
   const drawerRef = useRef<HTMLDivElement>(null);
 
@@ -76,6 +82,9 @@ export default function PanelDrawer({
               position={panelPosition === "hidden" ? "right" : panelPosition}
               size={panelSize}
               profileImageUrl={profileImageUrl}
+              sessionId={sessionId}
+              panelData={panelData}
+              onSendMessage={onSendMessage}
             />
           </div>
         </div>

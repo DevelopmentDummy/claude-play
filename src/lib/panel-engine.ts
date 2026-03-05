@@ -7,16 +7,35 @@ export interface PanelData {
   html: string; // rendered HTML
 }
 
+/** System JSON files that should NOT be loaded as data */
+const SYSTEM_JSON = new Set([
+  "variables.json",
+  "session.json",
+  "builder-session.json",
+  "comfyui-config.json",
+  "layout.json",
+  "chat-history.json",
+  "package.json",
+  "tsconfig.json",
+  "character-tags.json",
+]);
+
+export interface PanelUpdate {
+  panels: PanelData[];
+  context: Record<string, unknown>;
+}
+
 /** Watches a session directory and emits rendered panel HTML when files change */
 export class PanelEngine {
   private sessionDir: string | null = null;
   private watchers: fs.FSWatcher[] = [];
   private templateCache = new Map<string, HandlebarsTemplateDelegate>();
   private variables: Record<string, unknown> = {};
-  private onUpdate: (panels: PanelData[]) => void;
+  private dataFiles: Record<string, unknown> = {};
+  private onUpdate: (update: PanelUpdate) => void;
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(onUpdate: (panels: PanelData[]) => void) {
+  constructor(onUpdate: (update: PanelUpdate) => void) {
     this.onUpdate = onUpdate;
     this.registerHelpers();
   }
@@ -45,14 +64,27 @@ export class PanelEngine {
     );
   }
 
+  /** Build the merged template context: variables at root + data files as named keys + system vars */
+  private getContext(): Record<string, unknown> {
+    // Extract session ID from directory name for resource URL construction
+    const sessionId = this.sessionDir ? path.basename(this.sessionDir) : "";
+    return {
+      ...this.variables,
+      ...this.dataFiles,
+      __sessionId: sessionId,
+      __imageBase: sessionId ? `/api/sessions/${encodeURIComponent(sessionId)}/files?path=images/` : "",
+    };
+  }
+
   /** Start watching a session directory */
   watch(sessionDir: string): void {
     this.stop();
     this.sessionDir = sessionDir;
     this.templateCache.clear();
 
-    // Load initial variables
+    // Load initial data
     this.loadVariables();
+    this.loadDataFiles();
 
     // Watch variables.json
     const varsPath = path.join(sessionDir, "variables.json");
@@ -69,7 +101,6 @@ export class PanelEngine {
     if (fs.existsSync(panelsDir)) {
       const watcher = fs.watch(panelsDir, (_event, filename) => {
         if (filename && filename.endsWith(".html")) {
-          // Invalidate template cache for changed file
           const rawName = filename.replace(/\.html$/, "");
           const name = rawName.replace(/^\d+-/, "");
           this.templateCache.delete(name);
@@ -79,22 +110,32 @@ export class PanelEngine {
       this.watchers.push(watcher);
     }
 
+    // Watch session dir for new/changed JSON data files
+    const dirWatcher = fs.watch(sessionDir, (_event, filename) => {
+      if (filename && filename.endsWith(".json") && !SYSTEM_JSON.has(filename)) {
+        this.loadDataFiles();
+        this.scheduleRender();
+      }
+    });
+    this.watchers.push(dirWatcher);
+
     // Initial render
     this.render();
   }
 
-  /** Get current panels without triggering onUpdate */
-  getCurrentPanels(): PanelData[] {
-    if (!this.sessionDir) return [];
+  /** Get current panels + context without triggering onUpdate */
+  getCurrentPanels(): PanelUpdate {
+    if (!this.sessionDir) return { panels: [], context: {} };
 
     const panelsDir = path.join(this.sessionDir, "panels");
-    if (!fs.existsSync(panelsDir)) return [];
+    if (!fs.existsSync(panelsDir)) return { panels: [], context: this.getContext() };
 
     const files = fs
       .readdirSync(panelsDir)
       .filter((f) => f.endsWith(".html"))
       .sort();
 
+    const context = this.getContext();
     const panels: PanelData[] = [];
     for (const file of files) {
       const rawName = file.replace(/\.html$/, "");
@@ -108,7 +149,7 @@ export class PanelEngine {
           this.templateCache.set(name, Handlebars.compile(source));
         }
         const template = this.templateCache.get(name)!;
-        const html = template(this.variables, { allowProtoPropertiesByDefault: true });
+        const html = template(context, { allowProtoPropertiesByDefault: true });
         panels.push({ name, html });
       } catch {
         panels.push({
@@ -117,7 +158,7 @@ export class PanelEngine {
         });
       }
     }
-    return panels;
+    return { panels, context };
   }
 
   /** Stop watching */
@@ -129,6 +170,7 @@ export class PanelEngine {
     this.sessionDir = null;
     this.templateCache.clear();
     this.variables = {};
+    this.dataFiles = {};
     if (this.debounceTimer) {
       clearTimeout(this.debounceTimer);
       this.debounceTimer = null;
@@ -155,47 +197,29 @@ export class PanelEngine {
     }
   }
 
+  /** Scan session directory for custom JSON data files and load them */
+  private loadDataFiles(): void {
+    if (!this.sessionDir) return;
+    const newData: Record<string, unknown> = {};
+    try {
+      const entries = fs.readdirSync(this.sessionDir);
+      for (const entry of entries) {
+        if (!entry.endsWith(".json") || SYSTEM_JSON.has(entry)) continue;
+        const filePath = path.join(this.sessionDir, entry);
+        try {
+          const stat = fs.statSync(filePath);
+          if (!stat.isFile()) continue;
+          const key = entry.replace(/\.json$/, "");
+          newData[key] = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+        } catch { /* skip malformed files */ }
+      }
+    } catch { /* ignore */ }
+    this.dataFiles = newData;
+  }
+
   private render(): void {
     if (!this.sessionDir) return;
-
-    const panelsDir = path.join(this.sessionDir, "panels");
-    if (!fs.existsSync(panelsDir)) {
-      this.onUpdate([]);
-      return;
-    }
-
-    const files = fs
-      .readdirSync(panelsDir)
-      .filter((f) => f.endsWith(".html"))
-      .sort();
-
-    const panels: PanelData[] = [];
-
-    for (const file of files) {
-      const rawName = file.replace(/\.html$/, "");
-      const name = rawName.replace(/^\d+-/, "");
-      try {
-        // Get or compile template
-        if (!this.templateCache.has(name)) {
-          const source = fs.readFileSync(
-            path.join(panelsDir, file),
-            "utf-8"
-          );
-          this.templateCache.set(name, Handlebars.compile(source));
-        }
-
-        const template = this.templateCache.get(name)!;
-        const html = template(this.variables, { allowProtoPropertiesByDefault: true });
-        panels.push({ name, html });
-      } catch {
-        // Template compile/render error — skip panel
-        panels.push({
-          name,
-          html: `<div style="color:#ff4d6a;padding:8px;">Panel "${name}" render error</div>`,
-        });
-      }
-    }
-
-    this.onUpdate(panels);
+    const result = this.getCurrentPanels();
+    this.onUpdate(result);
   }
 }

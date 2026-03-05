@@ -2,6 +2,13 @@ import * as fs from "fs";
 import * as path from "path";
 import Handlebars from "handlebars";
 
+/** System JSON files excluded from custom data file loading */
+const SYSTEM_JSON = new Set([
+  "variables.json", "session.json", "builder-session.json",
+  "comfyui-config.json", "layout.json", "chat-history.json",
+  "package.json", "tsconfig.json", "character-tags.json",
+]);
+
 export interface PersonaInfo {
   name: string; // directory name
   displayName: string; // from persona.md first line or name
@@ -27,11 +34,19 @@ export interface SessionInfo {
   hasIcon?: boolean;
 }
 
+export interface DataFileInfo {
+  name: string;       // filename without extension (e.g. "world")
+  filename: string;   // full filename (e.g. "world.json")
+  preview: string;    // first 500 chars of content
+  keys: string[];     // top-level keys or array length hint
+}
+
 export interface PersonaOverview {
   files: Array<{ name: string; exists: boolean; preview: string | null }>;
   panels: string[];
   panelData: Array<{ name: string; html: string }>;
   skills: string[];
+  dataFiles: DataFileInfo[];
   hasProfile?: boolean;
   hasIcon?: boolean;
 }
@@ -210,26 +225,41 @@ export class SessionManager {
             .sort();
           panels = panelFiles;
 
-          // Load variables.json for Handlebars rendering
-          let variables: Record<string, unknown> = {};
+          // Load variables.json + custom data files for Handlebars rendering
+          let context: Record<string, unknown> = {};
           const varsPath = path.join(dir, "variables.json");
           if (fs.existsSync(varsPath)) {
             try {
-              variables = JSON.parse(fs.readFileSync(varsPath, "utf-8"));
+              context = JSON.parse(fs.readFileSync(varsPath, "utf-8"));
             } catch { /* ignore */ }
           }
+          // Load custom data files (*.json excluding system files)
+          try {
+            for (const entry of fs.readdirSync(dir)) {
+              if (!entry.endsWith(".json") || SYSTEM_JSON.has(entry)) continue;
+              const fp = path.join(dir, entry);
+              if (!fs.statSync(fp).isFile()) continue;
+              try {
+                context[entry.replace(/\.json$/, "")] = JSON.parse(fs.readFileSync(fp, "utf-8"));
+              } catch { /* skip */ }
+            }
+          } catch { /* ignore */ }
+
+          // Inject image base URL for persona context
+          context.__imageBase = `/api/personas/${encodeURIComponent(name)}/images?file=`; // images API serves from images/ dir directly
+          context.__sessionId = "";
 
           // Render each panel
           panelData = panelFiles.map((file) => {
             const rawName = file.replace(/\.html$/, "");
-            const name = rawName.replace(/^\d+-/, "");
+            const displayName = rawName.replace(/^\d+-/, "");
             try {
               const source = fs.readFileSync(path.join(panelsDir, file), "utf-8");
               const template = Handlebars.compile(source);
-              const html = template(variables, { allowProtoPropertiesByDefault: true });
-              return { name, html };
+              const html = template(context, { allowProtoPropertiesByDefault: true });
+              return { name: displayName, html };
             } catch {
-              return { name, html: `<div style="color:#ff4d6a;padding:8px;">Panel "${name}" render error</div>` };
+              return { name: displayName, html: `<div style="color:#ff4d6a;padding:8px;">Panel "${displayName}" render error</div>` };
             }
           });
         } catch {
@@ -251,18 +281,43 @@ export class SessionManager {
         }
       }
 
+      // Scan custom data files
+      const dataFiles: DataFileInfo[] = [];
+      try {
+        for (const entry of fs.readdirSync(dir)) {
+          if (!entry.endsWith(".json") || SYSTEM_JSON.has(entry)) continue;
+          const fp = path.join(dir, entry);
+          if (!fs.statSync(fp).isFile()) continue;
+          try {
+            const raw = fs.readFileSync(fp, "utf-8");
+            const parsed = JSON.parse(raw);
+            const keys = Array.isArray(parsed)
+              ? [`Array(${parsed.length})`]
+              : typeof parsed === "object" && parsed !== null
+                ? Object.keys(parsed)
+                : [];
+            dataFiles.push({
+              name: entry.replace(/\.json$/, ""),
+              filename: entry,
+              preview: raw.slice(0, 500),
+              keys,
+            });
+          } catch { /* skip malformed */ }
+        }
+      } catch { /* ignore */ }
+
       // Check for profile/icon images
       const imagesDir = path.join(dir, "images");
       const hasProfile = fs.existsSync(path.join(imagesDir, "profile.png"));
       const hasIcon = fs.existsSync(path.join(imagesDir, "icon.png"));
 
       return {
-        files, panels, panelData, skills,
+        files, panels, panelData, skills, dataFiles,
         ...(hasProfile ? { hasProfile: true } : {}),
         ...(hasIcon ? { hasIcon: true } : {}),
       };
     } catch {
-      return { files: [], panels: [], panelData: [], skills: [] };
+      return { files: [], panels: [], panelData: [], skills: [], dataFiles: [] };
     }
   }
 
@@ -416,6 +471,19 @@ export class SessionManager {
       }
     }
 
+    // Append service-level shared session guide
+    const sessionSharedSrc = path.join(this.appRoot, "session-shared.md");
+    if (fs.existsSync(sessionSharedSrc)) {
+      const sharedContent = fs.readFileSync(sessionSharedSrc, "utf-8").trim();
+      if (sharedContent) {
+        const claudeMdPath2 = path.join(sessionDir, "CLAUDE.md");
+        if (fs.existsSync(claudeMdPath2)) {
+          const existing = fs.readFileSync(claudeMdPath2, "utf-8");
+          fs.writeFileSync(claudeMdPath2, existing + "\n\n" + sharedContent + "\n", "utf-8");
+        }
+      }
+    }
+
     // Copy panel-spec.md from appRoot to sessionDir
     const panelSpecSrc = path.join(this.appRoot, "panel-spec.md");
     if (fs.existsSync(panelSpecSrc)) {
@@ -552,6 +620,16 @@ export class SessionManager {
         const existing = fs.readFileSync(claudeMdPath, "utf-8");
         const appendix = `\n\n## 오프닝 메시지\n아래 메시지는 세션 시작 시 사용자에게 이미 표시되었다. 이 메시지를 반복하지 마라.\n\n${openingContent}\n`;
         fs.writeFileSync(claudeMdPath, existing + appendix, "utf-8");
+      }
+    }
+
+    // 4. Append service-level shared session guide
+    const sessionSharedSrc = path.join(this.appRoot, "session-shared.md");
+    if (fs.existsSync(sessionSharedSrc)) {
+      const sharedContent = fs.readFileSync(sessionSharedSrc, "utf-8").trim();
+      if (sharedContent) {
+        const existing = fs.readFileSync(claudeMdPath, "utf-8");
+        fs.writeFileSync(claudeMdPath, existing + "\n\n" + sharedContent + "\n", "utf-8");
       }
     }
   }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 
 interface FileInfo {
   name: string;
@@ -13,11 +14,19 @@ interface PanelPreview {
   html: string;
 }
 
+interface DataFileInfo {
+  name: string;
+  filename: string;
+  preview: string;
+  keys: string[];
+}
+
 interface OverviewData {
   files: FileInfo[];
   panels: string[];
   panelData: PanelPreview[];
   skills: string[];
+  dataFiles: DataFileInfo[];
   hasProfile?: boolean;
   hasIcon?: boolean;
 }
@@ -46,8 +55,67 @@ function PanelPreviewSlot({ name, html }: PanelPreview) {
       <div className="px-3.5 py-2 text-[10px] font-semibold text-accent/80 uppercase tracking-wider">
         {name}
       </div>
-      <div ref={containerRef} className="max-h-[200px] overflow-hidden mx-3.5 mb-3.5" />
+      <div ref={containerRef} className="mx-3.5 mb-3.5" />
     </div>
+  );
+}
+
+/** Modal for viewing full file content */
+function FileViewerModal({
+  title,
+  content,
+  onClose,
+}: {
+  title: string;
+  content: string;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [onClose]);
+
+  const isJson = title.endsWith(".json");
+  let displayContent = content;
+  if (isJson) {
+    try {
+      displayContent = JSON.stringify(JSON.parse(content), null, 2);
+    } catch { /* keep raw */ }
+  }
+
+  return (
+    <>
+      <div
+        className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      <div className="fixed inset-4 z-50 flex items-center justify-center pointer-events-none">
+        <div
+          className="pointer-events-auto w-full max-w-[720px] max-h-full flex flex-col bg-surface border border-border rounded-2xl shadow-2xl overflow-hidden"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between px-5 py-3.5 border-b border-border shrink-0">
+            <span className="text-sm font-semibold text-text">{title}</span>
+            <button
+              onClick={onClose}
+              className="w-7 h-7 flex items-center justify-center rounded-md text-text-dim hover:text-text hover:bg-surface-light transition-colors text-sm cursor-pointer"
+            >
+              &times;
+            </button>
+          </div>
+          {/* Content */}
+          <div className="flex-1 overflow-y-auto p-5">
+            <pre className="font-mono text-[12px] leading-relaxed whitespace-pre-wrap break-words text-text-dim">
+              {displayContent}
+            </pre>
+          </div>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -61,7 +129,8 @@ export default function BuilderOverview({
   refreshTrigger,
 }: BuilderOverviewProps) {
   const [data, setData] = useState<OverviewData | null>(null);
-  const [openSections, setOpenSections] = useState<Set<string>>(new Set());
+  const [modal, setModal] = useState<{ title: string; content: string } | null>(null);
+  const [loadingFile, setLoadingFile] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!personaName) return;
@@ -79,14 +148,22 @@ export default function BuilderOverview({
     refresh();
   }, [refresh, refreshTrigger]);
 
-  const toggleSection = (name: string) => {
-    setOpenSections((prev) => {
-      const next = new Set(prev);
-      if (next.has(name)) next.delete(name);
-      else next.add(name);
-      return next;
-    });
-  };
+  const openFile = useCallback(async (filename: string) => {
+    if (!personaName || loadingFile) return;
+    setLoadingFile(filename);
+    try {
+      const res = await fetch(
+        `/api/personas/${encodeURIComponent(personaName)}/file?file=${encodeURIComponent(filename)}`
+      );
+      if (res.ok) {
+        const { content } = await res.json();
+        if (content != null) {
+          setModal({ title: filename, content });
+        }
+      }
+    } catch { /* ignore */ }
+    setLoadingFile(null);
+  }, [personaName, loadingFile]);
 
   if (!personaName || !data) return null;
 
@@ -133,16 +210,19 @@ export default function BuilderOverview({
         </div>
       </div>
 
+      {/* Persona files */}
       {data.files.map((file) => (
         <div
           key={file.name}
           className="mb-2.5 border border-border rounded-lg overflow-hidden"
         >
           <div
-            className={`flex items-center gap-2 px-2.5 py-2 bg-surface-light cursor-pointer text-[13px] select-none hover:bg-[rgba(31,47,80,0.9)] transition-colors duration-fast ${
-              !file.exists ? "opacity-50" : ""
+            className={`flex items-center gap-2 px-2.5 py-2 bg-surface-light text-[13px] select-none transition-colors duration-fast ${
+              file.exists
+                ? "cursor-pointer hover:bg-[rgba(31,47,80,0.9)]"
+                : "opacity-50"
             }`}
-            onClick={() => file.exists && file.preview && toggleSection(file.name)}
+            onClick={() => file.exists && openFile(file.name)}
           >
             <span
               className={`shrink-0 text-xs ${
@@ -152,27 +232,14 @@ export default function BuilderOverview({
               {file.exists ? "\u2713" : "\u2717"}
             </span>
             <span className="flex-1">{file.name}</span>
-            {file.exists && file.preview && (
-              <span
-                className="text-[10px] text-text-dim transition-transform duration-200"
-                style={{
-                  transform: openSections.has(file.name)
-                    ? "rotate(90deg)"
-                    : "none",
-                }}
-              >
-                &#9654;
-              </span>
+            {file.exists && loadingFile === file.name && (
+              <span className="text-[10px] text-text-dim animate-pulse">...</span>
             )}
           </div>
-          {openSections.has(file.name) && file.preview && (
-            <div className="p-2.5 bg-code-bg font-mono text-xs leading-relaxed whitespace-pre-wrap break-words max-h-[160px] overflow-hidden text-text-dim">
-              {file.preview}
-            </div>
-          )}
         </div>
       ))}
 
+      {/* Panels */}
       {data.panelData && data.panelData.length > 0 && (
         <div className="mb-2.5">
           <h4 className="text-[11px] font-semibold text-text-dim uppercase tracking-wider mb-1.5">
@@ -186,6 +253,38 @@ export default function BuilderOverview({
         </div>
       )}
 
+      {/* Data files */}
+      {data.dataFiles && data.dataFiles.length > 0 && (
+        <div className="mb-2.5">
+          <h4 className="text-[11px] font-semibold text-text-dim uppercase tracking-wider mb-1.5">
+            Data Files ({data.dataFiles.length})
+          </h4>
+          <div className="flex flex-col gap-2">
+            {data.dataFiles.map((df) => (
+              <div
+                key={df.filename}
+                className="border border-border rounded-lg overflow-hidden"
+              >
+                <div
+                  className="flex items-center gap-2 px-2.5 py-2 bg-surface-light cursor-pointer text-[13px] select-none hover:bg-[rgba(31,47,80,0.9)] transition-colors duration-fast"
+                  onClick={() => openFile(df.filename)}
+                >
+                  <span className="text-xs text-accent/70">{ }</span>
+                  <span className="flex-1 font-medium">{df.filename}</span>
+                  <span className="text-[10px] text-text-dim/60 truncate max-w-[120px]">
+                    {df.keys.join(", ")}
+                  </span>
+                  {loadingFile === df.filename && (
+                    <span className="text-[10px] text-text-dim animate-pulse">...</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Skills */}
       {data.skills.length > 0 && (
         <div className="mb-2.5">
           <h4 className="text-[11px] font-semibold text-text-dim uppercase tracking-wider mb-1.5">
@@ -202,6 +301,16 @@ export default function BuilderOverview({
             ))}
           </div>
         </div>
+      )}
+
+      {/* File viewer modal — portal to body to escape backdrop-blur stacking context */}
+      {modal && createPortal(
+        <FileViewerModal
+          title={modal.title}
+          content={modal.content}
+          onClose={() => setModal(null)}
+        />,
+        document.body
       )}
     </div>
   );

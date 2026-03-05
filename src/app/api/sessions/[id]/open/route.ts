@@ -52,8 +52,8 @@ export async function POST(
 
   svc.claude.spawn(sessionDir, resumeId);
 
-  // Include initial panels in response (SSE may not be connected yet)
-  const panels = svc.panels.getCurrentPanels();
+  // Include initial panels + context in response (SSE may not be connected yet)
+  const { panels, context: panelContext } = svc.panels.getCurrentPanels();
 
   // Sync profile/icon images from persona to session (may have been added after session creation)
   const imagesDir = path.join(sessionDir, "images");
@@ -85,5 +85,5 @@ export async function POST(
     }
   }
 
-  return NextResponse.json({ ...info, opening, isResume, layout, panels, profileImage, iconImage });
+  return NextResponse.json({ ...info, opening, isResume, layout, panels, panelContext, profileImage, iconImage });
 }

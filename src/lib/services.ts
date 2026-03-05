@@ -61,7 +61,7 @@ function initServices(): Services {
   const sse = new SSEManager();
   const claude = new ClaudeProcess();
   const sessions = new SessionManager(getDataDir(), getAppRoot());
-  const panels = new PanelEngine((data) => sse.broadcast("panels:update", data));
+  const panels = new PanelEngine((update) => sse.broadcast("panels:update", update));
 
   // Accumulator for assistant turn
   let segments: string[] = [];

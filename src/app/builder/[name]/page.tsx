@@ -27,6 +27,8 @@ export default function BuilderPage() {
     sendMessage,
     handleClaudeMessage,
     loadHistory,
+    loadMore,
+    hasMore,
   } = useChat();
 
   const [refreshTrigger, setRefreshTrigger] = useState(0);
@@ -115,7 +117,12 @@ export default function BuilderPage() {
           refreshTrigger={refreshTrigger}
         />
         <div className="flex-1 flex flex-col min-w-0">
-          <ChatMessages messages={messages} isStreaming={isStreaming} />
+          <ChatMessages
+            messages={messages}
+            isStreaming={isStreaming}
+            hasMore={hasMore}
+            onLoadMore={loadMore}
+          />
           <ChatInput disabled={isStreaming} onSend={sendMessage} />
         </div>
       </div>

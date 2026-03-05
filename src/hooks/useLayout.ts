@@ -7,6 +7,7 @@ export interface LayoutConfig {
   panels: {
     position: "right" | "left" | "bottom" | "hidden";
     size: number;
+    placement?: Record<string, "left" | "right">;
   };
   chat: {
     maxWidth: number | null;
@@ -27,7 +28,7 @@ export interface LayoutConfig {
 }
 
 export function useLayout() {
-  const applyLayout = useCallback((layout: LayoutConfig | null) => {
+  const applyLayout = useCallback((layout: LayoutConfig | null, imageBase?: string) => {
     if (!layout) return;
     const root = document.documentElement.style;
 
@@ -61,7 +62,12 @@ export function useLayout() {
         style.id = "layout-custom-css";
         document.head.appendChild(style);
       }
-      style.textContent = layout.customCSS;
+      // Replace {{__imageBase}} placeholders with actual image serving path
+      let css = layout.customCSS;
+      if (imageBase) {
+        css = css.replace(/\{\{__imageBase\}\}/g, imageBase);
+      }
+      style.textContent = css;
     }
   }, []);
 

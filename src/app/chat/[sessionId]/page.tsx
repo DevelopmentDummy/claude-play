@@ -39,6 +39,7 @@ export default function ChatPage() {
   const { applyLayout, resetLayout } = useLayout();
 
   const [panels, setPanels] = useState<Panel[]>([]);
+  const [panelData, setPanelData] = useState<Record<string, unknown>>({});
   const [layout, setLayout] = useState<LayoutConfig | null>(null);
   const [title, setTitle] = useState("");
   const [profileImage, setProfileImage] = useState<string | null>(null);
@@ -52,7 +53,11 @@ export default function ChatPage() {
     "claude:message": handleClaudeMessage,
     "claude:error": (e) => setError(e as string),
     "claude:status": (s) => setStatus(s as string),
-    "panels:update": (p) => setPanels(p as Panel[]),
+    "panels:update": (p) => {
+      const update = p as { panels: Panel[]; context: Record<string, unknown> };
+      setPanels(update.panels);
+      setPanelData(update.context);
+    },
   }, sseEnabled);
 
   // Open session on mount — ref prevents Strict Mode double-call
@@ -77,12 +82,16 @@ export default function ChatPage() {
       const data = await res.json();
       setTitle(data.title || data.persona);
       setLayout(data.layout);
-      applyLayout(data.layout);
+      const imageBase = `/api/sessions/${sessionId}/files?path=images/`;
+      applyLayout(data.layout, imageBase);
       setStatus("connected");
 
-      // Set initial panels from response (SSE may not be connected yet)
+      // Set initial panels + context from response (SSE may not be connected yet)
       if (data.panels?.length) {
         setPanels(data.panels);
+      }
+      if (data.panelContext) {
+        setPanelData(data.panelContext);
       }
 
       setProfileImage(data.profileImage ? `/api/sessions/${sessionId}/files?path=${data.profileImage}` : null);
@@ -108,8 +117,29 @@ export default function ChatPage() {
 
   const panelPosition = layout?.panels?.position || "right";
   const panelSize = layout?.panels?.size || 280;
-  const hasPanel = panels.length > 0;
-  const hasSidebar = hasPanel || !!profileImage;
+  const rawPlacement = layout?.panels?.placement || {};
+
+  // Normalize placement keys: strip numeric prefix (e.g. "01-상태" → "상태") so it matches panel names
+  const placement: Record<string, "left" | "right"> = {};
+  for (const [key, val] of Object.entries(rawPlacement)) {
+    const normalized = key.replace(/^\d+-/, "");
+    placement[normalized] = val;
+    if (normalized !== key) placement[key] = val; // keep original too
+  }
+
+  // Split panels by placement: left, right, or inline (no placement = inline)
+  const leftPanels = panels.filter((p) => placement[p.name] === "left");
+  const rightPanels = panels.filter((p) => placement[p.name] === "right");
+  const inlinePanels = panels.filter((p) => !placement[p.name]);
+
+  // Fallback: if no per-panel placement configured, use legacy position for all panels
+  const hasPerPanelPlacement = Object.keys(rawPlacement).length > 0;
+  const sidebarLeftPanels = hasPerPanelPlacement ? leftPanels : (panelPosition === "left" ? panels : []);
+  const sidebarRightPanels = hasPerPanelPlacement ? rightPanels : (panelPosition === "right" ? panels : []);
+
+  const hasLeftSidebar = sidebarLeftPanels.length > 0 || !!profileImage;
+  const hasRightSidebar = sidebarRightPanels.length > 0;
+  const hasSidebar = hasLeftSidebar || hasRightSidebar;
 
   // Chat maxWidth: use layout value if explicitly > 0, otherwise always default 720px
   const layoutMaxWidth = layout?.chat?.maxWidth;
@@ -119,6 +149,18 @@ export default function ChatPage() {
   const chatAlign = (layoutAlign && layoutAlign !== "stretch") ? layoutAlign : "center";
 
   const showInlinePanel = hasSidebar && !isMobile;
+
+  // Listen for panel bridge sendMessage events
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const text = (e as CustomEvent).detail;
+      if (typeof text === "string" && text.trim()) {
+        sendMessage(text);
+      }
+    };
+    window.addEventListener("__panel_send_message", handler);
+    return () => window.removeEventListener("__panel_send_message", handler);
+  }, [sendMessage]);
 
   return (
     <div className="flex flex-col h-screen">
@@ -136,9 +178,8 @@ export default function ChatPage() {
         <div
           className="absolute inset-0 flex flex-col min-h-0"
           style={{
-            ...(showInlinePanel && panelPosition === "right" ? { left: `${panelSize}px`, right: `${panelSize}px` } : {}),
-            ...(showInlinePanel && panelPosition === "left" ? { left: `${panelSize}px`, right: `${panelSize}px` } : {}),
-            ...(showInlinePanel && panelPosition === "bottom" ? { bottom: `${panelSize}px` } : {}),
+            ...(showInlinePanel && hasLeftSidebar ? { left: `${panelSize}px` } : {}),
+            ...(showInlinePanel && hasRightSidebar ? { right: `${panelSize}px` } : {}),
           }}
         >
           <ChatMessages
@@ -146,49 +187,58 @@ export default function ChatPage() {
             isStreaming={isStreaming}
             hideTools
             sessionId={sessionId}
+            panels={hasPerPanelPlacement ? inlinePanels : panels}
             hasMore={hasMore}
             onLoadMore={loadMore}
           />
           <ChatInput disabled={isStreaming} onSend={sendMessage} />
         </div>
-        {/* Desktop: profile image on the left */}
-        {showInlinePanel && profileImage && (
+        {/* Desktop: left sidebar (profile + left panels) */}
+        {showInlinePanel && hasLeftSidebar && (
           <div
-            className="absolute top-0 bottom-0 left-0 overflow-y-auto p-4"
+            className="absolute top-0 bottom-0 left-0"
             style={{ width: `${panelSize}px` }}
           >
-            <img
-              src={profileImage}
-              alt="Profile"
-              className="w-full object-cover rounded-xl"
+            <PanelArea
+              panels={sidebarLeftPanels}
+              position="left"
+              size={panelSize}
+              profileImageUrl={profileImage}
+              sessionId={sessionId}
+              panelData={panelData}
+              onSendMessage={sendMessage}
             />
           </div>
         )}
-        {/* Desktop: inline panel on the right */}
-        {showInlinePanel && (
+        {/* Desktop: right sidebar */}
+        {showInlinePanel && hasRightSidebar && (
           <div
-            className={`absolute top-0 bottom-0 ${
-              panelPosition === "left" ? "left-0" : "right-0"
-            } ${panelPosition === "bottom" ? "left-0 right-0 bottom-0 top-auto" : ""}`}
-            style={panelPosition === "bottom" ? { height: `${panelSize}px` } : { width: `${panelSize}px` }}
+            className="absolute top-0 bottom-0 right-0"
+            style={{ width: `${panelSize}px` }}
           >
             <PanelArea
-              panels={panels}
-              position={panelPosition}
+              panels={sidebarRightPanels}
+              position="right"
               size={panelSize}
+              sessionId={sessionId}
+              panelData={panelData}
+              onSendMessage={sendMessage}
             />
           </div>
         )}
       </div>
-      {/* Mobile: slide-over drawer */}
+      {/* Mobile: slide-over drawer (shows all sidebar panels) */}
       {hasSidebar && isMobile && (
         <PanelDrawer
           open={drawerOpen}
           onClose={() => setDrawerOpen(false)}
-          panels={panels}
-          panelPosition={panelPosition}
+          panels={hasPerPanelPlacement ? [...sidebarLeftPanels, ...sidebarRightPanels] : panels}
+          panelPosition="right"
           panelSize={panelSize}
           profileImageUrl={profileImage}
+          sessionId={sessionId}
+          panelData={panelData}
+          onSendMessage={sendMessage}
         />
       )}
     </div>

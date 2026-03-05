@@ -32,7 +32,7 @@ export default function ProfileCard({ name, isPrimary, onEdit, onDelete }: Profi
       )}
       <button
         className="text-sm text-text-dim/40 cursor-pointer ml-0.5
-          opacity-0 group-hover:opacity-100 transition-opacity duration-fast
+          opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-fast
           hover:text-error"
         onClick={(e) => {
           e.stopPropagation();
