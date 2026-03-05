@@ -21,6 +21,7 @@ const PERSONA_ACCENTS = [
 interface Persona {
   name: string;
   displayName: string;
+  hasIcon?: boolean;
 }
 
 interface Session {
@@ -293,6 +294,7 @@ export default function LobbyPage() {
                   key={p.name}
                   name={p.name}
                   displayName={p.displayName}
+                  hasIcon={p.hasIcon}
                   index={i}
                   onSelect={() => handlePersonaClick(p.name, p.displayName, i)}
                   onEdit={() => editPersona(p.name)}

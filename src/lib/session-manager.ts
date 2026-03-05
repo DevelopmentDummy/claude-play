@@ -12,6 +12,7 @@ const SYSTEM_JSON = new Set([
 export interface PersonaInfo {
   name: string; // directory name
   displayName: string; // from persona.md first line or name
+  hasIcon?: boolean;
 }
 
 export interface ProfileInfo {
@@ -169,7 +170,8 @@ export class SessionManager {
             .trim();
           if (firstLine) displayName = firstLine;
         }
-        return { name: d.name, displayName };
+        const hasIcon = fs.existsSync(path.join(dir, d.name, "images", "icon.png"));
+        return { name: d.name, displayName, hasIcon };
       });
   }
 

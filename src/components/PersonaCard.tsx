@@ -12,19 +12,25 @@ const PERSONA_ACCENTS = [
 interface PersonaCardProps {
   name: string;
   displayName: string;
+  hasIcon?: boolean;
   index?: number;
   onSelect: () => void;
   onEdit: () => void;
 }
 
 export default function PersonaCard({
+  name,
   displayName,
+  hasIcon,
   index = 0,
   onSelect,
   onEdit,
 }: PersonaCardProps) {
   const accent = PERSONA_ACCENTS[index % PERSONA_ACCENTS.length];
   const initial = displayName.charAt(0).toUpperCase();
+  const iconUrl = hasIcon
+    ? `/api/personas/${encodeURIComponent(name)}/images?file=icon.png`
+    : null;
 
   return (
     <div
@@ -43,17 +49,26 @@ export default function PersonaCard({
       />
 
       <div className="p-6 pb-5">
-        {/* initial badge */}
-        <div
-          className="w-12 h-12 rounded-xl flex items-center justify-center text-lg font-semibold mb-4"
-          style={{
-            background: `linear-gradient(135deg, ${accent.from.replace(/[\d.]+\)$/, "0.4)")}, transparent)`,
-            color: accent.line,
-            border: `1px solid ${accent.line}33`,
-          }}
-        >
-          {initial}
-        </div>
+        {/* icon or initial badge */}
+        {iconUrl ? (
+          <img
+            src={iconUrl}
+            alt={displayName}
+            className="w-12 h-12 rounded-xl object-cover mb-4"
+            style={{ border: `1px solid ${accent.line}33` }}
+          />
+        ) : (
+          <div
+            className="w-12 h-12 rounded-xl flex items-center justify-center text-lg font-semibold mb-4"
+            style={{
+              background: `linear-gradient(135deg, ${accent.from.replace(/[\d.]+\)$/, "0.4)")}, transparent)`,
+              color: accent.line,
+              border: `1px solid ${accent.line}33`,
+            }}
+          >
+            {initial}
+          </div>
+        )}
 
         <div className="font-medium text-base mb-1 text-text">{displayName}</div>
         <div className="text-xs text-text-dim opacity-70">Start new session</div>

@@ -41,6 +41,11 @@ html, body {
   background-image:
     radial-gradient(ellipse at 20% 50%, rgba(124, 111, 255, 0.04) 0%, transparent 50%),
     radial-gradient(ellipse at 80% 20%, rgba(100, 80, 220, 0.03) 0%, transparent 50%);
+  /* iOS safe area: extend bg behind notch but pad content */
+  padding-top: env(safe-area-inset-top);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 /* ── Scrollbar ────────────────────────────────────── */
