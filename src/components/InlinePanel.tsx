@@ -30,7 +30,10 @@ export default function InlinePanel({ html, sessionId }: InlinePanelProps) {
     for (const oldScript of scripts) {
       oldScript.remove();
       try {
-        const fn = new Function("shadow", oldScript.textContent || "");
+        // Auto-fix: replace document.currentScript.getRootNode() with shadow parameter
+        let code = oldScript.textContent || "";
+        code = code.replace(/document\.currentScript\.getRootNode\(\)/g, "shadow");
+        const fn = new Function("shadow", code);
         fn(shadow);
       } catch (e) {
         console.warn("[InlinePanel] Script error:", e);
