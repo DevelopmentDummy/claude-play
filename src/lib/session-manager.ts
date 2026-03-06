@@ -105,6 +105,8 @@ interface SessionMeta {
 
 interface BuilderMeta {
   claudeSessionId?: string;
+  codexThreadId?: string;
+  provider?: "claude" | "codex";
 }
 
 const CLAUDE_SETTINGS = {
@@ -808,20 +810,42 @@ export class SessionManager {
     return fs.readFileSync(promptPath, "utf-8");
   }
 
-  /** Save builder Claude session ID for resume */
-  saveBuilderSessionId(name: string, claudeSessionId: string): void {
+  /** Save builder session info for resume */
+  saveBuilderSession(name: string, provider: "claude" | "codex", sessionId: string): void {
     const metaPath = path.join(this.getPersonaDir(name), "builder-session.json");
-    const meta: BuilderMeta = { claudeSessionId };
+    let meta: BuilderMeta = {};
+    if (fs.existsSync(metaPath)) {
+      try { meta = JSON.parse(fs.readFileSync(metaPath, "utf-8")); } catch { /* */ }
+    }
+    meta.provider = provider;
+    if (provider === "codex") {
+      meta.codexThreadId = sessionId;
+    } else {
+      meta.claudeSessionId = sessionId;
+    }
     fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), "utf-8");
   }
 
-  /** Get saved builder session ID for resume */
-  getBuilderSessionId(name: string): string | undefined {
+  /** Get saved builder session ID for resume (provider-aware) */
+  getBuilderSessionId(name: string, provider?: "claude" | "codex"): string | undefined {
     const metaPath = path.join(this.getPersonaDir(name), "builder-session.json");
     if (!fs.existsSync(metaPath)) return undefined;
     try {
       const meta: BuilderMeta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
-      return meta.claudeSessionId;
+      const p = provider || meta.provider || "claude";
+      return p === "codex" ? meta.codexThreadId : meta.claudeSessionId;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** Get saved builder provider */
+  getBuilderProvider(name: string): "claude" | "codex" | undefined {
+    const metaPath = path.join(this.getPersonaDir(name), "builder-session.json");
+    if (!fs.existsSync(metaPath)) return undefined;
+    try {
+      const meta: BuilderMeta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
+      return meta.provider;
     } catch {
       return undefined;
     }

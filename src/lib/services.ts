@@ -279,7 +279,7 @@ function initServices(): Services {
     p.on("sessionId", (sessionId: string) => {
       try {
         if (svc.isBuilderActive && svc.builderPersonaName) {
-          sessions.saveBuilderSessionId(svc.builderPersonaName, sessionId);
+          sessions.saveBuilderSession(svc.builderPersonaName, currentProvider, sessionId);
         } else if (svc.currentSessionId) {
           if (currentProvider === "codex") {
             sessions.saveCodexThreadId(svc.currentSessionId, sessionId);
