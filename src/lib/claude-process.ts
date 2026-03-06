@@ -68,7 +68,7 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
 
     const runtimeSystemPrompt = (appendSystemPrompt || "").trim();
     if (runtimeSystemPrompt) {
-      args.push("--append-system-prompt", runtimeSystemPrompt);
+      args.push("--system-prompt", runtimeSystemPrompt);
     }
 
     const mcpConfigPath = path.join(cwd, ".mcp.json");

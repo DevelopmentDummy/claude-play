@@ -51,7 +51,7 @@ export async function POST(req: Request) {
     svc.loadHistory(); // Load from chat-history.json (empty if new)
   }
 
-  // Only resume if provider didn't change
+  // Provider switch = always fresh session (no resume across providers)
   const resumeId = providerChanged ? undefined : svc.sessions.getBuilderSessionId(name, provider);
   const runtimeSystemPrompt = svc.sessions.buildBuilderSystemPrompt(name);
   // If no model specified and provider is codex, use default codex model
