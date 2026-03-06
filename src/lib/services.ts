@@ -1,10 +1,12 @@
 import * as fs from "fs";
 import * as path from "path";
 import { ClaudeProcess } from "./claude-process";
+import { CodexProcess } from "./codex-process";
 import { SessionManager } from "./session-manager";
 import { PanelEngine } from "./panel-engine";
 import { wsBroadcastAll } from "./ws-server";
 import { getDataDir, getAppRoot } from "./data-dir";
+import { AIProvider, providerFromModel } from "./ai-provider";
 
 const DIALOG_OPEN = "<dialog_response>";
 const DIALOG_CLOSE = "</dialog_response>";
@@ -50,6 +52,14 @@ function detectImageToken(toolName: string, input: unknown): string | null {
   return `$IMAGE:images/${filename}$`;
 }
 
+function toolUseKey(name: string, input: unknown): string {
+  try {
+    return `${name}:${JSON.stringify(input)}`;
+  } catch {
+    return `${name}:${String(input)}`;
+  }
+}
+
 /** Extract content inside <dialog_response> tags; returns raw text if no tags found */
 function extractDialog(raw: string): string {
   const parts: string[] = [];
@@ -87,8 +97,12 @@ export interface HistoryMessage {
   tools?: Array<{ name: string; input: unknown }>;
 }
 
+/** Union type for process instances — both share the same EventEmitter interface */
+export type AIProcess = ClaudeProcess | CodexProcess;
+
 export interface Services {
-  claude: ClaudeProcess;
+  claude: AIProcess;
+  provider: AIProvider;
   sessions: SessionManager;
   panels: PanelEngine;
   builderPersonaName: string | null;
@@ -100,6 +114,8 @@ export interface Services {
   addOpeningToHistory: (text: string) => void;
   clearHistory: () => void;
   loadHistory: () => void;
+  /** Switch the AI provider — kills current process, creates new one, rebinds events */
+  switchProvider: (provider: AIProvider) => void;
 }
 
 const HISTORY_FILE = "chat-history.json";
@@ -109,8 +125,13 @@ function broadcast(event: string, data: unknown): void {
   wsBroadcastAll(event, data);
 }
 
+function createProcess(provider: AIProvider): AIProcess {
+  return provider === "codex" ? new CodexProcess() : new ClaudeProcess();
+}
+
 function initServices(): Services {
-  const claude = new ClaudeProcess();
+  let currentProvider: AIProvider = "claude";
+  let proc: AIProcess = createProcess(currentProvider);
   const sessions = new SessionManager(getDataDir(), getAppRoot());
   const panels = new PanelEngine((update) => broadcast("panels:update", update));
 
@@ -118,7 +139,25 @@ function initServices(): Services {
   let segments: string[] = [];
   let tools: Array<{ name: string; input: unknown }> = [];
   let autoImageTokens: Set<string> = new Set();
+  let seenToolKeys: Set<string> = new Set();
+  let sawTextDelta = false;
   let historyId = 0;
+
+  function addToolUse(toolName: string, input: unknown): void {
+    const key = toolUseKey(toolName, input);
+    if (seenToolKeys.has(key)) return;
+    seenToolKeys.add(key);
+
+    tools.push({ name: toolName, input });
+    const imageToken = detectImageToken(toolName, input);
+    if (imageToken && !autoImageTokens.has(imageToken)) {
+      autoImageTokens.add(imageToken);
+      const joined = segments.join("");
+      if (!joined.includes(imageToken)) {
+        segments.push(`\n${imageToken}\n`);
+      }
+    }
+  }
 
   /** Resolve the directory where chat-history.json should live */
   function historyDir(): string | null {
@@ -144,8 +183,120 @@ function initServices(): Services {
     } catch { /* ignore */ }
   }
 
+  /** Bind event listeners to the current AI process */
+  function bindProcessEvents(p: AIProcess): void {
+    p.on("message", (d) => {
+      broadcast("claude:message", d);
+
+      const msg = d as Record<string, unknown>;
+
+      if (msg.type === "stream_event") {
+        const event = msg.event as Record<string, unknown> | undefined;
+        if (!event) return;
+        if (event.type === "content_block_delta") {
+          const delta = event.delta as Record<string, unknown> | undefined;
+          if (delta?.type === "text_delta" && typeof delta.text === "string") {
+            sawTextDelta = true;
+            segments.push(delta.text);
+          }
+        }
+        if (event.type === "content_block_start") {
+          const block = event.content_block as Record<string, unknown> | undefined;
+          if (block?.type === "tool_use") {
+            addToolUse(block.name as string, block.input);
+          }
+        }
+      }
+
+      if (msg.type === "assistant") {
+        const message = msg.message as Record<string, unknown> | undefined;
+        if (!message) return;
+        if (typeof message.content === "string") {
+          if (!sawTextDelta) {
+            segments.push(message.content);
+          }
+        } else if (Array.isArray(message.content)) {
+          for (const block of message.content) {
+            const b = block as Record<string, unknown>;
+            if (b.type === "text") {
+              if (!sawTextDelta && typeof b.text === "string") {
+                segments.push(b.text);
+              }
+            }
+            else if (b.type === "tool_use") {
+              addToolUse(b.name as string, b.input);
+            }
+          }
+        }
+      }
+
+      if (msg.type === "result") {
+        if (!svc.isOOC) {
+          if (segments.length > 0 || tools.length > 0) {
+            const rawContent = segments.join("");
+            const dialogContent = extractDialog(rawContent);
+            if (dialogContent) {
+              svc.chatHistory.push({
+                id: `hist-a-${++historyId}`,
+                role: "assistant",
+                content: dialogContent,
+                tools: tools.length > 0 ? [...tools] : undefined,
+              });
+            }
+          } else if (msg.result) {
+            const result = msg.result as Record<string, unknown>;
+            const text =
+              typeof result === "string" ? result
+              : typeof result.text === "string" ? result.text
+              : null;
+            if (text) {
+              svc.chatHistory.push({
+                id: `hist-a-${++historyId}`,
+                role: "assistant",
+                content: text,
+              });
+            }
+          }
+          saveHistory();
+        }
+        svc.isOOC = false;
+        segments = [];
+        tools = [];
+        autoImageTokens.clear();
+        seenToolKeys.clear();
+        sawTextDelta = false;
+
+        // Force panel refresh at end of turn
+        svc.panels.reload();
+      }
+    });
+
+    p.on("error", (e) => broadcast("claude:error", e));
+    p.on("status", (s) => broadcast("claude:status", s));
+    p.on("exit", () => broadcast("claude:status", "disconnected"));
+
+    // Capture session ID and persist it
+    p.on("sessionId", (sessionId: string) => {
+      try {
+        if (svc.isBuilderActive && svc.builderPersonaName) {
+          sessions.saveBuilderSessionId(svc.builderPersonaName, sessionId);
+        } else if (svc.currentSessionId) {
+          if (currentProvider === "codex") {
+            sessions.saveCodexThreadId(svc.currentSessionId, sessionId);
+          } else {
+            sessions.saveClaudeSessionId(svc.currentSessionId, sessionId);
+          }
+        }
+      } catch (err) {
+        console.error("[services] ERROR saving sessionId:", err);
+      }
+    });
+  }
+
   const svc: Services = {
-    claude,
+    get claude() { return proc; },
+    get provider() { return currentProvider; },
+    set provider(p: AIProvider) { currentProvider = p; },
     sessions,
     panels,
     builderPersonaName: null,
@@ -174,7 +325,8 @@ function initServices(): Services {
       segments = [];
       tools = [];
       autoImageTokens.clear();
-      // Delete history file if exists
+      seenToolKeys.clear();
+      sawTextDelta = false;
       const dir = historyDir();
       if (dir) {
         const fp = path.join(dir, HISTORY_FILE);
@@ -196,120 +348,18 @@ function initServices(): Services {
         svc.chatHistory = [];
       }
     },
+    switchProvider(newProvider: AIProvider) {
+      if (newProvider === currentProvider) return;
+      proc.kill();
+      proc.removeAllListeners();
+      currentProvider = newProvider;
+      proc = createProcess(newProvider);
+      bindProcessEvents(proc);
+    },
   };
 
-  // Claude events → WS broadcast + history accumulation
-  claude.on("message", (d) => {
-    broadcast("claude:message", d);
-
-    const msg = d as Record<string, unknown>;
-
-    if (msg.type === "stream_event") {
-      const event = msg.event as Record<string, unknown> | undefined;
-      if (!event) return;
-      if (event.type === "content_block_delta") {
-        const delta = event.delta as Record<string, unknown> | undefined;
-        if (delta?.type === "text_delta" && typeof delta.text === "string") {
-          segments.push(delta.text);
-        }
-      }
-      if (event.type === "content_block_start") {
-        const block = event.content_block as Record<string, unknown> | undefined;
-        if (block?.type === "tool_use") {
-          const toolName = block.name as string;
-          tools.push({ name: toolName, input: block.input });
-          const imageToken = detectImageToken(toolName, block.input);
-          if (imageToken && !autoImageTokens.has(imageToken)) {
-            autoImageTokens.add(imageToken);
-            const joined = segments.join("");
-            if (!joined.includes(imageToken)) {
-              segments.push(`\n${imageToken}\n`);
-            }
-          }
-        }
-      }
-    }
-
-    if (msg.type === "assistant") {
-      const message = msg.message as Record<string, unknown> | undefined;
-      if (!message) return;
-      if (typeof message.content === "string") {
-        segments.push(message.content);
-      } else if (Array.isArray(message.content)) {
-        for (const block of message.content) {
-          const b = block as Record<string, unknown>;
-          if (b.type === "text") segments.push(b.text as string);
-          else if (b.type === "tool_use") {
-            const toolName = b.name as string;
-            tools.push({ name: toolName, input: b.input });
-            const imageToken = detectImageToken(toolName, b.input);
-            if (imageToken && !autoImageTokens.has(imageToken)) {
-              autoImageTokens.add(imageToken);
-              const joined = segments.join("");
-              if (!joined.includes(imageToken)) {
-                segments.push(`\n${imageToken}\n`);
-              }
-            }
-          }
-        }
-      }
-    }
-
-    if (msg.type === "result") {
-      if (!svc.isOOC) {
-        if (segments.length > 0 || tools.length > 0) {
-          const rawContent = segments.join("");
-          const dialogContent = extractDialog(rawContent);
-          if (dialogContent) {
-            svc.chatHistory.push({
-              id: `hist-a-${++historyId}`,
-              role: "assistant",
-              content: dialogContent,
-              tools: tools.length > 0 ? [...tools] : undefined,
-            });
-          }
-        } else if (msg.result) {
-          const result = msg.result as Record<string, unknown>;
-          const text =
-            typeof result === "string" ? result
-            : typeof result.text === "string" ? result.text
-            : null;
-          if (text) {
-            svc.chatHistory.push({
-              id: `hist-a-${++historyId}`,
-              role: "assistant",
-              content: text,
-            });
-          }
-        }
-        saveHistory();
-      }
-      svc.isOOC = false;
-      segments = [];
-      tools = [];
-      autoImageTokens.clear();
-
-      // Force panel refresh at end of turn — picks up any file changes Claude made
-      svc.panels.reload();
-    }
-  });
-
-  claude.on("error", (e) => broadcast("claude:error", e));
-  claude.on("status", (s) => broadcast("claude:status", s));
-  claude.on("exit", () => broadcast("claude:status", "disconnected"));
-
-  // Capture Claude session ID and persist it
-  claude.on("sessionId", (claudeSessionId: string) => {
-    try {
-      if (svc.isBuilderActive && svc.builderPersonaName) {
-        sessions.saveBuilderSessionId(svc.builderPersonaName, claudeSessionId);
-      } else if (svc.currentSessionId) {
-        sessions.saveClaudeSessionId(svc.currentSessionId, claudeSessionId);
-      }
-    } catch (err) {
-      console.error("[services] ERROR saving sessionId:", err);
-    }
-  });
+  // Bind events on initial process
+  bindProcessEvents(proc);
 
   return svc;
 }

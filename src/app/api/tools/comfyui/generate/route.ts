@@ -3,6 +3,47 @@ import * as path from "path";
 import { getServices } from "@/lib/services";
 import { ComfyUIClient } from "@/lib/comfyui-client";
 
+const COMFY_QUEUE_KEY = "__claude_bridge_comfy_queue__";
+interface ComfyQueueState {
+  running: number;
+  jobs: Array<() => Promise<void>>;
+}
+
+function getComfyQueueState(): ComfyQueueState {
+  const g = globalThis as unknown as Record<string, ComfyQueueState>;
+  if (!g[COMFY_QUEUE_KEY]) {
+    g[COMFY_QUEUE_KEY] = { running: 0, jobs: [] };
+  }
+  return g[COMFY_QUEUE_KEY];
+}
+
+function maxComfyConcurrency(): number {
+  const parsed = parseInt(process.env.COMFYUI_MAX_CONCURRENCY || "1", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+}
+
+function scheduleComfyJob(job: () => Promise<void>): void {
+  const state = getComfyQueueState();
+  const max = maxComfyConcurrency();
+
+  const runNext = () => {
+    while (state.running < max && state.jobs.length > 0) {
+      const next = state.jobs.shift();
+      if (!next) return;
+      state.running += 1;
+      next()
+        .catch(() => { /* handled in caller */ })
+        .finally(() => {
+          state.running -= 1;
+          runNext();
+        });
+    }
+  };
+
+  state.jobs.push(job);
+  runNext();
+}
+
 export async function POST(req: Request) {
   const svc = getServices();
 
@@ -68,33 +109,31 @@ export async function POST(req: Request) {
 
   const resultPath = `images/${safeName}`;
 
-  // Background generation (fire-and-forget)
-  const generatePromise = body.raw
-    ? client.generateRaw({
-        prompt: body.raw,
-        filename: safeName,
-        sessionDir: targetDir,
-        extraFiles: body.extraFiles,
-      })
-    : client.generate({
-        workflow: body.workflow!,
-        params: body.params || {},
-        filename: safeName,
-        sessionDir: targetDir,
-        extraFiles: body.extraFiles,
-      });
-
-  generatePromise
-    .then((result) => {
+  scheduleComfyJob(async () => {
+    try {
+      const result = body.raw
+        ? await client.generateRaw({
+            prompt: body.raw,
+            filename: safeName,
+            sessionDir: targetDir,
+            extraFiles: body.extraFiles,
+          })
+        : await client.generate({
+            workflow: body.workflow!,
+            params: body.params || {},
+            filename: safeName,
+            sessionDir: targetDir,
+            extraFiles: body.extraFiles,
+          });
       if (result.success) {
         console.log(`[comfyui] Generated: ${result.filepath}`);
       } else {
         console.error(`[comfyui] Generation failed: ${result.error}`);
       }
-    })
-    .catch((err) => {
+    } catch (err) {
       console.error(`[comfyui] Unexpected error:`, err);
-    });
+    }
+  });
 
   return NextResponse.json({
     status: "queued",

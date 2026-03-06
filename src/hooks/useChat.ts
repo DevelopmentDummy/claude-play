@@ -10,6 +10,14 @@ export interface ChatMessage {
   ooc?: boolean;
 }
 
+function toolUseKey(name: string, input: unknown): string {
+  try {
+    return `${name}:${JSON.stringify(input)}`;
+  } catch {
+    return `${name}:${String(input)}`;
+  }
+}
+
 function sanitizeFilename(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) return "";
@@ -48,6 +56,8 @@ export function useChat() {
   const segmentsRef = useRef<string[]>([]);
   const toolsRef = useRef<Array<{ name: string; input: unknown }>>([]);
   const autoImageTokensRef = useRef<Set<string>>(new Set());
+  const seenToolKeysRef = useRef<Set<string>>(new Set());
+  const sawTextDeltaRef = useRef(false);
   const msgIdRef = useRef(0);
   const totalRef = useRef(0);
   const loadedOffsetRef = useRef(0);
@@ -81,6 +91,9 @@ export function useChat() {
 
   const addToolUse = useCallback(
     (name: string, input: unknown) => {
+      const key = toolUseKey(name, input);
+      if (seenToolKeysRef.current.has(key)) return;
+      seenToolKeysRef.current.add(key);
       toolsRef.current.push({ name, input });
       const imageToken = detectImageToken(name, input);
       if (imageToken && !autoImageTokensRef.current.has(imageToken)) {
@@ -116,6 +129,8 @@ export function useChat() {
     segmentsRef.current = [];
     toolsRef.current = [];
     autoImageTokensRef.current.clear();
+    seenToolKeysRef.current.clear();
+    sawTextDeltaRef.current = false;
     oocRef.current = false;
     setIsStreaming(false);
   }, []);
@@ -133,6 +148,7 @@ export function useChat() {
         if (event.type === "content_block_delta") {
           const delta = event.delta as Record<string, unknown> | undefined;
           if (delta?.type === "text_delta" && typeof delta.text === "string") {
+            sawTextDeltaRef.current = true;
             appendAssistantText(delta.text);
           }
         }
@@ -149,11 +165,17 @@ export function useChat() {
         const message = msg.message as Record<string, unknown> | undefined;
         if (!message) return;
         if (typeof message.content === "string") {
-          appendAssistantText(message.content);
+          if (!sawTextDeltaRef.current) {
+            appendAssistantText(message.content);
+          }
         } else if (Array.isArray(message.content)) {
           for (const block of message.content) {
             const b = block as Record<string, unknown>;
-            if (b.type === "text") appendAssistantText(b.text as string);
+            if (b.type === "text") {
+              if (!sawTextDeltaRef.current && typeof b.text === "string") {
+                appendAssistantText(b.text);
+              }
+            }
             else if (b.type === "tool_use") addToolUse(b.name as string, b.input);
           }
         }
@@ -182,6 +204,7 @@ export function useChat() {
     (text: string) => {
       const isOOC = text.startsWith("OOC:");
       oocRef.current = isOOC;
+      sawTextDeltaRef.current = false;
       addUserMessage(text, isOOC);
       setIsStreaming(true);
       setError(null);
@@ -217,6 +240,8 @@ export function useChat() {
     segmentsRef.current = [];
     toolsRef.current = [];
     autoImageTokensRef.current.clear();
+    seenToolKeysRef.current.clear();
+    sawTextDeltaRef.current = false;
   }, []);
 
   const loadHistory = useCallback(async (): Promise<number> => {

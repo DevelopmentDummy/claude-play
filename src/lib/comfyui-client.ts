@@ -42,6 +42,17 @@ interface WorkflowMeta {
   >;
 }
 
+interface RetryOptions {
+  attempts?: number;
+  baseDelayMs?: number;
+  timeoutMs?: number;
+}
+
+interface QueueSnapshot {
+  pendingIds: string[];
+  runningIds: string[];
+}
+
 export class ComfyUIClient {
   private config: ComfyUIConfig;
   private workflowsDir: string;
@@ -64,14 +75,205 @@ export class ComfyUIClient {
     );
   }
 
+  private isTransientNetworkError(err: unknown): boolean {
+    if (!err || typeof err !== "object") return false;
+    const e = err as { code?: string; name?: string; cause?: { code?: string } };
+    const code = e.code || e.cause?.code || "";
+    if (e.name === "AbortError") return true;
+    return [
+      "ENOBUFS",
+      "ECONNRESET",
+      "ECONNREFUSED",
+      "ETIMEDOUT",
+      "EAI_AGAIN",
+      "UND_ERR_CONNECT_TIMEOUT",
+      "UND_ERR_SOCKET",
+      "UND_ERR_HEADERS_TIMEOUT",
+      "UND_ERR_BODY_TIMEOUT",
+    ].includes(code);
+  }
+
+  private async sleep(ms: number): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  private async fetchWithRetry(
+    url: string,
+    init: RequestInit = {},
+    options: RetryOptions = {}
+  ): Promise<Response> {
+    const attempts = options.attempts ?? 4;
+    const baseDelayMs = options.baseDelayMs ?? 250;
+    const timeoutMs = options.timeoutMs ?? 30_000;
+
+    let lastErr: unknown = null;
+    for (let i = 0; i < attempts; i++) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const res = await fetch(url, {
+          ...init,
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+        return res;
+      } catch (err) {
+        clearTimeout(timeout);
+        lastErr = err;
+        const transient = this.isTransientNetworkError(err);
+        if (!transient || i === attempts - 1) {
+          throw err;
+        }
+        const jitter = Math.floor(Math.random() * 120);
+        const delay = baseDelayMs * Math.pow(2, i) + jitter;
+        console.warn(
+          `[comfyui] Transient fetch error (${i + 1}/${attempts}) for ${url}: ${
+            err instanceof Error ? err.message : String(err)
+          }`
+        );
+        await this.sleep(delay);
+      }
+    }
+
+    throw lastErr instanceof Error ? lastErr : new Error("fetchWithRetry failed");
+  }
+
+  private extractPromptIds(entries: unknown): string[] {
+    if (!Array.isArray(entries)) return [];
+    const ids: string[] = [];
+    for (const entry of entries) {
+      if (typeof entry === "string") {
+        ids.push(entry);
+        continue;
+      }
+      if (Array.isArray(entry) && typeof entry[0] === "string") {
+        ids.push(entry[0]);
+        continue;
+      }
+      if (entry && typeof entry === "object") {
+        const obj = entry as Record<string, unknown>;
+        const id = obj.prompt_id || obj.id;
+        if (typeof id === "string") ids.push(id);
+      }
+    }
+    return ids;
+  }
+
+  async getQueueSnapshot(): Promise<QueueSnapshot | null> {
+    try {
+      const res = await this.fetchWithRetry(
+        `${this.baseUrl}/queue`,
+        {},
+        { attempts: 3, timeoutMs: 10_000, baseDelayMs: 150 }
+      );
+      if (!res.ok) return null;
+      const data = (await res.json()) as Record<string, unknown>;
+      const pending = this.extractPromptIds(data.queue_pending);
+      const running = this.extractPromptIds(data.queue_running);
+      return { pendingIds: pending, runningIds: running };
+    } catch {
+      return null;
+    }
+  }
+
+  async clearPendingQueue(pendingIds: string[]): Promise<boolean> {
+    // Try ComfyUI clear mode first
+    try {
+      const clearRes = await this.fetchWithRetry(
+        `${this.baseUrl}/queue`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ clear: true }),
+        },
+        { attempts: 3, timeoutMs: 10_000, baseDelayMs: 150 }
+      );
+      if (clearRes.ok) return true;
+    } catch { /* ignore and fall back */ }
+
+    // Fallback: delete specific prompt IDs if supported by server build
+    if (pendingIds.length === 0) return false;
+    try {
+      const delRes = await this.fetchWithRetry(
+        `${this.baseUrl}/queue`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ delete: pendingIds }),
+        },
+        { attempts: 3, timeoutMs: 10_000, baseDelayMs: 150 }
+      );
+      return delRes.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  async cancelPrompt(promptId: string): Promise<boolean> {
+    try {
+      const res = await this.fetchWithRetry(
+        `${this.baseUrl}/queue`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ delete: [promptId] }),
+        },
+        { attempts: 3, timeoutMs: 10_000, baseDelayMs: 150 }
+      );
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  async interruptRunning(): Promise<boolean> {
+    try {
+      const res = await this.fetchWithRetry(
+        `${this.baseUrl}/interrupt`,
+        { method: "POST" },
+        { attempts: 2, timeoutMs: 10_000, baseDelayMs: 150 }
+      );
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  private async reconcileQueueBeforeSubmit(): Promise<void> {
+    const autoClear = (process.env.COMFYUI_AUTO_CLEAR_QUEUE || "true").toLowerCase() !== "false";
+    if (!autoClear) return;
+
+    const maxPending = parseInt(process.env.COMFYUI_MAX_PENDING || "4", 10);
+    const maxPendingSafe = Number.isFinite(maxPending) && maxPending >= 0 ? maxPending : 4;
+    const autoInterrupt = (process.env.COMFYUI_AUTO_INTERRUPT_RUNNING || "false").toLowerCase() === "true";
+
+    const snapshot = await this.getQueueSnapshot();
+    if (!snapshot) return;
+
+    if (snapshot.pendingIds.length > maxPendingSafe) {
+      console.warn(
+        `[comfyui] Queue pending ${snapshot.pendingIds.length} > ${maxPendingSafe}. Clearing pending jobs.`
+      );
+      const cleared = await this.clearPendingQueue(snapshot.pendingIds);
+      if (!cleared) {
+        console.warn("[comfyui] Failed to clear pending queue.");
+      }
+
+      if (autoInterrupt && snapshot.runningIds.length > 0) {
+        console.warn("[comfyui] Interrupting running job due to queue pressure.");
+        await this.interruptRunning();
+      }
+    }
+  }
+
   /** Query ComfyUI for available checkpoints and LoRAs */
   async getAvailableModels(): Promise<{ checkpoints: string[]; loras: string[] }> {
     if (this.availableModelsCache) return this.availableModelsCache;
 
     try {
       const [ckptRes, loraRes] = await Promise.all([
-        fetch(`${this.baseUrl}/object_info/CheckpointLoaderSimple`),
-        fetch(`${this.baseUrl}/object_info/LoraLoader`),
+        this.fetchWithRetry(`${this.baseUrl}/object_info/CheckpointLoaderSimple`, {}, { attempts: 3, timeoutMs: 10_000 }),
+        this.fetchWithRetry(`${this.baseUrl}/object_info/LoraLoader`, {}, { attempts: 3, timeoutMs: 10_000 }),
       ]);
 
       let checkpoints: string[] = [];
@@ -309,7 +511,11 @@ export class ComfyUIClient {
 
     while (Date.now() - start < timeout) {
       try {
-        const res = await fetch(`${this.baseUrl}/history/${promptId}`);
+        const res = await this.fetchWithRetry(
+          `${this.baseUrl}/history/${promptId}`,
+          {},
+          { attempts: 3, timeoutMs: 10_000, baseDelayMs: 150 }
+        );
         if (res.ok) {
           const data = (await res.json()) as Record<
             string,
@@ -359,12 +565,14 @@ export class ComfyUIClient {
     sessionDir: string,
     extraFiles?: Record<string, string>
   ): Promise<GenerateResult> {
+    await this.reconcileQueueBeforeSubmit();
+
     // POST /prompt to ComfyUI
-    const queueRes = await fetch(`${this.baseUrl}/prompt`, {
+    const queueRes = await this.fetchWithRetry(`${this.baseUrl}/prompt`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prompt }),
-    });
+    }, { attempts: 5, timeoutMs: 30_000, baseDelayMs: 300 });
 
     if (!queueRes.ok) {
       const errText = await queueRes.text();
@@ -377,6 +585,7 @@ export class ComfyUIClient {
     // Poll /history until complete
     const history = await this.pollHistory(promptId);
     if (!history) {
+      await this.cancelPrompt(promptId);
       return { success: false, error: "Timeout waiting for ComfyUI generation" };
     }
 
@@ -426,8 +635,10 @@ export class ComfyUIClient {
 
   private async downloadImage(filename: string): Promise<Buffer | null> {
     try {
-      const res = await fetch(
-        `${this.baseUrl}/view?filename=${encodeURIComponent(filename)}`
+      const res = await this.fetchWithRetry(
+        `${this.baseUrl}/view?filename=${encodeURIComponent(filename)}`,
+        {},
+        { attempts: 4, timeoutMs: 20_000, baseDelayMs: 200 }
       );
       if (!res.ok) return null;
       return Buffer.from(await res.arrayBuffer());

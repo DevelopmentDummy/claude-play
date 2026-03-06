@@ -122,7 +122,13 @@ function extractDialogResponseLive(raw: string): string {
   return tail ? `${tail}\n\n${tokens.join("\n")}` : tokens.join("\n");
 }
 
-function renderInline(text: string, keyPrefix: string, sessionId?: string, panels?: PanelInfo[]): React.ReactNode[] {
+function renderInline(
+  text: string,
+  keyPrefix: string,
+  sessionId?: string,
+  panels?: PanelInfo[],
+  onMediaReady?: () => void
+): React.ReactNode[] {
   const regex = /(\$PANEL:[^$]+\$|\$IMAGE:[^$]+\$|\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`|\u2018[^\u2019]+\u2019|'[^']+['''])/g;
   const nodes: React.ReactNode[] = [];
   let lastIndex = 0;
@@ -157,6 +163,7 @@ function renderInline(text: string, keyPrefix: string, sessionId?: string, panel
           key={`${keyPrefix}-img-${match.index}`}
           sessionId={sessionId}
           path={imgPath}
+          onReady={onMediaReady}
         />
       );
     } else if (m.startsWith("**") && m.endsWith("**")) {
@@ -210,7 +217,12 @@ function renderInline(text: string, keyPrefix: string, sessionId?: string, panel
   return nodes;
 }
 
-function renderMarkdown(text: string, sessionId?: string, panels?: PanelInfo[]): React.ReactNode[] {
+function renderMarkdown(
+  text: string,
+  sessionId?: string,
+  panels?: PanelInfo[],
+  onMediaReady?: () => void
+): React.ReactNode[] {
   const parts = text.split(/(```[\s\S]*?```)/g);
   const nodes: React.ReactNode[] = [];
 
@@ -228,7 +240,7 @@ function renderMarkdown(text: string, sessionId?: string, panels?: PanelInfo[]):
         </pre>
       );
     } else {
-      nodes.push(...renderInline(part, `${i}`, sessionId, panels));
+      nodes.push(...renderInline(part, `${i}`, sessionId, panels, onMediaReady));
     }
   });
 
@@ -261,36 +273,97 @@ export default function ChatMessages({
   onLoadMore,
 }: ChatMessagesProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLElement>(null);
   const isLoadingMore = useRef(false);
   const prevScrollHeightRef = useRef(0);
   const shouldAutoScroll = useRef(true);
   const initialScrollDone = useRef(false);
+  const programmaticScrollUntilRef = useRef(0);
+  const lastScrollTopRef = useRef(0);
+  const lastScrollHeightRef = useRef(0);
   const [loadingMore, setLoadingMore] = useState(false);
+  const bottomThreshold = 120;
+
+  const scrollToBottom = useCallback(() => {
+    programmaticScrollUntilRef.current = Date.now() + 400;
+    bottomRef.current?.scrollIntoView({ behavior: "auto" });
+  }, []);
 
   // Auto-scroll to bottom when new messages arrive (not when loading older)
   useEffect(() => {
     if (shouldAutoScroll.current) {
-      bottomRef.current?.scrollIntoView({ behavior: "instant" });
+      scrollToBottom();
       // Mark initial scroll as done after first render with messages
       if (messages.length > 0) {
-        requestAnimationFrame(() => { initialScrollDone.current = true; });
+        requestAnimationFrame(() => {
+          initialScrollDone.current = true;
+          const el = scrollRef.current;
+          if (el) {
+            lastScrollTopRef.current = el.scrollTop;
+            lastScrollHeightRef.current = el.scrollHeight;
+          }
+        });
       }
     }
-  }, [messages, isStreaming]);
+  }, [messages, isStreaming, scrollToBottom]);
+
+  // Keep bottom stickiness when content height changes after render
+  // (e.g. image finishes loading and expands the bubble).
+  useEffect(() => {
+    const target = contentRef.current;
+    if (!target) return;
+
+    let rafId: number | null = null;
+    const observer = new ResizeObserver(() => {
+      if (!shouldAutoScroll.current) return;
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        scrollToBottom();
+      });
+    });
+
+    observer.observe(target);
+    return () => {
+      observer.disconnect();
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    };
+  }, [scrollToBottom]);
 
   // Restore scroll position after prepending older messages
   useEffect(() => {
     if (isLoadingMore.current && scrollRef.current) {
       const newScrollHeight = scrollRef.current.scrollHeight;
       scrollRef.current.scrollTop = newScrollHeight - prevScrollHeightRef.current;
+      lastScrollTopRef.current = scrollRef.current.scrollTop;
+      lastScrollHeightRef.current = scrollRef.current.scrollHeight;
       isLoadingMore.current = false;
     }
   }, [messages]);
 
   const handleScroll = useCallback(async () => {
     const el = scrollRef.current;
-    if (!el || !hasMore || !onLoadMore || isLoadingMore.current) return;
+    if (!el) return;
+
+    // Only treat user-driven scrolling as a reason to disable bottom stickiness.
+    // Ignore programmatic scrolls and pure content-height growth.
+    if (!isLoadingMore.current) {
+      const now = Date.now();
+      const isProgrammatic = now < programmaticScrollUntilRef.current;
+      const topChanged = Math.abs(el.scrollTop - lastScrollTopRef.current) > 1;
+      const heightChanged = el.scrollHeight !== lastScrollHeightRef.current;
+      const looksLikeContentGrowth = !topChanged && heightChanged;
+
+      if (!isProgrammatic && !looksLikeContentGrowth) {
+        const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+        shouldAutoScroll.current = distanceFromBottom < bottomThreshold;
+      }
+
+      lastScrollTopRef.current = el.scrollTop;
+      lastScrollHeightRef.current = el.scrollHeight;
+    }
+
+    if (!hasMore || !onLoadMore || isLoadingMore.current) return;
     // Don't trigger until initial scroll-to-bottom is done
     if (!initialScrollDone.current) return;
 
@@ -302,9 +375,16 @@ export default function ChatMessages({
       setLoadingMore(true);
       await onLoadMore();
       setLoadingMore(false);
-      requestAnimationFrame(() => { shouldAutoScroll.current = true; });
+      requestAnimationFrame(() => {
+        const cur = scrollRef.current;
+        if (!cur) return;
+        const distanceFromBottom = cur.scrollHeight - cur.scrollTop - cur.clientHeight;
+        shouldAutoScroll.current = distanceFromBottom < bottomThreshold;
+        lastScrollTopRef.current = cur.scrollTop;
+        lastScrollHeightRef.current = cur.scrollHeight;
+      });
     }
-  }, [hasMore, onLoadMore]);
+  }, [hasMore, onLoadMore, bottomThreshold]);
 
   const style: React.CSSProperties = {};
   if (maxWidth) style.maxWidth = `${maxWidth}px`;
@@ -314,6 +394,10 @@ export default function ChatMessages({
   }
 
   const lastIdx = messages.length - 1;
+  const handleMediaReady = useCallback(() => {
+    if (!shouldAutoScroll.current) return;
+    scrollToBottom();
+  }, [scrollToBottom]);
 
   return (
     <main
@@ -322,12 +406,13 @@ export default function ChatMessages({
       style={style}
       onScroll={handleScroll}
     >
-      {loadingMore && (
-        <div className="flex justify-center py-2">
-          <span className="text-xs text-text-dim animate-pulse">Loading older messages...</span>
-        </div>
-      )}
-      {messages.map((msg, idx) => {
+      <div ref={contentRef} className="flex flex-col gap-3">
+        {loadingMore && (
+          <div className="flex justify-center py-2">
+            <span className="text-xs text-text-dim animate-pulse">Loading older messages...</span>
+          </div>
+        )}
+        {messages.map((msg, idx) => {
         const isLastAssistant =
           isStreaming && idx === lastIdx && msg.role === "assistant";
 
@@ -362,7 +447,7 @@ export default function ChatMessages({
             {msg.ooc && (
               <div className="text-[10px] font-semibold text-yellow-500/70 uppercase tracking-wider mb-1">OOC</div>
             )}
-            {renderMarkdown(displayContent, sessionId, panels)}
+            {renderMarkdown(displayContent, sessionId, panels, handleMediaReady)}
             {isLastAssistant && <StreamingDots />}
             {!hideTools &&
               msg.tools?.map((tool, i) => (
@@ -370,11 +455,12 @@ export default function ChatMessages({
               ))}
           </div>
         );
-      })}
-      {isStreaming && messages[lastIdx]?.role !== "assistant" && (
-        <ThinkingIndicator />
-      )}
-      <div ref={bottomRef} />
+        })}
+        {isStreaming && messages[lastIdx]?.role !== "assistant" && (
+          <ThinkingIndicator />
+        )}
+        <div ref={bottomRef} />
+      </div>
     </main>
   );
 }

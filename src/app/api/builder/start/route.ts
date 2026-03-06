@@ -3,9 +3,12 @@ import * as fs from "fs";
 import * as path from "path";
 import { getServices } from "@/lib/services";
 import { getAppRoot } from "@/lib/data-dir";
+import { providerFromModel } from "@/lib/ai-provider";
 
 export async function POST(req: Request) {
-  const { name } = (await req.json()) as { name: string };
+  const body = (await req.json()) as { name: string; model?: string };
+  const { name } = body;
+  const model = body.model || undefined;
   const svc = getServices();
 
   svc.claude.kill();
@@ -18,9 +21,10 @@ export async function POST(req: Request) {
   svc.currentSessionId = null;
   svc.clearHistory();
 
-  // Copy builder prompt as CLAUDE.md
+  // Copy builder prompt as both CLAUDE.md and AGENTS.md
   const builderPrompt = svc.sessions.getBuilderPrompt();
   fs.writeFileSync(path.join(personaDir, "CLAUDE.md"), builderPrompt, "utf-8");
+  fs.writeFileSync(path.join(personaDir, "AGENTS.md"), builderPrompt, "utf-8");
 
   // Copy panel-spec.md
   const panelSpecSrc = path.join(getAppRoot(), "panel-spec.md");
@@ -28,8 +32,14 @@ export async function POST(req: Request) {
     fs.copyFileSync(panelSpecSrc, path.join(personaDir, "panel-spec.md"));
   }
 
-  const runtimeSystemPrompt = svc.sessions.buildBuilderSystemPrompt(name);
-  svc.claude.spawn(personaDir, undefined, undefined, runtimeSystemPrompt);
+  // Switch provider if needed
+  const provider = providerFromModel(model || "");
+  if (provider !== svc.provider) {
+    svc.switchProvider(provider);
+  }
 
-  return NextResponse.json({ name, dir: personaDir });
+  const runtimeSystemPrompt = svc.sessions.buildBuilderSystemPrompt(name);
+  svc.claude.spawn(personaDir, undefined, model, runtimeSystemPrompt);
+
+  return NextResponse.json({ name, dir: personaDir, provider });
 }

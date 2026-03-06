@@ -33,6 +33,7 @@ export interface SessionInfo {
   title: string;
   createdAt: string;
   hasIcon?: boolean;
+  model?: string;
 }
 
 export interface DataFileInfo {
@@ -97,6 +98,7 @@ interface SessionMeta {
   title: string;
   createdAt: string;
   claudeSessionId?: string;
+  codexThreadId?: string;
   profileSlug?: string;
   model?: string;
 }
@@ -122,7 +124,8 @@ const CLAUDE_SETTINGS = {
     ],
   },
 };
-const SERVICE_SESSION_GUIDE_FILES = ["session-primer.yaml", "session-shared.md"] as const;
+const SERVICE_SESSION_GUIDE_FILES_CLAUDE = ["session-primer.yaml", "session-shared.md"] as const;
+const SERVICE_SESSION_GUIDE_FILES_CODEX = ["session-primer-codex.yaml", "session-shared.md"] as const;
 const BUILDER_GUIDE_FILES = ["builder-primer.yaml"] as const;
 const MCP_CONFIG_FILE = ".mcp.json";
 const CLAUDE_MCP_SERVER_NAME = "claude_bridge";
@@ -431,11 +434,11 @@ export class SessionManager {
     const SKIP_FILES = new Set(["builder-session.json", "panel-spec.md", "skills", ".claude", "CLAUDE.md", "session-instructions.md", "chat-history.json"]);
     this.copyDirRecursive(personaDir, sessionDir, SKIP_FILES);
 
-    // Copy session-instructions.md as CLAUDE.md for the session
+    // Copy session-instructions.md as both CLAUDE.md and AGENTS.md for the session
     const sessionInstructionsSrc = path.join(personaDir, "session-instructions.md");
-    const sessionClaudeMd = path.join(sessionDir, "CLAUDE.md");
     if (fs.existsSync(sessionInstructionsSrc)) {
-      fs.copyFileSync(sessionInstructionsSrc, sessionClaudeMd);
+      fs.copyFileSync(sessionInstructionsSrc, path.join(sessionDir, "CLAUDE.md"));
+      fs.copyFileSync(sessionInstructionsSrc, path.join(sessionDir, "AGENTS.md"));
     }
 
     // Write session metadata
@@ -460,27 +463,29 @@ export class SessionManager {
       fs.writeFileSync(memoryPath, "", "utf-8");
     }
 
-    // If profile is provided, inject user info into CLAUDE.md
+    // If profile is provided, inject user info into both instruction files
     if (profile) {
-      const claudeMdPath = path.join(sessionDir, "CLAUDE.md");
-      if (fs.existsSync(claudeMdPath)) {
-        const existing = fs.readFileSync(claudeMdPath, "utf-8");
-        const userSection = `\n\n## 사용자 정보\n사용자의 이름: ${profile.name}\n${profile.description}\n`;
-        fs.writeFileSync(claudeMdPath, existing + userSection, "utf-8");
+      const userSection = `\n\n## 사용자 정보\n사용자의 이름: ${profile.name}\n${profile.description}\n`;
+      for (const file of ["CLAUDE.md", "AGENTS.md"]) {
+        const mdPath = path.join(sessionDir, file);
+        if (fs.existsSync(mdPath)) {
+          const existing = fs.readFileSync(mdPath, "utf-8");
+          fs.writeFileSync(mdPath, existing + userSection, "utf-8");
+        }
       }
     }
 
-    // If opening.md exists, append opening context to CLAUDE.md
+    // If opening.md exists, append opening context to both instruction files
     const openingPath = path.join(sessionDir, "opening.md");
     if (fs.existsSync(openingPath)) {
       const openingContent = fs.readFileSync(openingPath, "utf-8").trim();
       if (openingContent) {
-        const claudeMdPath = path.join(sessionDir, "CLAUDE.md");
-        const existing = fs.existsSync(claudeMdPath)
-          ? fs.readFileSync(claudeMdPath, "utf-8")
-          : "";
         const appendix = `\n\n## 오프닝 메시지\n아래 메시지는 세션 시작 시 사용자에게 이미 표시되었다. 이 메시지를 반복하지 마라.\n\n${openingContent}\n`;
-        fs.writeFileSync(claudeMdPath, existing + appendix, "utf-8");
+        for (const file of ["CLAUDE.md", "AGENTS.md"]) {
+          const mdPath = path.join(sessionDir, file);
+          const existing = fs.existsSync(mdPath) ? fs.readFileSync(mdPath, "utf-8") : "";
+          fs.writeFileSync(mdPath, existing + appendix, "utf-8");
+        }
       }
     }
 
@@ -520,7 +525,12 @@ export class SessionManager {
           );
           const iconPath = path.join(dir, d.name, "images", "icon.png");
           const hasIcon = fs.existsSync(iconPath);
-          return { id: d.name, ...meta, ...(hasIcon ? { hasIcon: true } : {}) };
+          return {
+            id: d.name,
+            ...meta,
+            ...(hasIcon ? { hasIcon: true } : {}),
+            ...(meta.model ? { model: meta.model } : {}),
+          };
         } catch {
           return null;
         }
@@ -601,6 +611,29 @@ export class SessionManager {
     try {
       const meta: SessionMeta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
       return meta.claudeSessionId;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** Save Codex thread ID for resume */
+  saveCodexThreadId(id: string, threadId: string): void {
+    const metaPath = path.join(this.getSessionDir(id), "session.json");
+    if (!fs.existsSync(metaPath)) return;
+    try {
+      const meta: SessionMeta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
+      meta.codexThreadId = threadId;
+      fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), "utf-8");
+    } catch { /* ignore */ }
+  }
+
+  /** Get saved Codex thread ID for resume */
+  getCodexThreadId(id: string): string | undefined {
+    const metaPath = path.join(this.getSessionDir(id), "session.json");
+    if (!fs.existsSync(metaPath)) return undefined;
+    try {
+      const meta: SessionMeta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
+      return meta.codexThreadId;
     } catch {
       return undefined;
     }
@@ -692,8 +725,8 @@ export class SessionManager {
     }
   }
 
-  /** Regenerate CLAUDE.md from persona's latest session-instructions.md */
-  refreshSessionClaudeMd(id: string): void {
+  /** Regenerate CLAUDE.md and AGENTS.md from persona's latest session-instructions.md */
+  refreshSessionInstructionFiles(id: string): void {
     const sessionDir = this.getSessionDir(id);
     const metaPath = path.join(sessionDir, "session.json");
     if (!fs.existsSync(metaPath)) return;
@@ -706,22 +739,25 @@ export class SessionManager {
     const personaDir = this.getPersonaDir(meta.persona);
     if (!fs.existsSync(personaDir)) return;
 
-    // 1. Copy latest session-instructions.md as CLAUDE.md
+    // 1. Copy latest session-instructions.md as both CLAUDE.md and AGENTS.md
     const instructionsSrc = path.join(personaDir, "session-instructions.md");
-    const claudeMdPath = path.join(sessionDir, "CLAUDE.md");
-    if (fs.existsSync(instructionsSrc)) {
-      fs.copyFileSync(instructionsSrc, claudeMdPath);
-    } else {
-      return; // No instructions, nothing to do
+    if (!fs.existsSync(instructionsSrc)) return;
+
+    const targets = ["CLAUDE.md", "AGENTS.md"];
+    for (const file of targets) {
+      fs.copyFileSync(instructionsSrc, path.join(sessionDir, file));
     }
 
     // 2. Re-inject profile info if session had one
     if (meta.profileSlug) {
       const profile = this.getProfile(meta.profileSlug);
       if (profile) {
-        const existing = fs.readFileSync(claudeMdPath, "utf-8");
         const userSection = `\n\n## 사용자 정보\n사용자의 이름: ${profile.name}\n${profile.description}\n`;
-        fs.writeFileSync(claudeMdPath, existing + userSection, "utf-8");
+        for (const file of targets) {
+          const mdPath = path.join(sessionDir, file);
+          const existing = fs.readFileSync(mdPath, "utf-8");
+          fs.writeFileSync(mdPath, existing + userSection, "utf-8");
+        }
       }
     }
 
@@ -730,14 +766,22 @@ export class SessionManager {
     if (fs.existsSync(openingPath)) {
       const openingContent = fs.readFileSync(openingPath, "utf-8").trim();
       if (openingContent) {
-        const existing = fs.readFileSync(claudeMdPath, "utf-8");
         const appendix = `\n\n## 오프닝 메시지\n아래 메시지는 세션 시작 시 사용자에게 이미 표시되었다. 이 메시지를 반복하지 마라.\n\n${openingContent}\n`;
-        fs.writeFileSync(claudeMdPath, existing + appendix, "utf-8");
+        for (const file of targets) {
+          const mdPath = path.join(sessionDir, file);
+          const existing = fs.readFileSync(mdPath, "utf-8");
+          fs.writeFileSync(mdPath, existing + appendix, "utf-8");
+        }
       }
     }
 
     // 4. Ensure runtime configs exist for legacy sessions
     this.ensureClaudeRuntimeConfig(sessionDir, meta.persona, "session");
+  }
+
+  /** @deprecated Use refreshSessionInstructionFiles instead */
+  refreshSessionClaudeMd(id: string): void {
+    this.refreshSessionInstructionFiles(id);
   }
 
   // ── Persona Builder ─────────────────────────────────────
@@ -855,6 +899,7 @@ export class SessionManager {
   ): void {
     this.writeClaudeSettings(projectDir);
     this.writeMcpConfig(projectDir, personaName, mode);
+    this.writeCodexConfig(projectDir, personaName, mode);
     this.ensurePolicyContext(projectDir);
   }
 
@@ -899,6 +944,40 @@ export class SessionManager {
     );
   }
 
+  /** Write .codex/config.toml with MCP server config for Codex CLI */
+  private writeCodexConfig(
+    projectDir: string,
+    personaName?: string,
+    mode: "builder" | "session" = "session"
+  ): void {
+    const codexDir = path.join(projectDir, ".codex");
+    fs.mkdirSync(codexDir, { recursive: true });
+
+    const serverScript = path.join(this.appRoot, "src", "mcp", "claude-bridge-mcp-server.mjs");
+    const apiBase = (process.env.CLAUDE_BRIDGE_API_BASE || `http://127.0.0.1:${process.env.PORT || "3340"}`)
+      .replace(/\/+$/, "");
+
+    // Build TOML content
+    const lines: string[] = [];
+    lines.push(`[mcp_servers.${CLAUDE_MCP_SERVER_NAME}]`);
+    lines.push(`command = "node"`);
+    lines.push(`args = [${JSON.stringify(serverScript)}]`);
+    lines.push(``);
+    lines.push(`[mcp_servers.${CLAUDE_MCP_SERVER_NAME}.env]`);
+    lines.push(`CLAUDE_BRIDGE_API_BASE = ${JSON.stringify(apiBase)}`);
+    lines.push(`CLAUDE_BRIDGE_SESSION_DIR = ${JSON.stringify(projectDir)}`);
+    lines.push(`CLAUDE_BRIDGE_MODE = ${JSON.stringify(mode)}`);
+    if (personaName) {
+      lines.push(`CLAUDE_BRIDGE_PERSONA = ${JSON.stringify(personaName)}`);
+    }
+
+    fs.writeFileSync(
+      path.join(codexDir, "config.toml"),
+      lines.join("\n") + "\n",
+      "utf-8"
+    );
+  }
+
   private ensurePolicyContext(projectDir: string): void {
     const policyPath = path.join(projectDir, POLICY_CONTEXT_FILE);
     if (!fs.existsSync(policyPath)) {
@@ -933,8 +1012,9 @@ export class SessionManager {
     }
   }
 
-  buildServiceSystemPrompt(personaName?: string): string {
-    return this.buildPromptFromGuideFiles(SERVICE_SESSION_GUIDE_FILES, personaName);
+  buildServiceSystemPrompt(personaName?: string, provider?: "claude" | "codex"): string {
+    const files = provider === "codex" ? SERVICE_SESSION_GUIDE_FILES_CODEX : SERVICE_SESSION_GUIDE_FILES_CLAUDE;
+    return this.buildPromptFromGuideFiles(files, personaName);
   }
 
   buildBuilderSystemPrompt(personaName?: string): string {

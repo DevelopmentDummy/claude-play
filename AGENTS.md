@@ -1,10 +1,12 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to OpenAI Codex CLI when working with code in this repository.
 
 ## Project Overview
 
 Claude Bridge is a Next.js web app that bridges interactive roleplay (RP) chat sessions with the Claude Code CLI. Users create personas via a builder UI, then conduct immersive RP sessions with dynamic state, panels, and memory.
+
+> **Note**: This project controls Claude Code as a subprocess — Codex is used here for development assistance, not as the RP runtime.
 
 ## Commands
 
@@ -79,7 +81,7 @@ ChatPage manages WebSocket subscription, layout state, and renders ChatMessages 
 
 ## Data Model
 
-**All data is file-based** under `data/` (gitignored):
+All data is file-based under `data/` (gitignored):
 
 ```
 data/
@@ -112,7 +114,7 @@ data/
 - **`<dialog_response>` tags**: Claude wraps RP dialogue in these. Both backend (`services.ts`) and frontend (`ChatMessages.tsx`) strip them to show only the RP content. Tool calls and meta-commentary are hidden from the user.
 - **Special tokens**: `$IMAGE:path$` and `$PANEL:name$` tokens are extracted from Claude's output for inline image display and panel references.
 - **Panel numbering**: Panel files like `01-status.html` — numeric prefix controls display order and is stripped from the UI name.
-- **CLAUDE.md dual use**: Builder sessions use `builder-prompt.md` as CLAUDE.md. RP sessions start from `session-instructions.md` and then append shared service guides (`session-primer.yaml`, `session-shared.md`). These are completely different prompts.
+- **CLAUDE.md dual use**: Builder sessions use `builder-prompt.md` as CLAUDE.md. RP sessions start from `session-instructions.md` and then append shared service guides (`session-primer.yaml`, `session-shared.md`). These are completely different prompts. Note: the `CLAUDE.md` files inside `data/` are consumed by the Claude Code subprocess, not by Codex.
 - **Session resume**: Claude session IDs are saved to `session.json` and passed to `claude -p --resume` on reconnect. If resume fails, auto-retries without `--resume`.
 - **OOC messages**: Messages prefixed with `OOC:` are out-of-character and excluded from chat history.
 - **MCP bootstrap**: Claude is launched with `--mcp-config <cwd>/.mcp.json --strict-mcp-config` when that file exists.
@@ -139,6 +141,11 @@ data/
 - `GEMINI_API_KEY` — Optional Gemini image generation API key
 - `CLAUDE_BRIDGE_API_BASE` — Override API base URL for MCP server (default: `http://127.0.0.1:{PORT}`)
 
-## Skills & Plugins
+## Style Guide
 
-- **frontend-design**: UI 컴포넌트, 페이지, 패널 HTML 등 프론트엔드 작업 시 `/frontend-design` 스킬을 사용할 것.
+- TypeScript strict mode — do not use `any` unless absolutely necessary
+- Prefer `const` over `let`; avoid `var`
+- Use path alias `@/` for imports from `src/`
+- Keep API routes thin — business logic belongs in `src/lib/`
+- Korean comments and UI strings are intentional — this is a Korean-language project
+- Do not add unnecessary abstractions, docstrings, or type annotations to code you did not change

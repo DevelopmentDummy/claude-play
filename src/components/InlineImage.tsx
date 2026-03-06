@@ -6,6 +6,7 @@ import ImageModal from "./ImageModal";
 interface InlineImageProps {
   sessionId: string;
   path: string;
+  onReady?: () => void;
 }
 
 type ImageState = "loading" | "ready" | "error";
@@ -13,16 +14,18 @@ type ImageState = "loading" | "ready" | "error";
 const POLL_INTERVAL = 2000;
 const MAX_POLLS = 60;
 
-export default function InlineImage({ sessionId, path: imgPath }: InlineImageProps) {
+export default function InlineImage({ sessionId, path: imgPath, onReady }: InlineImageProps) {
   const [state, setState] = useState<ImageState>("loading");
   const [showModal, setShowModal] = useState(false);
   const [cacheBuster] = useState(() => Date.now());
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollCountRef = useRef(0);
+  const readyNotifiedRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
     pollCountRef.current = 0;
+    readyNotifiedRef.current = false;
 
     const poll = async () => {
       if (cancelled) return;
@@ -90,6 +93,11 @@ export default function InlineImage({ sessionId, path: imgPath }: InlineImagePro
   }
 
   const src = `/api/sessions/${sessionId}/files?path=${encodeURIComponent(imgPath)}&v=${cacheBuster}`;
+  const handleImageLoad = () => {
+    if (readyNotifiedRef.current) return;
+    readyNotifiedRef.current = true;
+    onReady?.();
+  };
 
   return (
     <>
@@ -98,6 +106,7 @@ export default function InlineImage({ sessionId, path: imgPath }: InlineImagePro
           src={src}
           alt={imgPath}
           className="max-w-full rounded-lg max-h-[400px] object-contain hover:opacity-90 transition-opacity"
+          onLoad={handleImageLoad}
         />
       </div>
       {showModal && <ImageModal src={src} onClose={() => setShowModal(false)} />}

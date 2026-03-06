@@ -291,10 +291,17 @@ export default function PersonaStartModal({
                   paddingRight: "32px",
                 }}
               >
-                <option value="" className="bg-[#1a1a2e] text-[#ccc]">Default</option>
-                <option value="sonnet" className="bg-[#1a1a2e] text-[#ccc]">Sonnet</option>
-                <option value="opus" className="bg-[#1a1a2e] text-[#ccc]">Opus</option>
-                <option value="haiku" className="bg-[#1a1a2e] text-[#ccc]">Haiku</option>
+                <optgroup label="Claude" className="bg-[#1a1a2e] text-[#ccc]">
+                  <option value="" className="bg-[#1a1a2e] text-[#ccc]">Default</option>
+                  <option value="sonnet" className="bg-[#1a1a2e] text-[#ccc]">Sonnet</option>
+                  <option value="opus" className="bg-[#1a1a2e] text-[#ccc]">Opus</option>
+                  <option value="haiku" className="bg-[#1a1a2e] text-[#ccc]">Haiku</option>
+                </optgroup>
+                <optgroup label="Codex" className="bg-[#1a1a2e] text-[#ccc]">
+                  <option value="gpt-5.4" className="bg-[#1a1a2e] text-[#ccc]">GPT-5.4</option>
+                  <option value="gpt-5.3-codex" className="bg-[#1a1a2e] text-[#ccc]">GPT-5.3 Codex</option>
+                  <option value="codex-mini-latest" className="bg-[#1a1a2e] text-[#ccc]">Codex Mini</option>
+                </optgroup>
               </select>
             </div>
 

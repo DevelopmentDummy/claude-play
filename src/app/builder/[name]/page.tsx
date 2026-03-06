@@ -26,6 +26,7 @@ export default function BuilderPage() {
     setError,
     prepareSend,
     handleClaudeMessage,
+    clearMessages,
     loadHistory,
     loadMore,
     hasMore,
@@ -33,6 +34,7 @@ export default function BuilderPage() {
 
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [wsEnabled, setWsEnabled] = useState(false);
+  const [builderService, setBuilderService] = useState<"claude" | "codex">("claude");
   const initRef = useRef(false);
 
   // WebSocket connection — only connect after init completes
@@ -61,7 +63,7 @@ export default function BuilderPage() {
     [prepareSend, sendChat]
   );
 
-  // Initialize builder on mount (spawn Claude) — ref prevents Strict Mode double-call
+  // Initialize builder on mount — ref prevents Strict Mode double-call
   useEffect(() => {
     if (initRef.current) return;
     initRef.current = true;
@@ -80,12 +82,11 @@ export default function BuilderPage() {
         return;
       }
 
-      // Load previous chat history from server (file-backed)
+      const data = await res.json();
+      if (data.provider) setBuilderService(data.provider);
+
       await loadHistory();
-
       setStatus("connected");
-
-      // Now enable WebSocket for real-time updates
       setWsEnabled(true);
     };
 
@@ -97,14 +98,14 @@ export default function BuilderPage() {
     router.push("/");
   }, [router, wsSend]);
 
-  // Re-initialize builder (kill + respawn Claude with fresh builder prompt)
+  // Re-initialize builder (kill + respawn with same service)
   const handleReinit = useCallback(async () => {
     const endpoint =
       mode === "new" ? "/api/builder/start" : "/api/builder/edit";
     const res = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: decodedName }),
+      body: JSON.stringify({ name: decodedName, model: builderService === "codex" ? "gpt-5.4" : undefined }),
     });
     if (res.ok) {
       setStatus("connected");
@@ -112,7 +113,30 @@ export default function BuilderPage() {
     } else {
       setError("Failed to reinitialize builder");
     }
-  }, [mode, decodedName, setStatus, setError]);
+  }, [mode, decodedName, builderService, setStatus, setError]);
+
+  // Service switch: fresh session with cleared history
+  const handleServiceChange = useCallback(async (newService: "claude" | "codex") => {
+    setBuilderService(newService);
+    setStatus("disconnected");
+
+    // Pick a default model for the provider
+    const model = newService === "codex" ? "gpt-5.4" : undefined;
+
+    const res = await fetch("/api/builder/edit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: decodedName, model }),
+    });
+    if (res.ok) {
+      clearMessages();
+      await loadHistory();
+      setStatus("connected");
+      setRefreshTrigger((n) => n + 1);
+    } else {
+      setError("Failed to switch service");
+    }
+  }, [decodedName, setStatus, setError, clearMessages, loadHistory]);
 
   return (
     <div className="flex flex-col h-screen">
@@ -122,6 +146,8 @@ export default function BuilderPage() {
         isBuilderMode={true}
         onBack={handleBack}
         onReinit={handleReinit}
+        service={builderService}
+        onServiceChange={handleServiceChange}
       />
       <ErrorBanner error={error} onDismiss={() => setError(null)} />
       <div className="flex-1 flex min-h-0">

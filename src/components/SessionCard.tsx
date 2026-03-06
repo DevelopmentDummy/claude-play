@@ -8,9 +8,21 @@ interface SessionCardProps {
   persona: string;
   createdAt: string;
   hasIcon?: boolean;
+  model?: string;
   index?: number;
   onOpen: () => void;
   onDelete: () => void;
+}
+
+/** Determine provider label from model string */
+function providerLabel(model?: string): string | null {
+  if (!model) return null;
+  const lower = model.toLowerCase();
+  const codexModels = ["gpt-5", "codex-mini"];
+  for (const prefix of codexModels) {
+    if (lower === prefix || lower.startsWith(prefix)) return "Codex";
+  }
+  return null; // Claude is default, no label needed
 }
 
 export default function SessionCard({
@@ -19,6 +31,7 @@ export default function SessionCard({
   persona,
   createdAt,
   hasIcon,
+  model,
   onOpen,
   onDelete,
 }: SessionCardProps) {
@@ -65,8 +78,18 @@ export default function SessionCard({
       )}
       <div className="flex-1 min-w-0">
         <div className="text-sm text-text truncate leading-snug">{title}</div>
-        <div className="text-xs text-text-dim/60 mt-1">
-          {persona} &middot; {timeStr}
+        <div className="text-xs text-text-dim/60 mt-1 flex items-center gap-1.5">
+          <span>{persona} &middot; {timeStr}</span>
+          {providerLabel(model) && (
+            <span className="inline-flex items-center px-1.5 py-0 rounded text-[9px] font-semibold tracking-wide bg-[#2a5a3a]/60 text-[#4dff91]/80 border border-[#4dff91]/15">
+              {providerLabel(model)}
+            </span>
+          )}
+          {model && !providerLabel(model) && model !== "" && (
+            <span className="inline-flex items-center px-1.5 py-0 rounded text-[9px] font-medium tracking-wide text-text-dim/40">
+              {model}
+            </span>
+          )}
         </div>
       </div>
 

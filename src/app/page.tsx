@@ -30,6 +30,7 @@ interface Session {
   title: string;
   createdAt: string;
   hasIcon?: boolean;
+  model?: string;
 }
 
 interface ProfileOption {
@@ -214,6 +215,7 @@ export default function LobbyPage() {
                 persona={s.persona}
                 createdAt={s.createdAt}
                 hasIcon={s.hasIcon}
+                model={s.model}
                 onOpen={() => {
                   router.push(`/chat/${encodeURIComponent(s.id)}`);
                   if (window.innerWidth < 768) setSidebarOpen(false);

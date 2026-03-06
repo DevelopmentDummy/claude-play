@@ -47,6 +47,7 @@ export default function ChatPage() {
   const [wsEnabled, setWsEnabled] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [currentModel, setCurrentModel] = useState(searchParams.get("model") || "");
+  const [currentProvider, setCurrentProvider] = useState<"claude" | "codex">("claude");
   const isMobile = useIsMobile();
   const initRef = useRef(false);
 
@@ -102,6 +103,7 @@ export default function ChatPage() {
       setTitle(data.title || data.persona);
       setLayout(data.layout);
       if (data.model) setCurrentModel(data.model);
+      if (data.provider) setCurrentProvider(data.provider);
       const imageBase = `/api/sessions/${sessionId}/files?path=images/`;
       applyLayout(data.layout, imageBase);
       setStatus("connected");
@@ -211,6 +213,7 @@ export default function ChatPage() {
         showPanelButton={hasSidebar && isMobile}
         onPanelToggle={() => setDrawerOpen((v) => !v)}
         model={currentModel}
+        provider={currentProvider}
         onModelChange={handleModelChange}
       />
       <ErrorBanner error={error} onDismiss={() => setError(null)} />

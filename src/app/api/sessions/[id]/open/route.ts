@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import * as fs from "fs";
 import * as path from "path";
 import { getServices } from "@/lib/services";
+import { providerFromModel } from "@/lib/ai-provider";
 
 export async function POST(
   req: Request,
@@ -40,12 +41,23 @@ export async function POST(
   const layout = svc.sessions.readLayout(sessionDir);
 
   // Refresh session files from persona's latest versions
-  svc.sessions.refreshSessionClaudeMd(id);
+  svc.sessions.refreshSessionInstructionFiles(id);
   svc.sessions.syncPersonaToSession(id);
   svc.sessions.ensureClaudeRuntimeConfig(sessionDir, info.persona, "session");
 
-  // Resume previous Claude session if available
-  const resumeId = svc.sessions.getClaudeSessionId(id);
+  // Determine the effective model and provider
+  const effectiveModel = model || svc.sessions.getSessionModel(id) || "";
+  const provider = providerFromModel(effectiveModel);
+
+  // Switch provider if needed
+  if (provider !== svc.provider) {
+    svc.switchProvider(provider);
+  }
+
+  // Resume previous session based on provider
+  const resumeId = provider === "codex"
+    ? svc.sessions.getCodexThreadId(id)
+    : svc.sessions.getClaudeSessionId(id);
   const isResume = !!resumeId;
   svc.loadHistory(); // Load from chat-history.json (empty if new)
 
@@ -59,10 +71,9 @@ export async function POST(
     svc.sessions.saveSessionModel(id, model);
   }
 
-  // --resume and --model can be combined: resumes the conversation with a different model
-  const effectiveModel = model || svc.sessions.getSessionModel(id);
-  const runtimeSystemPrompt = svc.sessions.buildServiceSystemPrompt(info.persona);
-  svc.claude.spawn(sessionDir, resumeId, effectiveModel, runtimeSystemPrompt);
+  // Spawn with resume and model
+  const runtimeSystemPrompt = svc.sessions.buildServiceSystemPrompt(info.persona, provider);
+  svc.claude.spawn(sessionDir, resumeId, effectiveModel || undefined, runtimeSystemPrompt);
 
   // Include initial panels + context in response (SSE may not be connected yet)
   const { panels, context: panelContext } = svc.panels.getCurrentPanels();
@@ -97,5 +108,5 @@ export async function POST(
     }
   }
 
-  return NextResponse.json({ ...info, opening, isResume, layout, panels, panelContext, profileImage, iconImage, model: effectiveModel || "" });
+  return NextResponse.json({ ...info, opening, isResume, layout, panels, panelContext, profileImage, iconImage, model: effectiveModel || "", provider });
 }

@@ -1,6 +1,8 @@
 node_modules/
 .next/
 .env.local
+.env
+*.tsbuildinfo
 .claude/
 data/personas/
 data/sessions/
