@@ -60,6 +60,18 @@ function toolUseKey(name: string, input: unknown): string {
   }
 }
 
+const CHOICE_OPEN = "<choice>";
+const CHOICE_CLOSE = "</choice>";
+
+/** Extract <choice>...</choice> block from raw text */
+function extractChoiceBlock(raw: string): string | null {
+  const openIdx = raw.lastIndexOf(CHOICE_OPEN);
+  if (openIdx === -1) return null;
+  const closeIdx = raw.indexOf(CHOICE_CLOSE, openIdx);
+  if (closeIdx === -1) return null;
+  return raw.substring(openIdx, closeIdx + CHOICE_CLOSE.length);
+}
+
 /** Extract content inside <dialog_response> tags; returns raw text if no tags found */
 function extractDialog(raw: string): string {
   const parts: string[] = [];
@@ -81,9 +93,17 @@ function extractDialog(raw: string): string {
 
   if (parts.length > 0) {
     const base = parts.join("\n\n").trim();
+    const extras: string[] = [];
+    // Preserve special tokens outside dialog tags
     const tokens = extractSpecialTokens(raw).filter((token) => !base.includes(token));
-    if (tokens.length === 0) return base;
-    return `${base}\n\n${tokens.join("\n")}`;
+    extras.push(...tokens);
+    // Preserve <choice> block if it's not already in extracted content
+    const choiceBlock = extractChoiceBlock(raw);
+    if (choiceBlock && !base.includes(CHOICE_OPEN)) {
+      extras.push(choiceBlock);
+    }
+    if (extras.length === 0) return base;
+    return `${base}\n\n${extras.join("\n")}`;
   }
 
   // If no tags found, return original text (backward compat / non-RP sessions)
