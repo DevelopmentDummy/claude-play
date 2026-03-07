@@ -268,8 +268,8 @@ export default function ChatPage() {
                   const c = extractChoices(m.content);
                   return c.length > 0 ? c : undefined;
                 }
-                // If we hit a user message first, no choices to show
-                if (m.role === "user" && !m.ooc) return undefined;
+                // If we hit any user message first, no choices to show
+                if (m.role === "user") return undefined;
               }
               return undefined;
             })()}
