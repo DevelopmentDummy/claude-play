@@ -245,39 +245,63 @@ export function useChat() {
   }, []);
 
   const loadHistory = useCallback(async (): Promise<number> => {
+    const TARGET_VISIBLE = 10;
     try {
       const res = await fetch("/api/chat/history");
-      if (res.ok) {
-        const data = await res.json() as { messages: ChatMessage[]; total: number; offset: number };
-        totalRef.current = data.total;
-        loadedOffsetRef.current = data.offset;
-        if (data.messages.length > 0) {
-          setMessages(data.messages);
-          msgIdRef.current = data.messages.length;
-        }
-        setHasMore(data.offset > 0);
-        return data.messages.length;
+      if (!res.ok) return 0;
+      const data = await res.json() as { messages: ChatMessage[]; total: number; offset: number };
+      totalRef.current = data.total;
+      loadedOffsetRef.current = data.offset;
+      let allMessages = data.messages as ChatMessage[];
+
+      // Keep loading older batches until we have enough non-OOC messages
+      while (loadedOffsetRef.current > 0) {
+        const nonOOCCount = allMessages.filter((m) => !m.ooc).length;
+        if (nonOOCCount >= TARGET_VISIBLE) break;
+        const batchSize = 10;
+        const newOffset = Math.max(0, loadedOffsetRef.current - batchSize);
+        const limit = loadedOffsetRef.current - newOffset;
+        const moreRes = await fetch(`/api/chat/history?offset=${newOffset}&limit=${limit}`);
+        if (!moreRes.ok) break;
+        const moreData = await moreRes.json() as { messages: ChatMessage[] };
+        loadedOffsetRef.current = newOffset;
+        allMessages = [...moreData.messages, ...allMessages];
       }
+
+      if (allMessages.length > 0) {
+        setMessages(allMessages);
+        msgIdRef.current = allMessages.length;
+      }
+      setHasMore(loadedOffsetRef.current > 0);
+      return allMessages.length;
     } catch { /* ignore */ }
     return 0;
   }, []);
 
   const loadMore = useCallback(async (): Promise<number> => {
     if (loadedOffsetRef.current <= 0) return 0;
-    const batchSize = 10;
-    const newOffset = Math.max(0, loadedOffsetRef.current - batchSize);
-    const limit = loadedOffsetRef.current - newOffset;
+    const TARGET_VISIBLE = 10;
+    let accumulated: ChatMessage[] = [];
 
     try {
-      const res = await fetch(`/api/chat/history?offset=${newOffset}&limit=${limit}`);
-      if (res.ok) {
-        const data = await res.json() as { messages: ChatMessage[]; total: number; offset: number };
+      // Keep loading batches until we have enough non-OOC messages or exhaust history
+      while (loadedOffsetRef.current > 0) {
+        const batchSize = 10;
+        const newOffset = Math.max(0, loadedOffsetRef.current - batchSize);
+        const limit = loadedOffsetRef.current - newOffset;
+        const res = await fetch(`/api/chat/history?offset=${newOffset}&limit=${limit}`);
+        if (!res.ok) break;
+        const data = await res.json() as { messages: ChatMessage[] };
         loadedOffsetRef.current = newOffset;
-        setHasMore(newOffset > 0);
-        if (data.messages.length > 0) {
-          setMessages((prev) => [...data.messages, ...prev]);
-          return data.messages.length;
-        }
+        accumulated = [...data.messages, ...accumulated];
+        const nonOOCCount = accumulated.filter((m) => !m.ooc).length;
+        if (nonOOCCount >= TARGET_VISIBLE) break;
+      }
+
+      setHasMore(loadedOffsetRef.current > 0);
+      if (accumulated.length > 0) {
+        setMessages((prev) => [...accumulated, ...prev]);
+        return accumulated.length;
       }
     } catch { /* ignore */ }
     return 0;
