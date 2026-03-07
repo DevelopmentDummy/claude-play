@@ -19,6 +19,11 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Allow internal MCP server requests (authenticated via x-bridge-token in route handler)
+  if (request.headers.get("x-bridge-token")) {
+    return NextResponse.next();
+  }
+
   // Check for auth cookie (Edge-compatible: just check existence)
   const token = request.cookies.get(COOKIE_NAME)?.value;
   if (!token) {
