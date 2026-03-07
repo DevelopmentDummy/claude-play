@@ -50,12 +50,14 @@ export default function StatusBar({
   const statusColors: Record<string, string> = {
     connected: "bg-success shadow-[0_0_8px_rgba(77,255,145,0.4)]",
     streaming: "bg-warning animate-pulse shadow-[0_0_8px_rgba(255,166,77,0.4)]",
+    compacting: "bg-blue-400 animate-pulse shadow-[0_0_8px_rgba(96,165,250,0.4)]",
     disconnected: "bg-error shadow-[0_0_8px_rgba(255,77,106,0.4)]",
   };
 
   const statusLabels: Record<string, string> = {
     connected: "Connected",
     streaming: "Streaming...",
+    compacting: "Compacting...",
     disconnected: "Disconnected",
   };
 

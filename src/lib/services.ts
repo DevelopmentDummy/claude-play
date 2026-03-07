@@ -225,6 +225,12 @@ function initServices(userId: string): Services {
 
       const msg = d as Record<string, unknown>;
 
+      // Handle system status events (compacting, etc.)
+      if (msg.type === "system" && msg.subtype === "status") {
+        const sysStatus = typeof msg.status === "string" ? msg.status : "streaming";
+        broadcast("claude:status", sysStatus);
+      }
+
       if (msg.type === "stream_event") {
         const event = msg.event as Record<string, unknown> | undefined;
         if (!event) return;
