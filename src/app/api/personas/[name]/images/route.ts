@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServices } from "@/lib/services";
+import { requireAuth } from "@/lib/auth";
 import * as path from "path";
 import * as fs from "fs";
 
@@ -14,6 +15,8 @@ export async function GET(
   req: Request,
   { params }: { params: Promise<{ name: string }> }
 ) {
+  const auth = requireAuth(req);
+  if (auth instanceof Response) return auth;
   const { name } = await params;
   const url = new URL(req.url);
   const file = url.searchParams.get("file");
@@ -22,7 +25,7 @@ export async function GET(
     return NextResponse.json({ error: "Missing file parameter" }, { status: 400 });
   }
 
-  const { sessions } = getServices();
+  const { sessions } = getServices(auth.userId);
   const personaDir = sessions.getPersonaDir(name);
   const safeName = path.basename(file);
   const filePath = path.join(personaDir, "images", safeName);

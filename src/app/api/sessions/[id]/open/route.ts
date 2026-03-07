@@ -2,17 +2,20 @@ import { NextResponse } from "next/server";
 import * as fs from "fs";
 import * as path from "path";
 import { getServices } from "@/lib/services";
+import { requireAuth } from "@/lib/auth";
 import { providerFromModel, parseModelEffort } from "@/lib/ai-provider";
 
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = requireAuth(req);
+  if (auth instanceof Response) return auth;
   const { id } = await params;
   const body = await req.json().catch(() => ({}));
   const rawModel = (body as { model?: string }).model || undefined;
   const { model, effort } = parseModelEffort(rawModel || "");
-  const svc = getServices();
+  const svc = getServices(auth.userId);
 
   svc.claude.kill();
 

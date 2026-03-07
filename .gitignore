@@ -7,3 +7,7 @@ node_modules/
 data/personas/
 data/sessions/
 data/profiles/
+data/users/
+data/*.db
+data/*.db-wal
+data/*.db-shm

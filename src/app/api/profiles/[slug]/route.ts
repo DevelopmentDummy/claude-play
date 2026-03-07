@@ -1,12 +1,15 @@
 import { NextResponse } from "next/server";
 import { getServices } from "@/lib/services";
+import { requireAuth } from "@/lib/auth";
 
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ slug: string }> }
 ) {
+  const auth = requireAuth(req);
+  if (auth instanceof Response) return auth;
   const { slug } = await params;
-  const { sessions } = getServices();
+  const { sessions } = getServices(auth.userId);
   const profile = sessions.getProfile(slug);
   if (!profile) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -18,8 +21,10 @@ export async function PUT(
   req: Request,
   { params }: { params: Promise<{ slug: string }> }
 ) {
+  const auth = requireAuth(req);
+  if (auth instanceof Response) return auth;
   const { slug } = await params;
-  const { sessions } = getServices();
+  const { sessions } = getServices(auth.userId);
   const existing = sessions.getProfile(slug);
   if (!existing) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -38,11 +43,13 @@ export async function PUT(
 }
 
 export async function DELETE(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ slug: string }> }
 ) {
+  const auth = requireAuth(req);
+  if (auth instanceof Response) return auth;
   const { slug } = await params;
-  const { sessions } = getServices();
+  const { sessions } = getServices(auth.userId);
   sessions.deleteProfile(slug);
   return NextResponse.json({ ok: true });
 }

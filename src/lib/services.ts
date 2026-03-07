@@ -4,8 +4,8 @@ import { ClaudeProcess } from "./claude-process";
 import { CodexProcess } from "./codex-process";
 import { SessionManager } from "./session-manager";
 import { PanelEngine } from "./panel-engine";
-import { wsBroadcastAll } from "./ws-server";
-import { getDataDir, getAppRoot } from "./data-dir";
+import { wsBroadcastToUser } from "./ws-server";
+import { getUserDataDir, getAppRoot } from "./data-dir";
 import { AIProvider, providerFromModel } from "./ai-provider";
 
 const DIALOG_OPEN = "<dialog_response>";
@@ -102,6 +102,7 @@ export interface HistoryMessage {
 export type AIProcess = ClaudeProcess | CodexProcess;
 
 export interface Services {
+  userId: string;
   claude: AIProcess;
   provider: AIProvider;
   sessions: SessionManager;
@@ -120,24 +121,25 @@ export interface Services {
 }
 
 const HISTORY_FILE = "chat-history.json";
-const GLOBAL_KEY = "__claude_bridge__";
-
-function broadcast(event: string, data: unknown): void {
-  wsBroadcastAll(event, data);
-}
+const GLOBAL_KEY = "__claude_bridge_services__";
 
 function createProcess(provider: AIProvider): AIProcess {
   return provider === "codex" ? new CodexProcess() : new ClaudeProcess();
 }
 
-function initServices(): Services {
+function initServices(userId: string): Services {
+  const userDataDir = getUserDataDir(userId);
   let currentProvider: AIProvider = "claude";
   let proc: AIProcess = createProcess(currentProvider);
-  const sessions = new SessionManager(getDataDir(), getAppRoot());
+  const sessions = new SessionManager(userDataDir, getAppRoot());
+
+  function broadcast(event: string, data: unknown): void {
+    wsBroadcastToUser(userId, event, data);
+  }
+
   const panels = new PanelEngine(
     (update) => broadcast("panels:update", update),
     () => {
-      // Re-read layout through SessionManager and broadcast the merged result
       const dir = svc.isBuilderActive && svc.builderPersonaName
         ? sessions.getPersonaDir(svc.builderPersonaName)
         : svc.currentSessionId ? sessions.getSessionDir(svc.currentSessionId) : null;
@@ -307,6 +309,7 @@ function initServices(): Services {
   }
 
   const svc: Services = {
+    userId,
     get claude() { return proc; },
     get provider() { return currentProvider; },
     set provider(p: AIProvider) { currentProvider = p; },
@@ -378,10 +381,30 @@ function initServices(): Services {
   return svc;
 }
 
-export function getServices(): Services {
-  const g = globalThis as unknown as Record<string, Services>;
+/** Get or create per-user Services instance */
+export function getServices(userId: string): Services {
+  const g = globalThis as unknown as Record<string, Map<string, Services>>;
   if (!g[GLOBAL_KEY]) {
-    g[GLOBAL_KEY] = initServices();
+    g[GLOBAL_KEY] = new Map();
   }
-  return g[GLOBAL_KEY];
+  const map = g[GLOBAL_KEY];
+  let svc = map.get(userId);
+  if (!svc) {
+    svc = initServices(userId);
+    map.set(userId, svc);
+  }
+  return svc;
+}
+
+/** Clean up a user's services (kill process, stop watchers) */
+export function cleanupServices(userId: string): void {
+  const g = globalThis as unknown as Record<string, Map<string, Services>>;
+  const map = g[GLOBAL_KEY];
+  if (!map) return;
+  const svc = map.get(userId);
+  if (svc) {
+    svc.claude.kill();
+    svc.panels.stop();
+    map.delete(userId);
+  }
 }

@@ -1,17 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServices } from "@/lib/services";
+import { requireAuth } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
-  const svc = getServices();
+  const auth = requireAuth(req);
+  if (auth instanceof Response) return auth;
+  const svc = getServices(auth.userId);
   const url = req.nextUrl;
   const total = svc.chatHistory.length;
 
-  // If no pagination params, return paginated with defaults (last 10)
   const limitParam = url.searchParams.get("limit");
   const offsetParam = url.searchParams.get("offset");
 
   if (limitParam === null && offsetParam === null) {
-    // Default: return last 10 messages
     const limit = 10;
     const start = Math.max(0, total - limit);
     return NextResponse.json({

@@ -2,13 +2,16 @@ import * as fs from "fs";
 import * as path from "path";
 import { NextResponse } from "next/server";
 import { getServices } from "@/lib/services";
+import { requireAuth } from "@/lib/auth";
 
 export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = requireAuth(req);
+  if (auth instanceof Response) return auth;
   const { id } = await params;
-  const svc = getServices();
+  const svc = getServices(auth.userId);
   const sessionDir = svc.sessions.getSessionDir(id);
   const varsPath = path.join(sessionDir, "variables.json");
 

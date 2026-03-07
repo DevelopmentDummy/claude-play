@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { getServices } from "@/lib/services";
+import { requireAuth } from "@/lib/auth";
 import { GeminiImageClient } from "@/lib/gemini-image";
 
 export async function POST(req: Request) {
+  const auth = requireAuth(req);
+  if (auth instanceof Response) return auth;
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     return NextResponse.json(
@@ -11,7 +14,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const svc = getServices();
+  const svc = getServices(auth.userId);
 
   const body = (await req.json()) as {
     prompt: string;
