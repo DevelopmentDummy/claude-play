@@ -489,7 +489,7 @@ export default function ChatMessages({
                 onClick={() => onToggleOOC(msg.id, !msg.ooc)}
                 className={`absolute top-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150
                   px-1.5 py-0.5 rounded text-[9px] font-medium cursor-pointer border
-                  ${msg.role === "user" ? "left-1" : "right-1"}
+                  right-1
                   ${msg.ooc
                     ? "border-yellow-500/50 text-yellow-400/80 bg-yellow-500/10 hover:bg-yellow-500/20"
                     : "border-border/40 text-text-dim/50 bg-surface/80 hover:bg-surface-light hover:text-text-dim/80"

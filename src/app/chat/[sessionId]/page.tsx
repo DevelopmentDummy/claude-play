@@ -261,11 +261,15 @@ export default function ChatPage() {
             onOOCToggle={(on) => setShowOOC(on)}
             choices={(() => {
               if (isStreaming) return undefined;
+              // Only extract choices from the very last assistant message
               for (let i = visibleMessages.length - 1; i >= 0; i--) {
-                if (visibleMessages[i].role === "assistant" && !visibleMessages[i].ooc) {
-                  const c = extractChoices(visibleMessages[i].content);
+                const m = visibleMessages[i];
+                if (m.role === "assistant" && !m.ooc) {
+                  const c = extractChoices(m.content);
                   return c.length > 0 ? c : undefined;
                 }
+                // If we hit a user message first, no choices to show
+                if (m.role === "user" && !m.ooc) return undefined;
               }
               return undefined;
             })()}
