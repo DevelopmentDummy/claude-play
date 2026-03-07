@@ -10,6 +10,7 @@ import StatusBar from "@/components/StatusBar";
 import ErrorBanner from "@/components/ErrorBanner";
 import ChatMessages from "@/components/ChatMessages";
 import ChatInput from "@/components/ChatInput";
+import { extractChoices } from "@/components/ChatMessages";
 import PanelArea from "@/components/PanelArea";
 import PanelDrawer from "@/components/PanelDrawer";
 
@@ -235,7 +236,20 @@ export default function ChatPage() {
             hasMore={hasMore}
             onLoadMore={loadMore}
           />
-          <ChatInput disabled={isStreaming} onSend={sendMessage} />
+          <ChatInput
+            disabled={isStreaming}
+            onSend={sendMessage}
+            choices={(() => {
+              if (isStreaming) return undefined;
+              for (let i = messages.length - 1; i >= 0; i--) {
+                if (messages[i].role === "assistant") {
+                  const c = extractChoices(messages[i].content);
+                  return c.length > 0 ? c : undefined;
+                }
+              }
+              return undefined;
+            })()}
+          />
         </div>
         {/* Desktop: left sidebar (profile + left panels) */}
         {showInlinePanel && hasLeftSidebar && (

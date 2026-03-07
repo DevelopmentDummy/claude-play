@@ -126,7 +126,7 @@ export default function BuilderPage() {
     const res = await fetch("/api/builder/edit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: decodedName, model }),
+      body: JSON.stringify({ name: decodedName, model, service: newService }),
     });
     if (res.ok) {
       clearMessages();

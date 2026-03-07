@@ -98,16 +98,14 @@ export default function StatusBar({
           >
             {provider === "codex" ? (
               <>
-                <option value="gpt-5.4" className={optClass}>GPT-5.4</option>
-                <option value="gpt-5.3-codex" className={optClass}>GPT-5.3 Codex</option>
-                <option value="codex-mini-latest" className={optClass}>Codex Mini</option>
+                <option value="gpt-5.4:medium" className={optClass}>GPT-5.4 Medium</option>
+                <option value="gpt-5.4:high" className={optClass}>GPT-5.4 High</option>
+                <option value="gpt-5.4:xhigh" className={optClass}>GPT-5.4 XHigh</option>
               </>
             ) : (
               <>
-                <option value="" className={optClass}>Default</option>
-                <option value="sonnet" className={optClass}>Sonnet</option>
-                <option value="opus" className={optClass}>Opus</option>
-                <option value="haiku" className={optClass}>Haiku</option>
+                <option value="opus:medium" className={optClass}>Opus Medium</option>
+                <option value="opus:high" className={optClass}>Opus High</option>
               </>
             )}
           </select>

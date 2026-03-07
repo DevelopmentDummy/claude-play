@@ -49,7 +49,7 @@ export default function PersonaStartModal({
   const [personaContent, setPersonaContent] = useState<string | null>(null);
   const [openingContent, setOpeningContent] = useState<string | null>(null);
   const [hasProfileImage, setHasProfileImage] = useState(false);
-  const [selectedModel, setSelectedModel] = useState<string>("");
+  const [selectedModel, setSelectedModel] = useState<string>("opus:high");
 
   useEffect(() => {
     if (open) {
@@ -292,15 +292,13 @@ export default function PersonaStartModal({
                 }}
               >
                 <optgroup label="Claude" className="bg-[#1a1a2e] text-[#ccc]">
-                  <option value="" className="bg-[#1a1a2e] text-[#ccc]">Default</option>
-                  <option value="sonnet" className="bg-[#1a1a2e] text-[#ccc]">Sonnet</option>
-                  <option value="opus" className="bg-[#1a1a2e] text-[#ccc]">Opus</option>
-                  <option value="haiku" className="bg-[#1a1a2e] text-[#ccc]">Haiku</option>
+                  <option value="opus:medium" className="bg-[#1a1a2e] text-[#ccc]">Opus Medium</option>
+                  <option value="opus:high" className="bg-[#1a1a2e] text-[#ccc]">Opus High</option>
                 </optgroup>
                 <optgroup label="Codex" className="bg-[#1a1a2e] text-[#ccc]">
-                  <option value="gpt-5.4" className="bg-[#1a1a2e] text-[#ccc]">GPT-5.4</option>
-                  <option value="gpt-5.3-codex" className="bg-[#1a1a2e] text-[#ccc]">GPT-5.3 Codex</option>
-                  <option value="codex-mini-latest" className="bg-[#1a1a2e] text-[#ccc]">Codex Mini</option>
+                  <option value="gpt-5.4:medium" className="bg-[#1a1a2e] text-[#ccc]">GPT-5.4 Medium</option>
+                  <option value="gpt-5.4:high" className="bg-[#1a1a2e] text-[#ccc]">GPT-5.4 High</option>
+                  <option value="gpt-5.4:xhigh" className="bg-[#1a1a2e] text-[#ccc]">GPT-5.4 XHigh</option>
                 </optgroup>
               </select>
             </div>

@@ -2,12 +2,18 @@
 
 import { useRef, useCallback, useEffect } from "react";
 
+export interface Choice {
+  text: string;
+  score: number;
+}
+
 interface ChatInputProps {
   disabled: boolean;
   onSend: (text: string) => void;
+  choices?: Choice[];
 }
 
-export default function ChatInput({ disabled, onSend }: ChatInputProps) {
+export default function ChatInput({ disabled, onSend, choices }: ChatInputProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const handleSend = useCallback(() => {
@@ -45,8 +51,31 @@ export default function ChatInput({ disabled, onSend }: ChatInputProps) {
     }
   }, []);
 
+  const handleChoice = useCallback((text: string) => {
+    onSend(text);
+  }, [onSend]);
+
   return (
-    <footer className="flex gap-2 px-4 py-3 bg-surface backdrop-blur-[16px] border-t border-border shrink-0">
+    <footer className="flex flex-col bg-surface backdrop-blur-[16px] border-t border-border shrink-0">
+      {choices && choices.length > 0 && !disabled && (
+        <div className="flex flex-wrap gap-2 px-4 pt-3 pb-1">
+          {choices.map((c, i) => (
+            <button
+              key={i}
+              onClick={() => handleChoice(c.text)}
+              className="px-3.5 py-2 rounded-xl text-sm text-text bg-[rgba(15,15,26,0.6)]
+                border border-border/60 cursor-pointer
+                transition-all duration-fast
+                hover:border-accent hover:bg-[rgba(var(--accent-rgb),0.08)] hover:-translate-y-px
+                hover:shadow-[0_2px_12px_var(--accent-glow)]
+                active:translate-y-0"
+            >
+              {c.text}
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="flex gap-2 px-4 py-3">
       <textarea
         ref={inputRef}
         disabled={disabled}
@@ -64,6 +93,7 @@ export default function ChatInput({ disabled, onSend }: ChatInputProps) {
       >
         Send
       </button>
+      </div>
     </footer>
   );
 }

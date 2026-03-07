@@ -26,6 +26,7 @@ export class CodexProcess extends EventEmitter<CodexProcessEvents> {
   private threadId: string | null = null;
   private model: string | undefined;
   private systemPrompt: string | undefined;
+  private effort: string | undefined;
 
   private requestId = 0;
   private pendingRequests = new Map<number, {
@@ -39,7 +40,7 @@ export class CodexProcess extends EventEmitter<CodexProcessEvents> {
   /**
    * Start the codex app-server process and perform the initialize handshake.
    */
-  spawn(cwd: string, resumeId?: string, model?: string, appendSystemPrompt?: string): void {
+  spawn(cwd: string, resumeId?: string, model?: string, appendSystemPrompt?: string, effort?: string): void {
     if (this.proc) {
       this.kill();
     }
@@ -48,6 +49,7 @@ export class CodexProcess extends EventEmitter<CodexProcessEvents> {
     this.threadId = resumeId || null;
     this.model = model;
     this.systemPrompt = appendSystemPrompt;
+    this.effort = effort;
     this.initialized = false;
     this.threadCreated = false;
     this.requestId = 0;
@@ -60,10 +62,10 @@ export class CodexProcess extends EventEmitter<CodexProcessEvents> {
     this.logStream.write(`\n--- app-server init ${new Date().toISOString()} model: ${model || "default"} threadId: ${resumeId || "new"} ---\n`);
 
     // Build clean env
-    const env = { ...process.env, BROWSER: "" };
+    const env = { ...process.env, BROWSER: "" } as NodeJS.ProcessEnv;
     for (const key of Object.keys(env)) {
       if (key.startsWith("CLAUDECODE") || key.startsWith("CLAUDE_CODE")) {
-        delete env[key];
+        delete (env as Record<string, string | undefined>)[key];
       }
     }
 
@@ -74,6 +76,8 @@ export class CodexProcess extends EventEmitter<CodexProcessEvents> {
     // No need to pass -c flags — just set cwd correctly.
     // Sandbox: full access
     args.push("-c", 'sandbox="danger-full-access"');
+    const reasoningEffort = this.effort || "medium";
+    args.push("-c", `model_reasoning_effort="${reasoningEffort}"`);
 
     if (this.logStream) {
       this.logStream.write(`[start] args: codex ${args.join(" ")}\n`);
@@ -88,11 +92,13 @@ export class CodexProcess extends EventEmitter<CodexProcessEvents> {
       shell: true,
     });
 
-    this.proc.stdout!.on("data", (chunk: Buffer) => {
+    const proc = this.proc;
+
+    proc.stdout!.on("data", (chunk: Buffer) => {
       this.handleStdout(chunk.toString("utf-8"));
     });
 
-    this.proc.stderr!.on("data", (chunk: Buffer) => {
+    proc.stderr!.on("data", (chunk: Buffer) => {
       const text = chunk.toString("utf-8").trim();
       if (text) {
         if (this.logStream) this.logStream.write(`[stderr] ${text}\n`);
@@ -100,12 +106,12 @@ export class CodexProcess extends EventEmitter<CodexProcessEvents> {
       }
     });
 
-    this.proc.on("error", (err) => {
+    proc.on("error", (err) => {
       this.emit("error", `Failed to start codex app-server: ${err.message}`);
       this.emit("status", "disconnected");
     });
 
-    this.proc.on("exit", (code) => {
+    proc.on("exit", (code) => {
       if (this.logStream) this.logStream.write(`[exit] code=${code}\n`);
       this.proc = null;
       this.initialized = false;
@@ -378,6 +384,34 @@ export class CodexProcess extends EventEmitter<CodexProcessEvents> {
             },
           });
         }
+
+        if (itemType === "functionCall" || itemType === "function_call") {
+          const name = (item.name as string) || (item.callId as string) || "unknown";
+          let input: unknown = {};
+          try {
+            const args = item.arguments;
+            input = typeof args === "string" ? JSON.parse(args) : args;
+          } catch {
+            input = { raw: item.arguments };
+          }
+          this.emit("message", {
+            type: "assistant",
+            message: {
+              role: "assistant",
+              content: [{
+                type: "tool_use",
+                name,
+                input,
+              }],
+            },
+          });
+        }
+        break;
+      }
+
+      case "item/execError": {
+        const errorMsg = (params.message as string) || (params.error as string) || "Execution error";
+        this.emit("error", errorMsg);
         break;
       }
 

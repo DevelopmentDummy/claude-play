@@ -17,7 +17,7 @@ interface SessionCardProps {
 /** Determine provider label from model string */
 function providerLabel(model?: string): string | null {
   if (!model) return null;
-  const lower = model.toLowerCase();
+  const lower = model.split(":")[0].toLowerCase();
   const codexModels = ["gpt-5", "codex-mini"];
   for (const prefix of codexModels) {
     if (lower === prefix || lower.startsWith(prefix)) return "Codex";

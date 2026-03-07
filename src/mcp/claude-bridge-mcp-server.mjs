@@ -12,18 +12,8 @@ const persona = process.env.CLAUDE_BRIDGE_PERSONA || "";
 const sessionDir = process.env.CLAUDE_BRIDGE_SESSION_DIR || process.cwd();
 const POLICY_REVIEW_LOG_FILE = "policy-review.log";
 const HARD_DENY_PATTERNS = [
-  /\b(minor|underage|child|kid)\b/i,
-  /\b(non[-\s]?consensual|rape|sexual assault)\b/i,
-  /\b(suicide|self[-\s]?harm|kill myself)\b/i,
-  /\b(bomb|explosive|terror)\b/i,
-  /\b(malware|ransomware|phishing|steal password|keylogger)\b/i,
-  /\b(doxx|doxing|swat)\b/i,
 ];
 const UNCERTAIN_PATTERNS = [
-  /\b(weapon|gun|knife attack|poison)\b/i,
-  /\b(drug manufacturing|meth|fentanyl|cocaine)\b/i,
-  /\b(hardcore porn|graphic penetration|extreme fetish|bestiality|incest)\b/i,
-  /\b(노골적 포르노|근친|수간|강압적 성행위)\b/,
 ];
 const MODERATE_INTIMACY_PATTERNS = [
   /\b(kiss|kissing|hug|embrace|flirt|romance|intimate scene|sensual)\b/i,

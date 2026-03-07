@@ -26,7 +26,41 @@ interface ChatMessagesProps {
 
 const OPEN_TAG = "<dialog_response>";
 const CLOSE_TAG = "</dialog_response>";
+const CHOICE_OPEN = "<choice>";
+const CHOICE_CLOSE = "</choice>";
 const SPECIAL_TOKEN_REGEX = /\$(?:IMAGE|PANEL):[^$]+\$/g;
+
+export interface Choice {
+  text: string;
+  score: number;
+}
+
+/** Extract choices from <choice> tags in raw content */
+export function extractChoices(raw: string): Choice[] {
+  const openIdx = raw.lastIndexOf(CHOICE_OPEN);
+  if (openIdx === -1) return [];
+  const contentStart = openIdx + CHOICE_OPEN.length;
+  const closeIdx = raw.indexOf(CHOICE_CLOSE, contentStart);
+  if (closeIdx === -1) return [];
+  const jsonStr = raw.substring(contentStart, closeIdx).trim();
+  try {
+    const parsed = JSON.parse(jsonStr);
+    if (Array.isArray(parsed)) {
+      return parsed
+        .filter((c: unknown) => c && typeof c === "object" && typeof (c as Record<string, unknown>).text === "string")
+        .map((c: Record<string, unknown>) => ({
+          text: c.text as string,
+          score: typeof c.score === "number" ? c.score : 0,
+        }));
+    }
+  } catch { /* invalid JSON */ }
+  return [];
+}
+
+/** Strip <choice> tags from content for display */
+function stripChoiceTags(text: string): string {
+  return text.replace(/<choice>[\s\S]*?<\/choice>/g, "").trim();
+}
 
 function extractSpecialTokens(raw: string): string[] {
   const matches = raw.match(SPECIAL_TOKEN_REGEX) || [];
@@ -417,13 +451,14 @@ export default function ChatMessages({
           isStreaming && idx === lastIdx && msg.role === "assistant";
 
         // OOC messages: show raw content (no dialog_response extraction)
-        // Normal RP messages: extract <dialog_response> content only
-        const displayContent =
+        // Normal RP messages: extract <dialog_response> content only, strip <choice> tags
+        const rawDisplay =
           msg.ooc
             ? msg.content
             : hideTools && msg.role === "assistant"
               ? (isLastAssistant ? extractDialogResponseLive(msg.content) : extractDialogResponse(msg.content))
               : msg.content;
+        const displayContent = stripChoiceTags(rawDisplay);
 
         // Skip empty assistant messages in RP mode (e.g. tool-only turns),
         // but keep the live streaming turn visible so users can see progress.

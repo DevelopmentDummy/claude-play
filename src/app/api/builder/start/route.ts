@@ -3,12 +3,12 @@ import * as fs from "fs";
 import * as path from "path";
 import { getServices } from "@/lib/services";
 import { getAppRoot } from "@/lib/data-dir";
-import { providerFromModel } from "@/lib/ai-provider";
+import { providerFromModel, parseModelEffort } from "@/lib/ai-provider";
 
 export async function POST(req: Request) {
   const body = (await req.json()) as { name: string; model?: string };
   const { name } = body;
-  const model = body.model || undefined;
+  const { model, effort } = parseModelEffort(body.model || "");
   const svc = getServices();
 
   svc.claude.kill();
@@ -39,7 +39,9 @@ export async function POST(req: Request) {
   }
 
   const runtimeSystemPrompt = svc.sessions.buildBuilderSystemPrompt(name);
-  svc.claude.spawn(personaDir, undefined, model, runtimeSystemPrompt);
+  // Builder default effort: highest for each provider
+  const effectiveEffort = effort || (provider === "codex" ? "xhigh" : "high");
+  svc.claude.spawn(personaDir, undefined, model || undefined, runtimeSystemPrompt, effectiveEffort);
 
   return NextResponse.json({ name, dir: personaDir, provider });
 }

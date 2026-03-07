@@ -35,7 +35,7 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
    * If resumeId is provided, resumes that session with --resume.
    * CLAUDE.md in cwd is auto-loaded by Claude Code.
    */
-  spawn(cwd: string, resumeId?: string, model?: string, appendSystemPrompt?: string): void {
+  spawn(cwd: string, resumeId?: string, model?: string, appendSystemPrompt?: string, effort?: string): void {
     if (this.proc) {
       this.kill();
     }
@@ -60,6 +60,10 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
 
     if (model) {
       args.push("--model", model);
+    }
+
+    if (effort) {
+      args.push("--effort", effort);
     }
 
     if (resumeId) {

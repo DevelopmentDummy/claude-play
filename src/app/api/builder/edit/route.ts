@@ -3,12 +3,12 @@ import * as fs from "fs";
 import * as path from "path";
 import { getServices } from "@/lib/services";
 import { getAppRoot } from "@/lib/data-dir";
-import { providerFromModel } from "@/lib/ai-provider";
+import { providerFromModel, parseModelEffort } from "@/lib/ai-provider";
 
 export async function POST(req: Request) {
-  const body = (await req.json()) as { name: string; model?: string };
+  const body = (await req.json()) as { name: string; model?: string; service?: "claude" | "codex" };
   const { name } = body;
-  const model = body.model || undefined;
+  const { model, effort } = parseModelEffort(body.model || "");
   const svc = getServices();
 
   svc.claude.kill();
@@ -38,10 +38,10 @@ export async function POST(req: Request) {
     fs.copyFileSync(panelSpecSrc, path.join(personaDir, "panel-spec.md"));
   }
 
-  // Determine provider: explicit model > saved provider > current provider
+  // Determine provider: explicit service > explicit model > saved provider > current provider
   const savedProvider = svc.sessions.getBuilderProvider(name);
-  const provider = model ? providerFromModel(model) : (savedProvider || svc.provider);
-  console.log(`[builder/edit] name=${name} model=${model} provider=${provider} (saved=${savedProvider} current=${svc.provider})`);
+  const provider = body.service || (model ? providerFromModel(model) : (savedProvider || svc.provider));
+  console.log(`[builder/edit] name=${name} model=${model} service=${body.service} provider=${provider} (saved=${savedProvider} current=${svc.provider})`);
   const providerChanged = provider !== svc.provider;
   if (providerChanged) {
     svc.switchProvider(provider);
@@ -56,7 +56,9 @@ export async function POST(req: Request) {
   const runtimeSystemPrompt = svc.sessions.buildBuilderSystemPrompt(name);
   // If no model specified and provider is codex, use default codex model
   const effectiveModel = model || (provider === "codex" ? "gpt-5.4" : undefined);
-  svc.claude.spawn(personaDir, resumeId, effectiveModel, runtimeSystemPrompt);
+  // Builder default effort: highest for each provider
+  const effectiveEffort = effort || (provider === "codex" ? "xhigh" : "high");
+  svc.claude.spawn(personaDir, resumeId, effectiveModel, runtimeSystemPrompt, effectiveEffort);
 
   return NextResponse.json({ name, dir: personaDir, resumed: !!resumeId, provider });
 }

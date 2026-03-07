@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import * as fs from "fs";
 import * as path from "path";
 import { getServices } from "@/lib/services";
-import { providerFromModel } from "@/lib/ai-provider";
+import { providerFromModel, parseModelEffort } from "@/lib/ai-provider";
 
 export async function POST(
   req: Request,
@@ -10,7 +10,8 @@ export async function POST(
 ) {
   const { id } = await params;
   const body = await req.json().catch(() => ({}));
-  const model = (body as { model?: string }).model || undefined;
+  const rawModel = (body as { model?: string }).model || undefined;
+  const { model, effort } = parseModelEffort(rawModel || "");
   const svc = getServices();
 
   svc.claude.kill();
@@ -46,7 +47,11 @@ export async function POST(
   svc.sessions.ensureClaudeRuntimeConfig(sessionDir, info.persona, "session");
 
   // Determine the effective model and provider
-  const effectiveModel = model || svc.sessions.getSessionModel(id) || "";
+  // rawModel may be saved as "opus:medium" — re-parse if loading from session
+  const savedRaw = svc.sessions.getSessionModel(id) || "";
+  const effectiveRaw = rawModel || savedRaw;
+  const { model: effectiveModel, effort: effectiveEffort } = parseModelEffort(effectiveRaw);
+  const finalEffort = effort || effectiveEffort;
   const provider = providerFromModel(effectiveModel);
 
   // Switch provider if needed
@@ -66,14 +71,14 @@ export async function POST(
     svc.addOpeningToHistory(opening);
   }
 
-  // Save model choice to session.json so it persists across refreshes
-  if (model) {
-    svc.sessions.saveSessionModel(id, model);
+  // Save model choice (with effort suffix) to session.json so it persists across refreshes
+  if (rawModel) {
+    svc.sessions.saveSessionModel(id, rawModel);
   }
 
   // Spawn with resume and model
   const runtimeSystemPrompt = svc.sessions.buildServiceSystemPrompt(info.persona, provider);
-  svc.claude.spawn(sessionDir, resumeId, effectiveModel || undefined, runtimeSystemPrompt);
+  svc.claude.spawn(sessionDir, resumeId, effectiveModel || undefined, runtimeSystemPrompt, finalEffort);
 
   // Include initial panels + context in response (SSE may not be connected yet)
   const { panels, context: panelContext } = svc.panels.getCurrentPanels();
@@ -108,5 +113,5 @@ export async function POST(
     }
   }
 
-  return NextResponse.json({ ...info, opening, isResume, layout, panels, panelContext, profileImage, iconImage, model: effectiveModel || "", provider });
+  return NextResponse.json({ ...info, opening, isResume, layout, panels, panelContext, profileImage, iconImage, model: effectiveRaw || "", provider });
 }
