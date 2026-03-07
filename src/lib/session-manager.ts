@@ -642,7 +642,16 @@ export class SessionManager {
   }
 
   /** Sync updated files from persona to session (panels, variables, opening, layout, skills) */
+  /** Full sync — syncs all elements from persona to session */
   syncPersonaToSession(id: string): void {
+    this.syncPersonaToSessionSelective(id, {
+      panels: true, variables: true, layout: true, opening: true,
+      worldview: true, skills: true, instructions: true,
+    });
+  }
+
+  /** Selective sync — only sync the specified elements */
+  syncPersonaToSessionSelective(id: string, elements: Record<string, boolean>): void {
     const sessionDir = this.getSessionDir(id);
     const metaPath = path.join(sessionDir, "session.json");
     if (!fs.existsSync(metaPath)) return;
@@ -656,68 +665,172 @@ export class SessionManager {
     if (!fs.existsSync(personaDir)) return;
 
     // Sync panels/ directory (overwrite with persona's latest)
-    const personaPanels = path.join(personaDir, "panels");
-    const sessionPanels = path.join(sessionDir, "panels");
-    if (fs.existsSync(personaPanels)) {
-      if (!fs.existsSync(sessionPanels)) fs.mkdirSync(sessionPanels, { recursive: true });
-      for (const file of fs.readdirSync(personaPanels)) {
-        const src = path.join(personaPanels, file);
-        const dst = path.join(sessionPanels, file);
-        if (fs.statSync(src).isFile()) {
-          fs.copyFileSync(src, dst);
+    if (elements.panels) {
+      const personaPanels = path.join(personaDir, "panels");
+      const sessionPanels = path.join(sessionDir, "panels");
+      if (fs.existsSync(personaPanels)) {
+        if (!fs.existsSync(sessionPanels)) fs.mkdirSync(sessionPanels, { recursive: true });
+        for (const file of fs.readdirSync(personaPanels)) {
+          const src = path.join(personaPanels, file);
+          const dst = path.join(sessionPanels, file);
+          if (fs.statSync(src).isFile()) {
+            fs.copyFileSync(src, dst);
+          }
         }
       }
     }
 
     // Merge variables.json: add new keys from persona, keep existing session values
-    const personaVarsPath = path.join(personaDir, "variables.json");
-    const sessionVarsPath = path.join(sessionDir, "variables.json");
-    if (fs.existsSync(personaVarsPath)) {
-      try {
-        const personaVars = JSON.parse(fs.readFileSync(personaVarsPath, "utf-8"));
-        let sessionVars: Record<string, unknown> = {};
-        if (fs.existsSync(sessionVarsPath)) {
-          sessionVars = JSON.parse(fs.readFileSync(sessionVarsPath, "utf-8"));
-        }
-        // Only add keys that don't already exist in session
-        let changed = false;
-        for (const [key, val] of Object.entries(personaVars)) {
-          if (!(key in sessionVars)) {
-            sessionVars[key] = val;
-            changed = true;
+    if (elements.variables) {
+      const personaVarsPath = path.join(personaDir, "variables.json");
+      const sessionVarsPath = path.join(sessionDir, "variables.json");
+      if (fs.existsSync(personaVarsPath)) {
+        try {
+          const personaVars = JSON.parse(fs.readFileSync(personaVarsPath, "utf-8"));
+          let sessionVars: Record<string, unknown> = {};
+          if (fs.existsSync(sessionVarsPath)) {
+            sessionVars = JSON.parse(fs.readFileSync(sessionVarsPath, "utf-8"));
           }
-        }
-        if (changed) {
-          fs.writeFileSync(sessionVarsPath, JSON.stringify(sessionVars, null, 2), "utf-8");
-        }
-      } catch { /* ignore parse errors */ }
-    }
-
-    // Overwrite-safe files (these are templates/config, not runtime state)
-    const overwriteFiles = ["opening.md", "layout.json", "worldview.md"];
-    for (const file of overwriteFiles) {
-      const src = path.join(personaDir, file);
-      const dst = path.join(sessionDir, file);
-      if (fs.existsSync(src)) {
-        fs.copyFileSync(src, dst);
+          let changed = false;
+          for (const [key, val] of Object.entries(personaVars)) {
+            if (!(key in sessionVars)) {
+              sessionVars[key] = val;
+              changed = true;
+            }
+          }
+          if (changed) {
+            fs.writeFileSync(sessionVarsPath, JSON.stringify(sessionVars, null, 2), "utf-8");
+          }
+        } catch { /* ignore parse errors */ }
       }
     }
 
-    // Sync skills/ directory
-    const personaSkills = path.join(personaDir, "skills");
-    const sessionSkills = path.join(sessionDir, "skills");
-    if (fs.existsSync(personaSkills)) {
-      if (!fs.existsSync(sessionSkills)) fs.mkdirSync(sessionSkills, { recursive: true });
-      for (const entry of fs.readdirSync(personaSkills, { withFileTypes: true })) {
-        const src = path.join(personaSkills, entry.name);
-        const dst = path.join(sessionSkills, entry.name);
-        if (entry.isDirectory()) {
-          this.copyDirRecursive(src, dst);
-        } else {
+    // Individual overwrite-safe files
+    const fileMap: Record<string, string> = {
+      layout: "layout.json",
+      opening: "opening.md",
+      worldview: "worldview.md",
+    };
+    for (const [key, file] of Object.entries(fileMap)) {
+      if (elements[key]) {
+        const src = path.join(personaDir, file);
+        const dst = path.join(sessionDir, file);
+        if (fs.existsSync(src)) {
           fs.copyFileSync(src, dst);
         }
       }
     }
+
+    // Sync skills/ directory
+    if (elements.skills) {
+      const personaSkills = path.join(personaDir, "skills");
+      const sessionSkills = path.join(sessionDir, "skills");
+      if (fs.existsSync(personaSkills)) {
+        if (!fs.existsSync(sessionSkills)) fs.mkdirSync(sessionSkills, { recursive: true });
+        for (const entry of fs.readdirSync(personaSkills, { withFileTypes: true })) {
+          const src = path.join(personaSkills, entry.name);
+          const dst = path.join(sessionSkills, entry.name);
+          if (entry.isDirectory()) {
+            this.copyDirRecursive(src, dst);
+          } else {
+            fs.copyFileSync(src, dst);
+          }
+        }
+      }
+    }
+
+    // Refresh instruction files (CLAUDE.md / AGENTS.md)
+    if (elements.instructions) {
+      this.refreshSessionInstructionFiles(id);
+    }
+  }
+
+  /** Compare persona vs session to show what's different */
+  getSyncDiff(id: string): Array<{ key: string; label: string; hasChanges: boolean }> {
+    const sessionDir = this.getSessionDir(id);
+    const metaPath = path.join(sessionDir, "session.json");
+    if (!fs.existsSync(metaPath)) return [];
+
+    let meta: SessionMeta;
+    try {
+      meta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
+    } catch { return []; }
+
+    const personaDir = this.getPersonaDir(meta.persona);
+    if (!fs.existsSync(personaDir)) return [];
+
+    const result: Array<{ key: string; label: string; hasChanges: boolean }> = [];
+
+    // Check panels
+    const pPanels = path.join(personaDir, "panels");
+    const sPanels = path.join(sessionDir, "panels");
+    result.push({ key: "panels", label: "패널 (panels/)", hasChanges: this.dirDiffers(pPanels, sPanels) });
+
+    // Check individual files
+    const files: Array<{ key: string; label: string; file: string }> = [
+      { key: "layout", label: "레이아웃 (layout.json)", file: "layout.json" },
+      { key: "opening", label: "오프닝 메시지 (opening.md)", file: "opening.md" },
+      { key: "worldview", label: "세계관 (worldview.md)", file: "worldview.md" },
+      { key: "variables", label: "변수 (variables.json)", file: "variables.json" },
+    ];
+    for (const { key, label, file } of files) {
+      const src = path.join(personaDir, file);
+      const dst = path.join(sessionDir, file);
+      if (key === "variables") {
+        // For variables, check if persona has keys not in session
+        result.push({ key, label, hasChanges: this.variablesDiffer(src, dst) });
+      } else {
+        result.push({ key, label, hasChanges: this.fileDiffers(src, dst) });
+      }
+    }
+
+    // Check skills
+    const pSkills = path.join(personaDir, "skills");
+    const sSkills = path.join(sessionDir, "skills");
+    result.push({ key: "skills", label: "스킬 (skills/)", hasChanges: this.dirDiffers(pSkills, sSkills) });
+
+    // Check instructions
+    const instrSrc = path.join(personaDir, "session-instructions.md");
+    const instrDst = path.join(sessionDir, "CLAUDE.md");
+    result.push({ key: "instructions", label: "인스트럭션 (CLAUDE.md)", hasChanges: this.fileDiffers(instrSrc, instrDst) });
+
+    return result;
+  }
+
+  private fileDiffers(src: string, dst: string): boolean {
+    if (!fs.existsSync(src)) return false;
+    if (!fs.existsSync(dst)) return true;
+    try {
+      const a = fs.readFileSync(src);
+      const b = fs.readFileSync(dst);
+      return !a.equals(b);
+    } catch { return true; }
+  }
+
+  private dirDiffers(src: string, dst: string): boolean {
+    if (!fs.existsSync(src)) return false;
+    if (!fs.existsSync(dst)) return true;
+    try {
+      const srcFiles = fs.readdirSync(src).filter(f => {
+        try { return fs.statSync(path.join(src, f)).isFile(); } catch { return false; }
+      });
+      for (const file of srcFiles) {
+        if (this.fileDiffers(path.join(src, file), path.join(dst, file))) return true;
+      }
+      return false;
+    } catch { return true; }
+  }
+
+  private variablesDiffer(src: string, dst: string): boolean {
+    if (!fs.existsSync(src)) return false;
+    try {
+      const personaVars = JSON.parse(fs.readFileSync(src, "utf-8"));
+      const sessionVars = fs.existsSync(dst) ? JSON.parse(fs.readFileSync(dst, "utf-8")) : {};
+      for (const key of Object.keys(personaVars)) {
+        if (!(key in sessionVars)) return true;
+      }
+      return false;
+    } catch { return false; }
   }
 
   deleteSession(id: string): void {

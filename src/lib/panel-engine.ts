@@ -25,6 +25,7 @@ export interface PanelUpdate {
   context: Record<string, unknown>;
 }
 
+
 /** Watches a session directory and emits rendered panel HTML when files change */
 export class PanelEngine {
   private sessionDir: string | null = null;
@@ -34,10 +35,12 @@ export class PanelEngine {
   private variables: Record<string, unknown> = {};
   private dataFiles: Record<string, unknown> = {};
   private onUpdate: (update: PanelUpdate) => void;
+  private onLayoutUpdate: (() => void) | null = null;
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(onUpdate: (update: PanelUpdate) => void) {
+  constructor(onUpdate: (update: PanelUpdate) => void, onLayoutUpdate?: () => void) {
     this.onUpdate = onUpdate;
+    this.onLayoutUpdate = onLayoutUpdate || null;
     this.registerHelpers();
   }
 
@@ -97,6 +100,15 @@ export class PanelEngine {
       this.watchers.push(watcher);
     }
 
+    // Watch layout.json for real-time layout changes
+    const layoutPath = path.join(sessionDir, "layout.json");
+    if (fs.existsSync(layoutPath) && this.onLayoutUpdate) {
+      const layoutWatcher = fs.watch(layoutPath, () => {
+        this.broadcastLayout();
+      });
+      this.watchers.push(layoutWatcher);
+    }
+
     // Watch panels/ directory
     const panelsDir = path.join(sessionDir, "panels");
     if (fs.existsSync(panelsDir)) {
@@ -116,6 +128,10 @@ export class PanelEngine {
 
     // Also watch session dir for NEW json files appearing
     const dirWatcher = fs.watch(sessionDir, (_event, filename) => {
+      if (filename === "layout.json") {
+        this.broadcastLayout();
+        return;
+      }
       if (filename && filename.endsWith(".json") && !SYSTEM_JSON.has(filename)) {
         // A new data file may have appeared — re-watch all data files
         this.watchDataFiles();
@@ -254,6 +270,12 @@ export class PanelEngine {
       }
     } catch { /* ignore */ }
     this.dataFiles = newData;
+  }
+
+  /** Notify layout.json changed */
+  private broadcastLayout(): void {
+    if (!this.sessionDir || !this.onLayoutUpdate) return;
+    this.onLayoutUpdate();
   }
 
   private render(): void {

@@ -41,9 +41,7 @@ export async function POST(
   // Read layout config
   const layout = svc.sessions.readLayout(sessionDir);
 
-  // Refresh session files from persona's latest versions
-  svc.sessions.refreshSessionInstructionFiles(id);
-  svc.sessions.syncPersonaToSession(id);
+  // Ensure runtime configs exist (but don't auto-sync persona files — user can manually sync)
   svc.sessions.ensureClaudeRuntimeConfig(sessionDir, info.persona, "session");
 
   // Determine the effective model and provider

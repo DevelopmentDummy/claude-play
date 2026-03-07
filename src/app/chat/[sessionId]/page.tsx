@@ -13,6 +13,7 @@ import ChatInput from "@/components/ChatInput";
 import { extractChoices } from "@/components/ChatMessages";
 import PanelArea from "@/components/PanelArea";
 import PanelDrawer from "@/components/PanelDrawer";
+import SyncModal from "@/components/SyncModal";
 
 interface Panel {
   name: string;
@@ -49,6 +50,8 @@ export default function ChatPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [currentModel, setCurrentModel] = useState(searchParams.get("model") || "");
   const [currentProvider, setCurrentProvider] = useState<"claude" | "codex">("claude");
+  const [showOOC, setShowOOC] = useState(false);
+  const [syncModalOpen, setSyncModalOpen] = useState(false);
   const isMobile = useIsMobile();
   const initRef = useRef(false);
 
@@ -63,6 +66,14 @@ export default function ChatPage() {
         const update = p as { panels: Panel[]; context: Record<string, unknown> };
         setPanels(update.panels);
         setPanelData(update.context);
+      },
+      "layout:update": (p) => {
+        const update = p as { layout: LayoutConfig };
+        if (update.layout) {
+          setLayout(update.layout);
+          const imageBase = `/api/sessions/${sessionId}/files?path=images/`;
+          applyLayout(update.layout, imageBase);
+        }
       },
     },
     enabled: wsEnabled,
@@ -192,6 +203,9 @@ export default function ChatPage() {
 
   const showInlinePanel = hasSidebar && !isMobile;
 
+  // Filter OOC messages unless toggle is on
+  const visibleMessages = showOOC ? messages : messages.filter((m) => !m.ooc);
+
   // Listen for panel bridge sendMessage events
   useEffect(() => {
     const handler = (e: Event) => {
@@ -216,6 +230,9 @@ export default function ChatPage() {
         model={currentModel}
         provider={currentProvider}
         onModelChange={handleModelChange}
+        showOOC={showOOC}
+        onOOCToggle={() => setShowOOC((v) => !v)}
+        onSync={() => setSyncModalOpen(true)}
       />
       <ErrorBanner error={error} onDismiss={() => setError(null)} />
       <div className="flex-1 relative min-h-0">
@@ -228,7 +245,7 @@ export default function ChatPage() {
           }}
         >
           <ChatMessages
-            messages={messages}
+            messages={visibleMessages}
             isStreaming={isStreaming}
             hideTools
             sessionId={sessionId}
@@ -241,9 +258,9 @@ export default function ChatPage() {
             onSend={sendMessage}
             choices={(() => {
               if (isStreaming) return undefined;
-              for (let i = messages.length - 1; i >= 0; i--) {
-                if (messages[i].role === "assistant") {
-                  const c = extractChoices(messages[i].content);
+              for (let i = visibleMessages.length - 1; i >= 0; i--) {
+                if (visibleMessages[i].role === "assistant" && !visibleMessages[i].ooc) {
+                  const c = extractChoices(visibleMessages[i].content);
                   return c.length > 0 ? c : undefined;
                 }
               }
@@ -299,6 +316,15 @@ export default function ChatPage() {
           onSendMessage={sendMessage}
         />
       )}
+      <SyncModal
+        open={syncModalOpen}
+        sessionId={sessionId}
+        onClose={() => setSyncModalOpen(false)}
+        onSynced={() => {
+          // Notify Claude about the sync via OOC message
+          sendMessage("OOC: 대화 세션이 원본 페르소나 데이터에 동기화 되었습니다. 변경사항을 확인하세요.");
+        }}
+      />
     </div>
   );
 }

@@ -4,7 +4,9 @@ import { getServices } from "@/lib/services";
 export async function POST(req: Request) {
   const { text } = (await req.json()) as { text: string };
   const svc = getServices();
-  svc.addUserToHistory(text);
+  const isOOC = text.startsWith("OOC:");
+  svc.isOOC = isOOC;
+  svc.addUserToHistory(text, isOOC);
   svc.claude.send(text);
   return NextResponse.json({ ok: true });
 }

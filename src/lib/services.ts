@@ -95,6 +95,7 @@ export interface HistoryMessage {
   role: "user" | "assistant";
   content: string;
   tools?: Array<{ name: string; input: unknown }>;
+  ooc?: boolean;
 }
 
 /** Union type for process instances — both share the same EventEmitter interface */
@@ -110,7 +111,7 @@ export interface Services {
   isBuilderActive: boolean;
   isOOC: boolean;
   chatHistory: HistoryMessage[];
-  addUserToHistory: (text: string) => void;
+  addUserToHistory: (text: string, ooc?: boolean) => void;
   addOpeningToHistory: (text: string) => void;
   clearHistory: () => void;
   loadHistory: () => void;
@@ -133,7 +134,18 @@ function initServices(): Services {
   let currentProvider: AIProvider = "claude";
   let proc: AIProcess = createProcess(currentProvider);
   const sessions = new SessionManager(getDataDir(), getAppRoot());
-  const panels = new PanelEngine((update) => broadcast("panels:update", update));
+  const panels = new PanelEngine(
+    (update) => broadcast("panels:update", update),
+    () => {
+      // Re-read layout through SessionManager and broadcast the merged result
+      const dir = svc.isBuilderActive && svc.builderPersonaName
+        ? sessions.getPersonaDir(svc.builderPersonaName)
+        : svc.currentSessionId ? sessions.getSessionDir(svc.currentSessionId) : null;
+      if (dir) {
+        broadcast("layout:update", { layout: sessions.readLayout(dir) });
+      }
+    },
+  );
 
   // Accumulator for assistant turn
   let segments: string[] = [];
@@ -231,34 +243,35 @@ function initServices(): Services {
       }
 
       if (msg.type === "result") {
-        if (!svc.isOOC) {
-          if (segments.length > 0 || tools.length > 0) {
-            const rawContent = segments.join("");
-            const dialogContent = extractDialog(rawContent);
-            if (dialogContent) {
-              svc.chatHistory.push({
-                id: `hist-a-${++historyId}`,
-                role: "assistant",
-                content: dialogContent,
-                tools: tools.length > 0 ? [...tools] : undefined,
-              });
-            }
-          } else if (msg.result) {
-            const result = msg.result as Record<string, unknown>;
-            const text =
-              typeof result === "string" ? result
-              : typeof result.text === "string" ? result.text
-              : null;
-            if (text) {
-              svc.chatHistory.push({
-                id: `hist-a-${++historyId}`,
-                role: "assistant",
-                content: text,
-              });
-            }
+        const isOOC = svc.isOOC;
+        if (segments.length > 0 || tools.length > 0) {
+          const rawContent = segments.join("");
+          const dialogContent = isOOC ? rawContent : extractDialog(rawContent);
+          if (dialogContent) {
+            svc.chatHistory.push({
+              id: `hist-a-${++historyId}`,
+              role: "assistant",
+              content: dialogContent,
+              tools: tools.length > 0 ? [...tools] : undefined,
+              ooc: isOOC || undefined,
+            });
           }
-          saveHistory();
+        } else if (msg.result) {
+          const result = msg.result as Record<string, unknown>;
+          const text =
+            typeof result === "string" ? result
+            : typeof result.text === "string" ? result.text
+            : null;
+          if (text) {
+            svc.chatHistory.push({
+              id: `hist-a-${++historyId}`,
+              role: "assistant",
+              content: text,
+              ooc: isOOC || undefined,
+            });
+          }
         }
+        saveHistory();
         svc.isOOC = false;
         segments = [];
         tools = [];
@@ -304,11 +317,12 @@ function initServices(): Services {
     isBuilderActive: false,
     isOOC: false,
     chatHistory: [],
-    addUserToHistory(text: string) {
+    addUserToHistory(text: string, ooc?: boolean) {
       svc.chatHistory.push({
         id: `hist-u-${++historyId}`,
         role: "user",
         content: text,
+        ooc: ooc || undefined,
       });
       saveHistory();
     },

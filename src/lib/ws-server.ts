@@ -153,11 +153,8 @@ function handleMessage(
       const text = msg.text as string;
       if (!text?.trim()) return;
       const isOOC = text.startsWith("OOC:");
-      if (isOOC) {
-        svc.isOOC = true;
-      } else {
-        svc.addUserToHistory(text);
-      }
+      svc.isOOC = isOOC;
+      svc.addUserToHistory(text, isOOC);
       svc.claude.send(text);
       break;
     }
