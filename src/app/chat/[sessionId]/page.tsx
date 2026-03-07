@@ -82,6 +82,7 @@ export default function ChatPage() {
   // Send via WebSocket: update local UI state + send through WS
   const sendMessage = useCallback(
     (text: string) => {
+      if (text.startsWith("OOC:")) setShowOOC(true);
       prepareSend(text);
       sendChat(text);
     },
