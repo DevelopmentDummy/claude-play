@@ -136,6 +136,7 @@ export interface Services {
   addOpeningToHistory: (text: string) => void;
   clearHistory: () => void;
   loadHistory: () => void;
+  saveHistory: () => void;
   /** Switch the AI provider — kills current process, creates new one, rebinds events */
   switchProvider: (provider: AIProvider) => void;
 }
@@ -385,6 +386,7 @@ function initServices(userId: string): Services {
         svc.chatHistory = [];
       }
     },
+    saveHistory,
     switchProvider(newProvider: AIProvider) {
       if (newProvider === currentProvider) return;
       proc.kill();

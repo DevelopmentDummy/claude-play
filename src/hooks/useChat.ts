@@ -307,6 +307,19 @@ export function useChat() {
     return 0;
   }, []);
 
+  const toggleMessageOOC = useCallback(async (id: string, ooc: boolean) => {
+    const res = await fetch("/api/chat/history", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, ooc }),
+    });
+    if (!res.ok) return;
+    const data = await res.json() as { message: ChatMessage };
+    setMessages((prev) =>
+      prev.map((m) => (m.id === id ? { ...m, ooc: data.message.ooc, content: data.message.content } : m))
+    );
+  }, []);
+
   return {
     messages,
     isStreaming,
@@ -322,5 +335,6 @@ export function useChat() {
     clearMessages,
     loadHistory,
     loadMore,
+    toggleMessageOOC,
   };
 }

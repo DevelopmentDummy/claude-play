@@ -2,6 +2,33 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServices } from "@/lib/services";
 import { requireAuth } from "@/lib/auth";
 
+/** PATCH: Toggle ooc flag on a specific message */
+export async function PATCH(req: NextRequest) {
+  const auth = requireAuth(req);
+  if (auth instanceof Response) return auth;
+  const body = await req.json().catch(() => ({})) as { id?: string; ooc?: boolean };
+  if (!body.id) {
+    return NextResponse.json({ error: "id required" }, { status: 400 });
+  }
+  const svc = getServices(auth.userId);
+  svc.loadHistory();
+  const msg = svc.chatHistory.find((m) => m.id === body.id);
+  if (!msg) {
+    return NextResponse.json({ error: "message not found" }, { status: 404 });
+  }
+  msg.ooc = body.ooc || undefined;
+  // Strip or add OOC: prefix on user messages to keep content consistent
+  if (msg.role === "user") {
+    if (body.ooc && !msg.content.startsWith("OOC:")) {
+      msg.content = `OOC: ${msg.content}`;
+    } else if (!body.ooc && msg.content.startsWith("OOC:")) {
+      msg.content = msg.content.replace(/^OOC:\s*/, "");
+    }
+  }
+  svc.saveHistory();
+  return NextResponse.json({ ok: true, message: msg });
+}
+
 export async function GET(req: NextRequest) {
   const auth = requireAuth(req);
   if (auth instanceof Response) return auth;

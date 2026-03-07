@@ -22,6 +22,7 @@ interface ChatMessagesProps {
   panels?: PanelInfo[];
   hasMore?: boolean;
   onLoadMore?: () => Promise<number>;
+  onToggleOOC?: (id: string, ooc: boolean) => void;
 }
 
 const OPEN_TAG = "<dialog_response>";
@@ -305,6 +306,7 @@ export default function ChatMessages({
   panels,
   hasMore,
   onLoadMore,
+  onToggleOOC,
 }: ChatMessagesProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -470,15 +472,33 @@ export default function ChatMessages({
           ? "border border-dashed border-yellow-500/40"
           : "";
 
+        const isLive = isLastAssistant || msg.id.startsWith("stream-");
+
         return (
           <div
             key={msg.id}
-            className={`max-w-[85%] px-4 py-3 rounded-2xl leading-relaxed whitespace-pre-wrap break-words animate-[messageIn_0.25s_ease-out] ${oocStyle} ${
+            className={`group relative max-w-[85%] px-4 py-3 rounded-2xl leading-relaxed whitespace-pre-wrap break-words animate-[messageIn_0.25s_ease-out] ${oocStyle} ${
               msg.role === "user"
                 ? "self-end bg-user-bubble backdrop-blur-[12px] rounded-br-[4px] shadow-sm"
                 : "self-start bg-assistant-bubble backdrop-blur-[12px] rounded-bl-[4px] shadow-sm"
             }`}
           >
+            {/* OOC toggle button on hover */}
+            {onToggleOOC && !isLive && (
+              <button
+                onClick={() => onToggleOOC(msg.id, !msg.ooc)}
+                className={`absolute top-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150
+                  px-1.5 py-0.5 rounded text-[9px] font-medium cursor-pointer border
+                  ${msg.role === "user" ? "left-1" : "right-1"}
+                  ${msg.ooc
+                    ? "border-yellow-500/50 text-yellow-400/80 bg-yellow-500/10 hover:bg-yellow-500/20"
+                    : "border-border/40 text-text-dim/50 bg-surface/80 hover:bg-surface-light hover:text-text-dim/80"
+                  }`}
+                title={msg.ooc ? "OOC 해제" : "OOC로 전환"}
+              >
+                OOC
+              </button>
+            )}
             {msg.ooc && (
               <div className="text-[10px] font-semibold text-yellow-500/70 uppercase tracking-wider mb-1">OOC</div>
             )}

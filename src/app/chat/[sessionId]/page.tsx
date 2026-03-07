@@ -38,6 +38,7 @@ export default function ChatPage() {
     loadHistory,
     loadMore,
     hasMore,
+    toggleMessageOOC,
   } = useChat();
   const { applyLayout, resetLayout } = useLayout();
 
@@ -251,6 +252,7 @@ export default function ChatPage() {
             panels={hasPerPanelPlacement ? inlinePanels : panels}
             hasMore={hasMore}
             onLoadMore={loadMore}
+            onToggleOOC={toggleMessageOOC}
           />
           <ChatInput
             disabled={isStreaming}
