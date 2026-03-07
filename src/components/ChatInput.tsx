@@ -18,17 +18,19 @@ interface ChatInputProps {
 export default function ChatInput({ disabled, onSend, choices, showOOC, onOOCToggle }: ChatInputProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [oocMode, setOocMode] = useState(false);
+  const oocModeRef = useRef(oocMode);
+  oocModeRef.current = oocMode;
 
   const handleSend = useCallback(() => {
     const raw = inputRef.current?.value.trim();
     if (!raw) return;
-    const text = oocMode && !raw.startsWith("OOC:") ? `OOC: ${raw}` : raw;
+    const text = oocModeRef.current && !raw.startsWith("OOC:") ? `OOC: ${raw}` : raw;
     onSend(text);
     if (inputRef.current) {
       inputRef.current.value = "";
       inputRef.current.style.height = "auto";
     }
-  }, [onSend, oocMode]);
+  }, [onSend]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
