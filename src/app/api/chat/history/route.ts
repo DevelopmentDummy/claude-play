@@ -6,6 +6,8 @@ export async function GET(req: NextRequest) {
   const auth = requireAuth(req);
   if (auth instanceof Response) return auth;
   const svc = getServices(auth.userId);
+  // Reload from disk to pick up external changes (e.g. AI editing chat-history.json directly)
+  svc.loadHistory();
   const url = req.nextUrl;
   const total = svc.chatHistory.length;
 

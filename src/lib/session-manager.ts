@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import Handlebars from "handlebars";
+import { getDataDir } from "./data-dir";
 
 /** System JSON files excluded from custom data file loading */
 const SYSTEM_JSON = new Set([
@@ -157,7 +158,6 @@ export class SessionManager {
     fs.mkdirSync(path.join(this.dataDir, "personas"), { recursive: true });
     fs.mkdirSync(path.join(this.dataDir, "sessions"), { recursive: true });
     fs.mkdirSync(path.join(this.dataDir, "profiles"), { recursive: true });
-    fs.mkdirSync(path.join(this.dataDir, "tools"), { recursive: true });
   }
 
   private profilesDir(): string {
@@ -999,7 +999,7 @@ export class SessionManager {
 
   /** Copy skills from all global tools (data/tools/X/skills/) into the session skills dir */
   private copyToolSkills(skillsDest: string): void {
-    const toolsDir = path.join(this.dataDir, "tools");
+    const toolsDir = path.join(getDataDir(), "tools");
     if (!fs.existsSync(toolsDir)) return;
 
     const port = process.env.PORT || "3340";
