@@ -98,14 +98,21 @@ export function getUserIdFromRequest(req: Request): string | null {
 
 /** Require auth — returns userId or 401 Response */
 export function requireAuth(req: Request): { userId: string } | Response {
+  // 1) Cookie-based auth (browser)
   const userId = getUserIdFromRequest(req);
-  if (!userId) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
+  if (userId) return { userId };
+
+  // 2) Internal token auth (MCP server)
+  const token = req.headers.get(INTERNAL_HEADER);
+  const internalUserId = req.headers.get(INTERNAL_USER_HEADER);
+  if (token && internalUserId && token === getInternalToken()) {
+    return { userId: internalUserId };
   }
-  return { userId };
+
+  return new Response(JSON.stringify({ error: "Unauthorized" }), {
+    status: 401,
+    headers: { "Content-Type": "application/json" },
+  });
 }
 
 /** Extract token from cookie header string (for WebSocket upgrade) */
@@ -114,6 +121,19 @@ export function getUserIdFromCookie(cookieHeader: string): string | null {
   if (!match) return null;
   const user = validateToken(match[1]);
   return user?.id || null;
+}
+
+// ── Internal token for MCP server authentication ──
+const INTERNAL_TOKEN_KEY = "__claude_bridge_internal_token__";
+const INTERNAL_HEADER = "x-bridge-token";
+const INTERNAL_USER_HEADER = "x-bridge-user-id";
+
+export function getInternalToken(): string {
+  const g = globalThis as unknown as Record<string, string>;
+  if (!g[INTERNAL_TOKEN_KEY]) {
+    g[INTERNAL_TOKEN_KEY] = crypto.randomBytes(32).toString("hex");
+  }
+  return g[INTERNAL_TOKEN_KEY];
 }
 
 export { COOKIE_NAME };

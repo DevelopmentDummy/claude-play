@@ -152,7 +152,7 @@ function initServices(userId: string): Services {
   const userDataDir = getUserDataDir(userId);
   let currentProvider: AIProvider = "claude";
   let proc: AIProcess = createProcess(currentProvider);
-  const sessions = new SessionManager(userDataDir, getAppRoot());
+  const sessions = new SessionManager(userDataDir, getAppRoot(), userId);
 
   function broadcast(event: string, data: unknown): void {
     wsBroadcastToUser(userId, event, data);

@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import Handlebars from "handlebars";
 import { getDataDir } from "./data-dir";
+import { getInternalToken } from "./auth";
 
 /** System JSON files excluded from custom data file loading */
 const SYSTEM_JSON = new Set([
@@ -147,10 +148,12 @@ const DEFAULT_POLICY_CONTEXT = {
 export class SessionManager {
   private dataDir: string;
   private appRoot: string;
+  private userId: string;
 
-  constructor(dataDir: string, appRoot: string) {
+  constructor(dataDir: string, appRoot: string, userId: string) {
     this.dataDir = dataDir;
     this.appRoot = appRoot;
+    this.userId = userId;
     this.ensureDirs();
   }
 
@@ -1068,6 +1071,8 @@ export class SessionManager {
             CLAUDE_BRIDGE_API_BASE: apiBase,
             CLAUDE_BRIDGE_SESSION_DIR: projectDir,
             CLAUDE_BRIDGE_MODE: mode,
+            CLAUDE_BRIDGE_AUTH_TOKEN: getInternalToken(),
+            CLAUDE_BRIDGE_USER_ID: this.userId,
             ...(personaName ? { CLAUDE_BRIDGE_PERSONA: personaName } : {}),
           },
         },
@@ -1104,6 +1109,8 @@ export class SessionManager {
     lines.push(`CLAUDE_BRIDGE_API_BASE = ${JSON.stringify(apiBase)}`);
     lines.push(`CLAUDE_BRIDGE_SESSION_DIR = ${JSON.stringify(projectDir)}`);
     lines.push(`CLAUDE_BRIDGE_MODE = ${JSON.stringify(mode)}`);
+    lines.push(`CLAUDE_BRIDGE_AUTH_TOKEN = ${JSON.stringify(getInternalToken())}`);
+    lines.push(`CLAUDE_BRIDGE_USER_ID = ${JSON.stringify(this.userId)}`);
     if (personaName) {
       lines.push(`CLAUDE_BRIDGE_PERSONA = ${JSON.stringify(personaName)}`);
     }
