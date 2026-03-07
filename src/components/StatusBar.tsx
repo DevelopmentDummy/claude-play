@@ -15,9 +15,6 @@ interface StatusBarProps {
   /** Builder mode: service (provider) selector */
   service?: "claude" | "codex";
   onServiceChange?: (service: "claude" | "codex") => void;
-  /** OOC message visibility toggle */
-  showOOC?: boolean;
-  onOOCToggle?: () => void;
   /** Persona sync */
   onSync?: () => void;
 }
@@ -48,8 +45,6 @@ export default function StatusBar({
   onModelChange,
   service,
   onServiceChange,
-  showOOC,
-  onOOCToggle,
   onSync,
 }: StatusBarProps) {
   const statusColors: Record<string, string> = {
@@ -92,21 +87,6 @@ export default function StatusBar({
             title="페르소나 동기화"
           >
             Sync
-          </button>
-        )}
-
-        {/* OOC toggle */}
-        {!isBuilderMode && onOOCToggle && (
-          <button
-            onClick={onOOCToggle}
-            className={`px-2 py-1 rounded-md text-[10px] font-medium tracking-wide border cursor-pointer transition-all duration-fast
-              ${showOOC
-                ? "border-yellow-500/60 text-yellow-400 bg-yellow-500/10"
-                : "border-border/40 text-text-dim/40 bg-transparent hover:border-border/60 hover:text-text-dim/70"
-              }`}
-            title={showOOC ? "OOC 메시지 숨기기" : "OOC 메시지 보기"}
-          >
-            OOC
           </button>
         )}
 

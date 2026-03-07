@@ -11,9 +11,11 @@ interface ChatInputProps {
   disabled: boolean;
   onSend: (text: string) => void;
   choices?: Choice[];
+  showOOC?: boolean;
+  onOOCToggle?: (on: boolean) => void;
 }
 
-export default function ChatInput({ disabled, onSend, choices }: ChatInputProps) {
+export default function ChatInput({ disabled, onSend, choices, showOOC, onOOCToggle }: ChatInputProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [oocMode, setOocMode] = useState(false);
 
@@ -98,11 +100,17 @@ export default function ChatInput({ disabled, onSend, choices }: ChatInputProps)
         {/* Left toolbar: OOC toggle + * insert */}
         <div className="flex gap-1 shrink-0 pb-0.5">
           <button
-            onClick={() => setOocMode((v) => !v)}
+            onClick={() => {
+              const next = !oocMode;
+              setOocMode(next);
+              onOOCToggle?.(next);
+            }}
             className={`${btnBase} ${
               oocMode
                 ? "border-yellow-500/60 text-yellow-400 bg-yellow-500/15"
-                : "border-border/40 text-text-dim/40 bg-transparent hover:border-border/60 hover:text-text-dim/70"
+                : showOOC
+                  ? "border-yellow-500/30 text-yellow-400/60 bg-transparent hover:border-yellow-500/50 hover:text-yellow-400/80"
+                  : "border-border/40 text-text-dim/40 bg-transparent hover:border-border/60 hover:text-text-dim/70"
             }`}
             title={oocMode ? "OOC 모드 끄기" : "OOC 모드 켜기"}
           >

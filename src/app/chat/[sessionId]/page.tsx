@@ -231,8 +231,6 @@ export default function ChatPage() {
         model={currentModel}
         provider={currentProvider}
         onModelChange={handleModelChange}
-        showOOC={showOOC}
-        onOOCToggle={() => setShowOOC((v) => !v)}
         onSync={() => setSyncModalOpen(true)}
       />
       <ErrorBanner error={error} onDismiss={() => setError(null)} />
@@ -257,6 +255,8 @@ export default function ChatPage() {
           <ChatInput
             disabled={isStreaming}
             onSend={sendMessage}
+            showOOC={showOOC}
+            onOOCToggle={(on) => setShowOOC(on)}
             choices={(() => {
               if (isStreaming) return undefined;
               for (let i = visibleMessages.length - 1; i >= 0; i--) {
