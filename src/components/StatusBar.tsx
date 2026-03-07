@@ -60,14 +60,14 @@ export default function StatusBar({
   };
 
   return (
-    <header className="flex items-center gap-2 px-4 py-2 bg-surface backdrop-blur-[16px] border-b border-border shrink-0">
+    <header className="flex flex-wrap items-center gap-2 px-4 py-2 bg-surface backdrop-blur-[16px] border-b border-border shrink-0">
       <button
         onClick={onBack}
-        className="px-2.5 py-1 border border-border rounded-md bg-transparent text-text-dim cursor-pointer text-sm hover:bg-surface-light hover:text-text transition-all duration-fast"
+        className="px-2.5 py-1 border border-border rounded-md bg-transparent text-text-dim cursor-pointer text-sm hover:bg-surface-light hover:text-text transition-all duration-fast shrink-0"
       >
         &larr;
       </button>
-      <span className="font-medium text-[13px]">{title}</span>
+      <span className="font-medium text-[13px] min-w-0 truncate">{title}</span>
       {showPanelButton && onPanelToggle && (
         <button
           onClick={onPanelToggle}
