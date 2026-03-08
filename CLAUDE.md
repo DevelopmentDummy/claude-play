@@ -103,6 +103,7 @@ ChatPage manages WebSocket subscription, layout state, OOC visibility, and rende
 | `SyncModal.tsx` | Per-element selective persona→session sync with diff badges. |
 | `ImageModal.tsx` | Fullscreen image viewer via `createPortal` (escapes `backdrop-blur` containment). |
 | `PanelArea.tsx` / `PanelSlot.tsx` | Side panel rendering with Shadow DOM CSS isolation. |
+| `ModalPanel.tsx` | Modal overlay panel via `createPortal`. Controlled by `__modals` in `variables.json`. Supports required (no dismiss) and dismissible modes. Stacks with incremental z-index. |
 
 ## Data Model
 
@@ -151,7 +152,9 @@ data/
 - **MCP authentication**: Internal token generated per server process, passed via env vars in `.mcp.json` / `.codex/config.toml`. MCP server sends `x-bridge-token` + `x-bridge-user-id` headers. Middleware passes these through; `requireAuth()` validates.
 - **MCP bootstrap**: Claude is launched with `--mcp-config <cwd>/.mcp.json --strict-mcp-config` when that file exists.
 - **Permission sandboxing**: Each session has `.claude/settings.json` restricting Claude tools to the session directory.
-- **Shadow DOM isolation**: PanelSlot renders panel HTML inside Shadow DOM to isolate CSS.
+- **Panel placement types**: `layout.json` `panels.placement` supports `"left"`, `"right"`, `"modal"`. Panels without placement are inline.
+- **Modal panels**: Panels with `placement: "modal"` render as centered overlays. Visibility controlled by `__modals` in `variables.json`. Value `true` = required (no ESC/X/backdrop dismiss), `"dismissible"` = freely closable. `__panelBridge.sendMessage()` always auto-closes regardless. Multiple modals stack with incremental z-index; ESC only affects topmost dismissible modal.
+- **Shadow DOM isolation**: PanelSlot and ModalPanel render panel HTML inside Shadow DOM to isolate CSS.
 - **Image modal portal**: ImageModal uses `createPortal(document.body)` to escape `backdrop-blur` CSS containment from chat bubbles.
 - **Windows process killing**: Uses `taskkill /T /F /PID` because `shell: true` wraps the process in cmd.exe.
 - **Global singleton pattern**: `services.ts` and `ws-server.ts` use `globalThis[key]` to share state across Next.js hot-reload module instances. Services are keyed per-user via `Map<string, Services>`.

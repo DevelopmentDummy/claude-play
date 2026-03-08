@@ -7,7 +7,7 @@ export interface LayoutConfig {
   panels: {
     position: "right" | "left" | "bottom" | "hidden";
     size: number;
-    placement?: Record<string, "left" | "right">;
+    placement?: Record<string, "left" | "right" | "modal">;
   };
   chat: {
     maxWidth: number | null;

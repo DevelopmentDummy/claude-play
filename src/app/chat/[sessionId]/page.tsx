@@ -13,6 +13,7 @@ import ChatInput from "@/components/ChatInput";
 import { extractChoices } from "@/components/ChatMessages";
 import PanelArea from "@/components/PanelArea";
 import PanelDrawer from "@/components/PanelDrawer";
+import ModalPanel from "@/components/ModalPanel";
 import SyncModal from "@/components/SyncModal";
 
 interface Panel {
@@ -175,16 +176,17 @@ export default function ChatPage() {
   const rawPlacement = layout?.panels?.placement || {};
 
   // Normalize placement keys: strip numeric prefix (e.g. "01-상태" → "상태") so it matches panel names
-  const placement: Record<string, "left" | "right"> = {};
+  const placement: Record<string, "left" | "right" | "modal"> = {};
   for (const [key, val] of Object.entries(rawPlacement)) {
     const normalized = key.replace(/^\d+-/, "");
     placement[normalized] = val;
     if (normalized !== key) placement[key] = val; // keep original too
   }
 
-  // Split panels by placement: left, right, or inline (no placement = inline)
+  // Split panels by placement: left, right, modal, or inline (no placement = inline)
   const leftPanels = panels.filter((p) => placement[p.name] === "left");
   const rightPanels = panels.filter((p) => placement[p.name] === "right");
+  const modalPanels = panels.filter((p) => placement[p.name] === "modal");
   const inlinePanels = panels.filter((p) => !placement[p.name]);
 
   // Fallback: if no per-panel placement configured, use legacy position for all panels
@@ -204,6 +206,11 @@ export default function ChatPage() {
   const chatAlign = (layoutAlign && layoutAlign !== "stretch") ? layoutAlign : "center";
 
   const showInlinePanel = hasSidebar && !isMobile;
+
+  // Determine which modal panels are currently active (driven by __modals in variables.json)
+  // __modals values: true = required (no dismiss), "dismissible" = user can close freely
+  const modalsState = (panelData as Record<string, unknown>)?.__modals as Record<string, boolean | string> | undefined;
+  const activeModalPanels = modalPanels.filter((p) => !!modalsState?.[p.name]);
 
   // Filter OOC messages unless toggle is on
   const visibleMessages = showOOC ? messages : messages.filter((m) => !m.ooc);
@@ -323,6 +330,28 @@ export default function ChatPage() {
           onSendMessage={sendMessage}
         />
       )}
+      {/* Modal panels — centered overlay, driven by __modals in variables.json */}
+      {activeModalPanels.map((p, i) => (
+        <ModalPanel
+          key={p.name}
+          name={p.name}
+          html={p.html}
+          dismissible={modalsState?.[p.name] === "dismissible"}
+          zIndex={i}
+          isTopmost={i === activeModalPanels.length - 1}
+          sessionId={sessionId}
+          panelData={panelData}
+          onClose={() => {
+            // Update __modals to close this panel
+            fetch(`/api/sessions/${encodeURIComponent(sessionId)}/variables`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ __modals: { ...modalsState, [p.name]: false } }),
+            });
+          }}
+          onSendMessage={sendMessage}
+        />
+      ))}
       <SyncModal
         open={syncModalOpen}
         sessionId={sessionId}
