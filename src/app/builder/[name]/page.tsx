@@ -35,6 +35,7 @@ export default function BuilderPage() {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [wsEnabled, setWsEnabled] = useState(false);
   const [builderService, setBuilderService] = useState<"claude" | "codex">("claude");
+  const [displayName, setDisplayName] = useState(decodedName);
   const initRef = useRef(false);
 
   // WebSocket connection — only connect after init completes
@@ -84,6 +85,7 @@ export default function BuilderPage() {
 
       const data = await res.json();
       if (data.provider) setBuilderService(data.provider);
+      if (data.displayName) setDisplayName(data.displayName);
 
       await loadHistory();
       setStatus("connected");
@@ -108,6 +110,8 @@ export default function BuilderPage() {
       body: JSON.stringify({ name: decodedName, model: builderService === "codex" ? "gpt-5.4" : undefined }),
     });
     if (res.ok) {
+      const data = await res.json();
+      if (data.displayName) setDisplayName(data.displayName);
       setStatus("connected");
       setRefreshTrigger((n) => n + 1);
     } else {
@@ -141,7 +145,7 @@ export default function BuilderPage() {
   return (
     <div className="flex flex-col h-screen">
       <StatusBar
-        title={`${mode === "new" ? "Building" : "Editing"}: ${decodedName}`}
+        title={`${mode === "new" ? "Building" : "Editing"}: ${displayName}`}
         status={status}
         isBuilderMode={true}
         onBack={handleBack}

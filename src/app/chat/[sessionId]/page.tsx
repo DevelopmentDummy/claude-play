@@ -124,7 +124,7 @@ export default function ChatPage() {
       }
 
       const data = await res.json();
-      setTitle(data.title || data.persona);
+      setTitle(data.displayName || data.title || data.persona);
       setLayout(data.layout);
       if (data.model) setCurrentModel(data.model);
       if (data.provider) setCurrentProvider(data.provider);

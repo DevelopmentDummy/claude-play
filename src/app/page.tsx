@@ -27,6 +27,7 @@ interface Persona {
 interface Session {
   id: string;
   persona: string;
+  displayName?: string;
   title: string;
   createdAt: string;
   hasIcon?: boolean;
@@ -211,8 +212,8 @@ export default function LobbyPage() {
               <SessionCard
                 key={s.id}
                 id={s.id}
-                title={s.title}
-                persona={s.persona}
+                title={s.displayName || s.title}
+                persona={s.displayName || s.persona}
                 createdAt={s.createdAt}
                 hasIcon={s.hasIcon}
                 model={s.model}

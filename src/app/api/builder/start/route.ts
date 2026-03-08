@@ -43,5 +43,6 @@ export async function POST(req: Request) {
   const effectiveEffort = effort || (provider === "codex" ? "xhigh" : "high");
   svc.claude.spawn(personaDir, undefined, model || undefined, runtimeSystemPrompt, effectiveEffort);
 
-  return NextResponse.json({ name, dir: personaDir, provider });
+  const displayName = svc.sessions.getPersonaDisplayName(name);
+  return NextResponse.json({ name, displayName, dir: personaDir, provider });
 }

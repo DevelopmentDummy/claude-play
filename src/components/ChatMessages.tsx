@@ -386,13 +386,18 @@ export default function ChatMessages({
     if (!isLoadingMore.current) {
       const now = Date.now();
       const isProgrammatic = now < programmaticScrollUntilRef.current;
-      const topChanged = Math.abs(el.scrollTop - lastScrollTopRef.current) > 1;
-      const heightChanged = el.scrollHeight !== lastScrollHeightRef.current;
-      const looksLikeContentGrowth = !topChanged && heightChanged;
 
-      if (!isProgrammatic && !looksLikeContentGrowth) {
+      if (!isProgrammatic) {
         const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-        shouldAutoScroll.current = distanceFromBottom < bottomThreshold;
+        const scrolledUp = el.scrollTop < lastScrollTopRef.current - 2;
+
+        if (scrolledUp && distanceFromBottom > bottomThreshold) {
+          // User intentionally scrolled up — disable auto-scroll
+          shouldAutoScroll.current = false;
+        } else if (distanceFromBottom < bottomThreshold) {
+          // User scrolled back near bottom — re-enable
+          shouldAutoScroll.current = true;
+        }
       }
 
       lastScrollTopRef.current = el.scrollTop;
@@ -420,7 +425,7 @@ export default function ChatMessages({
         lastScrollHeightRef.current = cur.scrollHeight;
       });
     }
-  }, [hasMore, onLoadMore, bottomThreshold]);
+  }, [hasMore, onLoadMore, bottomThreshold, isStreaming]);
 
   const style: React.CSSProperties = {};
   if (maxWidth) style.maxWidth = `${maxWidth}px`;

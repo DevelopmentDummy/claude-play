@@ -32,6 +32,7 @@ export interface Profile {
 export interface SessionInfo {
   id: string; // directory name
   persona: string;
+  displayName: string; // persona display name from persona.md
   title: string;
   createdAt: string;
   hasIcon?: boolean;
@@ -204,6 +205,15 @@ export class SessionManager {
 
   personaExists(name: string): boolean {
     return fs.existsSync(this.getPersonaDir(name));
+  }
+
+  getPersonaDisplayName(name: string): string {
+    const personaMd = path.join(this.getPersonaDir(name), "persona.md");
+    if (fs.existsSync(personaMd)) {
+      const firstLine = fs.readFileSync(personaMd, "utf-8").split("\n")[0].replace(/^#\s*/, "").trim();
+      if (firstLine) return firstLine;
+    }
+    return name;
   }
 
   readPersonaFile(name: string, file: string): string | null {
@@ -447,7 +457,7 @@ export class SessionManager {
     // Write session metadata
     const meta: SessionMeta = {
       persona: personaName,
-      title: title || personaName,
+      title: title || this.getPersonaDisplayName(personaName),
       createdAt: new Date().toISOString(),
       ...(profile ? { profileSlug: this.profileSlug(profile.name) } : {}),
     };
@@ -509,7 +519,7 @@ export class SessionManager {
     // Copy global tool skills (data/tools/*/skills/*) to session
     this.copyToolSkills(skillsDest);
 
-    return { id, ...meta };
+    return { id, ...meta, displayName: this.getPersonaDisplayName(personaName) };
   }
 
   listSessions(): SessionInfo[] {
@@ -531,6 +541,7 @@ export class SessionManager {
           return {
             id: d.name,
             ...meta,
+            displayName: this.getPersonaDisplayName(meta.persona),
             ...(hasIcon ? { hasIcon: true } : {}),
             ...(meta.model ? { model: meta.model } : {}),
           };
@@ -556,7 +567,7 @@ export class SessionManager {
       const meta: SessionMeta = JSON.parse(
         fs.readFileSync(metaPath, "utf-8")
       );
-      return { id, ...meta };
+      return { id, ...meta, displayName: this.getPersonaDisplayName(meta.persona) };
     } catch {
       return null;
     }
@@ -912,6 +923,12 @@ export class SessionManager {
     fs.mkdirSync(path.join(dir, "panels"), { recursive: true });
     fs.mkdirSync(path.join(dir, "skills"), { recursive: true });
 
+    // Copy global comfyui-config.json as default if it exists
+    const globalComfyConfig = path.join(this.appRoot, "data", "tools", "comfyui", "comfyui-config.json");
+    if (fs.existsSync(globalComfyConfig)) {
+      fs.copyFileSync(globalComfyConfig, path.join(dir, "comfyui-config.json"));
+    }
+
     // Place Claude runtime configs for builder sessions
     this.ensureClaudeRuntimeConfig(dir, name, "builder");
 
@@ -997,6 +1014,13 @@ export class SessionManager {
   }
 
   // ── Tools ──────────────────────────────────────────────
+
+  /** Re-copy global tool skills into an existing session (called on session open/resume) */
+  refreshToolSkills(sessionDir: string): void {
+    const skillsDest = path.join(sessionDir, ".claude", "skills");
+    fs.mkdirSync(skillsDest, { recursive: true });
+    this.copyToolSkills(skillsDest);
+  }
 
   /** Copy skills from all global tools (data/tools/X/skills/) into the session skills dir */
   private copyToolSkills(skillsDest: string): void {
