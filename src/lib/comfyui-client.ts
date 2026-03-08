@@ -467,54 +467,103 @@ export class ComfyUIClient {
     // Remove unavailable LoRAs and rewire the chain
     this.pruneUnavailableLoRAs(prompt, models.loras);
 
-    // Dynamic LoRA injection: append after existing chain
+    // LoRA overrides & dynamic injection
     if (loras && loras.length > 0) {
-      // Find the last LoraLoader node ID in the current chain
-      const loraNodeIds = Object.entries(prompt)
-        .filter(([, n]) => (n as Record<string, unknown>).class_type === "LoraLoader")
-        .map(([id]) => id)
-        .sort((a, b) => Number(a) - Number(b));
+      // Build lookup of requested LoRA overrides by name
+      const loraByName = new Map(loras.map(l => [l.name, l]));
 
-      let anchorId = loraNodeIds.length > 0 ? loraNodeIds[loraNodeIds.length - 1] : null;
-
-      // Fallback: if all LoRAs were pruned, anchor to CheckpointLoaderSimple
-      if (!anchorId) {
-        anchorId = Object.entries(prompt)
-          .find(([, n]) => (n as Record<string, unknown>).class_type === "CheckpointLoaderSimple")
-          ?.[0] ?? null;
+      // Phase 1: Override/remove existing base LoRAs
+      const baseLoraNodes: Array<{ id: string; loraName: string }> = [];
+      for (const [id, node] of Object.entries(prompt)) {
+        const n = node as Record<string, unknown>;
+        if (n.class_type === "LoraLoader") {
+          const inputs = n.inputs as Record<string, unknown>;
+          baseLoraNodes.push({ id, loraName: inputs.lora_name as string });
+        }
       }
 
-      if (anchorId) {
-        // Filter to only available LoRAs
-        const validLoras = models.loras.length === 0
-          ? loras  // Can't validate, pass all through
-          : loras.filter(l => models.loras.includes(l.name));
+      const overridden = new Set<string>();
+      for (const base of baseLoraNodes) {
+        const override = loraByName.get(base.loraName);
+        if (!override) continue;
+        overridden.add(base.loraName);
 
-        let prevId = anchorId;
-        // Start dynamic IDs above the max existing node ID to avoid collisions
-        const maxExistingId = Math.max(...Object.keys(prompt).map(Number).filter(n => !isNaN(n)));
-        const dynamicStartId = Math.max(200, maxExistingId + 1);
-        const injectedIds = new Set<string>();
+        if (override.strength === 0) {
+          // Remove this base LoRA node and rewire references
+          const node = prompt[base.id] as Record<string, unknown>;
+          const inputs = node.inputs as Record<string, unknown>;
+          const modelSource = inputs.model as [string, number] | undefined;
+          const sourceId = modelSource ? modelSource[0] : null;
 
-        for (let i = 0; i < validLoras.length; i++) {
-          const nodeId = String(dynamicStartId + i);
-          injectedIds.add(nodeId);
-          prompt[nodeId] = {
-            class_type: "LoraLoader",
-            inputs: {
-              lora_name: validLoras[i].name,
-              strength_model: validLoras[i].strength,
-              strength_clip: validLoras[i].strength,
-              model: [prevId, 0],
-              clip: [prevId, 1],
-            },
-            _meta: { title: `dynamic-lora-${i}` },
-          };
-          prevId = nodeId;
+          delete prompt[base.id];
+
+          // Rewire downstream references to this removed node
+          if (sourceId) {
+            for (const [, n] of Object.entries(prompt)) {
+              const ni = (n as Record<string, unknown>).inputs as Record<string, unknown> | undefined;
+              if (!ni) continue;
+              for (const [key, value] of Object.entries(ni)) {
+                if (Array.isArray(value) && value.length === 2 && value[0] === base.id) {
+                  ni[key] = [sourceId, value[1]];
+                }
+              }
+            }
+          }
+          console.log(`[comfyui] Removed base LoRA: ${base.loraName} (node ${base.id})`);
+        } else {
+          // Override strength
+          const node = prompt[base.id] as Record<string, unknown>;
+          const inputs = node.inputs as Record<string, unknown>;
+          inputs.strength_model = override.strength;
+          inputs.strength_clip = override.strength;
+          console.log(`[comfyui] Override base LoRA: ${base.loraName} strength → ${override.strength}`);
+        }
+      }
+
+      // Phase 2: Dynamic injection of non-base LoRAs
+      const newLoras = loras.filter(l => !overridden.has(l.name) && l.strength !== 0);
+      const validNewLoras = models.loras.length === 0
+        ? newLoras
+        : newLoras.filter(l => models.loras.includes(l.name));
+
+      if (validNewLoras.length > 0) {
+        // Find anchor: last remaining LoraLoader or CheckpointLoaderSimple
+        const remainingLoraIds = Object.entries(prompt)
+          .filter(([, n]) => (n as Record<string, unknown>).class_type === "LoraLoader")
+          .map(([id]) => id)
+          .sort((a, b) => Number(a) - Number(b));
+
+        let anchorId = remainingLoraIds.length > 0 ? remainingLoraIds[remainingLoraIds.length - 1] : null;
+        if (!anchorId) {
+          anchorId = Object.entries(prompt)
+            .find(([, n]) => (n as Record<string, unknown>).class_type === "CheckpointLoaderSimple")
+            ?.[0] ?? null;
         }
 
-        // Rewire downstream nodes that referenced old lastLoraId
-        if (validLoras.length > 0) {
+        if (anchorId) {
+          let prevId = anchorId;
+          const maxExistingId = Math.max(...Object.keys(prompt).map(Number).filter(n => !isNaN(n)));
+          const dynamicStartId = Math.max(200, maxExistingId + 1);
+          const injectedIds = new Set<string>();
+
+          for (let i = 0; i < validNewLoras.length; i++) {
+            const nodeId = String(dynamicStartId + i);
+            injectedIds.add(nodeId);
+            prompt[nodeId] = {
+              class_type: "LoraLoader",
+              inputs: {
+                lora_name: validNewLoras[i].name,
+                strength_model: validNewLoras[i].strength,
+                strength_clip: validNewLoras[i].strength,
+                model: [prevId, 0],
+                clip: [prevId, 1],
+              },
+              _meta: { title: `dynamic-lora-${i}` },
+            };
+            prevId = nodeId;
+          }
+
+          // Rewire downstream nodes to new chain end
           const newLastId = prevId;
           for (const [nodeId, node] of Object.entries(prompt)) {
             if (injectedIds.has(nodeId)) continue;
@@ -527,17 +576,18 @@ export class ComfyUIClient {
               }
             }
           }
-          console.log(`[comfyui] Injected ${validLoras.length} dynamic LoRAs after node ${anchorId}`);
+          console.log(`[comfyui] Injected ${validNewLoras.length} dynamic LoRAs after node ${anchorId}`);
+        } else {
+          console.warn(`[comfyui] No LoraLoader or Checkpoint nodes — cannot inject dynamic LoRAs`);
         }
+      }
 
-        if (validLoras.length < loras.length) {
-          const skippedNames = loras
-            .filter(l => !validLoras.some(v => v.name === l.name))
-            .map(l => l.name);
-          console.log(`[comfyui] Skipped ${skippedNames.length} unavailable dynamic LoRAs: ${skippedNames.join(", ")}`);
-        }
-      } else {
-        console.warn(`[comfyui] No LoraLoader or Checkpoint nodes in workflow — cannot inject dynamic LoRAs`);
+      const skippedCount = newLoras.length - validNewLoras.length;
+      if (skippedCount > 0) {
+        const skippedNames = newLoras
+          .filter(l => !validNewLoras.some(v => v.name === l.name))
+          .map(l => l.name);
+        console.log(`[comfyui] Skipped ${skippedCount} unavailable dynamic LoRAs: ${skippedNames.join(", ")}`);
       }
     }
 
