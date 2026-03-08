@@ -11,7 +11,6 @@ const mode = process.env.CLAUDE_BRIDGE_MODE || "session";
 const persona = process.env.CLAUDE_BRIDGE_PERSONA || "";
 const sessionDir = process.env.CLAUDE_BRIDGE_SESSION_DIR || process.cwd();
 const authToken = process.env.CLAUDE_BRIDGE_AUTH_TOKEN || "";
-const bridgeUserId = process.env.CLAUDE_BRIDGE_USER_ID || "";
 const POLICY_REVIEW_LOG_FILE = "policy-review.log";
 const HARD_DENY_PATTERNS = [
 ];
@@ -240,9 +239,8 @@ function assessPolicyRequest(request, context) {
 async function requestJson(method, route, payload) {
   const url = `${apiBase}${route}`;
   const headers = { "Content-Type": "application/json" };
-  if (authToken && bridgeUserId) {
+  if (authToken) {
     headers["x-bridge-token"] = authToken;
-    headers["x-bridge-user-id"] = bridgeUserId;
   }
   const response = await fetch(url, {
     method,

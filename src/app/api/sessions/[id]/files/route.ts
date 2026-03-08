@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { getServices } from "@/lib/services";
-import { requireAuth } from "@/lib/auth";
 import * as path from "path";
 import * as fs from "fs";
 
@@ -29,8 +28,6 @@ export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = requireAuth(req);
-  if (auth instanceof Response) return auth;
   const { id } = await params;
   const url = new URL(req.url);
   const filePath = url.searchParams.get("path");
@@ -39,7 +36,7 @@ export async function GET(
     return NextResponse.json({ error: "Missing path parameter" }, { status: 400 });
   }
 
-  const svc = getServices(auth.userId);
+  const svc = getServices();
   const sessionDir = svc.sessions.getSessionDir(id);
 
   if (!fs.existsSync(sessionDir)) {
@@ -71,8 +68,6 @@ export async function HEAD(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = requireAuth(req);
-  if (auth instanceof Response) return auth;
   const { id } = await params;
   const url = new URL(req.url);
   const filePath = url.searchParams.get("path");
@@ -81,7 +76,7 @@ export async function HEAD(
     return new NextResponse(null, { status: 400 });
   }
 
-  const svc = getServices(auth.userId);
+  const svc = getServices();
   const sessionDir = svc.sessions.getSessionDir(id);
 
   if (!fs.existsSync(sessionDir)) {

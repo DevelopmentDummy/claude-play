@@ -1,16 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServices } from "@/lib/services";
-import { requireAuth } from "@/lib/auth";
 
 /** PATCH: Toggle ooc flag on a specific message */
 export async function PATCH(req: NextRequest) {
-  const auth = requireAuth(req);
-  if (auth instanceof Response) return auth;
   const body = await req.json().catch(() => ({})) as { id?: string; ooc?: boolean };
   if (!body.id) {
     return NextResponse.json({ error: "id required" }, { status: 400 });
   }
-  const svc = getServices(auth.userId);
+  const svc = getServices();
   svc.loadHistory();
   const msg = svc.chatHistory.find((m) => m.id === body.id);
   if (!msg) {
@@ -30,9 +27,7 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
-  const auth = requireAuth(req);
-  if (auth instanceof Response) return auth;
-  const svc = getServices(auth.userId);
+  const svc = getServices();
   // Reload from disk to pick up external changes (e.g. AI editing chat-history.json directly)
   svc.loadHistory();
   const url = req.nextUrl;

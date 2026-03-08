@@ -1,15 +1,12 @@
 import { NextResponse } from "next/server";
 import { getServices } from "@/lib/services";
-import { requireAuth } from "@/lib/auth";
 
 export async function DELETE(
-  req: Request,
+  _req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = requireAuth(req);
-  if (auth instanceof Response) return auth;
   const { id } = await params;
-  const svc = getServices(auth.userId);
+  const svc = getServices();
 
   // Stop Claude and panels if they're using this session's directory
   if (svc.currentSessionId === id) {

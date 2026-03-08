@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Claude Bridge is a Next.js web app that bridges interactive roleplay (RP) chat sessions with the Claude Code CLI (and optionally Codex CLI). Users create personas via a builder UI, then conduct immersive RP sessions with dynamic state, panels, and memory. Supports per-user accounts with isolated data.
+Claude Bridge is a Next.js web app that bridges interactive roleplay (RP) chat sessions with the Claude Code CLI (and optionally Codex CLI). Users create personas via a builder UI, then conduct immersive RP sessions with dynamic state, panels, and memory. Single-user personal service — no authentication required.
 
 ## Commands
 
@@ -26,39 +26,29 @@ No test framework is configured.
 
 | File | Role |
 |------|------|
-| `auth.ts` | SQLite-based user accounts (`better-sqlite3`). Cookie (`cb_token`) session auth for browsers. Internal token auth (`x-bridge-token` + `x-bridge-user-id`) for MCP server. `requireAuth()` validates both. `getInternalToken()` generates per-process token. |
-| `services.ts` | Per-user singleton (`getServices(userId)`) via `Map<string, Services>`. Accumulates assistant turns from NDJSON stream events, extracts `<dialog_response>` and `<choice>` tags, detects image tool tokens (`$IMAGE:...$/`), manages chat history persistence. Forwards `compacting` system status to frontend. |
+| `auth.ts` | Internal token for MCP server authentication. `getInternalToken()` generates per-process token. `validateInternalToken()` checks `x-bridge-token` header. |
+| `services.ts` | Global singleton (`getServices()`) via `globalThis`. Accumulates assistant turns from NDJSON stream events, extracts `<dialog_response>` and `<choice>` tags, detects image tool tokens (`$IMAGE:...$/`), manages chat history persistence. Forwards `compacting` system status to frontend. |
 | `claude-process.ts` | Spawns `claude -p` subprocess with `--input-format stream-json --output-format stream-json --verbose`. NDJSON line-buffered parser. Emits `message/status/error/sessionId` events. Auto-retries without `--resume` on failed resume. |
 | `codex-process.ts` | Codex CLI integration via `codex app-server` mode (persistent JSON-RPC 2.0 over stdin/stdout). Same EventEmitter interface as ClaudeProcess. |
 | `ai-provider.ts` | `AIProvider` type (`"claude" | "codex"`), `providerFromModel()` mapping, model option constants. |
 | `session-manager.ts` | CRUD for personas, sessions, profiles. Copies persona → session directory. Writes `.claude/settings.json` + `.mcp.json` + `.codex/config.toml` per session. Manages layout config, builder sessions, skill copying, CLAUDE.md + AGENTS.md assembly. Selective persona-to-session sync with diff comparison. |
 | `panel-engine.ts` | Watches `variables.json` + `panels/*.html` + custom `*.json` data files + `layout.json` via `fs.watch`. Compiles Handlebars templates with registered helpers (eq, gt, add, percentage, etc.). Broadcasts rendered HTML and layout updates via WebSocket. |
-| `ws-server.ts` | WebSocket server on `/ws?sessionId=X&builder=true/false`. Per-user auth via cookie on upgrade. Handles `chat:send`, `session:bind`, `session:leave` messages. `wsBroadcastToUser()` for user-scoped broadcasts. 5s grace period cleanup on last client disconnect. |
+| `ws-server.ts` | WebSocket server on `/ws?sessionId=X&builder=true/false`. Handles `chat:send`, `session:bind`, `session:leave` messages. `wsBroadcast()` for global broadcasts. 5s grace period cleanup on last client disconnect. |
 | `comfyui-client.ts` | Optional ComfyUI image generation — queues workflows, polls for results, downloads output images to session `images/` dir. |
 | `gemini-image.ts` | Optional Gemini image generation via `generativelanguage.googleapis.com` API. Saves base64 response to session `images/` dir. |
-| `data-dir.ts` | Resolves `DATA_DIR` env var or defaults to `./data`. Provides `getDataDir()`, `getUserDataDir(userId)`, and `getAppRoot()`. |
+| `data-dir.ts` | Resolves `DATA_DIR` env var or defaults to `./data`. Provides `getDataDir()` and `getAppRoot()`. |
 | `color-utils.ts` | Frontend helpers: `hexToRgba()`, `lightenHex()`. |
-
-### Authentication
-
-- **Browser**: Cookie-based (`cb_token`) session auth. `src/middleware.ts` (Edge Runtime) checks cookie existence before route handlers.
-- **MCP server**: Internal token via `x-bridge-token` + `x-bridge-user-id` headers. Token generated per server process, passed to MCP via `.mcp.json` env vars. Middleware allows requests with `x-bridge-token` header to pass through; actual validation in `requireAuth()`.
-- **Login page**: `/login` with register/login toggle. First user creates account, redirected to `/`.
 
 ### MCP Server
 
-`src/mcp/claude-bridge-mcp-server.mjs` — Per-session MCP server spawned as a child process by Claude/Codex. Configured via `.mcp.json` (Claude) or `.codex/config.toml` (Codex) in the session directory. Provides `claude_bridge` tools for AI to interact with the bridge (image generation, panel updates, policy review, etc.). Authenticates to Bridge API via internal token headers.
+`src/mcp/claude-bridge-mcp-server.mjs` — Per-session MCP server spawned as a child process by Claude/Codex. Configured via `.mcp.json` (Claude) or `.codex/config.toml` (Codex) in the session directory. Provides `claude_bridge` tools for AI to interact with the bridge (image generation, panel updates, policy review, etc.). Authenticates to Bridge API via internal `x-bridge-token` header.
 
 ### API Routes (`src/app/api/`)
 
-All routes require authentication via `requireAuth()` (cookie or internal token).
+No authentication required — single-user service. MCP server requests include `x-bridge-token` for internal validation where needed.
 
 | Route | Methods | Purpose |
 |-------|---------|---------|
-| `/api/auth/login` | POST | User login, sets cookie |
-| `/api/auth/register` | POST | Create user + auto-login |
-| `/api/auth/logout` | POST | Delete token, clear cookie |
-| `/api/auth/me` | GET | Current user info |
 | `/api/personas` | GET | List all personas |
 | `/api/personas/[name]` | GET, DELETE | Get/delete persona |
 | `/api/personas/[name]/file` | GET, PUT | Read/write individual persona files |
@@ -86,7 +76,6 @@ All routes require authentication via `requireAuth()` (cookie or internal token)
 
 | Route | Component | Purpose |
 |-------|-----------|---------|
-| `/login` | `login/page.tsx` | Login / register form |
 | `/` | `page.tsx` | Home — persona list, session list, profile management |
 | `/builder/[name]` | `builder/[name]/page.tsx` | Persona builder UI |
 | `/chat/[sessionId]` | `chat/[sessionId]/page.tsx` | Main session chat UI with panels |
@@ -107,36 +96,34 @@ ChatPage manages WebSocket subscription, layout state, OOC visibility, and rende
 
 ## Data Model
 
-**Per-user file-based data** under `data/users/{userId}/` (gitignored). Auth DB at `data/bridge.db`.
+**File-based data** under `data/` (gitignored).
 
 ```
 data/
-├── bridge.db                        # SQLite: users + auth_sessions tables
 ├── tools/{name}/skills/             # Global tool skills auto-copied to all sessions
-└── users/{userId}/
-    ├── personas/{name}/             # Persistent persona templates
-    │   ├── persona.md               # Character definition (first line = display name)
-    │   ├── worldview.md             # World/setting description
-    │   ├── variables.json           # Handlebars template data
-    │   ├── opening.md               # Opening message shown at session start
-    │   ├── session-instructions.md  # Becomes CLAUDE.md in sessions
-    │   ├── layout.json              # UI layout & theme config
-    │   ├── panels/                  # Handlebars HTML templates (01-status.html, etc.)
-    │   ├── skills/                  # Claude Code skills copied to sessions
-    │   ├── images/                  # icon.png, profile.png, generated images
-    │   └── *.json                   # Custom data files (inventory.json, world.json, etc.)
-    ├── sessions/{persona}-{timestamp}/  # Ephemeral session instances
-    │   ├── (cloned persona files)
-    │   ├── CLAUDE.md                # Assembled from session-instructions + profile + opening
-    │   ├── AGENTS.md                # Same content as CLAUDE.md (for Codex CLI)
-    │   ├── session.json             # Metadata (persona, title, claudeSessionId, codexThreadId, model)
-    │   ├── chat-history.json        # Persisted chat history (includes OOC messages with ooc flag)
-    │   ├── memory.md                # Session memory (written by AI)
-    │   ├── .claude/settings.json    # Permission sandbox
-    │   ├── .mcp.json                # MCP config for Claude (includes auth token)
-    │   ├── .codex/config.toml       # MCP config for Codex (includes auth token)
-    │   └── policy-context.json      # Content policy context
-    └── profiles/{slug}.json         # User profiles (name, description, isPrimary)
+├── personas/{name}/                 # Persistent persona templates
+│   ├── persona.md                   # Character definition (first line = display name)
+│   ├── worldview.md                 # World/setting description
+│   ├── variables.json               # Handlebars template data
+│   ├── opening.md                   # Opening message shown at session start
+│   ├── session-instructions.md      # Becomes CLAUDE.md in sessions
+│   ├── layout.json                  # UI layout & theme config
+│   ├── panels/                      # Handlebars HTML templates (01-status.html, etc.)
+│   ├── skills/                      # Claude Code skills copied to sessions
+│   ├── images/                      # icon.png, profile.png, generated images
+│   └── *.json                       # Custom data files (inventory.json, world.json, etc.)
+├── sessions/{persona}-{timestamp}/  # Ephemeral session instances
+│   ├── (cloned persona files)
+│   ├── CLAUDE.md                    # Assembled from session-instructions + profile + opening
+│   ├── AGENTS.md                    # Same content as CLAUDE.md (for Codex CLI)
+│   ├── session.json                 # Metadata (persona, title, claudeSessionId, codexThreadId, model)
+│   ├── chat-history.json            # Persisted chat history (includes OOC messages with ooc flag)
+│   ├── memory.md                    # Session memory (written by AI)
+│   ├── .claude/settings.json        # Permission sandbox
+│   ├── .mcp.json                    # MCP config for Claude (includes auth token)
+│   ├── .codex/config.toml           # MCP config for Codex (includes auth token)
+│   └── policy-context.json          # Content policy context
+└── profiles/{slug}.json             # User profiles (name, description, isPrimary)
 ```
 
 ## Key Conventions
@@ -149,7 +136,7 @@ data/
 - **CLAUDE.md dual use**: Builder sessions use `builder-prompt.md` as CLAUDE.md. RP sessions start from `session-instructions.md` and then append shared service guides (`session-primer.yaml`, `session-shared.md`). These are completely different prompts.
 - **Session resume**: Claude session IDs and Codex thread IDs are saved to `session.json` and used for resume on reconnect. If resume fails, auto-retries without resume.
 - **OOC messages**: Messages prefixed with `OOC:` are out-of-character. Saved to history with `ooc: true` flag. Hidden by default in chat view; visible when OOC mode is toggled on via ChatInput. Per-message OOC flag can be toggled retroactively via hover button.
-- **MCP authentication**: Internal token generated per server process, passed via env vars in `.mcp.json` / `.codex/config.toml`. MCP server sends `x-bridge-token` + `x-bridge-user-id` headers. Middleware passes these through; `requireAuth()` validates.
+- **MCP authentication**: Internal token generated per server process, passed via env vars in `.mcp.json` / `.codex/config.toml`. MCP server sends `x-bridge-token` header. Used for internal API validation only.
 - **MCP bootstrap**: Claude is launched with `--mcp-config <cwd>/.mcp.json --strict-mcp-config` when that file exists.
 - **Permission sandboxing**: Each session has `.claude/settings.json` restricting Claude tools to the session directory.
 - **Panel placement types**: `layout.json` `panels.placement` supports `"left"`, `"right"`, `"modal"`. Panels without placement are inline.
@@ -157,7 +144,7 @@ data/
 - **Shadow DOM isolation**: PanelSlot and ModalPanel render panel HTML inside Shadow DOM to isolate CSS.
 - **Image modal portal**: ImageModal uses `createPortal(document.body)` to escape `backdrop-blur` CSS containment from chat bubbles.
 - **Windows process killing**: Uses `taskkill /T /F /PID` because `shell: true` wraps the process in cmd.exe.
-- **Global singleton pattern**: `services.ts` and `ws-server.ts` use `globalThis[key]` to share state across Next.js hot-reload module instances. Services are keyed per-user via `Map<string, Services>`.
+- **Global singleton pattern**: `services.ts` and `ws-server.ts` use `globalThis[key]` to share state across Next.js hot-reload module instances. Services are a global singleton via `getServices()`.
 - **System JSON exclusion**: Files like `session.json`, `layout.json`, `chat-history.json` are excluded from custom data file loading in both `PanelEngine` and `SessionManager`.
 - **Real-time layout updates**: `panel-engine.ts` watches `layout.json` via `fs.watch` and broadcasts `layout:update` WebSocket events. Changes reflect immediately without session re-entry.
 - **Compacting status**: Claude CLI `system.status.compacting` events are forwarded to frontend and shown as blue pulsing indicator in StatusBar.

@@ -4,8 +4,8 @@ import { ClaudeProcess } from "./claude-process";
 import { CodexProcess } from "./codex-process";
 import { SessionManager } from "./session-manager";
 import { PanelEngine } from "./panel-engine";
-import { wsBroadcastToUser } from "./ws-server";
-import { getUserDataDir, getAppRoot } from "./data-dir";
+import { wsBroadcast } from "./ws-server";
+import { getDataDir, getAppRoot } from "./data-dir";
 import { AIProvider, providerFromModel } from "./ai-provider";
 
 const DIALOG_OPEN = "<dialog_response>";
@@ -122,7 +122,6 @@ export interface HistoryMessage {
 export type AIProcess = ClaudeProcess | CodexProcess;
 
 export interface Services {
-  userId: string;
   claude: AIProcess;
   provider: AIProvider;
   sessions: SessionManager;
@@ -148,14 +147,14 @@ function createProcess(provider: AIProvider): AIProcess {
   return provider === "codex" ? new CodexProcess() : new ClaudeProcess();
 }
 
-function initServices(userId: string): Services {
-  const userDataDir = getUserDataDir(userId);
+function initServices(): Services {
+  const dataDir = getDataDir();
   let currentProvider: AIProvider = "claude";
   let proc: AIProcess = createProcess(currentProvider);
-  const sessions = new SessionManager(userDataDir, getAppRoot(), userId);
+  const sessions = new SessionManager(dataDir, getAppRoot());
 
   function broadcast(event: string, data: unknown): void {
-    wsBroadcastToUser(userId, event, data);
+    wsBroadcast(event, data);
   }
 
   const panels = new PanelEngine(
@@ -335,7 +334,6 @@ function initServices(userId: string): Services {
   }
 
   const svc: Services = {
-    userId,
     get claude() { return proc; },
     get provider() { return currentProvider; },
     set provider(p: AIProvider) { currentProvider = p; },
@@ -408,30 +406,22 @@ function initServices(userId: string): Services {
   return svc;
 }
 
-/** Get or create per-user Services instance */
-export function getServices(userId: string): Services {
-  const g = globalThis as unknown as Record<string, Map<string, Services>>;
+/** Get or create global Services instance */
+export function getServices(): Services {
+  const g = globalThis as unknown as Record<string, Services>;
   if (!g[GLOBAL_KEY]) {
-    g[GLOBAL_KEY] = new Map();
+    g[GLOBAL_KEY] = initServices();
   }
-  const map = g[GLOBAL_KEY];
-  let svc = map.get(userId);
-  if (!svc) {
-    svc = initServices(userId);
-    map.set(userId, svc);
-  }
-  return svc;
+  return g[GLOBAL_KEY];
 }
 
-/** Clean up a user's services (kill process, stop watchers) */
-export function cleanupServices(userId: string): void {
-  const g = globalThis as unknown as Record<string, Map<string, Services>>;
-  const map = g[GLOBAL_KEY];
-  if (!map) return;
-  const svc = map.get(userId);
+/** Clean up services (kill process, stop watchers) */
+export function cleanupServices(): void {
+  const g = globalThis as unknown as Record<string, Services>;
+  const svc = g[GLOBAL_KEY];
   if (svc) {
     svc.claude.kill();
     svc.panels.stop();
-    map.delete(userId);
+    delete g[GLOBAL_KEY];
   }
 }

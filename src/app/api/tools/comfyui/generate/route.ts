@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import * as path from "path";
 import { getServices } from "@/lib/services";
-import { requireAuth } from "@/lib/auth";
 import { ComfyUIClient } from "@/lib/comfyui-client";
 
 const COMFY_QUEUE_KEY = "__claude_bridge_comfy_queue__";
@@ -46,9 +45,7 @@ function scheduleComfyJob(job: () => Promise<void>): void {
 }
 
 export async function POST(req: Request) {
-  const auth = requireAuth(req);
-  if (auth instanceof Response) return auth;
-  const svc = getServices(auth.userId);
+  const svc = getServices();
 
   const body = (await req.json()) as {
     workflow?: string;
