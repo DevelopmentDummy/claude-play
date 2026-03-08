@@ -10,6 +10,8 @@ interface ModalPanelProps {
   dismissible: boolean;
   zIndex?: number;
   isTopmost?: boolean;
+  maxWidth?: string;
+  maxHeight?: string;
   sessionId?: string;
   panelData?: Record<string, unknown>;
   onClose: () => void;
@@ -22,6 +24,8 @@ export default function ModalPanel({
   dismissible,
   zIndex = 0,
   isTopmost = true,
+  maxWidth = "860px",
+  maxHeight = "80vh",
   sessionId,
   panelData,
   onClose,
@@ -33,6 +37,7 @@ export default function ModalPanel({
   const shadowRef = useRef<ShadowRoot | null>(null);
   const [modalSrc, setModalSrc] = useState<string | null>(null);
   const [visible, setVisible] = useState(false);
+  const [closed, setClosed] = useState(false);
 
   // Animate in on mount
   useEffect(() => {
@@ -42,13 +47,13 @@ export default function ModalPanel({
   const handleClose = useCallback(() => {
     if (!dismissible) return;
     setVisible(false);
-    setTimeout(onClose, 200);
+    setTimeout(() => { setClosed(true); onClose(); }, 200);
   }, [dismissible, onClose]);
 
   // Force close (for sendMessage auto-dismiss — bypasses dismissible check)
   const forceClose = useCallback(() => {
     setVisible(false);
-    setTimeout(onClose, 200);
+    setTimeout(() => { setClosed(true); onClose(); }, 200);
   }, [onClose]);
 
   // Install a modal-scoped bridge that auto-closes on sendMessage
@@ -64,7 +69,7 @@ export default function ModalPanel({
       async updateVariables(patch: Record<string, unknown>) {
         if (!sessionId) return;
         const res = await fetch(
-          `/api/sessions/${encodeURIComponent(sessionId)}/variables`,
+          `/api/sessions/${sessionId}/variables`,
           {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
@@ -148,6 +153,8 @@ export default function ModalPanel({
     return () => window.removeEventListener("keydown", handler);
   }, [dismissible, isTopmost, handleClose]);
 
+  if (closed) return null;
+
   return createPortal(
     <>
       {/* Backdrop */}
@@ -169,8 +176,8 @@ export default function ModalPanel({
         <div
           className="relative pointer-events-auto w-full transition-all duration-200"
           style={{
-            maxWidth: "520px",
-            maxHeight: "80vh",
+            maxWidth,
+            maxHeight,
             opacity: visible ? 1 : 0,
             transform: visible
               ? "scale(1) translateY(0)"
@@ -216,7 +223,7 @@ export default function ModalPanel({
             {/* Content */}
             <div
               className="px-5 py-4 overflow-y-auto"
-              style={{ maxHeight: "calc(80vh - 52px)" }}
+              style={{ maxHeight: `calc(${maxHeight} - 52px)` }}
             >
               <div ref={containerRef} />
             </div>

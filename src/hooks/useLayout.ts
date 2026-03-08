@@ -8,6 +8,7 @@ export interface LayoutConfig {
     position: "right" | "left" | "bottom" | "hidden";
     size: number;
     placement?: Record<string, "left" | "right" | "modal">;
+    modalSize?: Record<string, { maxWidth?: string; maxHeight?: string }>;
   };
   chat: {
     maxWidth: number | null;

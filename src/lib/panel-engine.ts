@@ -76,7 +76,7 @@ export class PanelEngine {
       ...this.variables,
       ...this.dataFiles,
       __sessionId: sessionId,
-      __imageBase: sessionId ? `/api/sessions/${encodeURIComponent(sessionId)}/files?path=images/` : "",
+      __imageBase: sessionId ? `/api/sessions/${sessionId}/files?path=images/` : "",
     };
   }
 

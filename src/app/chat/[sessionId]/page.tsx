@@ -175,6 +175,8 @@ export default function ChatPage() {
   const panelSize = layout?.panels?.size || 280;
   const rawPlacement = layout?.panels?.placement || {};
 
+  const modalSize = layout?.panels?.modalSize || {};
+
   // Normalize placement keys: strip numeric prefix (e.g. "01-상태" → "상태") so it matches panel names
   const placement: Record<string, "left" | "right" | "modal"> = {};
   for (const [key, val] of Object.entries(rawPlacement)) {
@@ -339,11 +341,13 @@ export default function ChatPage() {
           dismissible={modalsState?.[p.name] === "dismissible"}
           zIndex={i}
           isTopmost={i === activeModalPanels.length - 1}
+          maxWidth={modalSize[p.name]?.maxWidth}
+          maxHeight={modalSize[p.name]?.maxHeight}
           sessionId={sessionId}
           panelData={panelData}
           onClose={() => {
             // Update __modals to close this panel
-            fetch(`/api/sessions/${encodeURIComponent(sessionId)}/variables`, {
+            fetch(`/api/sessions/${sessionId}/variables`, {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ __modals: { ...modalsState, [p.name]: false } }),

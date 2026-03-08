@@ -26,7 +26,7 @@ export default function PanelSlot({ name, html, sessionId, panelData, onSendMess
       },
       async updateVariables(patch: Record<string, unknown>) {
         if (!sessionId) return;
-        const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/variables`, {
+        const res = await fetch(`/api/sessions/${sessionId}/variables`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(patch),
