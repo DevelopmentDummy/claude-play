@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import Handlebars from "handlebars";
+import { getDataDir } from "./data-dir";
 
 export interface PanelData {
   name: string; // filename without extension
@@ -23,6 +24,8 @@ const SYSTEM_JSON = new Set([
 export interface PanelUpdate {
   panels: PanelData[];
   context: Record<string, unknown>;
+  /** Default placement for shared panels (panel name → placement type) */
+  sharedPlacements?: Record<string, "modal">;
 }
 
 
@@ -145,29 +148,66 @@ export class PanelEngine {
     this.render();
   }
 
+  /** Collect panel source files from a directory */
+  private collectPanelFiles(dir: string): Array<{ file: string; filePath: string; name: string }> {
+    if (!fs.existsSync(dir)) return [];
+    return fs
+      .readdirSync(dir)
+      .filter((f) => f.endsWith(".html"))
+      .sort()
+      .map((file) => {
+        const rawName = file.replace(/\.html$/, "");
+        const name = rawName.replace(/^\d+-/, "");
+        return { file, filePath: path.join(dir, file), name };
+      });
+  }
+
+  /** Scan data/tools/[tool]/panels/ for shared panels available to all sessions */
+  private getSharedPanelFiles(): Array<{ file: string; filePath: string; name: string }> {
+    const toolsDir = path.join(getDataDir(), "tools");
+    if (!fs.existsSync(toolsDir)) return [];
+    const result: Array<{ file: string; filePath: string; name: string }> = [];
+    try {
+      for (const toolEntry of fs.readdirSync(toolsDir, { withFileTypes: true })) {
+        if (!toolEntry.isDirectory()) continue;
+        const panelsDir = path.join(toolsDir, toolEntry.name, "panels");
+        result.push(...this.collectPanelFiles(panelsDir));
+      }
+    } catch { /* ignore */ }
+    return result;
+  }
+
   /** Get current panels + context without triggering onUpdate */
   getCurrentPanels(): PanelUpdate {
     if (!this.sessionDir) return { panels: [], context: {} };
 
-    const panelsDir = path.join(this.sessionDir, "panels");
-    if (!fs.existsSync(panelsDir)) return { panels: [], context: this.getContext() };
+    // Collect session panels + shared tool panels
+    const sessionPanelsDir = path.join(this.sessionDir, "panels");
+    const sessionPanelFiles = this.collectPanelFiles(sessionPanelsDir);
+    const sharedPanelFiles = this.getSharedPanelFiles();
 
-    const files = fs
-      .readdirSync(panelsDir)
-      .filter((f) => f.endsWith(".html"))
-      .sort();
+    // Session panels first, then shared panels (skip name conflicts)
+    const seenNames = new Set<string>();
+    const sharedNames = new Set<string>();
+    const allFiles: Array<{ file: string; filePath: string; name: string }> = [];
+    for (const pf of sessionPanelFiles) {
+      seenNames.add(pf.name);
+      allFiles.push(pf);
+    }
+    for (const pf of sharedPanelFiles) {
+      if (!seenNames.has(pf.name)) {
+        seenNames.add(pf.name);
+        sharedNames.add(pf.name);
+        allFiles.push(pf);
+      }
+    }
 
     const context = this.getContext();
     const panels: PanelData[] = [];
-    for (const file of files) {
-      const rawName = file.replace(/\.html$/, "");
-      const name = rawName.replace(/^\d+-/, "");
+    for (const { filePath, name } of allFiles) {
       try {
         if (!this.templateCache.has(name)) {
-          const source = fs.readFileSync(
-            path.join(panelsDir, file),
-            "utf-8"
-          );
+          const source = fs.readFileSync(filePath, "utf-8");
           this.templateCache.set(name, Handlebars.compile(source));
         }
         const template = this.templateCache.get(name)!;
@@ -180,7 +220,13 @@ export class PanelEngine {
         });
       }
     }
-    return { panels, context };
+    // Build shared placement map (all shared panels default to modal)
+    const sharedPlacements: Record<string, "modal"> = {};
+    for (const name of sharedNames) {
+      sharedPlacements[name] = "modal";
+    }
+
+    return { panels, context, sharedPlacements };
   }
 
   /** Stop watching */

@@ -48,12 +48,19 @@ export async function POST(req: Request) {
     );
   }
 
-  // If no crop coordinates → open crop modal for user and return immediately
+  // If no crop coordinates → open crop modal panel via variables.json and return immediately
   if (!body.crop) {
-    wsBroadcast("profile:crop-request", {
-      sessionId: svc.currentSessionId,
-      sourceImage: body.sourceImage,
-    });
+    const varsPath = path.join(sessionDir, "variables.json");
+    try {
+      const vars = fs.existsSync(varsPath)
+        ? JSON.parse(fs.readFileSync(varsPath, "utf-8"))
+        : {};
+      vars.__cropSource = body.sourceImage;
+      vars.__modals = { ...(vars.__modals || {}), "profile-crop": "dismissible" };
+      fs.writeFileSync(varsPath, JSON.stringify(vars, null, 2), "utf-8");
+    } catch (err) {
+      console.error("[update-profile] Failed to update variables for crop modal:", err);
+    }
     return NextResponse.json({
       status: "pending_crop",
       message: "Crop modal opened for user. Profile will be updated after user confirms crop area.",

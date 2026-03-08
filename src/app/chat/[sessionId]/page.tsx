@@ -15,7 +15,6 @@ import PanelArea from "@/components/PanelArea";
 import PanelDrawer from "@/components/PanelDrawer";
 import ModalPanel from "@/components/ModalPanel";
 import SyncModal from "@/components/SyncModal";
-import ProfileCropModal from "@/components/ProfileCropModal";
 
 interface Panel {
   name: string;
@@ -46,6 +45,7 @@ export default function ChatPage() {
 
   const [panels, setPanels] = useState<Panel[]>([]);
   const [panelData, setPanelData] = useState<Record<string, unknown>>({});
+  const [sharedPlacements, setSharedPlacements] = useState<Record<string, "modal">>({});
   const [layout, setLayout] = useState<LayoutConfig | null>(null);
   const [title, setTitle] = useState("");
   const [profileImage, setProfileImage] = useState<string | null>(null);
@@ -55,8 +55,6 @@ export default function ChatPage() {
   const [currentProvider, setCurrentProvider] = useState<"claude" | "codex">("claude");
   const [showOOC, setShowOOC] = useState(false);
   const [syncModalOpen, setSyncModalOpen] = useState(false);
-  const [cropModalOpen, setCropModalOpen] = useState(false);
-  const [cropInitialImage, setCropInitialImage] = useState<string | undefined>();
   const isMobile = useIsMobile();
   const initRef = useRef(false);
 
@@ -68,9 +66,10 @@ export default function ChatPage() {
       "claude:error": (e) => setError(e as string),
       "claude:status": (s) => setStatus(s as string),
       "panels:update": (p) => {
-        const update = p as { panels: Panel[]; context: Record<string, unknown> };
+        const update = p as { panels: Panel[]; context: Record<string, unknown>; sharedPlacements?: Record<string, "modal"> };
         setPanels(update.panels);
         setPanelData(update.context);
+        if (update.sharedPlacements) setSharedPlacements(update.sharedPlacements);
       },
       "layout:update": (p) => {
         const update = p as { layout: LayoutConfig };
@@ -86,11 +85,6 @@ export default function ChatPage() {
           const t = update.timestamp || Date.now();
           setProfileImage(`/api/sessions/${sessionId}/files?path=${update.profile}&t=${t}`);
         }
-      },
-      "profile:crop-request": (p) => {
-        const data = p as { sourceImage?: string };
-        setCropInitialImage(data.sourceImage);
-        setCropModalOpen(true);
       },
     },
     enabled: wsEnabled,
@@ -145,6 +139,9 @@ export default function ChatPage() {
       if (data.panelContext) {
         setPanelData(data.panelContext);
       }
+      if (data.sharedPlacements) {
+        setSharedPlacements(data.sharedPlacements);
+      }
 
       setProfileImage(data.profileImage ? `/api/sessions/${sessionId}/files?path=${data.profileImage}` : null);
 
@@ -193,7 +190,13 @@ export default function ChatPage() {
   const modalSize = layout?.panels?.modalSize || {};
 
   // Normalize placement keys: strip numeric prefix (e.g. "01-상태" → "상태") so it matches panel names
+  // Merge layout placements with shared panel default placements (shared panels default to modal)
   const placement: Record<string, "left" | "right" | "modal"> = {};
+  // Apply shared placements first (lower priority)
+  for (const [key, val] of Object.entries(sharedPlacements)) {
+    placement[key] = val;
+  }
+  // Layout placements override shared defaults
   for (const [key, val] of Object.entries(rawPlacement)) {
     const normalized = key.replace(/^\d+-/, "");
     placement[normalized] = val;
@@ -380,13 +383,6 @@ export default function ChatPage() {
           sendMessage("OOC: 대화 세션이 원본 페르소나 데이터에 동기화 되었습니다. 변경사항을 확인하세요.");
         }}
       />
-      {cropModalOpen && (
-        <ProfileCropModal
-          sessionId={sessionId}
-          initialImage={cropInitialImage}
-          onClose={() => setCropModalOpen(false)}
-        />
-      )}
     </div>
   );
 }

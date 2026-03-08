@@ -1,0 +1,374 @@
+<style>
+  :host {
+    display: block;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    color: #e0e0e0;
+  }
+  .crop-container {
+    position: relative;
+    width: 100%;
+    height: 50vh;
+    background: #0a0a14;
+    border-radius: 8px;
+    overflow: hidden;
+    cursor: grab;
+  }
+  .crop-container.dragging { cursor: grabbing; }
+  .crop-container canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+  .crop-placeholder {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255,255,255,0.3);
+    font-size: 14px;
+  }
+  .zoom-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 4px;
+  }
+  .zoom-row label { color: rgba(255,255,255,0.4); font-size: 12px; white-space: nowrap; }
+  .zoom-row input[type=range] { flex: 1; accent-color: var(--accent, #b8a0e8); }
+  .zoom-row .zoom-val { color: rgba(255,255,255,0.4); font-size: 12px; width: 36px; text-align: right; }
+  .thumb-strip {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding: 6px 0;
+    scrollbar-width: thin;
+  }
+  .thumb-btn {
+    flex-shrink: 0;
+    width: 60px;
+    height: 60px;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 2px solid transparent;
+    background: none;
+    padding: 0;
+    cursor: pointer;
+    opacity: 0.5;
+    transition: all 0.15s;
+  }
+  .thumb-btn:hover { opacity: 0.8; }
+  .thumb-btn.selected { border-color: var(--accent, #b8a0e8); opacity: 1; }
+  .thumb-btn img { width: 100%; height: 100%; object-fit: cover; }
+  .actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 8px 0 0;
+  }
+  .btn {
+    padding: 8px 18px;
+    border-radius: 8px;
+    font-size: 13px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-cancel { background: none; color: rgba(255,255,255,0.5); }
+  .btn-cancel:hover { color: rgba(255,255,255,0.9); }
+  .btn-confirm {
+    background: var(--accent, #b8a0e8);
+    color: #000;
+    font-weight: 600;
+  }
+  .btn-confirm:disabled { opacity: 0.4; cursor: not-allowed; }
+  .no-images { color: rgba(255,255,255,0.25); font-size: 12px; padding: 12px 4px; }
+</style>
+
+<div class="crop-container" id="cropContainer">
+  <canvas id="cropCanvas"></canvas>
+  <div class="crop-placeholder" id="placeholder">Loading...</div>
+</div>
+
+<div class="zoom-row">
+  <label>Zoom</label>
+  <input type="range" id="zoomSlider" min="0.3" max="1" step="0.01" value="1">
+  <span class="zoom-val" id="zoomVal">100%</span>
+</div>
+
+<div class="thumb-strip" id="thumbStrip">
+  <span class="no-images" id="noImages" style="display:none">No images</span>
+</div>
+
+<div class="actions">
+  <button class="btn btn-cancel" id="btnCancel">Cancel</button>
+  <button class="btn btn-confirm" id="btnConfirm" disabled>Confirm</button>
+</div>
+
+<script>
+(function() {
+  const root = document.currentScript.getRootNode();
+  const PORTRAIT_RATIO = 832 / 1216;
+
+  const container = root.getElementById("cropContainer");
+  const canvas = root.getElementById("cropCanvas");
+  const placeholder = root.getElementById("placeholder");
+  const zoomSlider = root.getElementById("zoomSlider");
+  const zoomVal = root.getElementById("zoomVal");
+  const thumbStrip = root.getElementById("thumbStrip");
+  const noImages = root.getElementById("noImages");
+  const btnCancel = root.getElementById("btnCancel");
+  const btnConfirm = root.getElementById("btnConfirm");
+
+  const bridge = window.__panelBridge;
+  const sessionId = bridge?.sessionId || "";
+  const cropSource = bridge?.data?.__cropSource || "";
+
+  let images = [];
+  let selectedImage = cropSource;
+  let img = null;
+  let imageLoaded = false;
+  let zoom = 1.0;
+  let offsetX = 0, offsetY = 0;
+  let dragging = false;
+  let dragStartX = 0, dragStartY = 0;
+  let dragOffsetStartX = 0, dragOffsetStartY = 0;
+
+  // Resize canvas to container
+  function resizeCanvas() {
+    const rect = container.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      canvas.width = rect.width;
+      canvas.height = rect.height;
+      draw();
+    }
+  }
+
+  // Compute layout
+  function getLayout() {
+    if (!img || !canvas.width || !canvas.height) return null;
+    const cw = canvas.width, ch = canvas.height;
+    const iw = img.naturalWidth, ih = img.naturalHeight;
+    const scale = Math.min(cw / iw, ch / ih);
+    const dispW = iw * scale, dispH = ih * scale;
+    const imgX = (cw - dispW) / 2, imgY = (ch - dispH) / 2;
+
+    let cropW = dispW, cropH = cropW / PORTRAIT_RATIO;
+    if (cropH > dispH) { cropH = dispH; cropW = cropH * PORTRAIT_RATIO; }
+    cropW *= zoom; cropH *= zoom;
+
+    const cx = Math.max(imgX, Math.min(imgX + dispW - cropW, imgX + dispW/2 + offsetX - cropW/2));
+    const cy = Math.max(imgY, Math.min(imgY + dispH - cropH, imgY + dispH/2 + offsetY - cropH/2));
+
+    return { imgX, imgY, dispW, dispH, cropX: cx, cropY: cy, cropW, cropH, scale };
+  }
+
+  // Draw
+  function draw() {
+    if (!imageLoaded || !img) return;
+    const ctx = canvas.getContext("2d");
+    const L = getLayout();
+    if (!L) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, L.imgX, L.imgY, L.dispW, L.dispH);
+
+    // Dim outside crop
+    ctx.fillStyle = "rgba(0,0,0,0.6)";
+    ctx.fillRect(L.imgX, L.imgY, L.dispW, L.cropY - L.imgY);
+    ctx.fillRect(L.imgX, L.cropY + L.cropH, L.dispW, L.imgY + L.dispH - L.cropY - L.cropH);
+    ctx.fillRect(L.imgX, L.cropY, L.cropX - L.imgX, L.cropH);
+    ctx.fillRect(L.cropX + L.cropW, L.cropY, L.imgX + L.dispW - L.cropX - L.cropW, L.cropH);
+
+    // Crop border
+    ctx.strokeStyle = "rgba(255,255,255,0.8)";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(L.cropX, L.cropY, L.cropW, L.cropH);
+
+    // Rule of thirds
+    ctx.strokeStyle = "rgba(255,255,255,0.2)";
+    ctx.lineWidth = 1;
+    for (let i = 1; i <= 2; i++) {
+      const gx = L.cropX + (L.cropW * i) / 3;
+      const gy = L.cropY + (L.cropH * i) / 3;
+      ctx.beginPath(); ctx.moveTo(gx, L.cropY); ctx.lineTo(gx, L.cropY + L.cropH); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(L.cropX, gy); ctx.lineTo(L.cropX + L.cropW, gy); ctx.stroke();
+    }
+  }
+
+  // Load image
+  function loadImage(src) {
+    imageLoaded = false;
+    btnConfirm.disabled = true;
+    placeholder.style.display = "flex";
+    placeholder.textContent = "Loading...";
+    offsetX = 0; offsetY = 0;
+    zoom = 1.0;
+    zoomSlider.value = "1";
+    zoomVal.textContent = "100%";
+
+    img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = function() {
+      imageLoaded = true;
+      btnConfirm.disabled = false;
+      placeholder.style.display = "none";
+      resizeCanvas();
+    };
+    img.onerror = function() {
+      placeholder.textContent = "Failed to load image";
+    };
+    img.src = "/api/sessions/" + sessionId + "/files?path=" + src;
+  }
+
+  // Load thumbnail strip
+  function loadImages() {
+    fetch("/api/sessions/" + sessionId + "/images")
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        images = data.images || [];
+        renderThumbs();
+        if (!selectedImage && images.length > 0) {
+          selectedImage = images[images.length - 1];
+        }
+        if (selectedImage) {
+          loadImage(selectedImage);
+          highlightThumb();
+        } else {
+          placeholder.textContent = "Select an image below";
+          if (images.length === 0) {
+            noImages.style.display = "";
+            placeholder.textContent = "No images in session";
+          }
+        }
+      });
+  }
+
+  function renderThumbs() {
+    // Clear existing thumbs (keep noImages)
+    while (thumbStrip.firstChild && thumbStrip.firstChild !== noImages) {
+      thumbStrip.removeChild(thumbStrip.firstChild);
+    }
+    if (images.length === 0) { noImages.style.display = ""; return; }
+    noImages.style.display = "none";
+
+    images.forEach(function(imgPath) {
+      var btn = document.createElement("button");
+      btn.className = "thumb-btn" + (imgPath === selectedImage ? " selected" : "");
+      btn.setAttribute("data-img", imgPath);
+      var thumbImg = document.createElement("img");
+      thumbImg.src = "/api/sessions/" + sessionId + "/files?path=" + imgPath;
+      thumbImg.alt = "";
+      thumbImg.loading = "lazy";
+      btn.appendChild(thumbImg);
+      btn.addEventListener("click", function() {
+        selectedImage = imgPath;
+        loadImage(imgPath);
+        highlightThumb();
+      });
+      thumbStrip.insertBefore(btn, noImages);
+    });
+  }
+
+  function highlightThumb() {
+    var btns = thumbStrip.querySelectorAll(".thumb-btn");
+    btns.forEach(function(b) {
+      b.classList.toggle("selected", b.getAttribute("data-img") === selectedImage);
+    });
+  }
+
+  // Pointer events for drag
+  canvas.addEventListener("pointerdown", function(e) {
+    var L = getLayout();
+    if (!L) return;
+    var rect = canvas.getBoundingClientRect();
+    var mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    if (mx >= L.cropX && mx <= L.cropX + L.cropW && my >= L.cropY && my <= L.cropY + L.cropH) {
+      dragging = true;
+      dragStartX = e.clientX; dragStartY = e.clientY;
+      dragOffsetStartX = offsetX; dragOffsetStartY = offsetY;
+      container.classList.add("dragging");
+      canvas.setPointerCapture(e.pointerId);
+    }
+  });
+
+  canvas.addEventListener("pointermove", function(e) {
+    if (!dragging) return;
+    offsetX = dragOffsetStartX + (e.clientX - dragStartX);
+    offsetY = dragOffsetStartY + (e.clientY - dragStartY);
+    draw();
+  });
+
+  canvas.addEventListener("pointerup", function() {
+    dragging = false;
+    container.classList.remove("dragging");
+  });
+
+  // Zoom
+  zoomSlider.addEventListener("input", function() {
+    zoom = parseFloat(zoomSlider.value);
+    zoomVal.textContent = Math.round(zoom * 100) + "%";
+    draw();
+  });
+
+  // Cancel
+  btnCancel.addEventListener("click", function() {
+    // Close modal via variables
+    if (bridge && bridge.updateVariables) {
+      var modals = (bridge.data && bridge.data.__modals) || {};
+      modals["profile-crop"] = false;
+      bridge.updateVariables({ __modals: modals, __cropSource: "" });
+    }
+  });
+
+  // Confirm
+  btnConfirm.addEventListener("click", function() {
+    var L = getLayout();
+    if (!L || !selectedImage) return;
+    btnConfirm.disabled = true;
+    btnConfirm.textContent = "Processing...";
+
+    var origX = (L.cropX - L.imgX) / L.scale;
+    var origY = (L.cropY - L.imgY) / L.scale;
+    var origW = L.cropW / L.scale;
+    var origH = L.cropH / L.scale;
+
+    fetch("/api/sessions/" + sessionId + "/crop-profile", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sourceImage: selectedImage,
+        crop: {
+          x: Math.round(origX),
+          y: Math.round(origY),
+          width: Math.round(origW),
+          height: Math.round(origH)
+        }
+      })
+    }).then(function(res) {
+      if (res.ok) {
+        // Close modal
+        if (bridge && bridge.updateVariables) {
+          var modals = (bridge.data && bridge.data.__modals) || {};
+          modals["profile-crop"] = false;
+          bridge.updateVariables({ __modals: modals, __cropSource: "" });
+        }
+      } else {
+        btnConfirm.disabled = false;
+        btnConfirm.textContent = "Confirm";
+      }
+    }).catch(function() {
+      btnConfirm.disabled = false;
+      btnConfirm.textContent = "Confirm";
+    });
+  });
+
+  // ResizeObserver
+  var ro = new ResizeObserver(resizeCanvas);
+  ro.observe(container);
+
+  // Init
+  loadImages();
+})();
+</script>

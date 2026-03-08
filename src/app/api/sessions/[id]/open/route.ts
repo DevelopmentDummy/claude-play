@@ -41,6 +41,9 @@ export async function POST(
   // Read layout config
   const layout = svc.sessions.readLayout(sessionDir);
 
+  // Refresh global tool skills (always sync on open — these are shared, not persona-specific)
+  svc.sessions.refreshToolSkills(sessionDir);
+
   // Ensure runtime configs exist (but don't auto-sync persona files — user can manually sync)
   svc.sessions.ensureClaudeRuntimeConfig(sessionDir, info.persona, "session");
 
@@ -79,7 +82,7 @@ export async function POST(
   svc.claude.spawn(sessionDir, resumeId, effectiveModel || undefined, runtimeSystemPrompt, finalEffort);
 
   // Include initial panels + context in response (SSE may not be connected yet)
-  const { panels, context: panelContext } = svc.panels.getCurrentPanels();
+  const { panels, context: panelContext, sharedPlacements } = svc.panels.getCurrentPanels();
 
   // Sync profile/icon images from persona to session (may have been added after session creation)
   const imagesDir = path.join(sessionDir, "images");
@@ -111,5 +114,5 @@ export async function POST(
     }
   }
 
-  return NextResponse.json({ ...info, opening, isResume, layout, panels, panelContext, profileImage, iconImage, model: effectiveRaw || "", provider });
+  return NextResponse.json({ ...info, opening, isResume, layout, panels, panelContext, sharedPlacements, profileImage, iconImage, model: effectiveRaw || "", provider });
 }
