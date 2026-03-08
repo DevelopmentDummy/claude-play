@@ -490,6 +490,39 @@ server.registerTool(
 );
 
 server.registerTool(
+  "update_profile",
+  {
+    description:
+      "Update the persona's profile image. If crop coordinates are omitted, opens an interactive " +
+      "crop modal for the user to select the portrait area. If crop is provided, crops directly. " +
+      "After cropping, auto-generates a face-cropped icon (256x256) and syncs to persona directory.",
+    inputSchema: {
+      sourceImage: z.string().min(1).describe(
+        "Relative path within session, e.g. 'images/mira-walk-flustered-202.png'"
+      ),
+      crop: z.object({
+        x: z.number().describe("Crop start X in source image pixels"),
+        y: z.number().describe("Crop start Y in source image pixels"),
+        width: z.number().describe("Crop width in pixels"),
+        height: z.number().describe("Crop height in pixels"),
+      }).optional().describe(
+        "Crop coordinates. If omitted, an interactive crop modal opens for the user."
+      ),
+    },
+  },
+  async (input) => {
+    try {
+      const payload = { sourceImage: input.sourceImage };
+      if (input.crop) payload.crop = input.crop;
+      const data = await requestJson("POST", "/api/tools/comfyui/update-profile", payload);
+      return ok(data);
+    } catch (error) {
+      return fail(error);
+    }
+  }
+);
+
+server.registerTool(
   "policy_review",
   {
     description: "Run a local policy triage for the current request. Returns allow|deny|uncertain and logs the review.",
