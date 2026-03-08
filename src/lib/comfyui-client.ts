@@ -14,6 +14,7 @@ interface GenerateRequest {
   sessionDir: string;
   /** Map of workflow output prefix → local filename for additional outputs */
   extraFiles?: Record<string, string>;
+  loras?: Array<{ name: string; strength: number }>;
 }
 
 interface GenerateRawRequest {
@@ -424,7 +425,8 @@ export class ComfyUIClient {
   private async buildPrompt(
     workflowName: string,
     params: Record<string, unknown>,
-    sessionDir?: string
+    sessionDir?: string,
+    loras?: Array<{ name: string; strength: number }>
   ): Promise<object> {
     const workflowPath = path.join(
       this.workflowsDir,
@@ -464,6 +466,80 @@ export class ComfyUIClient {
 
     // Remove unavailable LoRAs and rewire the chain
     this.pruneUnavailableLoRAs(prompt, models.loras);
+
+    // Dynamic LoRA injection: append after existing chain
+    if (loras && loras.length > 0) {
+      // Find the last LoraLoader node ID in the current chain
+      const loraNodeIds = Object.entries(prompt)
+        .filter(([, n]) => (n as Record<string, unknown>).class_type === "LoraLoader")
+        .map(([id]) => id)
+        .sort((a, b) => Number(a) - Number(b));
+
+      let anchorId = loraNodeIds.length > 0 ? loraNodeIds[loraNodeIds.length - 1] : null;
+
+      // Fallback: if all LoRAs were pruned, anchor to CheckpointLoaderSimple
+      if (!anchorId) {
+        anchorId = Object.entries(prompt)
+          .find(([, n]) => (n as Record<string, unknown>).class_type === "CheckpointLoaderSimple")
+          ?.[0] ?? null;
+      }
+
+      if (anchorId) {
+        // Filter to only available LoRAs
+        const validLoras = models.loras.length === 0
+          ? loras  // Can't validate, pass all through
+          : loras.filter(l => models.loras.includes(l.name));
+
+        let prevId = anchorId;
+        // Start dynamic IDs above the max existing node ID to avoid collisions
+        const maxExistingId = Math.max(...Object.keys(prompt).map(Number).filter(n => !isNaN(n)));
+        const dynamicStartId = Math.max(200, maxExistingId + 1);
+        const injectedIds = new Set<string>();
+
+        for (let i = 0; i < validLoras.length; i++) {
+          const nodeId = String(dynamicStartId + i);
+          injectedIds.add(nodeId);
+          prompt[nodeId] = {
+            class_type: "LoraLoader",
+            inputs: {
+              lora_name: validLoras[i].name,
+              strength_model: validLoras[i].strength,
+              strength_clip: validLoras[i].strength,
+              model: [prevId, 0],
+              clip: [prevId, 1],
+            },
+            _meta: { title: `dynamic-lora-${i}` },
+          };
+          prevId = nodeId;
+        }
+
+        // Rewire downstream nodes that referenced old lastLoraId
+        if (validLoras.length > 0) {
+          const newLastId = prevId;
+          for (const [nodeId, node] of Object.entries(prompt)) {
+            if (injectedIds.has(nodeId)) continue;
+            const n = node as Record<string, unknown>;
+            const inputs = n.inputs as Record<string, unknown> | undefined;
+            if (!inputs) continue;
+            for (const [key, value] of Object.entries(inputs)) {
+              if (Array.isArray(value) && value.length === 2 && value[0] === anchorId) {
+                inputs[key] = [newLastId, value[1]];
+              }
+            }
+          }
+          console.log(`[comfyui] Injected ${validLoras.length} dynamic LoRAs after node ${anchorId}`);
+        }
+
+        if (validLoras.length < loras.length) {
+          const skippedNames = loras
+            .filter(l => !validLoras.some(v => v.name === l.name))
+            .map(l => l.name);
+          console.log(`[comfyui] Skipped ${skippedNames.length} unavailable dynamic LoRAs: ${skippedNames.join(", ")}`);
+        }
+      } else {
+        console.warn(`[comfyui] No LoraLoader or Checkpoint nodes in workflow — cannot inject dynamic LoRAs`);
+      }
+    }
 
     // Inject params from request
     for (const [paramName, paramDef] of Object.entries(meta.params)) {
@@ -650,7 +726,7 @@ export class ComfyUIClient {
   /** Template-based generation: loads workflow from data/tools/comfyui/workflows/ */
   async generate(req: GenerateRequest): Promise<GenerateResult> {
     try {
-      const prompt = await this.buildPrompt(req.workflow, req.params, req.sessionDir) as Record<string, unknown>;
+      const prompt = await this.buildPrompt(req.workflow, req.params, req.sessionDir, req.loras) as Record<string, unknown>;
       return this.submitAndWait(prompt, req.filename, req.sessionDir, req.extraFiles);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

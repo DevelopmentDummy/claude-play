@@ -151,6 +151,38 @@ curl -s -X POST http://localhost:{{PORT}}/api/tools/comfyui/generate \
 
 ---
 
+## 동적 LoRA 체인
+
+기본 LoRA(퀄리티, 스타일, 아트)는 워크플로우에 고정되어 있다.
+특수 포즈, 액션, 상황에 대한 LoRA는 요청마다 동적으로 추가할 수 있다.
+
+### 사용 방법
+
+`generate_image` 또는 `comfyui_generate` 도구에 `loras` 파라미터 추가:
+
+```json
+{
+  "template": "portrait",
+  "prompt": "1girl, elf, silver hair, ...",
+  "loras": [
+    { "name": "pose_lora.safetensors", "strength": 0.6 }
+  ]
+}
+```
+
+### 치트시트
+
+사용 가능한 동적 LoRA 목록은 `./lora-cheatsheet.md`를 참조하라.
+
+### 주의사항
+
+- 동적 LoRA는 기본 체인의 **뒤에** 삽입된다
+- 사용 불가능한 LoRA는 자동 스킵 (에러 없음)
+- 동시 3개 이내 권장
+- 강도 범위: 0.3~0.7 (과적합 주의)
+
+---
+
 ## 감정/표정 태그 레퍼런스
 
 - **neutral**: neutral expression, calm face, relaxed features

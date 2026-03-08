@@ -53,6 +53,7 @@ export async function POST(req: Request) {
     raw?: Record<string, unknown>;
     filename?: string;
     extraFiles?: Record<string, string>;
+    loras?: Array<{ name: string; strength: number }>;
     persona?: string; // For builder: generate directly into persona directory
   };
 
@@ -124,6 +125,7 @@ export async function POST(req: Request) {
             filename: safeName,
             sessionDir: targetDir,
             extraFiles: body.extraFiles,
+            loras: body.loras,
           });
       if (result.success) {
         console.log(`[comfyui] Generated: ${result.filepath}`);

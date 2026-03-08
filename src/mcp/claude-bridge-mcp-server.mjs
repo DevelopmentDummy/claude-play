@@ -309,6 +309,10 @@ server.registerTool(
       raw: z.record(z.string(), z.unknown()).optional(),
       filename: z.string().min(1).optional(),
       extraFiles: z.record(z.string(), z.string()).optional(),
+      loras: z.array(z.object({
+        name: z.string(),
+        strength: z.number().min(-5).max(5),
+      })).optional(),
       persona: z.string().optional(),
     },
   },
@@ -359,6 +363,7 @@ server.registerTool(
               params,
               filename,
               extraFiles: input.extraFiles,
+              loras: input.loras,
               ...(input.persona ? { persona: input.persona } : {}),
             }
       );
@@ -417,6 +422,10 @@ server.registerTool(
       seed: z.number().int().optional(),
       negative_prompt: z.string().optional(),
       use_defaults: z.boolean().optional(),
+      loras: z.array(z.object({
+        name: z.string(),
+        strength: z.number().min(-5).max(5),
+      })).optional(),
       persona: z.string().optional(),
     },
   },
@@ -430,6 +439,7 @@ server.registerTool(
           ...(typeof input.seed === "number" ? { seed: input.seed } : {}),
         },
         filename: pickString(input.filename) || `comfyui_${Date.now()}.png`,
+        loras: input.loras,
         ...(input.persona ? { persona: input.persona } : {}),
       });
       const data = await requestJson("POST", "/api/tools/comfyui/generate", payload);
