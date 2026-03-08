@@ -389,10 +389,88 @@ export class ComfyUIClient {
     const configPath = path.join(dir, "comfyui-config.json");
     if (fs.existsSync(configPath)) {
       try {
-        return JSON.parse(fs.readFileSync(configPath, "utf-8"));
+        const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+        // Support preset structure
+        if (config.active_preset && config.presets?.[config.active_preset]?.checkpoint) {
+          return { checkpoint: config.presets[config.active_preset].checkpoint };
+        }
+        if (config.checkpoint) return { checkpoint: config.checkpoint };
       } catch { /* ignore */ }
     }
     return {};
+  }
+
+  /** Load LoRA trigger tag table from data/tools/comfyui/lora-triggers.json */
+  private loadLoraTriggers(): Record<string, string> {
+    // workflowsDir = data/tools/comfyui/skills/generate-image/workflows
+    // lora-triggers.json lives at data/tools/comfyui/lora-triggers.json
+    const triggersPath = path.join(this.workflowsDir, "..", "..", "..", "lora-triggers.json");
+    if (!fs.existsSync(triggersPath)) return {};
+    try {
+      const data = JSON.parse(fs.readFileSync(triggersPath, "utf-8"));
+      // Remove _comment key if present
+      delete data._comment;
+      return data;
+    } catch {
+      console.warn("[comfyui] Failed to parse lora-triggers.json");
+      return {};
+    }
+  }
+
+  /** Collect all active LoRA filenames from the processed workflow */
+  private collectActiveLoRAs(prompt: Record<string, unknown>): string[] {
+    const names: string[] = [];
+    for (const node of Object.values(prompt)) {
+      const n = node as Record<string, unknown>;
+      if (n.class_type === "LoraLoader") {
+        const inputs = n.inputs as Record<string, unknown>;
+        if (inputs?.lora_name) {
+          names.push(inputs.lora_name as string);
+        }
+      }
+    }
+    return names;
+  }
+
+  /** Auto-inject trigger tags for active LoRAs into the prompt text, with deduplication */
+  private injectTriggerTags(
+    prompt: Record<string, unknown>,
+    meta: WorkflowMeta,
+    triggerTable: Record<string, string>,
+    activeLoRAs: string[]
+  ): void {
+    const promptDef = meta.params["prompt"];
+    if (!promptDef) return;
+
+    const node = prompt[promptDef.node] as Record<string, unknown> | undefined;
+    if (!node) return;
+    const inputs = node.inputs as Record<string, unknown> | undefined;
+    if (!inputs) return;
+
+    const currentPrompt = (inputs[promptDef.field] as string) || "";
+
+    // Collect trigger tags from all active LoRAs
+    const triggerTags: string[] = [];
+    for (const loraName of activeLoRAs) {
+      const triggers = triggerTable[loraName];
+      if (triggers && triggers.trim()) {
+        for (const tag of triggers.split(",")) {
+          const t = tag.trim();
+          if (t) triggerTags.push(t);
+        }
+      }
+    }
+
+    if (triggerTags.length === 0) return;
+
+    // Deduplicate against tags already in the prompt (case-insensitive)
+    const promptLower = currentPrompt.toLowerCase();
+    const newTags = triggerTags.filter(tag => !promptLower.includes(tag.toLowerCase()));
+
+    if (newTags.length === 0) return;
+
+    inputs[promptDef.field] = currentPrompt + ", " + newTags.join(", ");
+    console.log(`[comfyui] Auto-injected trigger tags: ${newTags.join(", ")}`);
   }
 
   /** Resolve the best available checkpoint name */
@@ -613,6 +691,12 @@ export class ComfyUIClient {
       }
     }
 
+    // Auto-inject LoRA trigger tags into prompt text (after param injection so prompt text exists)
+    const triggerTable = this.loadLoraTriggers();
+    const activeLoRAs = this.collectActiveLoRAs(prompt);
+    this.injectTriggerTags(prompt, meta, triggerTable, activeLoRAs);
+
+
     // Handle random seed (-1 means random)
     for (const [, paramDef] of Object.entries(meta.params)) {
       if (paramDef.field === "seed") {
@@ -778,6 +862,122 @@ export class ComfyUIClient {
     try {
       const prompt = await this.buildPrompt(req.workflow, req.params, req.sessionDir, req.loras) as Record<string, unknown>;
       return this.submitAndWait(prompt, req.filename, req.sessionDir, req.extraFiles);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { success: false, error: message };
+    }
+  }
+
+  /** Upload an image to ComfyUI's input folder for use with LoadImage nodes.
+   *  Uses native FormData for reliable multipart upload. */
+  async uploadImage(imagePath: string): Promise<string | null> {
+    try {
+      const imageBuffer = fs.readFileSync(imagePath);
+      const basename = path.basename(imagePath);
+
+      const formData = new FormData();
+      formData.append("image", new Blob([imageBuffer], { type: "image/png" }), basename);
+      formData.append("overwrite", "true");
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30_000);
+
+      try {
+        const res = await fetch(`${this.baseUrl}/upload/image`, {
+          method: "POST",
+          body: formData,
+          signal: controller.signal,
+        });
+
+        if (!res.ok) {
+          console.error(`[comfyui] Upload failed with status ${res.status}`);
+          return null;
+        }
+        const data = (await res.json()) as { name: string };
+        console.log(`[comfyui] Uploaded image: ${data.name}`);
+        return data.name;
+      } finally {
+        clearTimeout(timeout);
+      }
+    } catch (err) {
+      console.error(`[comfyui] Upload failed:`, err);
+      return null;
+    }
+  }
+
+  /** Generate a 256x256 face-cropped icon from an existing image */
+  async faceCrop(
+    sourceImagePath: string,
+    outputFilename: string,
+    sessionDir: string
+  ): Promise<GenerateResult> {
+    try {
+      // Upload with a unique name to bust ComfyUI's cache
+      const uniqueSuffix = `_${Date.now()}`;
+      const ext = path.extname(sourceImagePath);
+      const base = path.basename(sourceImagePath, ext);
+      const uniqueName = `${base}${uniqueSuffix}${ext}`;
+      const uniquePath = path.join(path.dirname(sourceImagePath), uniqueName);
+      fs.copyFileSync(sourceImagePath, uniquePath);
+
+      let uploadedName: string | null;
+      try {
+        uploadedName = await this.uploadImage(uniquePath);
+      } finally {
+        // Clean up the temp copy
+        try { fs.unlinkSync(uniquePath); } catch { /* ignore */ }
+      }
+
+      if (!uploadedName) {
+        return { success: false, error: "Failed to upload source image to ComfyUI" };
+      }
+
+      // Build face-crop workflow
+      const prompt: Record<string, unknown> = {
+        "10": {
+          class_type: "LoadImage",
+          inputs: { image: uploadedName },
+        },
+        "20": {
+          class_type: "UltralyticsDetectorProvider",
+          inputs: { model_name: "bbox/face_yolov8m.pt" },
+        },
+        "42": {
+          class_type: "BboxDetectorSEGS",
+          inputs: {
+            bbox_detector: ["20", 0],
+            image: ["10", 0],
+            threshold: 0.5,
+            dilation: 0,
+            crop_factor: 1.3,
+            drop_size: 10,
+            labels: "all",
+          },
+        },
+        "43": {
+          class_type: "SEGSToImageList",
+          inputs: {
+            segs: ["42", 0],
+            fallback_image_opt: ["10", 0],
+          },
+        },
+        "40": {
+          class_type: "ImageScale",
+          inputs: {
+            image: ["43", 0],
+            width: 256,
+            height: 256,
+            upscale_method: "lanczos",
+            crop: "center",
+          },
+        },
+        "41": {
+          class_type: "SaveImage",
+          inputs: { filename_prefix: "icon", images: ["40", 0] },
+        },
+      };
+
+      return this.submitAndWait(prompt, outputFilename, sessionDir);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return { success: false, error: message };

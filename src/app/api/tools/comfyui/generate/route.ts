@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import * as path from "path";
+import * as fs from "fs";
 import { getServices } from "@/lib/services";
 import { ComfyUIClient } from "@/lib/comfyui-client";
 
@@ -105,7 +106,25 @@ export async function POST(req: Request) {
 
   const host = process.env.COMFYUI_HOST || "127.0.0.1";
   const port = parseInt(process.env.COMFYUI_PORT || "8188", 10);
-  const checkpoint = process.env.COMFYUI_CHECKPOINT;
+  // Read checkpoint from config preset, env var as override
+  let checkpoint = process.env.COMFYUI_CHECKPOINT;
+  if (!checkpoint) {
+    // Try session/persona config, then global fallback
+    const configPaths = [
+      path.join(targetDir, "comfyui-config.json"),
+      path.join(process.cwd(), "data", "tools", "comfyui", "comfyui-config.json"),
+    ];
+    for (const configPath of configPaths) {
+      try {
+        if (!fs.existsSync(configPath)) continue;
+        const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+        const presetName = config?.active_preset;
+        const preset = presetName && config?.presets?.[presetName];
+        const ckpt = preset?.checkpoint || config?.checkpoint;
+        if (ckpt) { checkpoint = ckpt; break; }
+      } catch { /* ignore */ }
+    }
+  }
   const client = new ComfyUIClient({ host, port, checkpoint }, workflowsDir);
 
   const resultPath = `images/${safeName}`;

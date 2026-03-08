@@ -25,7 +25,6 @@ const FICTION_CUES = [
   /\b(story|scene|narrative)\b/i,
 ];
 const COMFY_DEFAULT_QUALITY = "masterpiece, best quality, amazing quality, absurdres";
-const COMFY_DEFAULT_TRIGGERS = "anime screencap, anime coloring, sexydet, s1_dram";
 const COMFY_DEFAULT_NEGATIVE =
   "bad quality, worst quality, worst detail, sketch, censored, watermark, signature, extra fingers, mutated hands, bad anatomy";
 const COMFY_DEFAULT_TEMPLATE = "portrait";
@@ -74,7 +73,48 @@ function buildComfyPrompt(prompt, useDefaults = true) {
   const body = pickString(prompt);
   if (!body) return "";
   if (!useDefaults) return body;
-  return `${COMFY_DEFAULT_QUALITY}, ${COMFY_DEFAULT_TRIGGERS}, ${body}`;
+
+  const config = readComfyConfig();
+  const preset = getActivePreset(config);
+  const quality = preset?.quality_tags || config?.style?.quality_tags || COMFY_DEFAULT_QUALITY;
+  const style = preset?.style_tags || config?.style?.style_tags || "";
+
+  // quality + style + user prompt. Trigger tags are auto-injected by the server based on active LoRAs.
+  const parts = [quality, style, body].filter(s => s.trim());
+  return parts.join(", ");
+}
+
+function readComfyConfig() {
+  // Try session-level config first
+  const sessionConfigPath = path.join(sessionDir, "comfyui-config.json");
+  if (fs.existsSync(sessionConfigPath)) {
+    try {
+      return JSON.parse(fs.readFileSync(sessionConfigPath, "utf-8"));
+    } catch { /* fall through */ }
+  }
+  // Fallback to global config (data/tools/comfyui/comfyui-config.json)
+  // sessionDir is data/sessions/{name}/, so ../../tools/comfyui/
+  const globalConfigPath = path.join(sessionDir, "..", "..", "tools", "comfyui", "comfyui-config.json");
+  if (fs.existsSync(globalConfigPath)) {
+    try {
+      return JSON.parse(fs.readFileSync(globalConfigPath, "utf-8"));
+    } catch { /* ignore */ }
+  }
+  return null;
+}
+
+function getActivePreset(config) {
+  if (!config?.presets || !config?.active_preset) return null;
+  return config.presets[config.active_preset] || null;
+}
+
+function getComfyNegative(userNegative) {
+  if (userNegative) return userNegative;
+  const config = readComfyConfig();
+  const preset = getActivePreset(config);
+  if (preset?.negative) return preset.negative;
+  if (config?.style?.negative) return config.style.negative;
+  return COMFY_DEFAULT_NEGATIVE;
 }
 
 function readPolicyContext() {
@@ -300,7 +340,7 @@ server.registerTool(
       "Queue image generation via ComfyUI. Backward-compatible: prompt-only mode is supported (defaults to portrait workflow + legacy quality/trigger tags).",
     inputSchema: {
       workflow: z.string().optional(),
-      template: z.enum(["portrait", "scene", "profile"]).optional(),
+      template: z.enum(["portrait", "scene", "scene-real", "profile"]).optional(),
       prompt: z.string().optional(),
       negative_prompt: z.string().optional(),
       seed: z.number().int().optional(),
@@ -324,7 +364,10 @@ server.registerTool(
         );
       }
 
-      const workflow = pickString(input.workflow) || pickString(input.template) || COMFY_DEFAULT_TEMPLATE;
+      const config = readComfyConfig();
+      const preset = getActivePreset(config);
+      const defaultTemplate = preset?.default_template || COMFY_DEFAULT_TEMPLATE;
+      const workflow = pickString(input.workflow) || pickString(input.template) || defaultTemplate;
       const useDefaults = input.use_defaults !== false;
       const explicitPrompt = pickString(input.prompt);
       const filename = pickString(input.filename) || `comfyui_${Date.now()}.png`;
@@ -336,10 +379,8 @@ server.registerTool(
         params.prompt = buildComfyPrompt(params.prompt, useDefaults);
       }
 
-      if (input.negative_prompt && !params.negative_prompt) {
-        params.negative_prompt = input.negative_prompt;
-      } else if (!params.negative_prompt) {
-        params.negative_prompt = COMFY_DEFAULT_NEGATIVE;
+      if (!params.negative_prompt) {
+        params.negative_prompt = getComfyNegative(input.negative_prompt);
       }
 
       if (typeof input.seed === "number" && Number.isFinite(input.seed)) {
@@ -416,7 +457,7 @@ server.registerTool(
     description:
       "High-level image generation compatible with legacy service behavior. Uses ComfyUI template mode with default quality/trigger tags.",
     inputSchema: {
-      template: z.enum(["portrait", "scene", "profile"]).optional(),
+      template: z.enum(["portrait", "scene", "scene-real", "profile"]).optional(),
       prompt: z.string().min(1),
       filename: z.string().optional(),
       seed: z.number().int().optional(),
@@ -431,11 +472,15 @@ server.registerTool(
   },
   async (input) => {
     try {
+      const config = readComfyConfig();
+      const preset = getActivePreset(config);
+      const defaultTemplate = preset?.default_template || COMFY_DEFAULT_TEMPLATE;
+
       const payload = withPersona({
-        workflow: input.template || COMFY_DEFAULT_TEMPLATE,
+        workflow: input.template || defaultTemplate,
         params: {
           prompt: buildComfyPrompt(input.prompt, input.use_defaults !== false),
-          negative_prompt: input.negative_prompt || COMFY_DEFAULT_NEGATIVE,
+          negative_prompt: getComfyNegative(input.negative_prompt),
           ...(typeof input.seed === "number" ? { seed: input.seed } : {}),
         },
         filename: pickString(input.filename) || `comfyui_${Date.now()}.png`,

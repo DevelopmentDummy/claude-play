@@ -378,38 +378,52 @@ allowed-tools: Read, Edit, Write, Glob (필요한 것만)
 - **일관되게**: 스킬에서 참조하는 변수명은 variables.json과, 패널 파일명은 panels/ 디렉토리와 정확히 일치해야 한다
 - **description이 핵심**: Claude는 description을 보고 스킬을 호출할지 판단한다. 모호하지 않게 작성하라
 
-### 9. `comfyui-config.json` — 이미지 생성 설정
+### 9. `comfyui-config.json` — 이미지 생성 프리셋 설정
 
-파일 생성 후, 프로필 이미지를 만들기 전에 이미지 생성 환경을 설정한다.
+페르소나 생성 시 글로벌 기본 `comfyui-config.json`이 자동으로 복사된다. 이 파일은 **프리셋 시스템**을 사용하여 아트 스타일(애니메/반실사 등)을 한 번에 전환할 수 있다.
 
-**절차:**
-1. ComfyUI에서 사용 가능한 체크포인트 목록을 조회한다:
-```bash
-curl -s http://localhost:3340/api/tools/comfyui/models
-```
-2. 사용자에게 체크포인트 목록을 보여주고 선택하게 한다
-3. 사용자와 대화하면서 이 페르소나에 어울리는 **아트 스타일**을 정한다:
-   - 화풍 (예: anime, semi-realistic, watercolor, pixel art 등)
-   - 품질/분위기 태그 (예: "masterpiece, best quality, soft lighting, warm tones")
-   - 부정 프롬프트 (예: "lowres, bad anatomy, blurry")
-   - 이미지 생성 시 항상 포함할 고정 태그가 있으면 기록한다
-4. 설정을 `comfyui-config.json`에 저장한다:
+**프리셋 구조:**
 ```json
 {
-  "checkpoint": "선택한_체크포인트.safetensors",
-  "style": {
-    "quality_tags": "masterpiece, best quality, absurdres",
-    "style_tags": "anime coloring, soft lighting, warm tones",
-    "negative": "lowres, bad anatomy, bad hands, blurry, watermark"
+  "active_preset": "anime",
+  "presets": {
+    "anime": {
+      "checkpoint": "체크포인트.safetensors",
+      "default_template": "scene",
+      "quality_tags": "masterpiece, best quality, ...",
+      "style_tags": "anime coloring, flat color, ...",
+      "negative": "lowres, bad anatomy, ..."
+    },
+    "semi-real": {
+      "checkpoint": "반실사_체크포인트.safetensors",
+      "default_template": "scene-real",
+      "quality_tags": "masterpiece, HD, very aesthetic, ...",
+      "style_tags": "lineless, depth of field, cinematic lighting, ...",
+      "negative": "bad quality, worst quality, ..."
+    }
   }
 }
 ```
 
+**`active_preset`을 변경하면 체크포인트, 워크플로 템플릿, 품질/스타일/네거티브 태그가 모두 자동 전환된다.**
+
+**절차:**
+1. 기존 `comfyui-config.json`을 읽어 현재 프리셋 구성을 확인한다
+2. 사용자에게 이 페르소나의 **주력 아트 스타일**을 물어본다:
+   - **애니메풍**: 대부분의 경우 기본 프리셋(`anime`)을 그대로 사용하면 된다. 사용자에게 "기본 애니메풍 프리셋이 이미 설정되어 있는데, 이대로 사용할까요?"라고 제안하라
+   - **반실사**: 기본 프리셋(`semi-real`)이 이미 설정되어 있다. `active_preset`만 변경하면 된다
+   - **커스텀**: 사용자가 특별한 화풍을 원하면, 새 프리셋을 추가하거나 기존 프리셋의 태그를 수정한다
+3. 체크포인트를 변경하려면 ComfyUI 모델 목록을 조회한다:
+```bash
+curl -s http://localhost:3340/api/tools/comfyui/models
+```
+4. 변경사항이 있으면 `comfyui-config.json`을 업데이트한다. 변경이 없으면 기본값을 그대로 유지한다
+
 **참고:**
-- 이미 `comfyui-config.json`이 존재하면 사용자에게 기존 선택을 보여주고 변경할지 물어본다
+- 글로벌 기본 프리셋이 이미 잘 튜닝되어 있으므로, 대부분의 경우 변경 없이 진행하는 것을 권장한다
+- `active_preset` 값을 바꾸는 것만으로 스타일 전환이 가능하다 — 세션 중에도 전환할 수 있다
 - ComfyUI가 연결되지 않은 환경에서는 이 단계와 이후 이미지 생성 단계를 건너뛴다
-- 서버가 이 파일을 읽어 워크플로 실행 시 체크포인트를 자동 적용한다
-- **`style` 정보는 대화 세션에서 이미지 생성 시 프롬프트 구성의 기반이 된다.** `session-instructions.md`에 이미지 생성 시 `comfyui-config.json`의 스타일 태그를 참조하라는 지시를 포함하라
+- **프리셋의 `style_tags`와 `quality_tags`는 대화 세션에서 이미지 생성 시 프롬프트에 자동 삽입된다.** `session-instructions.md`에 이미지 생성 시 `comfyui-config.json`을 참조하라는 지시를 포함하라
 
 ### 10. `profile.png` + `icon.png` — 캐릭터 프로필 이미지 & 아이콘
 
@@ -535,9 +549,9 @@ curl -s -X POST "http://localhost:{{PORT}}/api/tools/gemini/generate" \
 - [ ] `skills/` 에 최소 update-state, update-panels, update-memory 스킬이 있는가?
 - [ ] 각 스킬의 description이 구체적인가?
 - [ ] 스킬 내용이 이 페르소나의 변수명/패널명과 일치하는가?
-- [ ] `comfyui-config.json`에 체크포인트가 설정되어 있는가? (ComfyUI 연결 시)
-- [ ] `comfyui-config.json`에 `style` (quality_tags, style_tags, negative)이 설정되어 있는가? (ComfyUI 연결 시)
-- [ ] `session-instructions.md`에 이미지 생성 시 `comfyui-config.json`의 스타일 태그를 참조하라는 지시가 있는가?
+- [ ] `comfyui-config.json`에 `active_preset`과 프리셋이 설정되어 있는가? (ComfyUI 연결 시)
+- [ ] `comfyui-config.json`의 각 프리셋에 checkpoint, quality_tags, style_tags, negative가 있는가?
+- [ ] `session-instructions.md`에 이미지 생성 시 `comfyui-config.json`을 참조하라는 지시가 있는가?
 - [ ] `profile.png` 프로필 이미지를 생성했는가? (ComfyUI 또는 Gemini)
 
 ---

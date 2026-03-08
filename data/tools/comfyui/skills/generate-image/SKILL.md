@@ -72,7 +72,7 @@ masterpiece, best quality, amazing quality, absurdres, anime screencap, anime co
 bash ./generate-image.sh <template> "<prompt>" <filename> [seed]
 ```
 
-- template: `portrait` (세로 832x1216), `scene` (가로 1216x832), 또는 `profile` (portrait + 얼굴 크롭 아이콘)
+- template: `portrait` (세로 832x1216), `scene` (가로 1216x832), `scene-real` (가로 1216x832, 반실사), 또는 `profile` (portrait + 얼굴 크롭 아이콘)
 - prompt: 캐릭터/장면 태그만 (quality, trigger 태그는 자동 삽입됨)
 - filename: 영문 kebab-case .png (예: diane-smile.png)
 - seed: 선택. 기본 -1(랜덤), 고정값이면 재현 가능
@@ -113,20 +113,48 @@ curl -s -X POST http://localhost:{{PORT}}/api/tools/comfyui/generate \
 
 ---
 
+## 프로필 업데이트 (기존 이미지 → 프로필 + 아이콘)
+
+기존에 생성한 이미지를 프로필로 설정하고 얼굴을 자동 크롭하여 아이콘을 생성할 수 있다.
+
+### MCP 도구 사용 (권장)
+```
+mcp__claude_bridge__update_profile({ sourceImage: "images/mira-walk-flustered-202.png" })
+```
+
+### API 직접 호출
+```bash
+curl -s -X POST http://localhost:{{PORT}}/api/tools/comfyui/update-profile \
+  -H "Content-Type: application/json" \
+  -d '{"sourceImage": "images/mira-walk-flustered-202.png"}'
+```
+
+**동작:**
+1. 소스 이미지를 `images/profile.png`로 복사
+2. YOLO 얼굴 감지 → 256x256 크롭 → `images/icon.png` 생성
+3. 세션의 페르소나 디렉토리에 자동 동기화 (profile.png + icon.png)
+
+---
+
 ## 워크플로우 템플릿
 
 템플릿 파일은 `./workflows/` 디렉토리에 있다. 구조를 이해하거나 raw 모드로 커스텀할 때 참조하라.
 - `./workflows/portrait.json` — 캐릭터 초상 (832x1216 세로)
-- `./workflows/scene.json` — 배경/CG 장면 (1216x832 가로)
+- `./workflows/scene.json` — 배경/CG 장면 (1216x832 가로, 애니메)
+- `./workflows/scene-real.json` — 배경/CG 장면 (1216x832 가로, 반실사)
 - `./workflows/profile.json` — 프로필 + 얼굴 아이콘 (portrait 기반 + YOLO 크롭)
+- `./workflows/face-crop.json` — 기존 이미지에서 얼굴 크롭 (256x256 아이콘 전용)
 
 | 워크플로우 | 해상도 | 용도 | 샘플러 설정 |
 |---|---|---|---|
 | `portrait` | 832x1216 (세로) | 캐릭터 초상, 상반신 | euler_ancestral, karras, 24 steps, cfg 6.5 |
-| `scene` | 1216x832 (가로) | 배경, 풍경, CG 장면 | euler_ancestral, karras, 35 steps, cfg 6.0 |
+| `scene` | 1216x832 (가로) | 배경, 풍경, CG 장면 (애니메) | euler_ancestral, karras, 35 steps, cfg 6.0 |
+| `scene-real` | 1216x832 (가로) | 배경, 풍경, CG 장면 (반실사) | dpmpp_sde, sgm_uniform, 27 steps, cfg 4.5 |
 | `profile` | 832x1216 + 256x256 | 프로필 이미지 + 얼굴 아이콘 | portrait와 동일 + YOLO face crop |
+| `face-crop` | 256x256 | 기존 이미지에서 얼굴 추출 | 생성 없음 (YOLO 감지 + 크롭만) |
 
-**파이프라인 구성 (두 템플릿 공통):**
+### 애니메 파이프라인 (`portrait`, `scene`, `profile`)
+
 1. Checkpoint → LoRA x8 체인:
    - masterpieces (0.4) — 전반적 퀄리티
    - microDetails (0.5) — 디테일 강화
@@ -136,11 +164,41 @@ curl -s -X POST http://localhost:{{PORT}}/api/tools/comfyui/generate \
    - Age slider (-3) — 젊은 외형
    - S1 Dramatic Lighting (0.5) — **trigger: `s1_dram`**
    - QAQ style (0.4) — 스타일 보정
-2. KSampler → VAEDecode
-3. FaceDetailer (YOLO face_yolov8m, denoise 0.4) — 얼굴 디테일 보정
+2. KSampler (euler_ancestral, karras) → VAEDecode
+3. FaceDetailer (YOLO face_yolov8m, denoise 0.4) → HandDetailer → PussyDetailer → AnusDetailer
 4. 4x-AnimeSharp upscale → 0.5x lanczos downscale (net 2x 출력)
 
 **프롬프트에 반드시 포함할 트리거 태그:** `anime screencap, anime coloring, sexydet, s1_dram`
+
+### 반실사 파이프라인 (`scene-real`)
+
+반실사/실사 체크포인트(bismuth, babes 등)에 최적화된 워크플로우.
+애니메 전용 LoRA를 제거하고, 샘플러/스케줄러/CFG를 실사에 맞게 조정했다.
+
+1. Checkpoint → LoRA x6 체인 + CLIPSetLastLayer (clip_skip=2):
+   - masterpieces (0.4) — 전반적 퀄리티
+   - microDetails (0.5) — 디테일 강화
+   - smoothBooster (0.4) — 부드러운 표면
+   - sexyDetails (0.4) — **trigger: `sexydet`**
+   - S1 Dramatic Lighting (0.5) — **trigger: `s1_dram`**
+   - PosingDynamics (0.7) — 포즈 정확도 향상 (상시 적용)
+   - ~~anime screencap~~ (제거 — 애니메 전용)
+   - ~~Age slider~~ (제거 — 실사에서 부작용)
+   - ~~QAQ style~~ (제거 — 눈 과장 방지)
+2. KSampler (dpmpp_sde, sgm_uniform, cfg 4.5) → VAEDecode
+3. FaceDetailer → HandDetailer → PussyDetailer → AnusDetailer (모두 dpmpp_sde/sgm_uniform/cfg 4.5)
+4. 4x-AnimeSharp upscale → 0.5x lanczos downscale (net 2x 출력)
+
+**프롬프트에 반드시 포함할 트리거 태그:** `sexydet, s1_dram` (anime screencap, anime coloring 제외)
+
+### scene vs scene-real 선택 기준
+
+| 조건 | 선택 |
+|---|---|
+| 애니메 체크포인트 (lemonsugarmix 등) | `scene` |
+| 반실사 체크포인트 (bismuth, babes 등) | `scene-real` |
+| `comfyui-config.json`에 반실사 checkpoint | `scene-real` 우선 |
+| 사용자가 명시적으로 아트 스타일 지정 | 해당 스타일에 맞는 워크플로 |
 
 **템플릿 파라미터:**
 - `prompt` (필수): 포지티브 프롬프트 (트리거 태그 포함)
@@ -151,10 +209,14 @@ curl -s -X POST http://localhost:{{PORT}}/api/tools/comfyui/generate \
 
 ---
 
-## 동적 LoRA 체인
+## LoRA 활용 가이드
 
 기본 LoRA(퀄리티, 스타일, 아트)는 워크플로우에 고정되어 있다.
 특수 포즈, 액션, 상황에 대한 LoRA는 요청마다 동적으로 추가할 수 있다.
+
+### MCP 도구 우선 사용
+`generate-image.sh` 대신 `mcp__claude_bridge__generate_image` MCP 도구를 우선 사용하라.
+bash 셸 인코딩 문제 없이 `loras` 파라미터를 직접 전달할 수 있다.
 
 ### 사용 방법
 
@@ -165,21 +227,89 @@ curl -s -X POST http://localhost:{{PORT}}/api/tools/comfyui/generate \
   "template": "portrait",
   "prompt": "1girl, elf, silver hair, ...",
   "loras": [
-    { "name": "pose_lora.safetensors", "strength": 0.6 }
+    { "name": "pose_lora.safetensors", "strength": 0.7 }
   ]
 }
 ```
 
-### 치트시트
+### 체위/포즈 LoRA 사용 원칙
 
-사용 가능한 동적 LoRA 목록은 `./lora-cheatsheet.md`를 참조하라.
+테스트 결과 확립된 원칙:
 
-### 주의사항
+1. **체위 전용 LoRA + PosingDynamics 병용이 최적**
+   - 체위 LoRA (Hunched missionary, enjoy_doggy-style 등): **0.7**
+   - PosingDynamicsILL: **0.7**
+   - 둘 다 0.7 이상으로 설정해야 포즈가 명확하게 잡힌다
+
+2. **일반 포즈 (비-체위)**
+   - PosingDynamicsILL 단독: 0.5~0.6 (미미한 차이, 선택적)
+
+3. **LoRA 조합 주의사항**
+   - 동일 카테고리 LoRA 중복 금지 (예: missionary + doggy 동시 사용 X)
+   - 추가 LoRA는 base 제외 최대 3개
+   - 아트스타일 LoRA는 base 스타일과 충돌 가능 — 한 번에 하나만
+
+### LoRA 사용 투명성
+- 사용자에게 어떤 LoRA를 사용했는지 **일일이 보고하지 마라**
+- 장면에 맞는 최적의 LoRA 조합을 알아서 판단하고 적용하라
+- LoRA는 도구일 뿐이다 — 자연스럽게, 수족처럼 다뤄라
+
+### 새 LoRA 탐색
+- `lora-cheatsheet.md`에 적절한 LoRA가 없어서 결과물이 아쉬울 때, [CivitAI](https://civitai.com)에서 LoRA를 검색하여 직접 다운로드할 수 있다
+- 다운로드 후 ComfyUI의 LoRA 디렉토리에 배치하면 즉시 사용 가능
+- 새로 추가한 LoRA는 `lora-cheatsheet.md`에 기록하여 이후 참조할 수 있게 하라
+
+### 참조: lora-cheatsheet.md
+사용 가능한 전체 LoRA 목록과 트리거 태그는 `./lora-cheatsheet.md`를 참조하라.
+
+### 기타 주의사항
 
 - 동적 LoRA는 기본 체인의 **뒤에** 삽입된다
 - 사용 불가능한 LoRA는 자동 스킵 (에러 없음)
-- 동시 3개 이내 권장
-- 강도 범위: 0.3~0.7 (과적합 주의)
+
+---
+
+## NSFW 해부학 프롬프트 가이드
+
+디테일러가 자동 보정하지만, **메인 프롬프트에도 해부학 태그를 포함해야** 원본 이미지에서부터 해당 부위가 제대로 렌더링된다. 디테일러는 이미 존재하는 부위를 보정할 뿐, 없는 부위를 만들지 않는다.
+
+### 언제 포함하는가
+
+| 상황 | 메인 프롬프트에 추가할 태그 |
+|---|---|
+| 정면 누드/하의 노출 | `pussy, detailed pussy, spread legs` 등 |
+| 뒤태 누드/엉덩이 노출 | `anus, ass, from behind` 등 |
+| 삽입/체위 장면 | `pussy, anus, sex, vaginal, anal` + 체위 태그 |
+| 상의 탈의/가슴 노출 | `nipples, bare breasts, topless` |
+| 시스루/투명 의상 | `see-through, nipples visible through clothes` |
+| 일반 착의/비노출 장면 | **추가하지 않는다** |
+
+### LoRA 트리거 태그 (해부학 전용)
+
+NSFW 장면에서 해부학 LoRA를 함께 사용하면 디테일이 향상된다.
+
+**⚠ 필수 규칙: LoRA를 `loras` 파라미터로 추가할 때, 해당 LoRA의 트리거 태그를 반드시 메인 프롬프트에도 포함하라.** LoRA 파일을 로드하는 것과 트리거 태그로 활성화하는 것은 별개다. 트리거 태그 없이 LoRA만 로드하면 효과가 미미하거나 없다.
+
+- **Pussy_Asshole_detailer_UHD**: 강도 0.4~0.6
+  → 프롬프트에 `anu5, pussy, vulva, anus` 포함 필수
+- ~~**LylahLabia**~~ — **사용 금지**. 반실사에서 어떤 강도로든 과장되어 기괴해짐. 디테일러만으로 충분.
+- **Cervix**: 강도 0.5~0.7 (극한 클로즈업 전용)
+  → 프롬프트에 `cervix, spread pussy` 포함
+
+**올바른 사용 예시:**
+```json
+{
+  "prompt": "... pussy, detailed pussy, spread legs ...",
+  "loras": [
+    {"name": "Pussy_Asshole_detailer_UHD_ILL.safetensors", "strength": 0.5}
+  ]
+}
+```
+
+### 주의사항
+- 비노출 장면에서 `pussy`, `anus` 등을 넣으면 의상이 사라지거나 구도가 어그러진다
+- 디테일러가 감지 못하는 경우(특히 pussy — 뒤태에서 미감지) 메인 프롬프트 태그라도 있으면 원본 품질이 올라간다
+- 해부학 LoRA는 NSFW 장면에서만 추가하라. 일반 장면에서는 불필요
 
 ---
 
