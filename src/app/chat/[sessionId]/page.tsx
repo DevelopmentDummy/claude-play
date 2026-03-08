@@ -15,6 +15,7 @@ import PanelArea from "@/components/PanelArea";
 import PanelDrawer from "@/components/PanelDrawer";
 import ModalPanel from "@/components/ModalPanel";
 import SyncModal from "@/components/SyncModal";
+import ProfileCropModal from "@/components/ProfileCropModal";
 
 interface Panel {
   name: string;
@@ -54,6 +55,8 @@ export default function ChatPage() {
   const [currentProvider, setCurrentProvider] = useState<"claude" | "codex">("claude");
   const [showOOC, setShowOOC] = useState(false);
   const [syncModalOpen, setSyncModalOpen] = useState(false);
+  const [cropModalOpen, setCropModalOpen] = useState(false);
+  const [cropInitialImage, setCropInitialImage] = useState<string | undefined>();
   const isMobile = useIsMobile();
   const initRef = useRef(false);
 
@@ -76,6 +79,18 @@ export default function ChatPage() {
           const imageBase = `/api/sessions/${sessionId}/files?path=images/`;
           applyLayout(update.layout, imageBase);
         }
+      },
+      "profile:update": (p) => {
+        const update = p as { profile?: string; timestamp?: number };
+        if (update.profile) {
+          const t = update.timestamp || Date.now();
+          setProfileImage(`/api/sessions/${sessionId}/files?path=${update.profile}&t=${t}`);
+        }
+      },
+      "profile:crop-request": (p) => {
+        const data = p as { sourceImage?: string };
+        setCropInitialImage(data.sourceImage);
+        setCropModalOpen(true);
       },
     },
     enabled: wsEnabled,
@@ -365,6 +380,13 @@ export default function ChatPage() {
           sendMessage("OOC: 대화 세션이 원본 페르소나 데이터에 동기화 되었습니다. 변경사항을 확인하세요.");
         }}
       />
+      {cropModalOpen && (
+        <ProfileCropModal
+          sessionId={sessionId}
+          initialImage={cropInitialImage}
+          onClose={() => setCropModalOpen(false)}
+        />
+      )}
     </div>
   );
 }
