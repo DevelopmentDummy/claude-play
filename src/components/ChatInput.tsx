@@ -76,6 +76,18 @@ export default function ChatInput({ disabled, onSend, choices, showOOC, onOOCTog
     el.style.height = Math.min(el.scrollHeight, 150) + "px";
   }, []);
 
+  // Listen for panel bridge fillInput events
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const text = (e as CustomEvent).detail;
+      if (typeof text === "string") {
+        insertAtCursor(text);
+      }
+    };
+    window.addEventListener("__panel_fill_input", handler);
+    return () => window.removeEventListener("__panel_fill_input", handler);
+  }, [insertAtCursor]);
+
   const btnBase = "w-9 h-9 flex items-center justify-center rounded-lg border cursor-pointer text-xs font-medium shrink-0 transition-all duration-fast";
 
   return (
