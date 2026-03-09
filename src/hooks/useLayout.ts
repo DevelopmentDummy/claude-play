@@ -9,7 +9,9 @@ export interface LayoutConfig {
     size: number;
     placement?: Record<string, "left" | "right" | "modal" | "dock" | "dock-left" | "dock-right" | "dock-bottom">;
     modalSize?: Record<string, { maxWidth?: string; maxHeight?: string }>;
-    dockSize?: number;
+    dockSize?: number;   // deprecated, use dockHeight
+    dockHeight?: number;
+    dockWidth?: number;
   };
   chat: {
     maxWidth: number | null;

@@ -198,38 +198,38 @@
       "sampler_name": "euler_ancestral", "scheduler": "karras",
       "denoise": 0.5, "guide_size": 512, "guide_size_for": true, "max_size": 1024,
       "feather": 5, "noise_mask": true, "force_inpaint": true,
-      "bbox_threshold": 0.1, "bbox_dilation": 20, "bbox_crop_factor": 3.0,
+      "bbox_threshold": 0.45, "bbox_dilation": 20, "bbox_crop_factor": 3.0,
       "sam_detection_hint": "center-1", "sam_dilation": 0, "sam_threshold": 0.93,
       "sam_bbox_expansion": 0, "sam_mask_hint_threshold": 0.7,
       "sam_mask_hint_use_negative": "False", "drop_size": 5, "wildcard": "", "cycle": 1
     },
     "_meta": { "title": "pussy-detailer" }
   },
-  "40": {
+  "44": {
     "class_type": "CLIPTextEncode",
     "inputs": { "text": "detailed anus, anatomically correct, skin texture, consistent color tone, soft shading", "clip": ["107", 1] },
     "_meta": { "title": "anus-pos" }
   },
-  "41": {
+  "45": {
     "class_type": "CLIPTextEncode",
     "inputs": { "text": "eyes, face, fingers, bad anatomy, censored, mosaic censoring, dark spot, black spot, discoloration", "clip": ["107", 1] },
     "_meta": { "title": "anus-neg" }
   },
-  "42": {
+  "46": {
     "class_type": "UltralyticsDetectorProvider",
     "inputs": { "model_name": "bbox/anus_v4.pt" },
     "_meta": { "title": "anus-detector" }
   },
-  "43": {
+  "47": {
     "class_type": "FaceDetailer",
     "inputs": {
       "image": ["29", 0], "model": ["107", 0], "clip": ["107", 1], "vae": ["1", 2],
-      "positive": ["40", 0], "negative": ["41", 0], "bbox_detector": ["42", 0],
+      "positive": ["44", 0], "negative": ["45", 0], "bbox_detector": ["46", 0],
       "seed": 0, "steps": 20, "cfg": 6.0,
       "sampler_name": "euler_ancestral", "scheduler": "karras",
       "denoise": 0.25, "guide_size": 768, "guide_size_for": true, "max_size": 1024,
       "feather": 20, "noise_mask": true, "force_inpaint": false,
-      "bbox_threshold": 0.15, "bbox_dilation": 80, "bbox_crop_factor": 8.0,
+      "bbox_threshold": 0.3, "bbox_dilation": 80, "bbox_crop_factor": 8.0,
       "sam_detection_hint": "center-1", "sam_dilation": 0, "sam_threshold": 0.93,
       "sam_bbox_expansion": 0, "sam_mask_hint_threshold": 0.7,
       "sam_mask_hint_use_negative": "False", "drop_size": 5, "wildcard": "", "cycle": 1
@@ -240,7 +240,7 @@
     "class_type": "ImageUpscaleWithModel",
     "inputs": {
       "upscale_model": ["31", 0],
-      "image": ["43", 0]
+      "image": ["47", 0]
     },
     "_meta": { "title": "upscale-4x" }
   },

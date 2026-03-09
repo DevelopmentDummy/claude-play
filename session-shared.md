@@ -78,7 +78,7 @@
 
 사용자 외형 태그는 `memory.md`의 "사용자 외형 태그" 섹션에서 가져온다. 기록이 없으면 현재 파악된 외형을 Danbooru 태그로 즉석 변환한다.
 
-`comfyui-config.json`이 없거나 `style`이 비어있으면, `character-tags.json`의 `quality_positive`를 대신 사용한다.
+`comfyui-config.json`은 페르소나 레벨과 글로벌 레벨(`data/tools/comfyui/comfyui-config.json`) 두 곳에 존재할 수 있다. 글로벌 설정은 `presets` 구조를 사용하며, `active_preset`으로 선택된 프리셋의 `quality_tags`/`style_tags`/`negative`가 적용된다. Fallback 순서: 글로벌 프리셋 → 페르소나 `style` → 내장 기본값.
 
 ### 이미지 생성 도구 선택
 

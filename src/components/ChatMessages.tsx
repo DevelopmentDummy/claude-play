@@ -6,6 +6,8 @@ import ToolBlock from "./ToolBlock";
 import ThinkingIndicator from "./ThinkingIndicator";
 import InlineImage from "./InlineImage";
 import InlinePanel from "./InlinePanel";
+import DockPanel from "./DockPanel";
+import type { DockPanelEntry } from "./DockPanel";
 
 interface PanelInfo {
   name: string;
@@ -23,6 +25,12 @@ interface ChatMessagesProps {
   hasMore?: boolean;
   onLoadMore?: () => Promise<number>;
   onToggleOOC?: (id: string, ooc: boolean) => void;
+  dockLeft?: DockPanelEntry[];
+  dockRight?: DockPanelEntry[];
+  dockMaxSize?: number;
+  dockWidth?: number;
+  panelData?: Record<string, unknown>;
+  onDockClose?: (name: string) => void;
 }
 
 const OPEN_TAG = "<dialog_response>";
@@ -132,29 +140,28 @@ function extractDialogResponse(raw: string): string {
 
 /**
  * Streaming-safe extraction for the live assistant turn.
- * Falls back to showing the tail after OPEN_TAG while text is still arriving.
+ * Returns empty string when no <dialog_response> tag has appeared yet,
+ * so the UI shows StreamingDots instead of raw pre-tag text.
  */
 function extractDialogResponseLive(raw: string): string {
-  const strict = extractDialogResponse(raw);
-  if (strict) return strict;
+  // If a complete or partial <dialog_response> tag exists, extract its content
+  if (raw.includes(OPEN_TAG)) {
+    return extractDialogResponse(raw);
+  }
 
-  const openIdx = raw.indexOf(OPEN_TAG);
-  if (openIdx === -1) return strict;
-
-  const contentStart = openIdx + OPEN_TAG.length;
-  let tail = raw.substring(contentStart);
-
-  // Strip partially streamed closing tag suffix.
-  for (let len = Math.min(CLOSE_TAG.length - 1, tail.length); len >= 1; len--) {
-    if (tail.endsWith(CLOSE_TAG.substring(0, len))) {
-      tail = tail.substring(0, tail.length - len);
-      break;
+  // Check for a partial opening tag still being streamed in (e.g. "<dialog_res")
+  for (let len = Math.min(OPEN_TAG.length - 1, raw.length); len >= 1; len--) {
+    if (raw.endsWith(OPEN_TAG.substring(0, len))) {
+      // Tag is being streamed — suppress raw text
+      const tokens = extractSpecialTokens(raw);
+      return tokens.length > 0 ? tokens.join("\n") : "";
     }
   }
 
-  const tokens = extractSpecialTokens(raw).filter((token) => !tail.includes(token));
-  if (tokens.length === 0) return tail;
-  return tail ? `${tail}\n\n${tokens.join("\n")}` : tokens.join("\n");
+  // No <dialog_response> tag yet — show special tokens if any,
+  // otherwise return empty so StreamingDots is shown
+  const tokens = extractSpecialTokens(raw);
+  return tokens.length > 0 ? tokens.join("\n") : "";
 }
 
 function renderInline(
@@ -307,6 +314,12 @@ export default function ChatMessages({
   hasMore,
   onLoadMore,
   onToggleOOC,
+  dockLeft,
+  dockRight,
+  dockMaxSize,
+  dockWidth: dockWidthProp,
+  panelData,
+  onDockClose,
 }: ChatMessagesProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -319,7 +332,14 @@ export default function ChatMessages({
   const lastScrollTopRef = useRef(0);
   const lastScrollHeightRef = useRef(0);
   const [loadingMore, setLoadingMore] = useState(false);
+  const dockWrapperRef = useRef<HTMLDivElement>(null);
+  const [dockMeasuredHeight, setDockMeasuredHeight] = useState(0);
   const bottomThreshold = 120;
+
+  // Determine active dock side (right takes priority if both)
+  const hasDockFloat = (dockRight && dockRight.length > 0) || (dockLeft && dockLeft.length > 0);
+  const dockSide = (dockRight && dockRight.length > 0) ? "right" : "left";
+  const activeDockPanels = dockSide === "right" ? dockRight : dockLeft;
 
   const scrollToBottom = useCallback(() => {
     programmaticScrollUntilRef.current = Date.now() + 400;
@@ -427,6 +447,72 @@ export default function ChatMessages({
     }
   }, [hasMore, onLoadMore, bottomThreshold, isStreaming]);
 
+  // Measure dock height for negative margin-top overlap
+  useEffect(() => {
+    const el = dockWrapperRef.current;
+    if (!el || !hasDockFloat) { setDockMeasuredHeight(0); return; }
+    const obs = new ResizeObserver((entries) => setDockMeasuredHeight(entries[0].contentRect.height));
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [hasDockFloat]);
+
+  // Float effect: adjust message width/margin when overlapping with dock
+  useEffect(() => {
+    if (!hasDockFloat || !dockMeasuredHeight) return;
+    const scrollEl = scrollRef.current;
+    const dockEl = dockWrapperRef.current;
+    if (!scrollEl || !dockEl) return;
+
+    let rafId: number | null = null;
+    const update = () => {
+      const dockRect = dockEl.getBoundingClientRect();
+      const msgs = contentRef.current?.querySelectorAll<HTMLElement>("[data-msg]");
+      if (!msgs) return;
+      const dockW = dockRect.width + 16;
+      const scrollW = scrollEl.clientWidth;
+      const availMax = scrollW - dockW - 32;
+      const marginProp = dockSide === "right" ? "marginRight" : "marginLeft";
+      const clearProp = dockSide === "right" ? "marginLeft" : "marginRight";
+
+      for (const msg of msgs) {
+        const r = msg.getBoundingClientRect();
+        const overlaps = r.bottom > dockRect.top + 4 && r.top < dockRect.bottom - 4;
+        if (overlaps) {
+          msg.style[marginProp] = `${dockW}px`;
+          msg.style.maxWidth = `${Math.min(scrollW * 0.85, availMax)}px`;
+        } else {
+          msg.style[marginProp] = "";
+          msg.style[clearProp] = "";
+          msg.style.maxWidth = "";
+        }
+      }
+    };
+
+    const onFrame = () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(update);
+    };
+
+    update();
+    scrollEl.addEventListener("scroll", onFrame, { passive: true });
+    const obs = new ResizeObserver(onFrame);
+    obs.observe(scrollEl);
+    if (contentRef.current) obs.observe(contentRef.current);
+
+    return () => {
+      scrollEl.removeEventListener("scroll", onFrame);
+      obs.disconnect();
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      // Cleanup inline styles
+      const msgs = contentRef.current?.querySelectorAll<HTMLElement>("[data-msg]");
+      if (msgs) for (const msg of msgs) {
+        msg.style.marginRight = "";
+        msg.style.marginLeft = "";
+        msg.style.maxWidth = "";
+      }
+    };
+  }, [hasDockFloat, dockSide, dockMeasuredHeight]);
+
   const style: React.CSSProperties = {};
   if (maxWidth) style.maxWidth = `${maxWidth}px`;
   if (align === "center") {
@@ -482,7 +568,8 @@ export default function ChatMessages({
         return (
           <div
             key={msg.id}
-            className={`group relative max-w-[85%] px-4 py-3 rounded-2xl leading-relaxed whitespace-pre-wrap break-words animate-[messageIn_0.25s_ease-out] ${oocStyle} ${
+            data-msg
+            className={`group relative max-w-[85%] px-4 py-3 rounded-2xl leading-relaxed whitespace-pre-wrap break-words animate-[messageIn_0.25s_ease-out] transition-[margin,max-width] duration-200 ${oocStyle} ${
               msg.role === "user"
                 ? "self-end bg-user-bubble backdrop-blur-[12px] rounded-br-[4px] shadow-sm"
                 : "self-start bg-assistant-bubble backdrop-blur-[12px] rounded-bl-[4px] shadow-sm"
@@ -518,6 +605,29 @@ export default function ChatMessages({
         })}
         {isStreaming && messages[lastIdx]?.role !== "assistant" && (
           <ThinkingIndicator />
+        )}
+        {/* Floating dock panel — sticky at bottom, overlaps messages like CSS float */}
+        {hasDockFloat && activeDockPanels && activeDockPanels.length > 0 && onDockClose && (
+          <div
+            ref={dockWrapperRef}
+            className={`sticky bottom-2 z-10 ${dockSide === "right" ? "self-end" : "self-start"}`}
+            style={{
+              width: dockWidthProp ? `${dockWidthProp}px` : undefined,
+              minWidth: dockWidthProp ? undefined : "280px",
+              maxWidth: dockWidthProp ? undefined : "50%",
+              marginTop: dockMeasuredHeight > 0 ? `-${dockMeasuredHeight}px` : undefined,
+            }}
+          >
+            <DockPanel
+              panels={activeDockPanels}
+              direction={dockSide as "left" | "right"}
+              maxSize={dockMaxSize}
+              sessionId={sessionId}
+              panelData={panelData}
+              onClose={onDockClose}
+              floating
+            />
+          </div>
         )}
         <div ref={bottomRef} />
       </div>

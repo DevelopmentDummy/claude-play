@@ -417,8 +417,17 @@ $PANEL:거래$
 - `"left"` — 좌측 사이드바에 표시된다.
 - `"right"` — 우측 사이드바에 표시된다.
 - `"modal"` — 화면 중앙 오버레이로 표시된다. `__modals`로 on/off 제어. `true`이면 필수(닫기 불가), `"dismissible"`이면 자유롭게 닫을 수 있다. 여러 모달이 활성화되면 z-index가 증가하며 겹쳐 표시된다.
-- `"dock"` — 채팅 영역과 입력창 사이에 표시된다. `__modals`로 on/off 제어 (modal과 동일). 여러 dock 패널이 활성화되면 탭으로 전환된다. `panels.dockSize`로 최대 높이(px)를 설정할 수 있다 (기본: 콘텐츠 자동, 최대 50vh).
+- `"dock"` / `"dock-bottom"` — 채팅 영역과 입력창 사이에 전체 너비로 표시된다. `__modals`로 on/off 제어 (modal과 동일). 같은 방향의 여러 dock 패널이 활성화되면 탭으로 전환된다.
+- `"dock-left"` / `"dock-right"` — 채팅 스크롤 영역 안에서 좌/우 하단에 float 형태로 표시된다. 문서에서 이미지 옆으로 텍스트가 밀리듯, 패널과 수직으로 겹치는 메시지들은 자동으로 너비가 줄어들어 패널 옆으로 배치된다. 패널 위쪽 메시지는 전체 너비를 사용한다. `position: sticky`로 스크롤 위치와 무관하게 항상 하단에 고정된다.
 - **지정 없음** — 인라인. 채팅 본문 내 `$PANEL:이름$` 태그로 삽입된다.
+
+### dock 크기 설정 (`layout.json`의 `panels`)
+
+| 속성 | 설명 | 기본값 |
+|---|---|---|
+| `dockWidth` | dock-left/right 패널의 너비 (px). 생략 시 콘텐츠에 맞게 자동 조정. | auto (min 280px, max 50%) |
+| `dockHeight` | 모든 dock 패널의 최대 높이 (px). | 50vh |
+| `dockSize` | `dockHeight`의 하위호환 별칭. `dockHeight`가 우선한다. | 50vh |
 
 ---
 

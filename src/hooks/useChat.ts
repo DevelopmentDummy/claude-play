@@ -58,6 +58,7 @@ export function useChat() {
   const autoImageTokensRef = useRef<Set<string>>(new Set());
   const seenToolKeysRef = useRef<Set<string>>(new Set());
   const sawTextDeltaRef = useRef(false);
+  const currentBlockTypeRef = useRef<string>("text");
   const msgIdRef = useRef(0);
   const totalRef = useRef(0);
   const loadedOffsetRef = useRef(0);
@@ -131,6 +132,7 @@ export function useChat() {
     autoImageTokensRef.current.clear();
     seenToolKeysRef.current.clear();
     sawTextDeltaRef.current = false;
+    currentBlockTypeRef.current = "text";
     oocRef.current = false;
     setIsStreaming(false);
   }, []);
@@ -145,19 +147,25 @@ export function useChat() {
         const event = msg.event as Record<string, unknown> | undefined;
         if (!event) return;
 
+        if (event.type === "content_block_start") {
+          const block = event.content_block as Record<string, unknown> | undefined;
+          currentBlockTypeRef.current = (block?.type as string) || "text";
+          if (block?.type === "tool_use") {
+            addToolUse(block.name as string, block.input);
+          }
+        }
+
         if (event.type === "content_block_delta") {
           const delta = event.delta as Record<string, unknown> | undefined;
-          if (delta?.type === "text_delta" && typeof delta.text === "string") {
+          // Skip thinking block deltas — only accept text deltas from text blocks
+          if (delta?.type === "text_delta" && typeof delta.text === "string" && currentBlockTypeRef.current === "text") {
             sawTextDeltaRef.current = true;
             appendAssistantText(delta.text);
           }
         }
 
-        if (event.type === "content_block_start") {
-          const block = event.content_block as Record<string, unknown> | undefined;
-          if (block?.type === "tool_use") {
-            addToolUse(block.name as string, block.input);
-          }
+        if (event.type === "content_block_stop") {
+          currentBlockTypeRef.current = "text";
         }
       }
 

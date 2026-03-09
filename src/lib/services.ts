@@ -175,6 +175,7 @@ function initServices(): Services {
   let autoImageTokens: Set<string> = new Set();
   let seenToolKeys: Set<string> = new Set();
   let sawTextDelta = false;
+  let currentBlockType = "text";
   let historyId = 0;
 
   function addToolUse(toolName: string, input: unknown): void {
@@ -232,18 +233,22 @@ function initServices(): Services {
       if (msg.type === "stream_event") {
         const event = msg.event as Record<string, unknown> | undefined;
         if (!event) return;
+        if (event.type === "content_block_start") {
+          const block = event.content_block as Record<string, unknown> | undefined;
+          currentBlockType = (block?.type as string) || "text";
+          if (block?.type === "tool_use") {
+            addToolUse(block.name as string, block.input);
+          }
+        }
         if (event.type === "content_block_delta") {
           const delta = event.delta as Record<string, unknown> | undefined;
-          if (delta?.type === "text_delta" && typeof delta.text === "string") {
+          if (delta?.type === "text_delta" && typeof delta.text === "string" && currentBlockType === "text") {
             sawTextDelta = true;
             segments.push(delta.text);
           }
         }
-        if (event.type === "content_block_start") {
-          const block = event.content_block as Record<string, unknown> | undefined;
-          if (block?.type === "tool_use") {
-            addToolUse(block.name as string, block.input);
-          }
+        if (event.type === "content_block_stop") {
+          currentBlockType = "text";
         }
       }
 
@@ -305,6 +310,7 @@ function initServices(): Services {
         autoImageTokens.clear();
         seenToolKeys.clear();
         sawTextDelta = false;
+        currentBlockType = "text";
 
         // Force panel refresh at end of turn
         svc.panels.reload();
