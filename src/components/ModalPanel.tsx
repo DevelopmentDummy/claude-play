@@ -66,6 +66,9 @@ export default function ModalPanel({
         // Auto-close modal after sending (always, regardless of dismissible)
         window.dispatchEvent(new CustomEvent("__modal_panel_dismiss"));
       },
+      fillInput(text: string) {
+        window.dispatchEvent(new CustomEvent("__panel_fill_input", { detail: text }));
+      },
       async updateVariables(patch: Record<string, unknown>) {
         if (!sessionId) return;
         const res = await fetch(

@@ -24,6 +24,9 @@ export default function PanelSlot({ name, html, sessionId, panelData, onSendMess
       sendMessage(text: string) {
         window.dispatchEvent(new CustomEvent("__panel_send_message", { detail: text }));
       },
+      fillInput(text: string) {
+        window.dispatchEvent(new CustomEvent("__panel_fill_input", { detail: text }));
+      },
       async updateVariables(patch: Record<string, unknown>) {
         if (!sessionId) return;
         const res = await fetch(`/api/sessions/${sessionId}/variables`, {
