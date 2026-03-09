@@ -3,7 +3,7 @@
 import { useRef, useEffect, useState } from "react";
 import ImageModal from "./ImageModal";
 
-interface DockPanelEntry {
+export interface DockPanelEntry {
   name: string;
   html: string;
   dismissible: boolean;
@@ -16,6 +16,7 @@ interface DockPanelProps {
   sessionId?: string;
   panelData?: Record<string, unknown>;
   onClose: (name: string) => void;
+  floating?: boolean;
 }
 
 export default function DockPanel({
@@ -25,6 +26,7 @@ export default function DockPanel({
   sessionId,
   panelData,
   onClose,
+  floating,
 }: DockPanelProps) {
   const [activeTab, setActiveTab] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -115,13 +117,17 @@ export default function DockPanel({
   const showTabs = panels.length > 1;
   const isSide = direction === "left" || direction === "right";
 
-  const borderClass = isSide
-    ? direction === "left" ? "border-r border-border" : "border-l border-border"
-    : "border-t border-border";
+  const borderClass = floating
+    ? "border border-border/50 rounded-lg shadow-lg"
+    : isSide
+      ? direction === "left" ? "border-r border-border" : "border-l border-border"
+      : "border-t border-border";
 
-  const sizeStyle = isSide
-    ? { width: maxSize ? `${maxSize}px` : "380px" }
-    : { maxHeight: maxSize ? `${maxSize}px` : "50vh" };
+  const sizeStyle = floating
+    ? { maxHeight: maxSize ? `${maxSize}px` : "80vh" }
+    : isSide
+      ? { width: "380px", maxHeight: maxSize ? `${maxSize}px` : "50vh" }
+      : { maxHeight: maxSize ? `${maxSize}px` : "50vh" };
 
   const tabBar = showTabs && (
     <div className={`flex items-center gap-0 ${isSide ? "border-b" : "border-b"} border-border/50 px-2 shrink-0`}>
@@ -174,7 +180,7 @@ export default function DockPanel({
   return (
     <>
       <div
-        className={`${borderClass} bg-surface/80 backdrop-blur-[16px] shrink-0 flex flex-col`}
+        className={`${borderClass} bg-surface/80 backdrop-blur-[16px] shrink-0 flex flex-col ${floating ? "overflow-hidden" : ""}`}
         style={sizeStyle}
       >
         {tabBar}

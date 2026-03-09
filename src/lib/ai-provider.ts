@@ -42,6 +42,9 @@ export const MODEL_GROUPS: ModelGroup[] = [
     label: "Claude",
     provider: "claude",
     options: [
+      { value: "sonnet", label: "Sonnet" },
+      { value: "sonnet:medium", label: "Sonnet Medium" },
+      { value: "sonnet:high", label: "Sonnet High" },
       { value: "opus:medium", label: "Opus Medium" },
       { value: "opus:high", label: "Opus High" },
     ],

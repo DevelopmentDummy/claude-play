@@ -511,16 +511,20 @@ export class SessionManager {
       fs.copyFileSync(panelSpecSrc, path.join(sessionDir, "panel-spec.md"));
     }
 
-    // Copy persona skills/ to sessionDir/.claude/skills/
+    // Copy persona skills/ to both .claude/skills/ and .agents/skills/ (Claude + Codex)
     const personaSkillsSrc = path.join(personaDir, "skills");
-    const skillsDest = path.join(sessionDir, ".claude", "skills");
-    fs.mkdirSync(skillsDest, { recursive: true });
+    const claudeSkillsDest = path.join(sessionDir, ".claude", "skills");
+    const agentsSkillsDest = path.join(sessionDir, ".agents", "skills");
+    fs.mkdirSync(claudeSkillsDest, { recursive: true });
+    fs.mkdirSync(agentsSkillsDest, { recursive: true });
     if (fs.existsSync(personaSkillsSrc)) {
-      this.copyDirRecursive(personaSkillsSrc, skillsDest);
+      this.copyDirRecursive(personaSkillsSrc, claudeSkillsDest);
+      this.copyDirRecursive(personaSkillsSrc, agentsSkillsDest);
     }
 
     // Copy global tool skills (data/tools/*/skills/*) to session
-    this.copyToolSkills(skillsDest);
+    this.copyToolSkills(claudeSkillsDest);
+    this.copyToolSkills(agentsSkillsDest);
 
     return { id, ...meta, displayName: this.getPersonaDisplayName(personaName) };
   }
@@ -752,19 +756,25 @@ export class SessionManager {
       }
     }
 
-    // Sync skills/ directory
+    // Sync skills/ directory (raw copy + both CLI skill dirs)
     if (elements.skills) {
       const personaSkills = path.join(personaDir, "skills");
-      const sessionSkills = path.join(sessionDir, "skills");
+      const targets = [
+        path.join(sessionDir, "skills"),
+        path.join(sessionDir, ".claude", "skills"),
+        path.join(sessionDir, ".agents", "skills"),
+      ];
       if (fs.existsSync(personaSkills)) {
-        if (!fs.existsSync(sessionSkills)) fs.mkdirSync(sessionSkills, { recursive: true });
-        for (const entry of fs.readdirSync(personaSkills, { withFileTypes: true })) {
-          const src = path.join(personaSkills, entry.name);
-          const dst = path.join(sessionSkills, entry.name);
-          if (entry.isDirectory()) {
-            this.copyDirRecursive(src, dst);
-          } else {
-            fs.copyFileSync(src, dst);
+        for (const targetDir of targets) {
+          if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
+          for (const entry of fs.readdirSync(personaSkills, { withFileTypes: true })) {
+            const src = path.join(personaSkills, entry.name);
+            const dst = path.join(targetDir, entry.name);
+            if (entry.isDirectory()) {
+              this.copyDirRecursive(src, dst);
+            } else {
+              fs.copyFileSync(src, dst);
+            }
           }
         }
       }
@@ -1293,9 +1303,12 @@ export class SessionManager {
 
   /** Re-copy global tool skills into an existing session (called on session open/resume) */
   refreshToolSkills(sessionDir: string): void {
-    const skillsDest = path.join(sessionDir, ".claude", "skills");
-    fs.mkdirSync(skillsDest, { recursive: true });
-    this.copyToolSkills(skillsDest);
+    const claudeSkillsDest = path.join(sessionDir, ".claude", "skills");
+    const agentsSkillsDest = path.join(sessionDir, ".agents", "skills");
+    fs.mkdirSync(claudeSkillsDest, { recursive: true });
+    fs.mkdirSync(agentsSkillsDest, { recursive: true });
+    this.copyToolSkills(claudeSkillsDest);
+    this.copyToolSkills(agentsSkillsDest);
   }
 
   /** Copy skills from all global tools (data/tools/X/skills/) into the session skills dir */
