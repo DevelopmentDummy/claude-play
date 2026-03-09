@@ -733,6 +733,22 @@ export class SessionManager {
       }
     }
 
+    // Sync character-tags.json
+    if (elements.characterTags) {
+      const src = path.join(personaDir, "character-tags.json");
+      const dst = path.join(sessionDir, "character-tags.json");
+      if (fs.existsSync(src)) {
+        fs.copyFileSync(src, dst);
+      }
+    }
+
+    // Sync custom data files
+    if (elements.dataFiles) {
+      for (const f of this.getCustomDataFiles(personaDir)) {
+        fs.copyFileSync(path.join(personaDir, f), path.join(sessionDir, f));
+      }
+    }
+
     // Sync skills/ directory
     if (elements.skills) {
       const personaSkills = path.join(personaDir, "skills");
@@ -806,6 +822,27 @@ export class SessionManager {
     const instrDst = path.join(sessionDir, "CLAUDE.md");
     result.push({ key: "instructions", label: "인스트럭션 (CLAUDE.md)", hasChanges: this.fileDiffers(instrSrc, instrDst) });
 
+    // Check character-tags.json
+    const pCharTags = path.join(personaDir, "character-tags.json");
+    const sCharTags = path.join(sessionDir, "character-tags.json");
+    result.push({ key: "characterTags", label: "캐릭터 태그 (character-tags.json)", hasChanges: this.fileDiffers(pCharTags, sCharTags) });
+
+    // Check custom data files (*.json excluding system files)
+    const allDataFiles = new Set([
+      ...this.getCustomDataFiles(personaDir),
+      ...this.getCustomDataFiles(sessionDir),
+    ]);
+    if (allDataFiles.size > 0) {
+      let dataChanged = false;
+      for (const f of allDataFiles) {
+        if (this.fileDiffers(path.join(personaDir, f), path.join(sessionDir, f))) {
+          dataChanged = true;
+          break;
+        }
+      }
+      result.push({ key: "dataFiles", label: `데이터 파일 (${allDataFiles.size}개)`, hasChanges: dataChanged });
+    }
+
     return result;
   }
 
@@ -843,6 +880,17 @@ export class SessionManager {
       }
       return false;
     } catch { return false; }
+  }
+
+  /** List custom data file names (*.json excluding system files) in a directory */
+  private getCustomDataFiles(dir: string): string[] {
+    if (!fs.existsSync(dir)) return [];
+    try {
+      return fs.readdirSync(dir).filter(f => {
+        if (!f.endsWith(".json") || SYSTEM_JSON.has(f)) return false;
+        try { return fs.statSync(path.join(dir, f)).isFile(); } catch { return false; }
+      });
+    } catch { return []; }
   }
 
   deleteSession(id: string): void {
