@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { MODEL_GROUPS } from "@/lib/ai-provider";
 
 interface ProfileOption {
   slug: string;
@@ -291,15 +292,13 @@ export default function PersonaStartModal({
                   paddingRight: "32px",
                 }}
               >
-                <optgroup label="Claude" className="bg-[#1a1a2e] text-[#ccc]">
-                  <option value="opus:medium" className="bg-[#1a1a2e] text-[#ccc]">Opus Medium</option>
-                  <option value="opus:high" className="bg-[#1a1a2e] text-[#ccc]">Opus High</option>
-                </optgroup>
-                <optgroup label="Codex" className="bg-[#1a1a2e] text-[#ccc]">
-                  <option value="gpt-5.4:medium" className="bg-[#1a1a2e] text-[#ccc]">GPT-5.4 Medium</option>
-                  <option value="gpt-5.4:high" className="bg-[#1a1a2e] text-[#ccc]">GPT-5.4 High</option>
-                  <option value="gpt-5.4:xhigh" className="bg-[#1a1a2e] text-[#ccc]">GPT-5.4 XHigh</option>
-                </optgroup>
+                {MODEL_GROUPS.map((g) => (
+                  <optgroup key={g.label} label={g.label} className="bg-[#1a1a2e] text-[#ccc]">
+                    {g.options.map((o) => (
+                      <option key={o.value} value={o.value} className="bg-[#1a1a2e] text-[#ccc]">{o.label}</option>
+                    ))}
+                  </optgroup>
+                ))}
               </select>
             </div>
 

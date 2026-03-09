@@ -1,5 +1,7 @@
 "use client";
 
+import { MODEL_GROUPS } from "@/lib/ai-provider";
+
 interface StatusBarProps {
   title: string;
   status: string;
@@ -113,18 +115,12 @@ export default function StatusBar({
             className={selectClass}
             style={selectStyle}
           >
-            {provider === "codex" ? (
-              <>
-                <option value="gpt-5.4:medium" className={optClass}>GPT-5.4 Medium</option>
-                <option value="gpt-5.4:high" className={optClass}>GPT-5.4 High</option>
-                <option value="gpt-5.4:xhigh" className={optClass}>GPT-5.4 XHigh</option>
-              </>
-            ) : (
-              <>
-                <option value="opus:medium" className={optClass}>Opus Medium</option>
-                <option value="opus:high" className={optClass}>Opus High</option>
-              </>
-            )}
+            {MODEL_GROUPS
+              .filter((g) => g.provider === provider)
+              .flatMap((g) => g.options)
+              .map((o) => (
+                <option key={o.value} value={o.value} className={optClass}>{o.label}</option>
+              ))}
           </select>
         )}
 
