@@ -46,7 +46,7 @@ export default function ChatPage() {
 
   const [panels, setPanels] = useState<Panel[]>([]);
   const [panelData, setPanelData] = useState<Record<string, unknown>>({});
-  const [sharedPlacements, setSharedPlacements] = useState<Record<string, "modal" | "dock">>({});
+  const [sharedPlacements, setSharedPlacements] = useState<Record<string, "modal" | "dock" | "dock-left" | "dock-right" | "dock-bottom">>({});
   const [layout, setLayout] = useState<LayoutConfig | null>(null);
   const [title, setTitle] = useState("");
   const [profileImage, setProfileImage] = useState<string | null>(null);
@@ -67,7 +67,7 @@ export default function ChatPage() {
       "claude:error": (e) => setError(e as string),
       "claude:status": (s) => setStatus(s as string),
       "panels:update": (p) => {
-        const update = p as { panels: Panel[]; context: Record<string, unknown>; sharedPlacements?: Record<string, "modal" | "dock"> };
+        const update = p as { panels: Panel[]; context: Record<string, unknown>; sharedPlacements?: Record<string, "modal" | "dock" | "dock-left" | "dock-right" | "dock-bottom"> };
         setPanels(update.panels);
         setPanelData(update.context);
         if (update.sharedPlacements) setSharedPlacements(update.sharedPlacements);
@@ -193,7 +193,7 @@ export default function ChatPage() {
 
   // Normalize placement keys: strip numeric prefix (e.g. "01-상태" → "상태") so it matches panel names
   // Merge layout placements with shared panel default placements (shared panels default to modal)
-  const placement: Record<string, "left" | "right" | "modal" | "dock"> = {};
+  const placement: Record<string, "left" | "right" | "modal" | "dock" | "dock-left" | "dock-right" | "dock-bottom"> = {};
   // Apply shared placements first (lower priority)
   for (const [key, val] of Object.entries(sharedPlacements)) {
     placement[key] = val;
@@ -209,7 +209,9 @@ export default function ChatPage() {
   const leftPanels = panels.filter((p) => placement[p.name] === "left");
   const rightPanels = panels.filter((p) => placement[p.name] === "right");
   const modalPanels = panels.filter((p) => placement[p.name] === "modal");
-  const dockPanels = panels.filter((p) => placement[p.name] === "dock");
+  const dockBottomPanels = panels.filter((p) => placement[p.name] === "dock" || placement[p.name] === "dock-bottom");
+  const dockLeftPanels = panels.filter((p) => placement[p.name] === "dock-left");
+  const dockRightPanels = panels.filter((p) => placement[p.name] === "dock-right");
   const inlinePanels = panels.filter((p) => !placement[p.name]);
 
   // Fallback: if no per-panel placement configured, use legacy position for all panels
@@ -234,13 +236,25 @@ export default function ChatPage() {
   // __modals values: true = required (no dismiss), "dismissible" = user can close freely
   const modalsState = (panelData as Record<string, unknown>)?.__modals as Record<string, boolean | string> | undefined;
   const activeModalPanels = modalPanels.filter((p) => !!modalsState?.[p.name]);
-  const activeDockPanels = dockPanels
-    .filter((p) => !!modalsState?.[p.name])
-    .map((p) => ({
-      name: p.name,
-      html: p.html,
-      dismissible: modalsState?.[p.name] === "dismissible",
-    }));
+  const toDockEntries = (arr: Panel[]) =>
+    arr
+      .filter((p) => !!modalsState?.[p.name])
+      .map((p) => ({
+        name: p.name,
+        html: p.html,
+        dismissible: modalsState?.[p.name] === "dismissible",
+      }));
+  const activeDockBottom = toDockEntries(dockBottomPanels);
+  const activeDockLeft = toDockEntries(dockLeftPanels);
+  const activeDockRight = toDockEntries(dockRightPanels);
+
+  const handleDockClose = useCallback((name: string) => {
+    fetch(`/api/sessions/${sessionId}/variables`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ __modals: { ...modalsState, [name]: false } }),
+    });
+  }, [sessionId, modalsState]);
 
   // Filter OOC messages unless toggle is on
   const visibleMessages = showOOC ? messages : messages.filter((m) => !m.ooc);
@@ -275,57 +289,77 @@ export default function ChatPage() {
       <div className="flex-1 relative min-h-0">
         {/* Chat column */}
         <div
-          className="absolute inset-0 flex flex-col min-h-0"
+          className="absolute inset-0 flex flex-row min-h-0"
           style={{
             ...(showInlinePanel && hasLeftSidebar ? { left: `${panelSize}px` } : {}),
             ...(showInlinePanel && hasRightSidebar ? { right: `${panelSize}px` } : {}),
           }}
         >
-          <ChatMessages
-            messages={visibleMessages}
-            isStreaming={isStreaming}
-            hideTools
-            sessionId={sessionId}
-            panels={hasPerPanelPlacement ? inlinePanels : panels}
-            hasMore={hasMore}
-            onLoadMore={loadMore}
-            onToggleOOC={toggleMessageOOC}
-          />
-          {activeDockPanels.length > 0 && (
+          {/* Dock left */}
+          {activeDockLeft.length > 0 && (
             <DockPanel
-              panels={activeDockPanels}
-              maxHeight={dockMaxHeight}
+              panels={activeDockLeft}
+              direction="left"
+              maxSize={dockMaxHeight}
               sessionId={sessionId}
               panelData={panelData}
-              onClose={(name) => {
-                fetch(`/api/sessions/${sessionId}/variables`, {
-                  method: "PATCH",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ __modals: { ...modalsState, [name]: false } }),
-                });
-              }}
+              onClose={handleDockClose}
             />
           )}
-          <ChatInput
-            disabled={isStreaming}
-            onSend={sendMessage}
-            showOOC={showOOC}
-            onOOCToggle={(on) => setShowOOC(on)}
-            choices={(() => {
-              if (isStreaming) return undefined;
-              // Only extract choices from the very last assistant message
-              for (let i = visibleMessages.length - 1; i >= 0; i--) {
-                const m = visibleMessages[i];
-                if (m.role === "assistant" && !m.ooc) {
-                  const c = extractChoices(m.content);
-                  return c.length > 0 ? c : undefined;
+          {/* Center: chat + dock-bottom + input */}
+          <div className="flex-1 flex flex-col min-h-0 min-w-0">
+            <ChatMessages
+              messages={visibleMessages}
+              isStreaming={isStreaming}
+              hideTools
+              sessionId={sessionId}
+              panels={hasPerPanelPlacement ? inlinePanels : panels}
+              hasMore={hasMore}
+              onLoadMore={loadMore}
+              onToggleOOC={toggleMessageOOC}
+            />
+            {activeDockBottom.length > 0 && (
+              <DockPanel
+                panels={activeDockBottom}
+                direction="bottom"
+                maxSize={dockMaxHeight}
+                sessionId={sessionId}
+                panelData={panelData}
+                onClose={handleDockClose}
+              />
+            )}
+            <ChatInput
+              disabled={isStreaming}
+              onSend={sendMessage}
+              showOOC={showOOC}
+              onOOCToggle={(on) => setShowOOC(on)}
+              choices={(() => {
+                if (isStreaming) return undefined;
+                // Only extract choices from the very last assistant message
+                for (let i = visibleMessages.length - 1; i >= 0; i--) {
+                  const m = visibleMessages[i];
+                  if (m.role === "assistant" && !m.ooc) {
+                    const c = extractChoices(m.content);
+                    return c.length > 0 ? c : undefined;
+                  }
+                  // If we hit any user message first, no choices to show
+                  if (m.role === "user") return undefined;
                 }
-                // If we hit any user message first, no choices to show
-                if (m.role === "user") return undefined;
-              }
-              return undefined;
-            })()}
-          />
+                return undefined;
+              })()}
+            />
+          </div>
+          {/* Dock right */}
+          {activeDockRight.length > 0 && (
+            <DockPanel
+              panels={activeDockRight}
+              direction="right"
+              maxSize={dockMaxHeight}
+              sessionId={sessionId}
+              panelData={panelData}
+              onClose={handleDockClose}
+            />
+          )}
         </div>
         {/* Desktop: left sidebar (profile + left panels) */}
         {showInlinePanel && hasLeftSidebar && (

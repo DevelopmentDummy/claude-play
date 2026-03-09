@@ -11,7 +11,8 @@ interface DockPanelEntry {
 
 interface DockPanelProps {
   panels: DockPanelEntry[];
-  maxHeight?: number;
+  direction?: "bottom" | "left" | "right";
+  maxSize?: number;
   sessionId?: string;
   panelData?: Record<string, unknown>;
   onClose: (name: string) => void;
@@ -19,7 +20,8 @@ interface DockPanelProps {
 
 export default function DockPanel({
   panels,
-  maxHeight,
+  direction = "bottom",
+  maxSize,
   sessionId,
   panelData,
   onClose,
@@ -111,61 +113,72 @@ export default function DockPanel({
   if (!current) return null;
 
   const showTabs = panels.length > 1;
+  const isSide = direction === "left" || direction === "right";
+
+  const borderClass = isSide
+    ? direction === "left" ? "border-r border-border" : "border-l border-border"
+    : "border-t border-border";
+
+  const sizeStyle = isSide
+    ? { width: maxSize ? `${maxSize}px` : "380px" }
+    : { maxHeight: maxSize ? `${maxSize}px` : "50vh" };
+
+  const tabBar = showTabs && (
+    <div className={`flex items-center gap-0 ${isSide ? "border-b" : "border-b"} border-border/50 px-2 shrink-0`}>
+      {panels.map((p, i) => (
+        <button
+          key={p.name}
+          onClick={() => setActiveTab(i)}
+          className={`relative flex items-center gap-1.5 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider cursor-pointer transition-colors
+            ${i === activeTab
+              ? "text-accent"
+              : "text-text-dim/50 hover:text-text-dim/80"
+            }`}
+        >
+          {p.name}
+          {p.dismissible && (
+            <span
+              onClick={(e) => { e.stopPropagation(); onClose(p.name); }}
+              className="ml-1 text-text-dim/30 hover:text-text-dim/70 text-[10px]"
+            >
+              ×
+            </span>
+          )}
+          {i === activeTab && (
+            <span className="absolute bottom-0 left-2 right-2 h-[2px] bg-accent rounded-full" />
+          )}
+        </button>
+      ))}
+    </div>
+  );
+
+  const singleHeader = !showTabs && (
+    <div className="flex items-center justify-between px-4 py-2 border-b border-border/50 shrink-0">
+      <span
+        className="text-[11px] font-semibold uppercase tracking-wider"
+        style={{ color: "var(--accent, #b8a0e8)", opacity: 0.8 }}
+      >
+        {current.name}
+      </span>
+      {current.dismissible && (
+        <button
+          onClick={() => onClose(current.name)}
+          className="text-text-dim/30 hover:text-text-dim/70 transition-colors text-sm cursor-pointer"
+        >
+          ×
+        </button>
+      )}
+    </div>
+  );
 
   return (
     <>
       <div
-        className="border-t border-border bg-surface/80 backdrop-blur-[16px] shrink-0 flex flex-col"
-        style={{ maxHeight: maxHeight ? `${maxHeight}px` : "50vh" }}
+        className={`${borderClass} bg-surface/80 backdrop-blur-[16px] shrink-0 flex flex-col`}
+        style={sizeStyle}
       >
-        {/* Tab bar (2+ panels) */}
-        {showTabs && (
-          <div className="flex items-center gap-0 border-b border-border/50 px-2 shrink-0">
-            {panels.map((p, i) => (
-              <button
-                key={p.name}
-                onClick={() => setActiveTab(i)}
-                className={`relative flex items-center gap-1.5 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider cursor-pointer transition-colors
-                  ${i === activeTab
-                    ? "text-accent"
-                    : "text-text-dim/50 hover:text-text-dim/80"
-                  }`}
-              >
-                {p.name}
-                {p.dismissible && (
-                  <span
-                    onClick={(e) => { e.stopPropagation(); onClose(p.name); }}
-                    className="ml-1 text-text-dim/30 hover:text-text-dim/70 text-[10px]"
-                  >
-                    ×
-                  </span>
-                )}
-                {i === activeTab && (
-                  <span className="absolute bottom-0 left-2 right-2 h-[2px] bg-accent rounded-full" />
-                )}
-              </button>
-            ))}
-          </div>
-        )}
-        {/* Single panel header (1 panel) */}
-        {!showTabs && (
-          <div className="flex items-center justify-between px-4 py-2 border-b border-border/50 shrink-0">
-            <span
-              className="text-[11px] font-semibold uppercase tracking-wider"
-              style={{ color: "var(--accent, #b8a0e8)", opacity: 0.8 }}
-            >
-              {current.name}
-            </span>
-            {current.dismissible && (
-              <button
-                onClick={() => onClose(current.name)}
-                className="text-text-dim/30 hover:text-text-dim/70 transition-colors text-sm cursor-pointer"
-              >
-                ×
-              </button>
-            )}
-          </div>
-        )}
+        {tabBar}
+        {singleHeader}
         {/* Content */}
         <div className="overflow-y-auto px-4 py-3 flex-1 min-h-0">
           <div ref={containerRef} />
