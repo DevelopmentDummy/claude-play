@@ -118,10 +118,14 @@ export function setupWebSocket(server: HTTPServer): void {
         scheduleCleanupIfEmpty();
       });
 
-      // Send connection ack
+      // Send connection ack with session active state
+      const svc = getServices();
+      const sessionActive = sessionId
+        ? svc.currentSessionId === sessionId && svc.claude.isRunning()
+        : false;
       ws.send(JSON.stringify({
         event: "connected",
-        data: { sessionId, isBuilder },
+        data: { sessionId, isBuilder, sessionActive },
       }));
     });
   });

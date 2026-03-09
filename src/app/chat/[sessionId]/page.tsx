@@ -59,6 +59,25 @@ export default function ChatPage() {
   const isMobile = useIsMobile();
   const initRef = useRef(false);
 
+  // Auto re-open session when server restarts and WS reconnects
+  const handleSessionLost = useCallback(async () => {
+    setStatus("disconnected");
+    const res = await fetch(
+      `/api/sessions/${sessionId}/open`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: currentModel || undefined }),
+      }
+    );
+    if (res.ok) {
+      const data = await res.json();
+      if (data.model) setCurrentModel(data.model);
+      if (data.provider) setCurrentProvider(data.provider);
+      setStatus("connected");
+    }
+  }, [sessionId, currentModel, setStatus]);
+
   // WebSocket connection — only connect after session open completes
   const { sendChat, send: wsSend } = useWebSocket({
     sessionId,
@@ -89,6 +108,7 @@ export default function ChatPage() {
       },
     },
     enabled: wsEnabled,
+    onSessionLost: handleSessionLost,
   });
 
   // Send via WebSocket: update local UI state + send through WS
@@ -186,7 +206,8 @@ export default function ChatPage() {
 
   const panelPosition = layout?.panels?.position || "right";
   const panelSize = layout?.panels?.size || 280;
-  const dockMaxHeight = layout?.panels?.dockSize;
+  const dockMaxHeight = layout?.panels?.dockHeight || layout?.panels?.dockSize;
+  const dockWidth = layout?.panels?.dockWidth;
   const rawPlacement = layout?.panels?.placement || {};
 
   const modalSize = layout?.panels?.modalSize || {};
@@ -289,77 +310,56 @@ export default function ChatPage() {
       <div className="flex-1 relative min-h-0">
         {/* Chat column */}
         <div
-          className="absolute inset-0 flex flex-row min-h-0"
+          className="absolute inset-0 flex flex-col min-h-0"
           style={{
             ...(showInlinePanel && hasLeftSidebar ? { left: `${panelSize}px` } : {}),
             ...(showInlinePanel && hasRightSidebar ? { right: `${panelSize}px` } : {}),
           }}
         >
-          {/* Dock left */}
-          {activeDockLeft.length > 0 && (
+          <ChatMessages
+            messages={visibleMessages}
+            isStreaming={isStreaming}
+            hideTools
+            sessionId={sessionId}
+            panels={hasPerPanelPlacement ? inlinePanels : panels}
+            hasMore={hasMore}
+            onLoadMore={loadMore}
+            onToggleOOC={toggleMessageOOC}
+            dockLeft={activeDockLeft.length > 0 ? activeDockLeft : undefined}
+            dockRight={activeDockRight.length > 0 ? activeDockRight : undefined}
+            dockMaxSize={dockMaxHeight}
+            dockWidth={dockWidth}
+            panelData={panelData}
+            onDockClose={handleDockClose}
+          />
+          {activeDockBottom.length > 0 && (
             <DockPanel
-              panels={activeDockLeft}
-              direction="left"
+              panels={activeDockBottom}
+              direction="bottom"
               maxSize={dockMaxHeight}
               sessionId={sessionId}
               panelData={panelData}
               onClose={handleDockClose}
             />
           )}
-          {/* Center: chat + dock-bottom + input */}
-          <div className="flex-1 flex flex-col min-h-0 min-w-0">
-            <ChatMessages
-              messages={visibleMessages}
-              isStreaming={isStreaming}
-              hideTools
-              sessionId={sessionId}
-              panels={hasPerPanelPlacement ? inlinePanels : panels}
-              hasMore={hasMore}
-              onLoadMore={loadMore}
-              onToggleOOC={toggleMessageOOC}
-            />
-            {activeDockBottom.length > 0 && (
-              <DockPanel
-                panels={activeDockBottom}
-                direction="bottom"
-                maxSize={dockMaxHeight}
-                sessionId={sessionId}
-                panelData={panelData}
-                onClose={handleDockClose}
-              />
-            )}
-            <ChatInput
-              disabled={isStreaming}
-              onSend={sendMessage}
-              showOOC={showOOC}
-              onOOCToggle={(on) => setShowOOC(on)}
-              choices={(() => {
-                if (isStreaming) return undefined;
-                // Only extract choices from the very last assistant message
-                for (let i = visibleMessages.length - 1; i >= 0; i--) {
-                  const m = visibleMessages[i];
-                  if (m.role === "assistant" && !m.ooc) {
-                    const c = extractChoices(m.content);
-                    return c.length > 0 ? c : undefined;
-                  }
-                  // If we hit any user message first, no choices to show
-                  if (m.role === "user") return undefined;
+          <ChatInput
+            disabled={isStreaming}
+            onSend={sendMessage}
+            showOOC={showOOC}
+            onOOCToggle={(on) => setShowOOC(on)}
+            choices={(() => {
+              if (isStreaming) return undefined;
+              for (let i = visibleMessages.length - 1; i >= 0; i--) {
+                const m = visibleMessages[i];
+                if (m.role === "assistant" && !m.ooc) {
+                  const c = extractChoices(m.content);
+                  return c.length > 0 ? c : undefined;
                 }
-                return undefined;
-              })()}
-            />
-          </div>
-          {/* Dock right */}
-          {activeDockRight.length > 0 && (
-            <DockPanel
-              panels={activeDockRight}
-              direction="right"
-              maxSize={dockMaxHeight}
-              sessionId={sessionId}
-              panelData={panelData}
-              onClose={handleDockClose}
-            />
-          )}
+                if (m.role === "user") return undefined;
+              }
+              return undefined;
+            })()}
+          />
         </div>
         {/* Desktop: left sidebar (profile + left panels) */}
         {showInlinePanel && hasLeftSidebar && (

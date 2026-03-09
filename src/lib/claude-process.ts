@@ -163,6 +163,10 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
     }
   }
 
+  isRunning(): boolean {
+    return !!(this.proc?.stdin?.writable);
+  }
+
   send(text: string): void {
     if (!this.proc?.stdin?.writable) {
       this.emit("error", "Claude process not running");

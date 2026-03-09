@@ -151,6 +151,10 @@ export class CodexProcess extends EventEmitter<CodexProcessEvents> {
     }
   }
 
+  isRunning(): boolean {
+    return !!(this.proc && this.initialized);
+  }
+
   /**
    * Send a user message. Creates/resumes thread if needed, then starts a turn.
    */

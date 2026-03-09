@@ -13,6 +13,8 @@ interface UseWebSocketOptions {
   handlers: Record<string, WSHandler>;
   /** Whether the connection is enabled */
   enabled?: boolean;
+  /** Called when reconnecting to a session that is no longer active on the server */
+  onSessionLost?: () => void;
 }
 
 export function useWebSocket({
@@ -20,12 +22,16 @@ export function useWebSocket({
   isBuilder,
   handlers,
   enabled = true,
+  onSessionLost,
 }: UseWebSocketOptions) {
   const handlersRef = useRef(handlers);
   handlersRef.current = handlers;
+  const onSessionLostRef = useRef(onSessionLost);
+  onSessionLostRef.current = onSessionLost;
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const initialConnectRef = useRef(true);
 
   const connect = useCallback(() => {
     if (reconnectTimer.current) {
@@ -45,6 +51,16 @@ export function useWebSocket({
     ws.onmessage = (e) => {
       try {
         const { event, data } = JSON.parse(e.data);
+        // On reconnect, detect if session process is no longer running
+        if (event === "connected" && !initialConnectRef.current) {
+          const d = data as { sessionActive?: boolean };
+          if (sessionId && d.sessionActive === false) {
+            onSessionLostRef.current?.();
+          }
+        }
+        if (event === "connected") {
+          initialConnectRef.current = false;
+        }
         handlersRef.current[event]?.(data);
       } catch {
         // ignore parse errors
