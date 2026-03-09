@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useChat } from "@/hooks/useChat";
+import { useIsMobile } from "@/hooks/useIsMobile";
 import StatusBar from "@/components/StatusBar";
 import ErrorBanner from "@/components/ErrorBanner";
 import ChatMessages from "@/components/ChatMessages";
@@ -36,6 +37,8 @@ export default function BuilderPage() {
   const [wsEnabled, setWsEnabled] = useState(false);
   const [builderService, setBuilderService] = useState<"claude" | "codex">("claude");
   const [displayName, setDisplayName] = useState(decodedName);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const isMobile = useIsMobile();
   const initRef = useRef(false);
 
   // WebSocket connection — only connect after init completes
@@ -152,13 +155,17 @@ export default function BuilderPage() {
         onReinit={handleReinit}
         service={builderService}
         onServiceChange={handleServiceChange}
+        showPanelButton={isMobile}
+        onPanelToggle={() => setDrawerOpen((v) => !v)}
       />
       <ErrorBanner error={error} onDismiss={() => setError(null)} />
       <div className="flex-1 flex min-h-0">
-        <BuilderOverview
-          personaName={decodedName}
-          refreshTrigger={refreshTrigger}
-        />
+        {!isMobile && (
+          <BuilderOverview
+            personaName={decodedName}
+            refreshTrigger={refreshTrigger}
+          />
+        )}
         <div className="flex-1 flex flex-col min-w-0">
           <ChatMessages
             messages={messages}
@@ -169,6 +176,79 @@ export default function BuilderPage() {
           <ChatInput disabled={isStreaming} onSend={sendMessage} />
         </div>
       </div>
+      {/* Mobile: slide-over drawer for BuilderOverview */}
+      {isMobile && (
+        <BuilderDrawer
+          open={drawerOpen}
+          onClose={() => setDrawerOpen(false)}
+          personaName={decodedName}
+          refreshTrigger={refreshTrigger}
+        />
+      )}
     </div>
+  );
+}
+
+/** Slide-over drawer wrapping BuilderOverview for mobile */
+function BuilderDrawer({
+  open,
+  onClose,
+  personaName,
+  refreshTrigger,
+}: {
+  open: boolean;
+  onClose: () => void;
+  personaName: string;
+  refreshTrigger: number;
+}) {
+  useEffect(() => {
+    if (!open) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [open, onClose]);
+
+  return (
+    <>
+      <div
+        className="fixed inset-0 z-40 transition-opacity duration-300"
+        style={{
+          backgroundColor: "rgba(0,0,0,0.5)",
+          opacity: open ? 1 : 0,
+          pointerEvents: open ? "auto" : "none",
+        }}
+        onClick={onClose}
+      />
+      <div
+        className="fixed top-0 left-0 bottom-0 z-50 transition-transform duration-300 ease-out"
+        style={{
+          width: "min(380px, 85vw)",
+          transform: open ? "translateX(0)" : "translateX(-100%)",
+        }}
+      >
+        <div className="h-full flex flex-col bg-surface border-r border-border">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
+            <span className="text-xs font-semibold text-accent/80 uppercase tracking-wider">
+              Persona Overview
+            </span>
+            <button
+              onClick={onClose}
+              className="w-7 h-7 flex items-center justify-center rounded-md text-text-dim hover:text-text hover:bg-surface-light transition-colors duration-150 text-sm cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            <BuilderOverview
+              personaName={personaName}
+              refreshTrigger={refreshTrigger}
+              embedded
+            />
+          </div>
+        </div>
+      </div>
+    </>
   );
 }

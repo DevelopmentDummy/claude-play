@@ -122,11 +122,14 @@ function FileViewerModal({
 interface BuilderOverviewProps {
   personaName: string | null;
   refreshTrigger: number;
+  /** When true, renders without fixed-width container (used inside mobile drawer) */
+  embedded?: boolean;
 }
 
 export default function BuilderOverview({
   personaName,
   refreshTrigger,
+  embedded,
 }: BuilderOverviewProps) {
   const [data, setData] = useState<OverviewData | null>(null);
   const [modal, setModal] = useState<{ title: string; content: string } | null>(null);
@@ -168,10 +171,12 @@ export default function BuilderOverview({
   if (!personaName || !data) return null;
 
   return (
-    <div className="w-[380px] shrink-0 border-r border-border bg-surface backdrop-blur-[16px] overflow-y-auto p-4">
-      <h3 className="text-[13px] font-semibold text-accent uppercase tracking-wider mb-3.5">
-        Persona Overview
-      </h3>
+    <div className={embedded ? "p-4" : "w-[380px] shrink-0 border-r border-border bg-surface backdrop-blur-[16px] overflow-y-auto p-4"}>
+      {!embedded && (
+        <h3 className="text-[13px] font-semibold text-accent uppercase tracking-wider mb-3.5">
+          Persona Overview
+        </h3>
+      )}
 
       {/* Profile Image & Icon Preview */}
       <div className="mb-4 flex gap-3 items-end">
