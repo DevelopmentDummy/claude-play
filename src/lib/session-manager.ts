@@ -3,6 +3,7 @@ import * as path from "path";
 import Handlebars from "handlebars";
 import { getDataDir } from "./data-dir";
 import { getInternalToken } from "./auth";
+import { providerFromModel } from "./ai-provider";
 
 /** System JSON files excluded from custom data file loading */
 const SYSTEM_JSON = new Set([
@@ -448,10 +449,12 @@ export class SessionManager {
     this.copyDirRecursive(personaDir, sessionDir, SKIP_FILES);
 
     // Copy session-instructions.md as both CLAUDE.md and AGENTS.md for the session
+    // Also keep a copy of session-instructions.md in session for accurate sync diff
     const sessionInstructionsSrc = path.join(personaDir, "session-instructions.md");
     if (fs.existsSync(sessionInstructionsSrc)) {
       fs.copyFileSync(sessionInstructionsSrc, path.join(sessionDir, "CLAUDE.md"));
       fs.copyFileSync(sessionInstructionsSrc, path.join(sessionDir, "AGENTS.md"));
+      fs.copyFileSync(sessionInstructionsSrc, path.join(sessionDir, "session-instructions.md"));
     }
 
     // Write session metadata
@@ -767,8 +770,13 @@ export class SessionManager {
       }
     }
 
-    // Refresh instruction files (CLAUDE.md / AGENTS.md)
+    // Refresh instruction files (session-instructions.md + CLAUDE.md / AGENTS.md)
     if (elements.instructions) {
+      // Copy raw session-instructions.md to session for future diff comparison
+      const instrSrc = path.join(personaDir, "session-instructions.md");
+      if (fs.existsSync(instrSrc)) {
+        fs.copyFileSync(instrSrc, path.join(sessionDir, "session-instructions.md"));
+      }
       this.refreshSessionInstructionFiles(id);
     }
   }
@@ -817,10 +825,15 @@ export class SessionManager {
     const sSkills = path.join(sessionDir, "skills");
     result.push({ key: "skills", label: "스킬 (skills/)", hasChanges: this.dirDiffers(pSkills, sSkills) });
 
-    // Check instructions
-    const instrSrc = path.join(personaDir, "session-instructions.md");
-    const instrDst = path.join(sessionDir, "CLAUDE.md");
-    result.push({ key: "instructions", label: "인스트럭션 (CLAUDE.md)", hasChanges: this.fileDiffers(instrSrc, instrDst) });
+    // Check instructions — compare persona's raw file vs session's live CLAUDE.md/AGENTS.md (stripped)
+    {
+      const provider = meta.model ? providerFromModel(meta.model) : "claude";
+      const liveFile = provider === "codex" ? "AGENTS.md" : "CLAUDE.md";
+      const liveInstrPath = path.join(sessionDir, liveFile);
+      const instrSrc = path.join(personaDir, "session-instructions.md");
+      // Reverse args: compare live (session) against raw (persona)
+      result.push({ key: "instructions", label: `인스트럭션 (session-instructions.md → ${liveFile})`, hasChanges: this.liveInstructionsDiffer(liveInstrPath, instrSrc) });
+    }
 
     // Check character-tags.json
     const pCharTags = path.join(personaDir, "character-tags.json");
@@ -885,10 +898,13 @@ export class SessionManager {
     const pSkills = path.join(personaDir, "skills");
     result.push({ key: "skills", label: "스킬 (skills/)", hasChanges: this.dirDiffers(sSkills, pSkills) });
 
-    // Check instructions (session's session-instructions.md vs persona's)
-    const instrSrc = path.join(sessionDir, "session-instructions.md");
+    // Check instructions — compare live CLAUDE.md/AGENTS.md (stripped of assembled sections) vs persona's raw file
     const instrDst = path.join(personaDir, "session-instructions.md");
-    result.push({ key: "instructions", label: "인스트럭션 (session-instructions.md)", hasChanges: this.fileDiffers(instrSrc, instrDst) });
+    const provider = meta.model ? providerFromModel(meta.model) : "claude";
+    const liveFile = provider === "codex" ? "AGENTS.md" : "CLAUDE.md";
+    const liveInstrPath = path.join(sessionDir, liveFile);
+    const instrChanged = this.liveInstructionsDiffer(liveInstrPath, instrDst);
+    result.push({ key: "instructions", label: `인스트럭션 (${liveFile} → session-instructions.md)`, hasChanges: instrChanged });
 
     // Check character-tags.json
     const sCharTags = path.join(sessionDir, "character-tags.json");
@@ -1011,12 +1027,19 @@ export class SessionManager {
       }
     }
 
-    // Sync instructions (session's session-instructions.md → persona)
+    // Sync instructions (session's live CLAUDE.md/AGENTS.md → persona's session-instructions.md)
+    // Strip auto-assembled sections (profile, opening) before saving
     if (elements.instructions) {
-      const src = path.join(sessionDir, "session-instructions.md");
+      const provider = meta.model ? providerFromModel(meta.model) : "claude";
+      const liveFile = provider === "codex" ? "AGENTS.md" : "CLAUDE.md";
+      const src = path.join(sessionDir, liveFile);
       const dst = path.join(personaDir, "session-instructions.md");
       if (fs.existsSync(src)) {
-        fs.copyFileSync(src, dst);
+        let content = fs.readFileSync(src, "utf-8");
+        // Remove auto-assembled sections (appended during session creation / refresh)
+        content = content.replace(/\n\n## 사용자 정보\n[\s\S]*?(?=\n\n## |\s*$)/, "");
+        content = content.replace(/\n\n## 오프닝 메시지\n[\s\S]*$/, "");
+        fs.writeFileSync(dst, content.trimEnd() + "\n", "utf-8");
       }
     }
 
@@ -1071,6 +1094,20 @@ export class SessionManager {
       }
       return false;
     } catch { return false; }
+  }
+
+  /** Compare live instruction file (with assembled sections stripped) against raw persona file */
+  private liveInstructionsDiffer(livePath: string, rawPath: string): boolean {
+    if (!fs.existsSync(livePath)) return false;
+    if (!fs.existsSync(rawPath)) return true;
+    try {
+      let live = fs.readFileSync(livePath, "utf-8");
+      live = live.replace(/\n\n## 사용자 정보\n[\s\S]*?(?=\n\n## |\s*$)/, "");
+      live = live.replace(/\n\n## 오프닝 메시지\n[\s\S]*$/, "");
+      live = live.trimEnd() + "\n";
+      const raw = fs.readFileSync(rawPath, "utf-8");
+      return live !== raw;
+    } catch { return true; }
   }
 
   /** List custom data file names (*.json excluding system files) in a directory */
