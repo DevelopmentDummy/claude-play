@@ -7,8 +7,9 @@ export interface LayoutConfig {
   panels: {
     position: "right" | "left" | "bottom" | "hidden";
     size: number;
-    placement?: Record<string, "left" | "right" | "modal">;
+    placement?: Record<string, "left" | "right" | "modal" | "dock">;
     modalSize?: Record<string, { maxWidth?: string; maxHeight?: string }>;
+    dockSize?: number;
   };
   chat: {
     maxWidth: number | null;

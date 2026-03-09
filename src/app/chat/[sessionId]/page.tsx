@@ -14,6 +14,7 @@ import { extractChoices } from "@/components/ChatMessages";
 import PanelArea from "@/components/PanelArea";
 import PanelDrawer from "@/components/PanelDrawer";
 import ModalPanel from "@/components/ModalPanel";
+import DockPanel from "@/components/DockPanel";
 import SyncModal from "@/components/SyncModal";
 
 interface Panel {
@@ -45,7 +46,7 @@ export default function ChatPage() {
 
   const [panels, setPanels] = useState<Panel[]>([]);
   const [panelData, setPanelData] = useState<Record<string, unknown>>({});
-  const [sharedPlacements, setSharedPlacements] = useState<Record<string, "modal">>({});
+  const [sharedPlacements, setSharedPlacements] = useState<Record<string, "modal" | "dock">>({});
   const [layout, setLayout] = useState<LayoutConfig | null>(null);
   const [title, setTitle] = useState("");
   const [profileImage, setProfileImage] = useState<string | null>(null);
@@ -66,7 +67,7 @@ export default function ChatPage() {
       "claude:error": (e) => setError(e as string),
       "claude:status": (s) => setStatus(s as string),
       "panels:update": (p) => {
-        const update = p as { panels: Panel[]; context: Record<string, unknown>; sharedPlacements?: Record<string, "modal"> };
+        const update = p as { panels: Panel[]; context: Record<string, unknown>; sharedPlacements?: Record<string, "modal" | "dock"> };
         setPanels(update.panels);
         setPanelData(update.context);
         if (update.sharedPlacements) setSharedPlacements(update.sharedPlacements);
@@ -185,13 +186,14 @@ export default function ChatPage() {
 
   const panelPosition = layout?.panels?.position || "right";
   const panelSize = layout?.panels?.size || 280;
+  const dockMaxHeight = layout?.panels?.dockSize;
   const rawPlacement = layout?.panels?.placement || {};
 
   const modalSize = layout?.panels?.modalSize || {};
 
   // Normalize placement keys: strip numeric prefix (e.g. "01-상태" → "상태") so it matches panel names
   // Merge layout placements with shared panel default placements (shared panels default to modal)
-  const placement: Record<string, "left" | "right" | "modal"> = {};
+  const placement: Record<string, "left" | "right" | "modal" | "dock"> = {};
   // Apply shared placements first (lower priority)
   for (const [key, val] of Object.entries(sharedPlacements)) {
     placement[key] = val;
@@ -207,6 +209,7 @@ export default function ChatPage() {
   const leftPanels = panels.filter((p) => placement[p.name] === "left");
   const rightPanels = panels.filter((p) => placement[p.name] === "right");
   const modalPanels = panels.filter((p) => placement[p.name] === "modal");
+  const dockPanels = panels.filter((p) => placement[p.name] === "dock");
   const inlinePanels = panels.filter((p) => !placement[p.name]);
 
   // Fallback: if no per-panel placement configured, use legacy position for all panels
@@ -231,6 +234,13 @@ export default function ChatPage() {
   // __modals values: true = required (no dismiss), "dismissible" = user can close freely
   const modalsState = (panelData as Record<string, unknown>)?.__modals as Record<string, boolean | string> | undefined;
   const activeModalPanels = modalPanels.filter((p) => !!modalsState?.[p.name]);
+  const activeDockPanels = dockPanels
+    .filter((p) => !!modalsState?.[p.name])
+    .map((p) => ({
+      name: p.name,
+      html: p.html,
+      dismissible: modalsState?.[p.name] === "dismissible",
+    }));
 
   // Filter OOC messages unless toggle is on
   const visibleMessages = showOOC ? messages : messages.filter((m) => !m.ooc);
@@ -281,6 +291,21 @@ export default function ChatPage() {
             onLoadMore={loadMore}
             onToggleOOC={toggleMessageOOC}
           />
+          {activeDockPanels.length > 0 && (
+            <DockPanel
+              panels={activeDockPanels}
+              maxHeight={dockMaxHeight}
+              sessionId={sessionId}
+              panelData={panelData}
+              onClose={(name) => {
+                fetch(`/api/sessions/${sessionId}/variables`, {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ __modals: { ...modalsState, [name]: false } }),
+                });
+              }}
+            />
+          )}
           <ChatInput
             disabled={isStreaming}
             onSend={sendMessage}
