@@ -191,6 +191,7 @@
 | 메서드/속성 | 설명 |
 |---|---|
 | `__panelBridge.sendMessage(text)` | 채팅에 사용자 메시지를 전송한다. AI가 이 메시지에 응답한다. |
+| `__panelBridge.fillInput(text)` | 입력창의 커서 위치에 텍스트를 삽입한다. 메시지를 보내지 않으므로 사용자가 추가 텍스트를 입력한 후 직접 전송할 수 있다. |
 | `__panelBridge.updateVariables(patch)` | `variables.json`을 부분 업데이트한다. 패널이 자동 재렌더링된다. `patch`는 `{ key: value }` 객체. |
 | `__panelBridge.data` | 전체 템플릿 컨텍스트 객체 (읽기 전용). `variables.json` 값 + 커스텀 데이터 파일이 합쳐져 있다. |
 | `__panelBridge.sessionId` | 현재 세션 ID (읽기 전용) |
@@ -410,6 +411,14 @@ $PANEL:거래$
 | 항상 표시 | O (세션 내내) | X (해당 메시지에서만) |
 | 용도 | 상태, 프로필 등 상시 정보 | 선택지, 거래, 일회성 인터랙션 |
 | `$PANEL:` 필요 | X (자동 표시) | O (AI가 태그 출력) |
+
+### 패널 배치 타입 (`layout.json`의 `panels.placement`)
+
+- `"left"` — 좌측 사이드바에 표시된다.
+- `"right"` — 우측 사이드바에 표시된다.
+- `"modal"` — 화면 중앙 오버레이로 표시된다. `__modals`로 on/off 제어. `true`이면 필수(닫기 불가), `"dismissible"`이면 자유롭게 닫을 수 있다. 여러 모달이 활성화되면 z-index가 증가하며 겹쳐 표시된다.
+- `"dock"` — 채팅 영역과 입력창 사이에 표시된다. `__modals`로 on/off 제어 (modal과 동일). 여러 dock 패널이 활성화되면 탭으로 전환된다. `panels.dockSize`로 최대 높이(px)를 설정할 수 있다 (기본: 콘텐츠 자동, 최대 50vh).
+- **지정 없음** — 인라인. 채팅 본문 내 `$PANEL:이름$` 태그로 삽입된다.
 
 ---
 

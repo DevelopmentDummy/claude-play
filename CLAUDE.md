@@ -139,8 +139,10 @@ data/
 - **MCP authentication**: Internal token generated per server process, passed via env vars in `.mcp.json` / `.codex/config.toml`. MCP server sends `x-bridge-token` header. Used for internal API validation only.
 - **MCP bootstrap**: Claude is launched with `--mcp-config <cwd>/.mcp.json --strict-mcp-config` when that file exists.
 - **Permission sandboxing**: Each session has `.claude/settings.json` restricting Claude tools to the session directory.
-- **Panel placement types**: `layout.json` `panels.placement` supports `"left"`, `"right"`, `"modal"`. Panels without placement are inline.
+- **Panel placement types**: `layout.json` `panels.placement` supports `"left"`, `"right"`, `"modal"`, `"dock"`. Panels without placement are inline.
 - **Modal panels**: Panels with `placement: "modal"` render as centered overlays. Visibility controlled by `__modals` in `variables.json`. Value `true` = required (no ESC/X/backdrop dismiss), `"dismissible"` = freely closable. `__panelBridge.sendMessage()` always auto-closes regardless. Multiple modals stack with incremental z-index; ESC only affects topmost dismissible modal.
+- **Dock panels**: Panels with `placement: "dock"` render between chat messages and input area. Visibility controlled by `__modals` in `variables.json` (same as modal panels). Multiple dock panels show as tabs. `panels.dockSize` in layout.json controls max-height (px).
+- **Panel bridge methods**: `__panelBridge.sendMessage(text)` sends chat message immediately. `__panelBridge.fillInput(text)` inserts text at cursor in input box without sending. `__panelBridge.updateVariables(patch)` patches variables.json.
 - **Shadow DOM isolation**: PanelSlot and ModalPanel render panel HTML inside Shadow DOM to isolate CSS.
 - **Image modal portal**: ImageModal uses `createPortal(document.body)` to escape `backdrop-blur` CSS containment from chat bubbles.
 - **Windows process killing**: Uses `taskkill /T /F /PID` because `shell: true` wraps the process in cmd.exe.
