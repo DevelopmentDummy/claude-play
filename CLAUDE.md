@@ -31,7 +31,7 @@ No test framework is configured.
 | `claude-process.ts` | Spawns `claude -p` subprocess with `--input-format stream-json --output-format stream-json --verbose`. NDJSON line-buffered parser. Emits `message/status/error/sessionId` events. Auto-retries without `--resume` on failed resume. |
 | `codex-process.ts` | Codex CLI integration via `codex app-server` mode (persistent JSON-RPC 2.0 over stdin/stdout). Same EventEmitter interface as ClaudeProcess. |
 | `ai-provider.ts` | `AIProvider` type (`"claude" | "codex"`), `providerFromModel()` mapping, model option constants. |
-| `session-manager.ts` | CRUD for personas, sessions, profiles. Copies persona → session directory. Writes `.claude/settings.json` + `.mcp.json` + `.codex/config.toml` per session. Manages layout config, builder sessions, skill copying, CLAUDE.md + AGENTS.md assembly. Selective persona-to-session sync with diff comparison. |
+| `session-manager.ts` | CRUD for personas, sessions, profiles. Copies persona → session directory. Writes `.claude/settings.json` + `.mcp.json` + `.codex/config.toml` per session. Manages layout config, builder sessions, skill copying, CLAUDE.md + AGENTS.md assembly. Bidirectional sync with diff comparison (forward: persona→session, reverse: session→persona). |
 | `panel-engine.ts` | Watches `variables.json` + `panels/*.html` + custom `*.json` data files + `layout.json` via `fs.watch`. Compiles Handlebars templates with registered helpers (eq, gt, add, percentage, etc.). Broadcasts rendered HTML and layout updates via WebSocket. |
 | `ws-server.ts` | WebSocket server on `/ws?sessionId=X&builder=true/false`. Handles `chat:send`, `session:bind`, `session:leave` messages. `wsBroadcast()` for global broadcasts. 5s grace period cleanup on last client disconnect. |
 | `comfyui-client.ts` | Optional ComfyUI image generation — queues workflows, polls for results, downloads output images to session `images/` dir. |
@@ -59,7 +59,7 @@ No authentication required — single-user service. MCP server requests include 
 | `/api/sessions` | GET, POST | List sessions / create new session |
 | `/api/sessions/[id]` | GET, DELETE | Get/delete session |
 | `/api/sessions/[id]/open` | POST | Open session (spawn AI process, start panels) |
-| `/api/sessions/[id]/sync` | GET, POST | GET: persona↔session diff; POST: selective sync |
+| `/api/sessions/[id]/sync` | GET, POST | GET: diff (supports `?direction=reverse`); POST: selective sync with `direction` + `variablesMode` |
 | `/api/sessions/[id]/variables` | GET | Read session variables |
 | `/api/sessions/[id]/files` | GET | Serve session files (images, etc.) |
 | `/api/chat/send` | POST | Send message to AI process |
@@ -89,7 +89,7 @@ ChatPage manages WebSocket subscription, layout state, OOC visibility, and rende
 | `ChatMessages.tsx` | Message rendering with `<dialog_response>` extraction, inline images/panels, infinite scroll (loads until 10 non-OOC messages), per-message OOC toggle on hover. |
 | `ChatInput.tsx` | Message input with OOC mode toggle (also controls OOC view visibility), `*` insert button. OOC mode auto-prepends `OOC:` to messages. |
 | `StatusBar.tsx` | Navigation bar with model selector, Sync button, status indicator (connected/streaming/compacting/disconnected). Responsive with `flex-wrap` for mobile. |
-| `SyncModal.tsx` | Per-element selective persona→session sync with diff badges. |
+| `SyncModal.tsx` | Bidirectional sync modal with direction toggle (persona→session / session→persona), per-element selection, diff badges, and variables 3-mode (merge/overwrite/skip) for reverse sync. |
 | `ImageModal.tsx` | Fullscreen image viewer via `createPortal` (escapes `backdrop-blur` containment). |
 | `PanelArea.tsx` / `PanelSlot.tsx` | Side panel rendering with Shadow DOM CSS isolation. |
 | `ModalPanel.tsx` | Modal overlay panel via `createPortal`. Controlled by `__modals` in `variables.json`. Supports required (no dismiss) and dismissible modes. Stacks with incremental z-index. |
@@ -141,7 +141,7 @@ data/
 - **Permission sandboxing**: Each session has `.claude/settings.json` restricting Claude tools to the session directory.
 - **Panel placement types**: `layout.json` `panels.placement` supports `"left"`, `"right"`, `"modal"`, `"dock"`. Panels without placement are inline.
 - **Modal panels**: Panels with `placement: "modal"` render as centered overlays. Visibility controlled by `__modals` in `variables.json`. Value `true` = required (no ESC/X/backdrop dismiss), `"dismissible"` = freely closable. `__panelBridge.sendMessage()` always auto-closes regardless. Multiple modals stack with incremental z-index; ESC only affects topmost dismissible modal.
-- **Dock panels**: Panels with `placement: "dock"` render between chat messages and input area. Visibility controlled by `__modals` in `variables.json` (same as modal panels). Multiple dock panels show as tabs. `panels.dockSize` in layout.json controls max-height (px).
+- **Dock panels**: Panels with `placement: "dock"` or `"dock-bottom"` render between chat messages and input area (full width). `"dock-left"` / `"dock-right"` float inside the chat scroll area with `position: sticky` — always visible at the bottom corner, and nearby messages shrink to make room (like CSS float/text-wrap around an image). Visibility controlled by `__modals` in `variables.json` (same as modal panels). Multiple dock panels in same direction show as tabs. `panels.dockHeight` (or legacy `panels.dockSize`) in layout.json controls max-height (px). `panels.dockWidth` controls width (px); if omitted, auto-sizes with min 280px / max 50%.
 - **Panel bridge methods**: `__panelBridge.sendMessage(text)` sends chat message immediately. `__panelBridge.fillInput(text)` inserts text at cursor in input box without sending. `__panelBridge.updateVariables(patch)` patches variables.json.
 - **Shadow DOM isolation**: PanelSlot and ModalPanel render panel HTML inside Shadow DOM to isolate CSS.
 - **Image modal portal**: ImageModal uses `createPortal(document.body)` to escape `backdrop-blur` CSS containment from chat bubbles.
@@ -158,7 +158,7 @@ data/
 3. **Chat**: WebSocket `chat:send` or `POST /api/chat/send` — Pipes user message to AI stdin, streams NDJSON response events back via WebSocket
 4. **Accumulate**: `services.ts` collects `text_delta` stream events into segments, detects tool uses, extracts dialog + choices on `result` event, saves to chat history
 5. **Panel refresh**: At end of each AI turn, `PanelEngine.reload()` re-reads all data files and re-renders panels
-6. **Sync** (manual): `POST /api/sessions/[id]/sync` with element selection — selectively copies persona changes to session. Auto-sends OOC notification to CLI.
+6. **Sync** (manual): `POST /api/sessions/[id]/sync` — bidirectional. Forward (persona→session) auto-sends OOC notification to CLI. Reverse (session→persona) writes back to persona template without notification. Supports custom data files, character-tags, and variables with merge/overwrite/skip modes.
 7. **Leave/Disconnect**: WebSocket `session:leave` or last client disconnect (after 5s grace) kills AI process and stops panel engine
 
 ## Dual Runtime (Claude / Codex)
