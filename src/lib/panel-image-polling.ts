@@ -18,11 +18,12 @@ export function installImagePolling(shadow: ShadowRoot): void {
     // Skip images that already have polling or already loaded
     if (img.getAttribute(ATTR)) continue;
 
-    const src = img.getAttribute("src");
+    // Use the resolved absolute URL (browser auto-encodes unicode chars)
+    const src = img.src;
     if (!src) continue;
 
     // Only poll session/API images (not external URLs)
-    if (!src.startsWith("/api/")) continue;
+    if (!src.includes("/api/")) continue;
 
     img.setAttribute(ATTR, "1");
 
