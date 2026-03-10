@@ -8,7 +8,7 @@
  */
 
 const POLL_INTERVAL = 2000;
-const MAX_POLLS = 60;
+const MAX_POLLS = 120;
 const ATTR = "data-poll-active";
 
 export function installImagePolling(shadow: ShadowRoot): void {

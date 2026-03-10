@@ -259,7 +259,7 @@ function initServices(): Services {
       )
       .then((result) => {
         if (result.success) {
-          const url = `/api/sessions/${sessionId}/files?path=audio/${audioFilename}`;
+          const url = `/api/sessions/${sessionId}/files/audio/${audioFilename}`;
           broadcast("audio:ready", { url, messageId });
         } else {
           console.error("[tts] Generation failed:", result.error);

@@ -111,7 +111,7 @@ export default function ChatPage() {
         const update = p as { layout: LayoutConfig };
         if (update.layout) {
           setLayout(update.layout);
-          const imageBase = `/api/sessions/${sessionId}/files?path=images/`;
+          const imageBase = `/api/sessions/${sessionId}/files/images/`;
           applyLayout(update.layout, imageBase);
         }
       },
@@ -137,7 +137,7 @@ export default function ChatPage() {
         const update = p as { profile?: string; timestamp?: number };
         if (update.profile) {
           const t = update.timestamp || Date.now();
-          setProfileImage(`/api/sessions/${sessionId}/files?path=${update.profile}&t=${t}`);
+          setProfileImage(`/api/sessions/${sessionId}/files/${update.profile}?t=${t}`);
         }
       },
     },
@@ -183,7 +183,7 @@ export default function ChatPage() {
       setLayout(data.layout);
       if (data.model) setCurrentModel(data.model);
       if (data.provider) setCurrentProvider(data.provider);
-      const imageBase = `/api/sessions/${sessionId}/files?path=images/`;
+      const imageBase = `/api/sessions/${sessionId}/files/images/`;
       applyLayout(data.layout, imageBase);
       setStatus("connected");
 
@@ -198,7 +198,7 @@ export default function ChatPage() {
         setSharedPlacements(data.sharedPlacements);
       }
 
-      setProfileImage(data.profileImage ? `/api/sessions/${sessionId}/files?path=${data.profileImage}` : null);
+      setProfileImage(data.profileImage ? `/api/sessions/${sessionId}/files/${data.profileImage}` : null);
 
       // Load chat history from server (file-backed, survives restarts)
       const historyCount = await loadHistory();
@@ -290,7 +290,11 @@ export default function ChatPage() {
   // Determine which modal panels are currently active (driven by __modals in variables.json)
   // __modals values: true = required (no dismiss), "dismissible" = user can close freely
   const modalsState = (panelData as Record<string, unknown>)?.__modals as Record<string, boolean | string> | undefined;
-  const activeModalPanels = modalPanels.filter((p) => !!modalsState?.[p.name]);
+  // On mobile, dock panels are promoted to modals for better usability
+  const effectiveModalPanels = isMobile
+    ? [...modalPanels, ...dockBottomPanels, ...dockLeftPanels, ...dockRightPanels]
+    : modalPanels;
+  const activeModalPanels = effectiveModalPanels.filter((p) => !!modalsState?.[p.name]);
   const toDockEntries = (arr: Panel[]) =>
     arr
       .filter((p) => !!modalsState?.[p.name])
@@ -299,9 +303,9 @@ export default function ChatPage() {
         html: p.html,
         dismissible: modalsState?.[p.name] === "dismissible",
       }));
-  const activeDockBottom = toDockEntries(dockBottomPanels);
-  const activeDockLeft = toDockEntries(dockLeftPanels);
-  const activeDockRight = toDockEntries(dockRightPanels);
+  const activeDockBottom = isMobile ? [] : toDockEntries(dockBottomPanels);
+  const activeDockLeft = isMobile ? [] : toDockEntries(dockLeftPanels);
+  const activeDockRight = isMobile ? [] : toDockEntries(dockRightPanels);
 
   const handleDockClose = useCallback((name: string) => {
     fetch(`/api/sessions/${sessionId}/variables`, {

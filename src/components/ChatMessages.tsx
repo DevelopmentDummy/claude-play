@@ -639,7 +639,7 @@ export default function ChatMessages({
             style={{
               width: dockWidthProp ? `${dockWidthProp}px` : undefined,
               minWidth: dockWidthProp ? undefined : "280px",
-              maxWidth: dockWidthProp ? undefined : "50%",
+              maxWidth: dockWidthProp ? `min(${dockWidthProp}px, calc(100vw - 2rem))` : "50%",
               marginTop: dockMeasuredHeight > 0 ? `-${dockMeasuredHeight}px` : undefined,
             }}
           >

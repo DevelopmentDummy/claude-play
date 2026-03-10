@@ -67,7 +67,7 @@ export default function SessionCard({
     >
       {hasIcon ? (
         <img
-          src={`/api/sessions/${id}/files?path=images/icon.png`}
+          src={`/api/sessions/${id}/files/images/icon.png`}
           alt=""
           className="w-8 h-8 rounded-full object-cover shrink-0 border border-white/[0.08]"
         />

@@ -32,7 +32,7 @@ export default function InlineImage({ sessionId, path: imgPath, onReady }: Inlin
 
       try {
         const res = await fetch(
-          `/api/sessions/${sessionId}/files?path=${encodeURIComponent(imgPath)}&v=${cacheBuster}`,
+          `/api/sessions/${sessionId}/files/${encodeURIComponent(imgPath)}?v=${cacheBuster}`,
           {
             method: "HEAD",
             cache: "no-store",
@@ -92,7 +92,7 @@ export default function InlineImage({ sessionId, path: imgPath, onReady }: Inlin
     );
   }
 
-  const src = `/api/sessions/${sessionId}/files?path=${encodeURIComponent(imgPath)}&v=${cacheBuster}`;
+  const src = `/api/sessions/${sessionId}/files/${encodeURIComponent(imgPath)}?v=${cacheBuster}`;
   const handleImageLoad = () => {
     if (readyNotifiedRef.current) return;
     readyNotifiedRef.current = true;
