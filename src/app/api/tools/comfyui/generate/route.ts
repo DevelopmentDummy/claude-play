@@ -3,47 +3,7 @@ import * as path from "path";
 import * as fs from "fs";
 import { getServices } from "@/lib/services";
 import { ComfyUIClient } from "@/lib/comfyui-client";
-
-const COMFY_QUEUE_KEY = "__claude_bridge_comfy_queue__";
-interface ComfyQueueState {
-  running: number;
-  jobs: Array<() => Promise<void>>;
-}
-
-function getComfyQueueState(): ComfyQueueState {
-  const g = globalThis as unknown as Record<string, ComfyQueueState>;
-  if (!g[COMFY_QUEUE_KEY]) {
-    g[COMFY_QUEUE_KEY] = { running: 0, jobs: [] };
-  }
-  return g[COMFY_QUEUE_KEY];
-}
-
-function maxComfyConcurrency(): number {
-  const parsed = parseInt(process.env.COMFYUI_MAX_CONCURRENCY || "1", 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
-}
-
-function scheduleComfyJob(job: () => Promise<void>): void {
-  const state = getComfyQueueState();
-  const max = maxComfyConcurrency();
-
-  const runNext = () => {
-    while (state.running < max && state.jobs.length > 0) {
-      const next = state.jobs.shift();
-      if (!next) return;
-      state.running += 1;
-      next()
-        .catch(() => { /* handled in caller */ })
-        .finally(() => {
-          state.running -= 1;
-          runNext();
-        });
-    }
-  };
-
-  state.jobs.push(job);
-  runNext();
-}
+import { getGpuQueue } from "@/lib/gpu-queue";
 
 export async function POST(req: Request) {
   const svc = getServices();
@@ -129,7 +89,7 @@ export async function POST(req: Request) {
 
   const resultPath = `images/${safeName}`;
 
-  scheduleComfyJob(async () => {
+  getGpuQueue().enqueue("comfyui:generate", async () => {
     try {
       const result = body.raw
         ? await client.generateRaw({
