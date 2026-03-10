@@ -36,7 +36,6 @@ export default function VoiceSettings({ personaName, accentColor = "var(--accent
   const [ytStart, setYtStart] = useState("0");
   const [ytEnd, setYtEnd] = useState("30");
   const [ytLoading, setYtLoading] = useState(false);
-  const [ytPreviewUrl, setYtPreviewUrl] = useState("");
   const [ytError, setYtError] = useState("");
 
   useEffect(() => {
@@ -50,7 +49,6 @@ export default function VoiceSettings({ personaName, accentColor = "var(--accent
             setYtUrl(data.youtubeSetup.url);
             setYtStart(String(data.youtubeSetup.start ?? 0));
             setYtEnd(String(data.youtubeSetup.end ?? 30));
-            setYtPreviewUrl("");
             setYtError("");
             setYtModal(true);
             // Clear youtubeSetup from voice.json
@@ -165,37 +163,12 @@ export default function VoiceSettings({ personaName, accentColor = "var(--accent
     setYtUrl("");
     setYtStart("0");
     setYtEnd("30");
-    setYtPreviewUrl("");
     setYtError("");
   }
 
-  async function handleYtPreview() {
-    if (!ytUrl.trim()) return;
-    setYtLoading(true);
-    setYtError("");
-    setYtPreviewUrl("");
-    try {
-      const res = await fetch(`/api/personas/${enc}/voice/youtube`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          url: ytUrl,
-          start: parseFloat(ytStart) || 0,
-          end: parseFloat(ytEnd) || 30,
-          preview: true,
-        }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({ error: "Failed" }));
-        setYtError(data.error || "Preview failed");
-      } else {
-        const blob = await res.blob();
-        setYtPreviewUrl(URL.createObjectURL(blob));
-      }
-    } catch {
-      setYtError("Preview failed");
-    }
-    setYtLoading(false);
+  function getYtVideoId(url: string): string | null {
+    const m = url.match(/(?:youtu\.be\/|[?&]v=)([a-zA-Z0-9_-]{11})/);
+    return m ? m[1] : null;
   }
 
   async function handleYtApply() {
@@ -525,34 +498,27 @@ export default function VoiceSettings({ personaName, accentColor = "var(--accent
               </div>
             </div>
 
-            {/* Preview */}
-            <div className="flex gap-2">
-              <button
-                onClick={handleYtPreview}
-                disabled={ytLoading || !ytUrl.trim()}
-                className="flex-1 px-3 py-2 text-[11px] rounded-lg border transition-all disabled:opacity-40
-                  border-border/50 text-text-dim/80 hover:border-accent/60 hover:text-accent"
-              >
-                {ytLoading && !ytPreviewUrl ? "Downloading..." : "Preview"}
-              </button>
-              <button
-                onClick={handleYtApply}
-                disabled={ytLoading || !ytUrl.trim()}
-                className="flex-1 px-3 py-2 text-[11px] rounded-lg border transition-all disabled:opacity-40
-                  border-accent/40 text-accent/80 hover:bg-accent/10 hover:text-accent"
-              >
-                {ytLoading && ytPreviewUrl ? "Saving..." : "Apply"}
-              </button>
-            </div>
-
-            {ytPreviewUrl && (
-              <audio
-                src={ytPreviewUrl}
-                controls
-                autoPlay
-                className="w-full h-8"
-              />
+            {/* YouTube embed preview */}
+            {ytUrl.trim() && getYtVideoId(ytUrl) && (
+              <div className="rounded-lg overflow-hidden" style={{ aspectRatio: "16/9" }}>
+                <iframe
+                  src={`https://www.youtube.com/embed/${getYtVideoId(ytUrl)}?start=${Math.floor(parseFloat(ytStart) || 0)}`}
+                  className="w-full h-full"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope"
+                  allowFullScreen
+                />
+              </div>
             )}
+
+            {/* Apply */}
+            <button
+              onClick={handleYtApply}
+              disabled={ytLoading || !ytUrl.trim()}
+              className="w-full px-3 py-2 text-[11px] rounded-lg border transition-all disabled:opacity-40
+                border-accent/40 text-accent/80 hover:bg-accent/10 hover:text-accent"
+            >
+              {ytLoading ? "Downloading..." : "Apply"}
+            </button>
 
             {ytError && (
               <p className="text-[10px] text-error/80">{ytError}</p>
