@@ -38,6 +38,8 @@ No test framework is configured.
 | `gemini-image.ts` | Optional Gemini image generation via `generativelanguage.googleapis.com` API. Saves base64 response to session `images/` dir. |
 | `data-dir.ts` | Resolves `DATA_DIR` env var or defaults to `./data`. Provides `getDataDir()` and `getAppRoot()`. |
 | `color-utils.ts` | Frontend helpers: `hexToRgba()`, `lightenHex()`. |
+| `gpu-queue.ts` | GPU mutex queue — ensures ComfyUI and TTS never run simultaneously on the same GPU. FIFO ordering. Singleton via `getGpuQueue()`. |
+| `tts-client.ts` | HTTP client for Qwen3-TTS Python server. Singleton via `getTtsClient()`. Sends text + voice config, server saves audio to session dir. |
 
 ### MCP Server
 
@@ -54,6 +56,8 @@ No authentication required — single-user service. MCP server requests include 
 | `/api/personas/[name]/file` | GET, PUT | Read/write individual persona files |
 | `/api/personas/[name]/overview` | GET | Full persona overview (files, panels, skills, data) |
 | `/api/personas/[name]/images` | GET | Serve persona images |
+| `/api/personas/[name]/voice` | GET, PUT | Read/write voice.json config |
+| `/api/personas/[name]/voice/upload` | GET, POST, DELETE | Serve/upload/remove reference audio |
 | `/api/profiles` | GET, POST | List/create user profiles |
 | `/api/profiles/[slug]` | GET, PUT, DELETE | CRUD individual profile |
 | `/api/sessions` | GET, POST | List sessions / create new session |
@@ -93,6 +97,7 @@ ChatPage manages WebSocket subscription, layout state, OOC visibility, and rende
 | `ImageModal.tsx` | Fullscreen image viewer via `createPortal` (escapes `backdrop-blur` containment). |
 | `PanelArea.tsx` / `PanelSlot.tsx` | Side panel rendering with Shadow DOM CSS isolation. |
 | `ModalPanel.tsx` | Modal overlay panel via `createPortal`. Controlled by `__modals` in `variables.json`. Supports required (no dismiss) and dismissible modes. Stacks with incremental z-index. |
+| `VoiceSettings.tsx` | Per-persona voice configuration — TTS enable/disable, reference audio upload/preview, voice design prompt, language/speed settings. |
 
 ## Data Model
 
@@ -111,6 +116,8 @@ data/
 │   ├── panels/                      # Handlebars HTML templates (01-status.html, etc.)
 │   ├── skills/                      # Claude Code skills copied to sessions
 │   ├── images/                      # icon.png, profile.png, generated images
+│   ├── voice.json                   # TTS voice configuration
+│   ├── voice-ref.*                  # TTS reference audio file
 │   └── *.json                       # Custom data files (inventory.json, world.json, etc.)
 ├── sessions/{persona}-{timestamp}/  # Ephemeral session instances
 │   ├── (cloned persona files)
@@ -122,7 +129,8 @@ data/
 │   ├── .claude/settings.json        # Permission sandbox
 │   ├── .mcp.json                    # MCP config for Claude (includes auth token)
 │   ├── .codex/config.toml           # MCP config for Codex (includes auth token)
-│   └── policy-context.json          # Content policy context
+│   ├── policy-context.json          # Content policy context
+│   └── audio/                       # TTS audio output files
 └── profiles/{slug}.json             # User profiles (name, description, isPrimary)
 ```
 
@@ -150,6 +158,9 @@ data/
 - **System JSON exclusion**: Files like `session.json`, `layout.json`, `chat-history.json` are excluded from custom data file loading in both `PanelEngine` and `SessionManager`.
 - **Real-time layout updates**: `panel-engine.ts` watches `layout.json` via `fs.watch` and broadcasts `layout:update` WebSocket events. Changes reflect immediately without session re-entry.
 - **Compacting status**: Claude CLI `system.status.compacting` events are forwarded to frontend and shown as blue pulsing indicator in StatusBar.
+- **Voice config**: `voice.json` in persona/session dir configures per-character TTS. `referenceAudio` (clone from sample) takes priority over `design` (text prompt). Copied to session on creation.
+- **GPU queue**: ComfyUI and TTS share one GPU via `gpu-queue.ts` mutex. All GPU-bound calls must go through `getGpuQueue().enqueue()`. Gemini (external API) bypasses the queue.
+- **Audio files**: TTS output saved to `audio/` subdir in session. Served via existing `/api/sessions/[id]/files` route. `audio:ready` WebSocket event notifies frontend with URL and messageId.
 
 ## Session Lifecycle
 
@@ -178,6 +189,8 @@ data/
 - `COMFYUI_URL`, `COMFYUI_WORKFLOW_PATH` — Optional ComfyUI integration
 - `GEMINI_API_KEY` — Optional Gemini image generation API key
 - `CLAUDE_BRIDGE_API_BASE` — Override API base URL for MCP server (default: `http://127.0.0.1:{PORT}`)
+- `TTS_URL` — TTS server URL (default: `http://127.0.0.1:8800`)
+- `TTS_ENABLED` — Enable/disable TTS globally (default: `true`)
 
 ## Skills & Plugins
 
