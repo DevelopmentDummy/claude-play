@@ -19,6 +19,7 @@
 9. 모든 것이 정리되면 파일을 생성하고, 사용자에게 확인을 받는다
 10. 이미지 생성용 체크포인트를 선택한다 (아래 체크포인트 선택 섹션 참조)
 11. 캐릭터 프로필 이미지를 생성한다 (아래 프로필 이미지 섹션 참조)
+12. 캐릭터 음성을 설정한다 (아래 음성 설정 섹션 참조)
 
 **중요: 파일을 생성할 때는 반드시 한번에 모든 파일을 작성하라. 중간중간 부분적으로 생성하지 않는다.**
 
@@ -525,6 +526,52 @@ curl -s -X POST "http://localhost:{{PORT}}/api/tools/gemini/generate" \
 - 장소 아이콘: `"A simple icon of a medieval castle, flat design, dark background, game UI style"`
 - 분위기 컨셉: `"A cozy Japanese izakaya at night, warm lantern light, rain outside, atmospheric"`
 
+### 11. 음성 설정 (`voice.json`) — 캐릭터 TTS 음성
+
+대화 세션에서 캐릭터의 대사를 음성으로 재생하는 TTS(Text-to-Speech) 기능을 설정한다. ComfyUI의 Qwen3-TTS 노드를 통해 음성을 생성한다.
+
+**음성 설정 방식은 두 가지:**
+
+1. **Voice Design (권장)** — 텍스트 프롬프트로 음성 특성을 묘사하여 생성
+2. **Reference Audio** — 사용자가 업로드한 참고 음성 파일로 음성을 복제
+
+**어느 방식이든 최종적으로 `.pt` 파일(음성 임베딩)을 생성해야 한다.** 세션 TTS는 `.pt` 파일로만 동작한다.
+
+**Voice Design 절차:**
+1. 캐릭터의 성격, 나이, 말투를 고려하여 **영어로** voice design 프롬프트를 작성한다
+   - Qwen3-TTS는 중국어 모델이므로 한국어 프롬프트 이해도가 낮다. 반드시 영어로 작성하라
+   - 예시: `"A bright, cute young woman with a playful and slightly flirty tone. Higher pitch, energetic and cheerful."`
+   - 예시: `"A deep, calm male voice with a mysterious undertone. Slow and deliberate speech pattern."`
+2. 사용자와 프롬프트를 협의한다 — "이런 느낌의 목소리는 어떨까요?" 식으로 제안하고 피드백을 받는다
+3. 프롬프트가 정해지면 `voice.json`의 `design` 필드에 저장한다
+
+**Reference Audio 절차:**
+1. 사용자에게 참고 음성 파일이 있는지 물어본다 (3~30초 길이의 wav/mp3/ogg/flac)
+2. 있다면 빌더 사이드바의 Voice 패널에서 업로드하도록 안내한다
+3. 업로드 후 voice.json에 자동으로 `referenceAudio` 필드가 저장된다
+
+**voice.json 작성:**
+```json
+{
+  "enabled": true,
+  "design": "A bright, cute young woman with a playful tone.",
+  "language": "ko"
+}
+```
+
+- `enabled`: TTS 활성화 여부
+- `design`: 영어 voice design 프롬프트 (reference audio가 없을 때 사용)
+- `referenceAudio`: 참고 음성 파일명 (업로드 시 자동 설정)
+- `language`: 대사 언어 코드 (`ko`, `en`, `ja`, `zh` 등)
+- `voiceFile`: `.pt` 파일 경로 (생성 후 자동 설정 — 직접 수정하지 마라)
+
+**voice.json 작성 후, 사용자에게 빌더 사이드바의 Voice 패널에서 "Generate Voice (.pt)" 버튼을 눌러 음성 임베딩을 생성하도록 안내한다.** 생성이 완료되면 테스트 음성이 자동 재생된다. 사용자가 만족하지 않으면 design 프롬프트를 수정하고 다시 생성한다.
+
+**참고:**
+- `.pt` 파일이 없으면 세션에서 TTS가 동작하지 않는다
+- `.pt` 생성에는 30초~2분 정도 소요된다 (첫 생성 시 모델 로딩으로 더 걸릴 수 있음)
+- ComfyUI가 연결되지 않은 환경에서는 이 단계를 건너뛴다
+
 ---
 
 ## 파일 생성 시 체크리스트
@@ -554,6 +601,8 @@ curl -s -X POST "http://localhost:{{PORT}}/api/tools/gemini/generate" \
 - [ ] `comfyui-config.json`의 각 프리셋에 checkpoint, quality_tags, style_tags, negative가 있는가?
 - [ ] `session-instructions.md`에 이미지 생성 시 `comfyui-config.json`을 참조하라는 지시가 있는가?
 - [ ] `profile.png` 프로필 이미지를 생성했는가? (ComfyUI 또는 Gemini)
+- [ ] `voice.json`의 `design` 프롬프트가 영어로 작성되어 있는가?
+- [ ] 사용자에게 `.pt` 음성 임베딩 생성을 안내했는가?
 
 ---
 

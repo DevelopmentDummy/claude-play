@@ -34,12 +34,10 @@ No test framework is configured.
 | `session-manager.ts` | CRUD for personas, sessions, profiles. Copies persona → session directory. Writes `.claude/settings.json` + `.mcp.json` + `.codex/config.toml` per session. Manages layout config, builder sessions, skill copying, CLAUDE.md + AGENTS.md assembly. Bidirectional sync with diff comparison (forward: persona→session, reverse: session→persona). |
 | `panel-engine.ts` | Watches `variables.json` + `panels/*.html` + custom `*.json` data files + `layout.json` via `fs.watch`. Compiles Handlebars templates with registered helpers (eq, gt, add, percentage, etc.). Broadcasts rendered HTML and layout updates via WebSocket. |
 | `ws-server.ts` | WebSocket server on `/ws?sessionId=X&builder=true/false`. Handles `chat:send`, `session:bind`, `session:leave` messages. `wsBroadcast()` for global broadcasts. 5s grace period cleanup on last client disconnect. |
-| `comfyui-client.ts` | Optional ComfyUI image generation — queues workflows, polls for results, downloads output images to session `images/` dir. |
+| `comfyui-client.ts` | Optional ComfyUI integration — image generation and TTS. Queues workflows, polls for results, downloads output images/audio to session dir. `generateTts()` builds TTS workflow using AILab_Qwen3TTS nodes. |
 | `gemini-image.ts` | Optional Gemini image generation via `generativelanguage.googleapis.com` API. Saves base64 response to session `images/` dir. |
 | `data-dir.ts` | Resolves `DATA_DIR` env var or defaults to `./data`. Provides `getDataDir()` and `getAppRoot()`. |
 | `color-utils.ts` | Frontend helpers: `hexToRgba()`, `lightenHex()`. |
-| `gpu-queue.ts` | GPU mutex queue — ensures ComfyUI and TTS never run simultaneously on the same GPU. FIFO ordering. Singleton via `getGpuQueue()`. |
-| `tts-client.ts` | HTTP client for Qwen3-TTS Python server. Singleton via `getTtsClient()`. Sends text + voice config, server saves audio to session dir. |
 
 ### MCP Server
 
@@ -158,8 +156,8 @@ data/
 - **System JSON exclusion**: Files like `session.json`, `layout.json`, `chat-history.json` are excluded from custom data file loading in both `PanelEngine` and `SessionManager`.
 - **Real-time layout updates**: `panel-engine.ts` watches `layout.json` via `fs.watch` and broadcasts `layout:update` WebSocket events. Changes reflect immediately without session re-entry.
 - **Compacting status**: Claude CLI `system.status.compacting` events are forwarded to frontend and shown as blue pulsing indicator in StatusBar.
-- **Voice config**: `voice.json` in persona/session dir configures per-character TTS. `referenceAudio` (clone from sample) takes priority over `design` (text prompt). Copied to session on creation.
-- **GPU queue**: ComfyUI and TTS share one GPU via `gpu-queue.ts` mutex. All GPU-bound calls must go through `getGpuQueue().enqueue()`. Gemini (external API) bypasses the queue.
+- **Voice config**: `voice.json` in persona/session dir configures per-character TTS. `referenceAudio` (clone from sample) → `AILab_Qwen3TTSVoiceClone`, `design` (text prompt) → `AILab_Qwen3TTSVoiceDesign`, neither → `AILab_Qwen3TTSCustomVoice` (preset speaker fallback). Copied to session on creation.
+- **TTS via ComfyUI**: TTS generation uses ComfyUI's AILab_Qwen3TTS custom nodes (same GPU queue as image generation). No separate TTS server needed. Output saved as MP3 to session `audio/` dir.
 - **Audio files**: TTS output saved to `audio/` subdir in session. Served via existing `/api/sessions/[id]/files` route. `audio:ready` WebSocket event notifies frontend with URL and messageId.
 
 ## Session Lifecycle
@@ -189,7 +187,8 @@ data/
 - `COMFYUI_URL`, `COMFYUI_WORKFLOW_PATH` — Optional ComfyUI integration
 - `GEMINI_API_KEY` — Optional Gemini image generation API key
 - `CLAUDE_BRIDGE_API_BASE` — Override API base URL for MCP server (default: `http://127.0.0.1:{PORT}`)
-- `TTS_URL` — TTS server URL (default: `http://127.0.0.1:8800`)
+- `COMFYUI_HOST` — ComfyUI host (default: `127.0.0.1`)
+- `COMFYUI_PORT` — ComfyUI port (default: `8188`)
 - `TTS_ENABLED` — Enable/disable TTS globally (default: `true`)
 
 ## Skills & Plugins

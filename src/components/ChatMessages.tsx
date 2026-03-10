@@ -33,6 +33,7 @@ interface ChatMessagesProps {
   onDockClose?: (name: string) => void;
   audioMap?: Record<string, string>;
   audioStatus?: Record<string, string>;
+  onRequestTts?: (messageId: string, text: string) => void;
 }
 
 const OPEN_TAG = "<dialog_response>";
@@ -324,6 +325,7 @@ export default function ChatMessages({
   onDockClose,
   audioMap,
   audioStatus,
+  onRequestTts,
 }: ChatMessagesProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -595,26 +597,36 @@ export default function ChatMessages({
                 OOC
               </button>
             )}
-            {/* TTS play button on hover */}
-            {msg.role === "assistant" && audioMap?.[msg.id] && (
-              <button
-                onClick={() => {
-                  const audio = new Audio(audioMap[msg.id]);
-                  audio.play().catch(() => {});
-                }}
-                className="absolute top-1 right-8 opacity-0 group-hover:opacity-100 transition-opacity duration-150
-                  px-1.5 py-0.5 rounded text-[9px] cursor-pointer border
-                  border-border/40 text-text-dim/50 bg-surface/80 hover:bg-surface-light hover:text-accent"
-                title="Play voice"
-              >
-                &#x1F50A;
-              </button>
-            )}
-            {/* TTS generating indicator */}
-            {msg.role === "assistant" && audioStatus?.[msg.id] && audioStatus[msg.id] !== "error" && (
-              <span className="absolute top-1 right-8 text-[9px] text-accent animate-pulse px-1.5 py-0.5">
-                &#x1F3A4;
-              </span>
+            {/* TTS button on hover: play if audio exists, request generation if not */}
+            {msg.role === "assistant" && !msg.ooc && !isLive && (
+              audioMap?.[msg.id] ? (
+                <button
+                  onClick={() => {
+                    const audio = new Audio(audioMap[msg.id]);
+                    audio.play().catch(() => {});
+                  }}
+                  className="absolute top-1 right-12 opacity-0 group-hover:opacity-100 transition-opacity duration-150
+                    px-1.5 py-0.5 rounded text-[9px] cursor-pointer border
+                    border-border/40 text-text-dim/50 bg-surface/80 hover:bg-surface-light hover:text-accent"
+                  title="Play voice"
+                >
+                  &#x1F50A;
+                </button>
+              ) : audioStatus?.[msg.id] ? (
+                <span className="absolute top-1 right-12 text-[9px] text-accent animate-pulse px-1.5 py-0.5">
+                  &#x1F3A4;
+                </span>
+              ) : onRequestTts ? (
+                <button
+                  onClick={() => onRequestTts(msg.id, msg.content)}
+                  className="absolute top-1 right-12 opacity-0 group-hover:opacity-100 transition-opacity duration-150
+                    px-1.5 py-0.5 rounded text-[9px] cursor-pointer border
+                    border-border/40 text-text-dim/50 bg-surface/80 hover:bg-surface-light hover:text-text-dim/80"
+                  title="Generate voice"
+                >
+                  &#x1F3A4;
+                </button>
+              ) : null
             )}
             {msg.ooc && (
               <div className="text-[10px] font-semibold text-yellow-500/70 uppercase tracking-wider mb-1">OOC</div>

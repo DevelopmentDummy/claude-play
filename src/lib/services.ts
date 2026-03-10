@@ -7,8 +7,7 @@ import { PanelEngine } from "./panel-engine";
 import { wsBroadcast } from "./ws-server";
 import { getDataDir, getAppRoot } from "./data-dir";
 import { AIProvider, providerFromModel } from "./ai-provider";
-import { getGpuQueue } from "./gpu-queue";
-import { getTtsClient } from "./tts-client";
+import { ComfyUIClient } from "./comfyui-client";
 
 const DIALOG_OPEN = "<dialog_response>";
 const DIALOG_CLOSE = "</dialog_response>";
@@ -220,10 +219,9 @@ function initServices(): Services {
     } catch { /* ignore */ }
   }
 
-  /** Trigger TTS for the last assistant message (fire-and-forget) */
+  /** Trigger TTS for the last assistant message (fire-and-forget) via ComfyUI */
   function triggerTts(dialogText: string): void {
-    const tts = getTtsClient();
-    if (!tts) return;
+    if (process.env.TTS_ENABLED === "false") return;
 
     const sessionId = svc.currentSessionId;
     if (!sessionId || svc.isBuilderActive) return;
@@ -235,28 +233,59 @@ function initServices(): Services {
     const messageId = svc.chatHistory[svc.chatHistory.length - 1]?.id;
     if (!messageId) return;
 
-    const refAudio = voiceConfig.referenceAudio
-      ? path.join(sessionDir, voiceConfig.referenceAudio)
+    const host = process.env.COMFYUI_HOST || "127.0.0.1";
+    const port = parseInt(process.env.COMFYUI_PORT || "8188", 10);
+    const client = new ComfyUIClient({ host, port }, "");
+
+    const languageMap: Record<string, string> = {
+      ko: "Korean", en: "English", ja: "Japanese", zh: "Chinese",
+      de: "German", fr: "French", ru: "Russian", pt: "Portuguese",
+      es: "Spanish", it: "Italian",
+    };
+    const lang = languageMap[voiceConfig.language || "ko"] || "Korean";
+    const modelSize = voiceConfig.modelSize || "1.7B";
+
+    // Session TTS requires a .pt voice file
+    const voiceFile = voiceConfig.voiceFile
+      ? path.join(sessionDir, voiceConfig.voiceFile)
       : undefined;
-    const refExists = refAudio && fs.existsSync(refAudio);
+    if (!voiceFile || !fs.existsSync(voiceFile)) return;
+
+    const prompt: Record<string, unknown> = {
+      "10": {
+        class_type: "AILab_Qwen3TTSLoadVoice",
+        inputs: { voice_name: "", custom_path: voiceFile },
+      },
+      "1": {
+        class_type: "AILab_Qwen3TTSVoiceClone",
+        inputs: {
+          target_text: dialogText,
+          model_size: modelSize,
+          language: lang,
+          voice: ["10", 0],
+          unload_models: false,
+          seed: Math.floor(Math.random() * 2 ** 32),
+        },
+      },
+    };
+
+    prompt["2"] = {
+      class_type: "SaveAudioMP3",
+      inputs: {
+        audio: ["1", 0],
+        filename_prefix: "tts_bridge",
+        quality: "128k",
+      },
+    };
 
     const timestamp = Date.now();
-    const audioFilename = `tts-${timestamp}.wav`;
+    const audioFilename = `tts-${timestamp}.mp3`;
     const outputPath = path.join(sessionDir, "audio", audioFilename);
 
     broadcast("audio:status", { status: "queued", messageId });
 
-    getGpuQueue()
-      .enqueue("tts:generate", () =>
-        tts.generate({
-          text: dialogText,
-          referenceAudio: refExists ? refAudio : undefined,
-          design: voiceConfig.design,
-          language: voiceConfig.language,
-          speed: voiceConfig.speed,
-          outputPath,
-        })
-      )
+    client
+      .generateTts(prompt, outputPath)
       .then((result) => {
         if (result.success) {
           const url = `/api/sessions/${sessionId}/files/audio/${audioFilename}`;
@@ -267,7 +296,7 @@ function initServices(): Services {
         }
       })
       .catch((err) => {
-        console.error("[tts] Queue error:", err);
+        console.error("[tts] Error:", err);
         broadcast("audio:status", { status: "error", messageId });
       });
   }

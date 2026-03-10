@@ -5,19 +5,25 @@ import { useState, useEffect, useRef } from "react";
 interface VoiceSettingsProps {
   personaName: string;
   accentColor?: string;
+  refreshTrigger?: number;
 }
 
-export default function VoiceSettings({ personaName, accentColor = "var(--accent)" }: VoiceSettingsProps) {
+export default function VoiceSettings({ personaName, accentColor = "var(--accent)", refreshTrigger = 0 }: VoiceSettingsProps) {
   const [config, setConfig] = useState({
     enabled: false,
     referenceAudio: "",
     design: "",
     language: "ko",
-    speed: 1.0,
+    voiceFile: "",
   });
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [testText, setTestText] = useState("");
+  const [testAudioUrl, setTestAudioUrl] = useState("");
+  const [testStatus, setTestStatus] = useState<"idle" | "generating" | "error">("idle");
   const fileRef = useRef<HTMLInputElement>(null);
+  const testAudioRef = useRef<HTMLAudioElement>(null);
   const enc = encodeURIComponent(personaName);
 
   useEffect(() => {
@@ -25,7 +31,7 @@ export default function VoiceSettings({ personaName, accentColor = "var(--accent
       .then((r) => r.json())
       .then((data) => setConfig((prev) => ({ ...prev, ...data })))
       .catch(() => {});
-  }, [enc]);
+  }, [enc, refreshTrigger]);
 
   async function saveConfig(updated: typeof config) {
     setConfig(updated);
@@ -60,6 +66,62 @@ export default function VoiceSettings({ personaName, accentColor = "var(--accent
     await fetch(`/api/personas/${enc}/voice/upload`, { method: "DELETE" }).catch(() => {});
     setConfig((prev) => ({ ...prev, referenceAudio: "" }));
   }
+
+  async function handleGenerateVoice() {
+    setGenerating(true);
+    try {
+      const res = await fetch(`/api/personas/${enc}/voice/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: "create-voice",
+          design: config.design,
+          language: config.language,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setConfig((prev) => ({ ...prev, voiceFile: data.voiceFile }));
+        if (data.testAudioUrl) {
+          setTestAudioUrl(data.testAudioUrl);
+        }
+      } else {
+        alert(data.error || "Voice generation failed");
+      }
+    } catch {
+      alert("Voice generation failed");
+    }
+    setGenerating(false);
+  }
+
+  async function handleTestTts() {
+    if (!testText.trim()) return;
+    setTestStatus("generating");
+    setTestAudioUrl("");
+    try {
+      const res = await fetch(`/api/personas/${enc}/voice/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: "test",
+          text: testText,
+          design: config.design,
+          language: config.language,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok && data.url) {
+        setTestAudioUrl(data.url);
+        setTestStatus("idle");
+      } else {
+        setTestStatus("error");
+      }
+    } catch {
+      setTestStatus("error");
+    }
+  }
+
+  const hasVoiceSource = !!(config.voiceFile || config.referenceAudio || config.design);
 
   return (
     <div
@@ -145,41 +207,92 @@ export default function VoiceSettings({ personaName, accentColor = "var(--accent
           <p className="text-[9px] text-text-dim/40 mt-0.5">Reference audio가 없을 때 사용</p>
         </div>
 
-        {/* Language & Speed */}
-        <div className="flex gap-2">
-          <div className="flex-1">
-            <label className="text-[10px] text-text-dim/70 block mb-1">Language</label>
-            <select
-              value={config.language}
-              onChange={(e) => saveConfig({ ...config, language: e.target.value })}
-              className="w-full px-2 py-1.5 text-[11px] rounded-lg border border-border/40 bg-transparent text-text
-                outline-none cursor-pointer appearance-none"
-              style={{
-                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M3 5l3 3 3-3'/%3E%3C/svg%3E")`,
-                backgroundRepeat: "no-repeat",
-                backgroundPosition: "right 6px center",
-                paddingRight: "18px",
-              }}
-            >
-              <option value="ko" className="bg-[#1a1a2e] text-[#ccc]">Korean</option>
-              <option value="en" className="bg-[#1a1a2e] text-[#ccc]">English</option>
-              <option value="ja" className="bg-[#1a1a2e] text-[#ccc]">Japanese</option>
-              <option value="zh" className="bg-[#1a1a2e] text-[#ccc]">Chinese</option>
-            </select>
+        {/* Language */}
+        <div>
+          <label className="text-[10px] text-text-dim/70 block mb-1">Language</label>
+          <select
+            value={config.language}
+            onChange={(e) => saveConfig({ ...config, language: e.target.value })}
+            className="w-full px-2 py-1.5 text-[11px] rounded-lg border border-border/40 bg-transparent text-text
+              outline-none cursor-pointer appearance-none"
+            style={{
+              backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M3 5l3 3 3-3'/%3E%3C/svg%3E")`,
+              backgroundRepeat: "no-repeat",
+              backgroundPosition: "right 6px center",
+              paddingRight: "18px",
+            }}
+          >
+            <option value="ko" className="bg-[#1a1a2e] text-[#ccc]">Korean</option>
+            <option value="en" className="bg-[#1a1a2e] text-[#ccc]">English</option>
+            <option value="ja" className="bg-[#1a1a2e] text-[#ccc]">Japanese</option>
+            <option value="zh" className="bg-[#1a1a2e] text-[#ccc]">Chinese</option>
+          </select>
+        </div>
+
+        {/* Voice .pt Generation */}
+        <div
+          className="rounded-lg p-2.5"
+          style={{ background: `${accentColor}08`, border: `1px solid ${accentColor}10` }}
+        >
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="text-[10px] text-text-dim/70">Voice Embedding (.pt)</label>
+            {config.voiceFile && (
+              <span className="text-[9px] text-accent/70">{config.voiceFile}</span>
+            )}
           </div>
-          <div className="w-20">
-            <label className="text-[10px] text-text-dim/70 block mb-1">Speed</label>
+          <button
+            onClick={handleGenerateVoice}
+            disabled={generating || (!config.referenceAudio && !config.design)}
+            className="w-full px-3 py-1.5 text-[11px] rounded-lg border transition-all disabled:opacity-40
+              border-accent/40 text-accent/80 hover:bg-accent/10 hover:text-accent"
+          >
+            {generating ? "Generating..." : config.voiceFile ? "Regenerate Voice" : "Generate Voice (.pt)"}
+          </button>
+          {!config.referenceAudio && !config.design && (
+            <p className="text-[9px] text-text-dim/40 mt-1">Reference audio 또는 voice design 필요</p>
+          )}
+        </div>
+
+        {/* Test TTS */}
+        <div
+          className="rounded-lg p-2.5"
+          style={{ background: `${accentColor}08`, border: `1px solid ${accentColor}10` }}
+        >
+          <label className="text-[10px] text-text-dim/70 block mb-1.5">Test TTS</label>
+          <div className="flex gap-1.5">
             <input
-              type="number"
-              min={0.5}
-              max={2.0}
-              step={0.1}
-              value={config.speed}
-              onChange={(e) => saveConfig({ ...config, speed: parseFloat(e.target.value) || 1.0 })}
-              className="w-full px-2 py-1.5 text-[11px] rounded-lg border border-border/40 bg-transparent text-text
-                outline-none focus:border-accent/60 transition-colors"
+              type="text"
+              value={testText}
+              onChange={(e) => setTestText(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleTestTts()}
+              placeholder="테스트할 대사를 입력하세요"
+              className="flex-1 px-2.5 py-1.5 text-[11px] rounded-lg border border-border/40 bg-transparent text-text
+                outline-none focus:border-accent/60 transition-colors placeholder:text-text-dim/30"
             />
+            <button
+              onClick={handleTestTts}
+              disabled={testStatus === "generating" || !testText.trim() || !hasVoiceSource}
+              className="px-3 py-1.5 text-[11px] rounded-lg border transition-all shrink-0 disabled:opacity-40
+                border-accent/40 text-accent/80 hover:bg-accent/10 hover:text-accent"
+            >
+              {testStatus === "generating" ? "..." : "Play"}
+            </button>
           </div>
+          {testAudioUrl && (
+            <audio
+              ref={testAudioRef}
+              src={testAudioUrl}
+              controls
+              autoPlay
+              className="w-full h-7 mt-2"
+            />
+          )}
+          {testStatus === "error" && (
+            <p className="text-[9px] text-error/70 mt-1">Generation failed</p>
+          )}
+          {!hasVoiceSource && (
+            <p className="text-[9px] text-text-dim/40 mt-1">음성 설정이 필요합니다</p>
+          )}
         </div>
 
         {saving && <p className="text-[9px] text-accent/60">Saving...</p>}

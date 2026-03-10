@@ -713,9 +713,10 @@ export class ComfyUIClient {
   }
 
   private async pollHistory(
-    promptId: string
+    promptId: string,
+    timeoutMs = 120_000
   ): Promise<Record<string, unknown> | null> {
-    const timeout = 120_000;
+    const timeout = timeoutMs;
     const interval = 2_000;
     const start = Date.now();
 
@@ -742,6 +743,30 @@ export class ComfyUIClient {
     }
 
     return null;
+  }
+
+  /** Extract audio output filenames from history entry */
+  private extractAudioFilenames(
+    historyEntry: Record<string, unknown>
+  ): Array<{ filename: string; prefix: string }> {
+    const outputs = historyEntry.outputs as
+      | Record<string, Record<string, unknown>>
+      | undefined;
+    if (!outputs) return [];
+
+    const results: Array<{ filename: string; prefix: string }> = [];
+    for (const nodeOutput of Object.values(outputs)) {
+      const audios = nodeOutput.audio as
+        | Array<{ filename: string; subfolder?: string; type?: string }>
+        | undefined;
+      if (audios && audios.length > 0) {
+        for (const a of audios) {
+          const prefix = a.filename.replace(/_\d+_?\.\w+$/, "");
+          results.push({ filename: a.filename, prefix });
+        }
+      }
+    }
+    return results;
   }
 
   /** Extract all output filenames grouped by their prefix */
@@ -991,6 +1016,50 @@ export class ComfyUIClient {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return { success: false, error: message };
+    }
+  }
+
+  /** Generate TTS audio via ComfyUI workflow, download and save to outputPath */
+  async generateTts(
+    prompt: Record<string, unknown>,
+    outputPath: string,
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      await this.reconcileQueueBeforeSubmit();
+      const queueRes = await this.fetchWithRetry(`${this.baseUrl}/prompt`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt }),
+      }, { attempts: 5, timeoutMs: 30_000, baseDelayMs: 300 });
+
+      if (!queueRes.ok) {
+        const errText = await queueRes.text();
+        console.error("[comfyui-tts] Queue failed:", queueRes.status, errText);
+        return { success: false, error: `ComfyUI queue failed: ${errText}` };
+      }
+
+      const { prompt_id } = (await queueRes.json()) as { prompt_id: string };
+
+      const history = await this.pollHistory(prompt_id, 600_000);
+      if (!history) {
+        await this.cancelPrompt(prompt_id);
+        return { success: false, error: "Timeout waiting for TTS generation" };
+      }
+      const audioFiles = this.extractAudioFilenames(history);
+      if (audioFiles.length === 0) {
+        return { success: false, error: "No audio output in ComfyUI result" };
+      }
+
+      const buffer = await this.downloadImage(audioFiles[0].filename);
+      if (!buffer) {
+        return { success: false, error: "Failed to download audio from ComfyUI" };
+      }
+
+      fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+      fs.writeFileSync(outputPath, buffer);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
     }
   }
 }

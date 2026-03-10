@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
+import VoiceSettings from "@/components/VoiceSettings";
 
 interface FileInfo {
   name: string;
@@ -307,6 +308,11 @@ export default function BuilderOverview({
           </div>
         </div>
       )}
+
+      {/* Voice Settings */}
+      <div className="mb-2.5">
+        <VoiceSettings personaName={personaName} refreshTrigger={refreshTrigger} />
+      </div>
 
       {/* File viewer modal — portal to body to escape backdrop-blur stacking context */}
       {modal && createPortal(

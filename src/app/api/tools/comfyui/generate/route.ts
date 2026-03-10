@@ -3,7 +3,6 @@ import * as path from "path";
 import * as fs from "fs";
 import { getServices } from "@/lib/services";
 import { ComfyUIClient } from "@/lib/comfyui-client";
-import { getGpuQueue } from "@/lib/gpu-queue";
 
 export async function POST(req: Request) {
   const svc = getServices();
@@ -89,7 +88,8 @@ export async function POST(req: Request) {
 
   const resultPath = `images/${safeName}`;
 
-  getGpuQueue().enqueue("comfyui:generate", async () => {
+  // Fire-and-forget — ComfyUI has its own internal queue
+  (async () => {
     try {
       const result = body.raw
         ? await client.generateRaw({
@@ -114,7 +114,7 @@ export async function POST(req: Request) {
     } catch (err) {
       console.error(`[comfyui] Unexpected error:`, err);
     }
-  });
+  })();
 
   return NextResponse.json({
     status: "queued",

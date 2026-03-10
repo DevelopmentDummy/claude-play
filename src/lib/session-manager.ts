@@ -666,7 +666,7 @@ export class SessionManager {
   syncPersonaToSession(id: string): void {
     this.syncPersonaToSessionSelective(id, {
       panels: true, variables: true, layout: true, opening: true,
-      worldview: true, skills: true, instructions: true,
+      worldview: true, skills: true, instructions: true, voice: true,
     });
   }
 
@@ -730,6 +730,7 @@ export class SessionManager {
       layout: "layout.json",
       opening: "opening.md",
       worldview: "worldview.md",
+      voice: "voice.json",
     };
     for (const [key, file] of Object.entries(fileMap)) {
       if (elements[key]) {
@@ -819,6 +820,7 @@ export class SessionManager {
       { key: "opening", label: "오프닝 메시지 (opening.md)", file: "opening.md" },
       { key: "worldview", label: "세계관 (worldview.md)", file: "worldview.md" },
       { key: "variables", label: "변수 (variables.json)", file: "variables.json" },
+      { key: "voice", label: "음성 설정 (voice.json)", file: "voice.json" },
     ];
     for (const { key, label, file } of files) {
       const src = path.join(personaDir, file);
@@ -897,6 +899,7 @@ export class SessionManager {
       { key: "opening", label: "오프닝 메시지 (opening.md)", file: "opening.md" },
       { key: "worldview", label: "세계관 (worldview.md)", file: "worldview.md" },
       { key: "variables", label: "변수 (variables.json)", file: "variables.json" },
+      { key: "voice", label: "음성 설정 (voice.json)", file: "voice.json" },
     ];
     for (const { key, label, file } of files) {
       const src = path.join(sessionDir, file);
@@ -1009,6 +1012,7 @@ export class SessionManager {
       layout: "layout.json",
       opening: "opening.md",
       worldview: "worldview.md",
+      voice: "voice.json",
     };
     for (const [key, file] of Object.entries(fileMap)) {
       if (elements[key]) {
@@ -1303,7 +1307,7 @@ export class SessionManager {
   // ── Voice ──────────────────────────────────────────────
 
   /** Read voice.json from a directory (persona or session) */
-  readVoiceConfig(dir: string): { enabled: boolean; referenceAudio?: string; design?: string; language?: string; speed?: number } | null {
+  readVoiceConfig(dir: string): { enabled: boolean; referenceAudio?: string; design?: string; language?: string; speed?: number; modelSize?: string; speaker?: string; voiceFile?: string } | null {
     const voicePath = path.join(dir, "voice.json");
     if (!fs.existsSync(voicePath)) return null;
     try {

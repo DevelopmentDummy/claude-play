@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { MODEL_GROUPS } from "@/lib/ai-provider";
-import VoiceSettings from "@/components/VoiceSettings";
 
 interface ProfileOption {
   slug: string;
@@ -239,8 +238,6 @@ export default function PersonaStartModal({
                   </div>
                 )}
 
-                {/* Voice settings */}
-                <VoiceSettings personaName={personaName} accentColor={accentColor} />
               </>
             )}
           </div>

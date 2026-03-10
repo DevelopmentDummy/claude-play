@@ -1,6 +1,0 @@
-fastapi>=0.115.0
-uvicorn>=0.34.0
-transformers>=4.48.0
-torch>=2.5.0
-torchaudio>=2.5.0
-soundfile>=0.13.0

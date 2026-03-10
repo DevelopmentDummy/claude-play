@@ -373,6 +373,17 @@ export default function ChatPage() {
             onDockClose={handleDockClose}
             audioMap={audioMap}
             audioStatus={audioStatus}
+            onRequestTts={(messageId, text) => {
+              console.log("[tts] Requesting TTS for:", messageId, "text length:", text?.length);
+              fetch("/api/chat/tts", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ messageId, text }),
+              })
+                .then((r) => r.json())
+                .then((d) => console.log("[tts] Response:", d))
+                .catch((e) => console.error("[tts] Fetch error:", e));
+            }}
           />
           {activeDockBottom.length > 0 && (
             <DockPanel
