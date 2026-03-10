@@ -19,6 +19,7 @@ const SYSTEM_JSON = new Set([
   "package.json",
   "tsconfig.json",
   "character-tags.json",
+  "voice.json",
 ]);
 
 export interface PanelUpdate {

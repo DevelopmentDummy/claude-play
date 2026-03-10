@@ -56,8 +56,24 @@ export default function ChatPage() {
   const [currentProvider, setCurrentProvider] = useState<"claude" | "codex">("claude");
   const [showOOC, setShowOOC] = useState(false);
   const [syncModalOpen, setSyncModalOpen] = useState(false);
+  const [autoPlay, setAutoPlay] = useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("tts-autoplay") !== "false";
+    }
+    return true;
+  });
+  const [audioMap, setAudioMap] = useState<Record<string, string>>({});
+  const [audioStatus, setAudioStatus] = useState<Record<string, string>>({});
   const isMobile = useIsMobile();
   const initRef = useRef(false);
+
+  const handleAutoPlayToggle = useCallback(() => {
+    setAutoPlay((prev) => {
+      const next = !prev;
+      localStorage.setItem("tts-autoplay", String(next));
+      return next;
+    });
+  }, []);
 
   // Auto re-open session when server restarts and WS reconnects
   const handleSessionLost = useCallback(async () => {
@@ -98,6 +114,24 @@ export default function ChatPage() {
           const imageBase = `/api/sessions/${sessionId}/files?path=images/`;
           applyLayout(update.layout, imageBase);
         }
+      },
+      "audio:ready": (d) => {
+        const { url, messageId } = d as { url: string; messageId: string };
+        setAudioMap((prev) => ({ ...prev, [messageId]: url }));
+        setAudioStatus((prev) => {
+          const next = { ...prev };
+          delete next[messageId];
+          return next;
+        });
+        // Auto-play: read from localStorage since this closure captures stale state
+        if (localStorage.getItem("tts-autoplay") !== "false") {
+          const audio = new Audio(url);
+          audio.play().catch(() => {});
+        }
+      },
+      "audio:status": (d) => {
+        const { status, messageId } = d as { status: string; messageId: string };
+        setAudioStatus((prev) => ({ ...prev, [messageId]: status }));
       },
       "profile:update": (p) => {
         const update = p as { profile?: string; timestamp?: number };
@@ -305,6 +339,8 @@ export default function ChatPage() {
         provider={currentProvider}
         onModelChange={handleModelChange}
         onSync={() => setSyncModalOpen(true)}
+        autoPlay={autoPlay}
+        onAutoPlayToggle={handleAutoPlayToggle}
       />
       <ErrorBanner error={error} onDismiss={() => setError(null)} />
       <div className="flex-1 relative min-h-0">
@@ -331,6 +367,8 @@ export default function ChatPage() {
             dockWidth={dockWidth}
             panelData={panelData}
             onDockClose={handleDockClose}
+            audioMap={audioMap}
+            audioStatus={audioStatus}
           />
           {activeDockBottom.length > 0 && (
             <DockPanel

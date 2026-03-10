@@ -10,6 +10,7 @@ const SYSTEM_JSON = new Set([
   "variables.json", "session.json", "builder-session.json",
   "comfyui-config.json", "layout.json", "chat-history.json",
   "package.json", "tsconfig.json", "character-tags.json",
+  "voice.json",
 ]);
 
 export interface PersonaInfo {
@@ -1297,6 +1298,24 @@ export class SessionManager {
     } catch {
       return { ...DEFAULT_LAYOUT };
     }
+  }
+
+  // ── Voice ──────────────────────────────────────────────
+
+  /** Read voice.json from a directory (persona or session) */
+  readVoiceConfig(dir: string): { enabled: boolean; referenceAudio?: string; design?: string; language?: string; speed?: number } | null {
+    const voicePath = path.join(dir, "voice.json");
+    if (!fs.existsSync(voicePath)) return null;
+    try {
+      return JSON.parse(fs.readFileSync(voicePath, "utf-8"));
+    } catch {
+      return null;
+    }
+  }
+
+  /** Write voice.json to a directory */
+  writeVoiceConfig(dir: string, config: Record<string, unknown>): void {
+    fs.writeFileSync(path.join(dir, "voice.json"), JSON.stringify(config, null, 2), "utf-8");
   }
 
   // ── Tools ──────────────────────────────────────────────
