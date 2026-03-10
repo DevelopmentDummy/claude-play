@@ -31,6 +31,8 @@ interface ChatMessagesProps {
   dockWidth?: number;
   panelData?: Record<string, unknown>;
   onDockClose?: (name: string) => void;
+  audioMap?: Record<string, string>;
+  audioStatus?: Record<string, string>;
 }
 
 const OPEN_TAG = "<dialog_response>";
@@ -320,6 +322,8 @@ export default function ChatMessages({
   dockWidth: dockWidthProp,
   panelData,
   onDockClose,
+  audioMap,
+  audioStatus,
 }: ChatMessagesProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);

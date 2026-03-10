@@ -19,6 +19,9 @@ interface StatusBarProps {
   onServiceChange?: (service: "claude" | "codex") => void;
   /** Persona sync */
   onSync?: () => void;
+  /** TTS auto-play */
+  autoPlay?: boolean;
+  onAutoPlayToggle?: () => void;
 }
 
 const selectClass = `px-2 py-1 rounded-md text-xs text-text-dim bg-transparent border border-border/60 outline-none cursor-pointer appearance-none
@@ -48,6 +51,8 @@ export default function StatusBar({
   service,
   onServiceChange,
   onSync,
+  autoPlay,
+  onAutoPlayToggle,
 }: StatusBarProps) {
   const statusColors: Record<string, string> = {
     connected: "bg-success shadow-[0_0_8px_rgba(77,255,145,0.4)]",
@@ -82,6 +87,21 @@ export default function StatusBar({
         </button>
       )}
       <div className={`flex items-center gap-2 ${showPanelButton ? "" : "ml-auto"}`}>
+        {/* TTS auto-play toggle */}
+        {onAutoPlayToggle !== undefined && (
+          <button
+            onClick={onAutoPlayToggle}
+            className={`px-2 py-1 rounded-md text-xs border cursor-pointer transition-all duration-fast ${
+              autoPlay
+                ? "text-accent border-accent/60 bg-accent/10"
+                : "text-text-dim border-border/60 hover:border-border hover:text-text"
+            }`}
+            title={autoPlay ? "Auto-play voice ON" : "Auto-play voice OFF"}
+          >
+            {autoPlay ? "\u{1F50A}" : "\u{1F507}"}
+          </button>
+        )}
+
         {/* Sync button */}
         {!isBuilderMode && onSync && (
           <button
