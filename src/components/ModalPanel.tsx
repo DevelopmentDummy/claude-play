@@ -3,6 +3,7 @@
 import { useRef, useEffect, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import ImageModal from "./ImageModal";
+import { installImagePolling } from "@/lib/panel-image-polling";
 
 interface ModalPanelProps {
   name: string;
@@ -128,6 +129,8 @@ export default function ModalPanel({
     shadow.innerHTML =
       `<style>:host{display:block;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:14px;line-height:1.6;color:#e0e0e0;}img{cursor:zoom-in;}</style>` +
       html;
+
+    installImagePolling(shadow);
 
     const scripts = Array.from(shadow.querySelectorAll("script"));
     for (const oldScript of scripts) {
