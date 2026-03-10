@@ -7,6 +7,8 @@ import { PanelEngine } from "./panel-engine";
 import { wsBroadcast } from "./ws-server";
 import { getDataDir, getAppRoot } from "./data-dir";
 import { AIProvider, providerFromModel } from "./ai-provider";
+import { getGpuQueue } from "./gpu-queue";
+import { getTtsClient } from "./tts-client";
 
 const DIALOG_OPEN = "<dialog_response>";
 const DIALOG_CLOSE = "</dialog_response>";
@@ -218,6 +220,58 @@ function initServices(): Services {
     } catch { /* ignore */ }
   }
 
+  /** Trigger TTS for the last assistant message (fire-and-forget) */
+  function triggerTts(dialogText: string): void {
+    const tts = getTtsClient();
+    if (!tts) return;
+
+    const sessionId = svc.currentSessionId;
+    if (!sessionId || svc.isBuilderActive) return;
+
+    const sessionDir = sessions.getSessionDir(sessionId);
+    const voiceConfig = sessions.readVoiceConfig(sessionDir);
+    if (!voiceConfig?.enabled) return;
+
+    const messageId = svc.chatHistory[svc.chatHistory.length - 1]?.id;
+    if (!messageId) return;
+
+    const refAudio = voiceConfig.referenceAudio
+      ? path.join(sessionDir, voiceConfig.referenceAudio)
+      : undefined;
+    const refExists = refAudio && fs.existsSync(refAudio);
+
+    const timestamp = Date.now();
+    const audioFilename = `tts-${timestamp}.wav`;
+    const outputPath = path.join(sessionDir, "audio", audioFilename);
+
+    broadcast("audio:status", { status: "queued", messageId });
+
+    getGpuQueue()
+      .enqueue("tts:generate", () =>
+        tts.generate({
+          text: dialogText,
+          referenceAudio: refExists ? refAudio : undefined,
+          design: voiceConfig.design,
+          language: voiceConfig.language,
+          speed: voiceConfig.speed,
+          outputPath,
+        })
+      )
+      .then((result) => {
+        if (result.success) {
+          const url = `/api/sessions/${sessionId}/files?path=audio/${audioFilename}`;
+          broadcast("audio:ready", { url, messageId });
+        } else {
+          console.error("[tts] Generation failed:", result.error);
+          broadcast("audio:status", { status: "error", messageId, error: result.error });
+        }
+      })
+      .catch((err) => {
+        console.error("[tts] Queue error:", err);
+        broadcast("audio:status", { status: "error", messageId });
+      });
+  }
+
   /** Bind event listeners to the current AI process */
   function bindProcessEvents(p: AIProcess): void {
     p.on("message", (d) => {
@@ -314,6 +368,20 @@ function initServices(): Services {
 
         // Force panel refresh at end of turn
         svc.panels.reload();
+
+        // Trigger TTS for the last assistant dialog (non-OOC only)
+        if (!isOOC && svc.chatHistory.length > 0) {
+          const lastMsg = svc.chatHistory[svc.chatHistory.length - 1];
+          if (lastMsg.role === "assistant" && lastMsg.content) {
+            const ttsText = lastMsg.content
+              .replace(/\$(?:IMAGE|PANEL):[^$]+\$/g, "")
+              .replace(/<choice>[\s\S]*?<\/choice>/g, "")
+              .trim();
+            if (ttsText) {
+              triggerTts(ttsText);
+            }
+          }
+        }
       }
     });
 
