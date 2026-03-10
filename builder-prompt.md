@@ -530,10 +530,11 @@ curl -s -X POST "http://localhost:{{PORT}}/api/tools/gemini/generate" \
 
 대화 세션에서 캐릭터의 대사를 음성으로 재생하는 TTS(Text-to-Speech) 기능을 설정한다. ComfyUI의 Qwen3-TTS 노드를 통해 음성을 생성한다.
 
-**음성 설정 방식은 두 가지:**
+**음성 설정 방식은 세 가지:**
 
-1. **Voice Design (권장)** — 텍스트 프롬프트로 음성 특성을 묘사하여 생성
-2. **Reference Audio** — 사용자가 업로드한 참고 음성 파일로 음성을 복제
+1. **Voice Design** — 텍스트 프롬프트로 음성 특성을 묘사하여 생성
+2. **Reference Audio (파일 업로드)** — 사용자가 업로드한 참고 음성 파일로 음성을 복제
+3. **Reference Audio (YouTube)** — YouTube 영상에서 음성 구간을 추출하여 레퍼런스로 사용
 
 **어느 방식이든 최종적으로 `.pt` 파일(음성 임베딩)을 생성해야 한다.** 세션 TTS는 `.pt` 파일로만 동작한다.
 
@@ -549,20 +550,57 @@ curl -s -X POST "http://localhost:{{PORT}}/api/tools/gemini/generate" \
 1. 사용자에게 참고 음성 파일이 있는지 물어본다 (3~30초 길이의 wav/mp3/ogg/flac)
 2. 있다면 빌더 사이드바의 Voice 패널에서 업로드하도록 안내한다
 3. 업로드 후 voice.json에 자동으로 `referenceAudio` 필드가 저장된다
+4. **Reference Text 작성**: 레퍼런스 오디오에서 말하는 내용의 정확한 대본을 `referenceText` 필드에 입력한다
+   - 오디오에서 실제로 말하는 내용과 **정확히 일치**해야 한다
+   - referenceText가 있으면 ICL 모드(고품질 클로닝), 없으면 x-vector only(저품질)로 동작한다
+   - 캐릭터의 성격과 말투를 잘 드러내는 대사를 레퍼런스 오디오로 녹음하고, 그 대본을 기입할 것
+   - 레퍼런스 오디오 길이에 맞는 분량 (3~30초에 해당하는 텍스트)
+
+**YouTube Reference Audio 절차 (AI 자동 검색):**
+사용자가 특정 캐릭터나 목소리를 언급하면 (예: "가렌 목소리로 해줘", "이 캐릭터는 차가운 남성 목소리가 어울릴 것 같아"):
+1. `yt-dlp`로 YouTube 영상을 검색한다:
+```bash
+yt-dlp "ytsearch5:{검색어}" --flat-playlist --dump-json --no-download 2>/dev/null
+```
+   - 검색어 예: `럭스 Voice Korean League of Legends`, `가렌 한국어 음성`, `{작품명} {캐릭터} voice lines`
+   - 결과는 NDJSON 형식. 각 줄에서 `title`, `url`, `duration_string`을 확인한다
+   - 대사가 명확하고 배경 음악/효과음이 적은 영상을 우선한다
+2. 적절한 영상을 찾으면 voice.json에 `youtubeSetup` 필드를 작성한다:
+```json
+{
+  "youtubeSetup": {
+    "url": "https://www.youtube.com/watch?v=...",
+    "start": 0,
+    "end": 30
+  }
+}
+```
+3. 이 필드가 voice.json에 쓰이면, 사용자의 빌더 사이드바 Voice 패널에 **YouTube 마법사 모달이 자동으로 열린다** (URL과 시간이 미리 채워진 상태)
+4. 사용자는 모달에서 **Preview** 버튼으로 구간을 미리 듣고, 시간을 조정한 뒤 **Apply**로 레퍼런스 오디오로 등록한다
+5. 사용자에게 "YouTube 마법사 모달이 열렸을 겁니다. Preview로 확인해보시고, 마음에 드시면 Apply를 눌러주세요."라고 안내한다
+
+**참고:**
+- `youtubeSetup`은 모달이 열리면 자동으로 삭제된다 (일회용 트리거)
+- 영상 선택 시 대사가 명확하고 배경 음악/효과음이 적은 구간을 권장한다
+- 여러 영상을 제안하고 사용자가 선택하게 할 수도 있다
 
 **voice.json 작성:**
 ```json
 {
   "enabled": true,
   "design": "A bright, cute young woman with a playful tone.",
-  "language": "ko"
+  "language": "ko",
+  "referenceText": "레퍼런스 오디오에서 말하는 내용의 대본"
 }
 ```
 
 - `enabled`: TTS 활성화 여부
 - `design`: 영어 voice design 프롬프트 (reference audio가 없을 때 사용)
 - `referenceAudio`: 참고 음성 파일명 (업로드 시 자동 설정)
+- `referenceText`: 레퍼런스 오디오의 대본 (ICL 모드 활성화. 없으면 x-vector only)
 - `language`: 대사 언어 코드 (`ko`, `en`, `ja`, `zh` 등)
+- `modelSize`: 모델 크기 (`"0.6B"` 빠름/저품질, `"1.7B"` 느림/고품질. 기본값 `"1.7B"`)
+- `chunkDelay`: 청크 간 딜레이 ms (기본값 500)
 - `voiceFile`: `.pt` 파일 경로 (생성 후 자동 설정 — 직접 수정하지 마라)
 
 **voice.json 작성 후, 사용자에게 빌더 사이드바의 Voice 패널에서 "Generate Voice (.pt)" 버튼을 눌러 음성 임베딩을 생성하도록 안내한다.** 생성이 완료되면 테스트 음성이 자동 재생된다. 사용자가 만족하지 않으면 design 프롬프트를 수정하고 다시 생성한다.
@@ -602,6 +640,7 @@ curl -s -X POST "http://localhost:{{PORT}}/api/tools/gemini/generate" \
 - [ ] `session-instructions.md`에 이미지 생성 시 `comfyui-config.json`을 참조하라는 지시가 있는가?
 - [ ] `profile.png` 프로필 이미지를 생성했는가? (ComfyUI 또는 Gemini)
 - [ ] `voice.json`의 `design` 프롬프트가 영어로 작성되어 있는가?
+- [ ] reference audio 사용 시 `referenceText`에 오디오 대본이 정확히 기입되어 있는가?
 - [ ] 사용자에게 `.pt` 음성 임베딩 생성을 안내했는가?
 
 ---

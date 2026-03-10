@@ -156,7 +156,8 @@ data/
 - **System JSON exclusion**: Files like `session.json`, `layout.json`, `chat-history.json` are excluded from custom data file loading in both `PanelEngine` and `SessionManager`.
 - **Real-time layout updates**: `panel-engine.ts` watches `layout.json` via `fs.watch` and broadcasts `layout:update` WebSocket events. Changes reflect immediately without session re-entry.
 - **Compacting status**: Claude CLI `system.status.compacting` events are forwarded to frontend and shown as blue pulsing indicator in StatusBar.
-- **Voice config**: `voice.json` in persona/session dir configures per-character TTS. `referenceAudio` (clone from sample) → `AILab_Qwen3TTSVoiceClone`, `design` (text prompt) → `AILab_Qwen3TTSVoiceDesign`, neither → `AILab_Qwen3TTSCustomVoice` (preset speaker fallback). Copied to session on creation.
+- **Voice config**: `voice.json` in persona/session dir configures per-character TTS. Fields: `enabled`, `referenceAudio`, `referenceText`, `design`, `language`, `modelSize` ("0.6B"/"1.7B"), `voiceFile`, `chunkDelay`. `referenceAudio` (clone from sample) → `AILab_Qwen3TTSVoiceClone`, `design` (text prompt) → `AILab_Qwen3TTSVoiceDesign`. Copied to session on creation.
+- **Voice referenceText**: 레퍼런스 오디오의 대본(transcript). 입력 시 ICL 모드로 정확한 음성 클로닝, 비우면 x-vector only (낮은 품질). 레퍼런스 오디오에서 실제로 말하는 내용과 정확히 일치해야 함. 캐릭터의 성격과 말투를 잘 드러내는 3~30초 분량의 대사를 레퍼런스 오디오로 녹음하고, 그 대사를 referenceText에 기입할 것.
 - **TTS via ComfyUI**: TTS generation uses ComfyUI's AILab_Qwen3TTS custom nodes (same GPU queue as image generation). No separate TTS server needed. Output saved as MP3 to session `audio/` dir.
 - **Audio files**: TTS output saved to `audio/` subdir in session. Served via existing `/api/sessions/[id]/files` route. `audio:ready` WebSocket event notifies frontend with URL and messageId.
 

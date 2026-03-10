@@ -5,6 +5,23 @@ import { getServices } from "@/lib/services";
 import { ComfyUIClient } from "@/lib/comfyui-client";
 import { wsBroadcast } from "@/lib/ws-server";
 
+/** Sanitize text for TTS: remove tokens, tags, markdown emphasis */
+function sanitizeTtsText(raw: string): string {
+  return raw
+    .replace(/\$(?:IMAGE|PANEL):[^$]+\$/g, "")
+    .replace(/<choice>[\s\S]*?<\/choice>/g, "")
+    .replace(/<[^>]+>/g, "")
+    .replace(/\*+/g, "")
+    .replace(/\.{2,}/g, "")
+    .replace(/["""""]/g, "")
+    .trim();
+}
+
+/** Split sanitized TTS text into chunks by newline, skip empty/trivial lines */
+function splitTtsChunks(text: string): string[] {
+  return text.split(/\n+/).map(s => s.trim()).filter(s => s.length > 1);
+}
+
 export async function POST(req: Request) {
   const svc = getServices();
   const body = (await req.json()) as { messageId: string; text: string };
@@ -42,64 +59,72 @@ export async function POST(req: Request) {
   };
   const lang = languageMap[voiceConfig.language || "ko"] || "Korean";
   const modelSize = voiceConfig.modelSize || "1.7B";
+  const chunkDelay = voiceConfig.chunkDelay ?? 500;
 
-  const dialogText = body.text
-    .replace(/\$(?:IMAGE|PANEL):[^$]+\$/g, "")
-    .replace(/<choice>[\s\S]*?<\/choice>/g, "")
-    .trim();
+  const sanitized = sanitizeTtsText(body.text);
+  const chunks = splitTtsChunks(sanitized);
 
-  if (!dialogText) {
+  if (chunks.length === 0) {
     return NextResponse.json({ error: "No text to synthesize" }, { status: 400 });
   }
 
-  const prompt: Record<string, unknown> = {
-    "10": {
-      class_type: "AILab_Qwen3TTSLoadVoice",
-      inputs: { voice_name: "", custom_path: voiceFile },
-    },
-    "1": {
-      class_type: "AILab_Qwen3TTSVoiceClone",
-      inputs: {
-        target_text: dialogText,
-        model_size: modelSize,
-        language: lang,
-        voice: ["10", 0],
-        unload_models: false,
-        seed: Math.floor(Math.random() * 2 ** 32),
-      },
-    },
-    "2": {
-      class_type: "SaveAudioMP3",
-      inputs: {
-        audio: ["1", 0],
-        filename_prefix: "tts_bridge",
-        quality: "128k",
-      },
-    },
-  };
+  const totalChunks = chunks.length;
+  const { messageId } = body;
 
-  const timestamp = Date.now();
-  const audioFilename = `tts-${timestamp}.mp3`;
-  const outputPath = path.join(sessionDir, "audio", audioFilename);
+  const seed = Math.floor(Math.random() * 2 ** 32);
 
-  wsBroadcast("audio:status", { status: "generating", messageId: body.messageId });
+  wsBroadcast("audio:status", { status: "generating", messageId, totalChunks });
 
-  // Fire-and-forget
-  client
-    .generateTts(prompt, outputPath)
-    .then((result) => {
-      if (result.success) {
-        const url = `/api/sessions/${sessionId}/files/audio/${audioFilename}`;
-        wsBroadcast("audio:ready", { url, messageId: body.messageId });
-      } else {
-        console.error("[tts] Generation failed:", result.error);
-        wsBroadcast("audio:status", { status: "error", messageId: body.messageId });
+  // Fire-and-forget: submit chunks sequentially
+  (async () => {
+    for (let i = 0; i < chunks.length; i++) {
+      if (i > 0) await new Promise(r => setTimeout(r, chunkDelay));
+
+      const timestamp = Date.now();
+      const audioFilename = `tts-${timestamp}-${i}.mp3`;
+      const outputPath = path.join(sessionDir, "audio", audioFilename);
+
+      const prompt: Record<string, unknown> = {
+        "10": {
+          class_type: "AILab_Qwen3TTSLoadVoice",
+          inputs: { voice_name: "", custom_path: voiceFile },
+        },
+        "1": {
+          class_type: "AILab_Qwen3TTSVoiceClone",
+          inputs: {
+            target_text: chunks[i],
+            model_size: modelSize,
+            language: lang,
+            voice: ["10", 0],
+            unload_models: false,
+            seed,
+          },
+        },
+        "2": {
+          class_type: "SaveAudioMP3",
+          inputs: {
+            audio: ["1", 0],
+            filename_prefix: "tts_bridge",
+            quality: "128k",
+          },
+        },
+      };
+
+      try {
+        const result = await client.generateTts(prompt, outputPath);
+        if (result.success) {
+          const url = `/api/sessions/${sessionId}/files/audio/${audioFilename}`;
+          wsBroadcast("audio:ready", { url, messageId, chunkIndex: i, totalChunks });
+        } else {
+          console.error(`[tts] Chunk ${i} failed:`, result.error);
+          wsBroadcast("audio:status", { status: "error", messageId, chunkIndex: i, totalChunks });
+        }
+      } catch (err) {
+        console.error(`[tts] Chunk ${i} error:`, err);
+        wsBroadcast("audio:status", { status: "error", messageId, chunkIndex: i, totalChunks });
       }
-    })
-    .catch((err) => {
-      console.error("[tts] Error:", err);
-      wsBroadcast("audio:status", { status: "error", messageId: body.messageId });
-    });
+    }
+  })();
 
-  return NextResponse.json({ status: "queued" });
+  return NextResponse.json({ status: "queued", totalChunks });
 }

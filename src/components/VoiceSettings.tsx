@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 
 interface VoiceSettingsProps {
   personaName: string;
@@ -12,9 +13,12 @@ export default function VoiceSettings({ personaName, accentColor = "var(--accent
   const [config, setConfig] = useState({
     enabled: false,
     referenceAudio: "",
+    referenceText: "",
     design: "",
     language: "ko",
     voiceFile: "",
+    chunkDelay: 500,
+    modelSize: "1.7B",
   });
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -26,11 +30,45 @@ export default function VoiceSettings({ personaName, accentColor = "var(--accent
   const testAudioRef = useRef<HTMLAudioElement>(null);
   const enc = encodeURIComponent(personaName);
 
+  // YouTube modal state
+  const [ytModal, setYtModal] = useState(false);
+  const [ytUrl, setYtUrl] = useState("");
+  const [ytStart, setYtStart] = useState("0");
+  const [ytEnd, setYtEnd] = useState("30");
+  const [ytLoading, setYtLoading] = useState(false);
+  const [ytPreviewUrl, setYtPreviewUrl] = useState("");
+  const [ytError, setYtError] = useState("");
+
   useEffect(() => {
-    fetch(`/api/personas/${enc}/voice`)
-      .then((r) => r.json())
-      .then((data) => setConfig((prev) => ({ ...prev, ...data })))
-      .catch(() => {});
+    function loadVoice() {
+      fetch(`/api/personas/${enc}/voice`)
+        .then((r) => r.json())
+        .then((data) => {
+          setConfig((prev) => ({ ...prev, ...data }));
+          // Auto-open YouTube modal if AI wrote youtubeSetup
+          if (data.youtubeSetup?.url) {
+            setYtUrl(data.youtubeSetup.url);
+            setYtStart(String(data.youtubeSetup.start ?? 0));
+            setYtEnd(String(data.youtubeSetup.end ?? 30));
+            setYtPreviewUrl("");
+            setYtError("");
+            setYtModal(true);
+            // Clear youtubeSetup from voice.json
+            fetch(`/api/personas/${enc}/voice`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ...data, youtubeSetup: undefined }),
+            }).catch(() => {});
+          }
+        })
+        .catch(() => {});
+    }
+    // On refresh triggers (AI response complete), delay slightly to ensure file writes are flushed
+    if (refreshTrigger > 0) {
+      const t = setTimeout(loadVoice, 500);
+      return () => clearTimeout(t);
+    }
+    loadVoice();
   }, [enc, refreshTrigger]);
 
   async function saveConfig(updated: typeof config) {
@@ -121,6 +159,72 @@ export default function VoiceSettings({ personaName, accentColor = "var(--accent
     }
   }
 
+  // YouTube modal handlers
+  function openYtModal() {
+    setYtModal(true);
+    setYtUrl("");
+    setYtStart("0");
+    setYtEnd("30");
+    setYtPreviewUrl("");
+    setYtError("");
+  }
+
+  async function handleYtPreview() {
+    if (!ytUrl.trim()) return;
+    setYtLoading(true);
+    setYtError("");
+    setYtPreviewUrl("");
+    try {
+      const res = await fetch(`/api/personas/${enc}/voice/youtube`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: ytUrl,
+          start: parseFloat(ytStart) || 0,
+          end: parseFloat(ytEnd) || 30,
+          preview: true,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ error: "Failed" }));
+        setYtError(data.error || "Preview failed");
+      } else {
+        const blob = await res.blob();
+        setYtPreviewUrl(URL.createObjectURL(blob));
+      }
+    } catch {
+      setYtError("Preview failed");
+    }
+    setYtLoading(false);
+  }
+
+  async function handleYtApply() {
+    if (!ytUrl.trim()) return;
+    setYtLoading(true);
+    setYtError("");
+    try {
+      const res = await fetch(`/api/personas/${enc}/voice/youtube`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: ytUrl,
+          start: parseFloat(ytStart) || 0,
+          end: parseFloat(ytEnd) || 30,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setConfig((prev) => ({ ...prev, referenceAudio: data.filename, enabled: true }));
+        setYtModal(false);
+      } else {
+        setYtError(data.error || "Failed");
+      }
+    } catch {
+      setYtError("Failed to download");
+    }
+    setYtLoading(false);
+  }
+
   const hasVoiceSource = !!(config.voiceFile || config.referenceAudio || config.design);
 
   return (
@@ -172,7 +276,7 @@ export default function VoiceSettings({ personaName, accentColor = "var(--accent
               </button>
             </div>
           ) : (
-            <div>
+            <div className="flex gap-1.5">
               <input
                 ref={fileRef}
                 type="file"
@@ -186,11 +290,35 @@ export default function VoiceSettings({ personaName, accentColor = "var(--accent
                 className="px-3 py-1.5 text-[11px] rounded-lg border border-dashed transition-all
                   border-border/40 text-text-dim/60 hover:border-accent/60 hover:text-accent disabled:opacity-50"
               >
-                {uploading ? "Uploading..." : "Upload audio file"}
+                {uploading ? "Uploading..." : "Upload file"}
+              </button>
+              <button
+                onClick={openYtModal}
+                className="px-3 py-1.5 text-[11px] rounded-lg border border-dashed transition-all
+                  border-border/40 text-text-dim/60 hover:border-accent/60 hover:text-accent"
+              >
+                From YouTube
               </button>
             </div>
           )}
         </div>
+
+        {/* Reference Text */}
+        {config.referenceAudio && (
+          <div>
+            <label className="text-[10px] text-text-dim/70 block mb-1">Reference Text</label>
+            <textarea
+              value={config.referenceText}
+              onChange={(e) => setConfig({ ...config, referenceText: e.target.value })}
+              onBlur={() => saveConfig(config)}
+              placeholder="레퍼런스 오디오에서 말하는 내용을 입력하세요"
+              rows={2}
+              className="w-full px-2.5 py-1.5 text-[11px] rounded-lg border border-border/40 bg-transparent text-text
+                outline-none focus:border-accent/60 transition-colors placeholder:text-text-dim/30 resize-y"
+            />
+            <p className="text-[9px] text-text-dim/40 mt-0.5">입력 시 ICL 모드로 더 정확한 음성 클로닝 (비우면 x-vector only)</p>
+          </div>
+        )}
 
         {/* Voice Design Prompt */}
         <div>
@@ -227,6 +355,43 @@ export default function VoiceSettings({ personaName, accentColor = "var(--accent
             <option value="ja" className="bg-[#1a1a2e] text-[#ccc]">Japanese</option>
             <option value="zh" className="bg-[#1a1a2e] text-[#ccc]">Chinese</option>
           </select>
+        </div>
+
+        {/* Model Size */}
+        <div>
+          <label className="text-[10px] text-text-dim/70 block mb-1">Model Size</label>
+          <select
+            value={config.modelSize}
+            onChange={(e) => saveConfig({ ...config, modelSize: e.target.value })}
+            className="w-full px-2 py-1.5 text-[11px] rounded-lg border border-border/40 bg-transparent text-text
+              outline-none cursor-pointer appearance-none"
+            style={{
+              backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M3 5l3 3 3-3'/%3E%3C/svg%3E")`,
+              backgroundRepeat: "no-repeat",
+              backgroundPosition: "right 6px center",
+              paddingRight: "18px",
+            }}
+          >
+            <option value="0.6B" className="bg-[#1a1a2e] text-[#ccc]">0.6B (Fast)</option>
+            <option value="1.7B" className="bg-[#1a1a2e] text-[#ccc]">1.7B (Quality)</option>
+          </select>
+          <p className="text-[9px] text-text-dim/40 mt-0.5">0.6B: 빠르지만 품질 낮음 / 1.7B: 느리지만 고품질</p>
+        </div>
+
+        {/* Chunk Delay */}
+        <div>
+          <label className="text-[10px] text-text-dim/70 block mb-1">Chunk Delay (ms)</label>
+          <input
+            type="number"
+            value={config.chunkDelay}
+            onChange={(e) => setConfig({ ...config, chunkDelay: parseInt(e.target.value) || 500 })}
+            onBlur={() => saveConfig(config)}
+            min={0}
+            step={100}
+            className="w-full px-2.5 py-1.5 text-[11px] rounded-lg border border-border/40 bg-transparent text-text
+              outline-none focus:border-accent/60 transition-colors"
+          />
+          <p className="text-[9px] text-text-dim/40 mt-0.5">줄바꿈 기준 분할 청크 간 딜레이</p>
         </div>
 
         {/* Voice .pt Generation */}
@@ -297,6 +462,109 @@ export default function VoiceSettings({ personaName, accentColor = "var(--accent
 
         {saving && <p className="text-[9px] text-accent/60">Saving...</p>}
       </div>
+
+      {/* YouTube Modal — rendered via portal to escape sidebar containment */}
+      {ytModal && createPortal(
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center"
+          style={{ background: "rgba(0,0,0,0.6)" }}
+          onClick={(e) => { if (e.target === e.currentTarget && !ytLoading) setYtModal(false); }}
+        >
+          <div
+            className="rounded-xl p-5 w-[420px] max-w-[90vw] space-y-4"
+            style={{ background: "#1a1a2e", border: "1px solid #2a2a4e" }}
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-[13px] font-medium text-text">YouTube Reference Audio</h3>
+              <button
+                onClick={() => !ytLoading && setYtModal(false)}
+                className="text-text-dim/50 hover:text-text text-[16px] leading-none"
+              >
+                x
+              </button>
+            </div>
+
+            {/* URL */}
+            <div>
+              <label className="text-[10px] text-text-dim/70 block mb-1">YouTube URL</label>
+              <input
+                type="text"
+                value={ytUrl}
+                onChange={(e) => setYtUrl(e.target.value)}
+                placeholder="https://www.youtube.com/watch?v=..."
+                className="w-full px-2.5 py-2 text-[12px] rounded-lg border border-border/40 bg-transparent text-text
+                  outline-none focus:border-accent/60 transition-colors placeholder:text-text-dim/30"
+              />
+            </div>
+
+            {/* Time range */}
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <label className="text-[10px] text-text-dim/70 block mb-1">Start (sec)</label>
+                <input
+                  type="number"
+                  value={ytStart}
+                  onChange={(e) => setYtStart(e.target.value)}
+                  min={0}
+                  step={0.5}
+                  className="w-full px-2.5 py-2 text-[12px] rounded-lg border border-border/40 bg-transparent text-text
+                    outline-none focus:border-accent/60 transition-colors"
+                />
+              </div>
+              <div className="flex-1">
+                <label className="text-[10px] text-text-dim/70 block mb-1">End (sec)</label>
+                <input
+                  type="number"
+                  value={ytEnd}
+                  onChange={(e) => setYtEnd(e.target.value)}
+                  min={0}
+                  step={0.5}
+                  className="w-full px-2.5 py-2 text-[12px] rounded-lg border border-border/40 bg-transparent text-text
+                    outline-none focus:border-accent/60 transition-colors"
+                />
+              </div>
+            </div>
+
+            {/* Preview */}
+            <div className="flex gap-2">
+              <button
+                onClick={handleYtPreview}
+                disabled={ytLoading || !ytUrl.trim()}
+                className="flex-1 px-3 py-2 text-[11px] rounded-lg border transition-all disabled:opacity-40
+                  border-border/50 text-text-dim/80 hover:border-accent/60 hover:text-accent"
+              >
+                {ytLoading && !ytPreviewUrl ? "Downloading..." : "Preview"}
+              </button>
+              <button
+                onClick={handleYtApply}
+                disabled={ytLoading || !ytUrl.trim()}
+                className="flex-1 px-3 py-2 text-[11px] rounded-lg border transition-all disabled:opacity-40
+                  border-accent/40 text-accent/80 hover:bg-accent/10 hover:text-accent"
+              >
+                {ytLoading && ytPreviewUrl ? "Saving..." : "Apply"}
+              </button>
+            </div>
+
+            {ytPreviewUrl && (
+              <audio
+                src={ytPreviewUrl}
+                controls
+                autoPlay
+                className="w-full h-8"
+              />
+            )}
+
+            {ytError && (
+              <p className="text-[10px] text-error/80">{ytError}</p>
+            )}
+
+            <p className="text-[9px] text-text-dim/40">
+              YouTube에서 오디오를 다운로드하고 지정 구간을 잘라 레퍼런스 오디오로 등록합니다. 3~30초 권장.
+            </p>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

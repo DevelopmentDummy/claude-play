@@ -21,6 +21,14 @@ export default function ChatInput({ disabled, onSend, choices, showOOC, onOOCTog
   const oocModeRef = useRef(oocMode);
   oocModeRef.current = oocMode;
 
+  // Sync oocMode when showOOC changes externally (e.g. sync OOC message)
+  useEffect(() => {
+    if (showOOC !== undefined && showOOC !== oocMode) {
+      setOocMode(showOOC);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showOOC]);
+
   const handleSend = useCallback(() => {
     const raw = inputRef.current?.value.trim();
     if (!raw) return;

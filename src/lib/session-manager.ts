@@ -742,6 +742,21 @@ export class SessionManager {
       }
     }
 
+    // Sync voice/ directory (contains .pt voice embeddings)
+    if (elements.voice) {
+      const personaVoiceDir = path.join(personaDir, "voice");
+      const sessionVoiceDir = path.join(sessionDir, "voice");
+      if (fs.existsSync(personaVoiceDir)) {
+        if (!fs.existsSync(sessionVoiceDir)) fs.mkdirSync(sessionVoiceDir, { recursive: true });
+        for (const file of fs.readdirSync(personaVoiceDir)) {
+          const src = path.join(personaVoiceDir, file);
+          if (fs.statSync(src).isFile()) {
+            fs.copyFileSync(src, path.join(sessionVoiceDir, file));
+          }
+        }
+      }
+    }
+
     // Sync character-tags.json
     if (elements.characterTags) {
       const src = path.join(personaDir, "character-tags.json");
@@ -828,6 +843,11 @@ export class SessionManager {
       if (key === "variables") {
         // For variables, check if persona has keys not in session
         result.push({ key, label, hasChanges: this.variablesDiffer(src, dst) });
+      } else if (key === "voice") {
+        // For voice, also compare voice/ directory (contains .pt files)
+        const fileDiff = this.fileDiffers(src, dst);
+        const dirDiff = this.dirDiffers(path.join(personaDir, "voice"), path.join(sessionDir, "voice"));
+        result.push({ key, label: "음성 설정 (voice.json + voice/)", hasChanges: fileDiff || dirDiff });
       } else {
         result.push({ key, label, hasChanges: this.fileDiffers(src, dst) });
       }
@@ -904,7 +924,13 @@ export class SessionManager {
     for (const { key, label, file } of files) {
       const src = path.join(sessionDir, file);
       const dst = path.join(personaDir, file);
-      result.push({ key, label, hasChanges: this.fileDiffers(src, dst) });
+      if (key === "voice") {
+        const fileDiff = this.fileDiffers(src, dst);
+        const dirDiff = this.dirDiffers(path.join(sessionDir, "voice"), path.join(personaDir, "voice"));
+        result.push({ key, label: "음성 설정 (voice.json + voice/)", hasChanges: fileDiff || dirDiff });
+      } else {
+        result.push({ key, label, hasChanges: this.fileDiffers(src, dst) });
+      }
     }
 
     // Check skills
@@ -1020,6 +1046,21 @@ export class SessionManager {
         const dst = path.join(personaDir, file);
         if (fs.existsSync(src)) {
           fs.copyFileSync(src, dst);
+        }
+      }
+    }
+
+    // Sync voice/ directory (session → persona)
+    if (elements.voice) {
+      const sessionVoiceDir = path.join(sessionDir, "voice");
+      const personaVoiceDir = path.join(personaDir, "voice");
+      if (fs.existsSync(sessionVoiceDir)) {
+        if (!fs.existsSync(personaVoiceDir)) fs.mkdirSync(personaVoiceDir, { recursive: true });
+        for (const file of fs.readdirSync(sessionVoiceDir)) {
+          const src = path.join(sessionVoiceDir, file);
+          if (fs.statSync(src).isFile()) {
+            fs.copyFileSync(src, path.join(personaVoiceDir, file));
+          }
         }
       }
     }
@@ -1307,7 +1348,7 @@ export class SessionManager {
   // ── Voice ──────────────────────────────────────────────
 
   /** Read voice.json from a directory (persona or session) */
-  readVoiceConfig(dir: string): { enabled: boolean; referenceAudio?: string; design?: string; language?: string; speed?: number; modelSize?: string; speaker?: string; voiceFile?: string } | null {
+  readVoiceConfig(dir: string): { enabled: boolean; referenceAudio?: string; referenceText?: string; design?: string; language?: string; speed?: number; modelSize?: string; speaker?: string; voiceFile?: string; chunkDelay?: number } | null {
     const voicePath = path.join(dir, "voice.json");
     if (!fs.existsSync(voicePath)) return null;
     try {

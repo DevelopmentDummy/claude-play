@@ -126,6 +126,17 @@ export function useChat() {
     []
   );
 
+  /** Replace last stream-* message ID with the backend's canonical ID */
+  const assignMessageId = useCallback((backendId: string) => {
+    setMessages((prev) => {
+      const last = prev[prev.length - 1];
+      if (last && last.role === "assistant" && last.id.startsWith("stream-")) {
+        return [...prev.slice(0, -1), { ...last, id: backendId }];
+      }
+      return prev;
+    });
+  }, []);
+
   const finishAssistantTurn = useCallback(() => {
     segmentsRef.current = [];
     toolsRef.current = [];
@@ -203,6 +214,7 @@ export function useChat() {
         finishAssistantTurn();
         setStatus("connected");
       }
+
     },
     [appendAssistantText, addToolUse, finishAssistantTurn]
   );
@@ -339,6 +351,7 @@ export function useChat() {
     prepareSend,
     sendMessage,
     handleClaudeMessage,
+    assignMessageId,
     addOpeningMessage,
     clearMessages,
     loadHistory,

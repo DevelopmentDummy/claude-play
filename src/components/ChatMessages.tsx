@@ -31,9 +31,10 @@ interface ChatMessagesProps {
   dockWidth?: number;
   panelData?: Record<string, unknown>;
   onDockClose?: (name: string) => void;
-  audioMap?: Record<string, string>;
-  audioStatus?: Record<string, string>;
+  audioMap?: Record<string, string[]>;
+  audioStatus?: Record<string, { generating: boolean; totalChunks: number; readyCount: number }>;
   onRequestTts?: (messageId: string, text: string) => void;
+  onPlayAudio?: (messageId: string) => void;
 }
 
 const OPEN_TAG = "<dialog_response>";
@@ -326,6 +327,7 @@ export default function ChatMessages({
   audioMap,
   audioStatus,
   onRequestTts,
+  onPlayAudio,
 }: ChatMessagesProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -598,36 +600,45 @@ export default function ChatMessages({
               </button>
             )}
             {/* TTS button on hover: play if audio exists, request generation if not */}
-            {msg.role === "assistant" && !msg.ooc && !isLive && (
-              audioMap?.[msg.id] ? (
-                <button
-                  onClick={() => {
-                    const audio = new Audio(audioMap[msg.id]);
-                    audio.play().catch(() => {});
-                  }}
-                  className="absolute top-1 right-12 opacity-0 group-hover:opacity-100 transition-opacity duration-150
-                    px-1.5 py-0.5 rounded text-[9px] cursor-pointer border
-                    border-border/40 text-text-dim/50 bg-surface/80 hover:bg-surface-light hover:text-accent"
-                  title="Play voice"
-                >
-                  &#x1F50A;
-                </button>
-              ) : audioStatus?.[msg.id] ? (
-                <span className="absolute top-1 right-12 text-[9px] text-accent animate-pulse px-1.5 py-0.5">
-                  &#x1F3A4;
-                </span>
-              ) : onRequestTts ? (
-                <button
-                  onClick={() => onRequestTts(msg.id, msg.content)}
-                  className="absolute top-1 right-12 opacity-0 group-hover:opacity-100 transition-opacity duration-150
-                    px-1.5 py-0.5 rounded text-[9px] cursor-pointer border
-                    border-border/40 text-text-dim/50 bg-surface/80 hover:bg-surface-light hover:text-text-dim/80"
-                  title="Generate voice"
-                >
-                  &#x1F3A4;
-                </button>
-              ) : null
-            )}
+            {msg.role === "assistant" && !msg.ooc && !isLive && (() => {
+              const chunks = audioMap?.[msg.id];
+              const status = audioStatus?.[msg.id];
+              const hasAudio = chunks && chunks.some(u => u != null);
+              if (hasAudio) {
+                return (
+                  <button
+                    onClick={() => onPlayAudio?.(msg.id)}
+                    className="absolute top-1 right-12 opacity-0 group-hover:opacity-100 transition-opacity duration-150
+                      px-1.5 py-0.5 rounded text-[9px] cursor-pointer border
+                      border-border/40 text-text-dim/50 bg-surface/80 hover:bg-surface-light hover:text-accent"
+                    title="Play voice"
+                  >
+                    &#x1F50A;
+                  </button>
+                );
+              }
+              if (status) {
+                return (
+                  <span className="absolute top-1 right-12 text-[9px] text-accent animate-pulse px-1.5 py-0.5">
+                    &#x1F3A4; {status.readyCount}/{status.totalChunks}
+                  </span>
+                );
+              }
+              if (onRequestTts) {
+                return (
+                  <button
+                    onClick={() => onRequestTts(msg.id, msg.content)}
+                    className="absolute top-1 right-12 opacity-0 group-hover:opacity-100 transition-opacity duration-150
+                      px-1.5 py-0.5 rounded text-[9px] cursor-pointer border
+                      border-border/40 text-text-dim/50 bg-surface/80 hover:bg-surface-light hover:text-text-dim/80"
+                    title="Generate voice"
+                  >
+                    &#x1F3A4;
+                  </button>
+                );
+              }
+              return null;
+            })()}
             {msg.ooc && (
               <div className="text-[10px] font-semibold text-yellow-500/70 uppercase tracking-wider mb-1">OOC</div>
             )}

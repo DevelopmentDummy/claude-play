@@ -35,6 +35,7 @@ export default function ChatPage() {
     setError,
     prepareSend,
     handleClaudeMessage,
+    assignMessageId,
     addOpeningMessage,
     clearMessages,
     loadHistory,
@@ -62,10 +63,50 @@ export default function ChatPage() {
     }
     return true;
   });
-  const [audioMap, setAudioMap] = useState<Record<string, string>>({});
-  const [audioStatus, setAudioStatus] = useState<Record<string, string>>({});
+  // Chunked audio: per-message arrays of chunk URLs
+  const [audioMap, setAudioMap] = useState<Record<string, string[]>>({});
+  const [audioStatus, setAudioStatus] = useState<Record<string, { generating: boolean; totalChunks: number; readyCount: number }>>({});
+  const audioQueueRef = useRef<{ messageId: string; nextChunk: number; playing: boolean; audioPlaying: boolean }>({ messageId: "", nextChunk: 0, playing: false, audioPlaying: false });
   const isMobile = useIsMobile();
   const initRef = useRef(false);
+
+  /** Play chunks sequentially for a message, starting from a given index */
+  const playChunkSequence = useCallback((messageId: string, startChunk: number) => {
+    const queue = audioQueueRef.current;
+    queue.messageId = messageId;
+    queue.nextChunk = startChunk;
+    queue.playing = true;
+
+    function playNext() {
+      const q = audioQueueRef.current;
+      if (q.messageId !== messageId || !q.playing || q.audioPlaying) return;
+
+      // Read latest audioMap from DOM closure workaround
+      setAudioMap((current) => {
+        const urls = current[messageId];
+        if (!urls || q.nextChunk >= urls.length || !urls[q.nextChunk]) {
+          // Chunk not ready yet — will be resumed when audio:ready arrives
+          return current;
+        }
+        const url = urls[q.nextChunk];
+        q.nextChunk++;
+        q.audioPlaying = true;
+        const audio = new Audio(url);
+        audio.onended = () => {
+          q.audioPlaying = false;
+          setTimeout(playNext, 250);
+        };
+        audio.onerror = () => {
+          q.audioPlaying = false;
+          setTimeout(playNext, 250);
+        };
+        audio.play().catch(() => { q.audioPlaying = false; });
+        return current;
+      });
+    }
+
+    playNext();
+  }, []);
 
   const handleAutoPlayToggle = useCallback(() => {
     setAutoPlay((prev) => {
@@ -99,6 +140,10 @@ export default function ChatPage() {
     sessionId,
     handlers: {
       "claude:message": handleClaudeMessage,
+      "claude:messageId": (d) => {
+        const { messageId } = d as { messageId: string };
+        if (messageId) assignMessageId(messageId);
+      },
       "claude:error": (e) => setError(e as string),
       "claude:status": (s) => setStatus(s as string),
       "panels:update": (p) => {
@@ -116,22 +161,56 @@ export default function ChatPage() {
         }
       },
       "audio:ready": (d) => {
-        const { url, messageId } = d as { url: string; messageId: string };
-        setAudioMap((prev) => ({ ...prev, [messageId]: url }));
-        setAudioStatus((prev) => {
-          const next = { ...prev };
-          delete next[messageId];
-          return next;
+        const { url, messageId, chunkIndex = 0, totalChunks = 1 } = d as {
+          url: string; messageId: string; chunkIndex?: number; totalChunks?: number;
+        };
+        // Store chunk URL in the array
+        setAudioMap((prev) => {
+          const arr = prev[messageId] ? [...prev[messageId]] : new Array(totalChunks).fill(null);
+          arr[chunkIndex] = url;
+          return { ...prev, [messageId]: arr };
         });
-        // Auto-play: read from localStorage since this closure captures stale state
+        // Update status: increment ready count, clear generating when all done
+        setAudioStatus((prev) => {
+          const current = prev[messageId] || { generating: true, totalChunks, readyCount: 0 };
+          const readyCount = current.readyCount + 1;
+          if (readyCount >= totalChunks) {
+            const next = { ...prev };
+            delete next[messageId];
+            return next;
+          }
+          return { ...prev, [messageId]: { ...current, readyCount } };
+        });
+        // Auto-play: start sequential playback from first chunk
         if (localStorage.getItem("tts-autoplay") !== "false") {
-          const audio = new Audio(url);
-          audio.play().catch(() => {});
+          const queue = audioQueueRef.current;
+          if (queue.messageId !== messageId || !queue.playing) {
+            // Start playback from chunk 0 on the first ready chunk
+            if (chunkIndex === 0) {
+              playChunkSequence(messageId, 0);
+            }
+          } else if (!queue.audioPlaying && queue.nextChunk === chunkIndex) {
+            // Was waiting for this chunk and nothing is currently playing — resume
+            playChunkSequence(messageId, chunkIndex);
+          }
         }
       },
       "audio:status": (d) => {
-        const { status, messageId } = d as { status: string; messageId: string };
-        setAudioStatus((prev) => ({ ...prev, [messageId]: status }));
+        const { status, messageId, totalChunks = 1 } = d as {
+          status: string; messageId: string; totalChunks?: number;
+        };
+        if (status === "error") {
+          setAudioStatus((prev) => {
+            const next = { ...prev };
+            delete next[messageId];
+            return next;
+          });
+        } else {
+          setAudioStatus((prev) => ({
+            ...prev,
+            [messageId]: { generating: true, totalChunks, readyCount: prev[messageId]?.readyCount || 0 },
+          }));
+        }
       },
       "profile:update": (p) => {
         const update = p as { profile?: string; timestamp?: number };
@@ -374,15 +453,14 @@ export default function ChatPage() {
             audioMap={audioMap}
             audioStatus={audioStatus}
             onRequestTts={(messageId, text) => {
-              console.log("[tts] Requesting TTS for:", messageId, "text length:", text?.length);
               fetch("/api/chat/tts", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ messageId, text }),
-              })
-                .then((r) => r.json())
-                .then((d) => console.log("[tts] Response:", d))
-                .catch((e) => console.error("[tts] Fetch error:", e));
+              }).catch(() => {});
+            }}
+            onPlayAudio={(messageId) => {
+              playChunkSequence(messageId, 0);
             }}
           />
           {activeDockBottom.length > 0 && (
