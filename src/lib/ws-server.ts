@@ -54,7 +54,10 @@ export function wsBroadcast(
     }
   }
   if (sent === 0 && clients.size > 0) {
-    console.log(`[wsBroadcast] WARNING: ${event} sent to 0/${clients.size} clients, filter=${JSON.stringify(filter)}`);
+    const filterSummary = filter
+      ? { sessionId: filter.sessionId, isBuilder: filter.isBuilder, exclude: filter.exclude ? true : undefined }
+      : undefined;
+    console.log(`[wsBroadcast] WARNING: ${event} sent to 0/${clients.size} clients, filter=${JSON.stringify(filterSummary)}`);
   }
 }
 

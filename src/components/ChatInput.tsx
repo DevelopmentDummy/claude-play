@@ -220,7 +220,7 @@ function ChatInput({ disabled, onSend, choices, showOOC, onOOCToggle, voiceChat,
 
     // Cancel auto-send as soon as the engine detects new speech (before onresult fires)
     recognition.onspeechstart = () => {
-      if (voiceChat) clearAutoSendTimer();
+      clearAutoSendTimer();
     };
 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
@@ -242,12 +242,12 @@ function ChatInput({ disabled, onSend, choices, showOOC, onOOCToggle, voiceChat,
       el.style.height = "auto";
       el.style.height = Math.min(el.scrollHeight, 150) + "px";
 
-      // Voice chat auto-send: cancel timer when user starts speaking again
-      if (voiceChat && interim) {
+      // Auto-send: cancel timer when user starts speaking again
+      if (interim) {
         clearAutoSendTimer();
       }
-      // Start 3s countdown only when NEW final result appears and no pending interim
-      if (voiceChat && finalCount > prevFinalCount && !interim) {
+      // Start countdown when NEW final result appears and no pending interim
+      if (finalCount > prevFinalCount && !interim) {
         clearAutoSendTimer();
         setAutoSendCountdown(true);
         autoSendTimerRef.current = setTimeout(() => {
