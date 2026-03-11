@@ -217,6 +217,7 @@ function ChatInput({ disabled, onSend, choices, showOOC, onOOCToggle, voiceChat,
     const el = inputRef.current;
     const before = el?.value || "";
     let prevFinalCount = 0;
+    let hasEverSpoken = false;
 
     // Cancel auto-send as soon as the engine detects new speech (before onresult fires)
     recognition.onspeechstart = () => {
@@ -242,12 +243,15 @@ function ChatInput({ disabled, onSend, choices, showOOC, onOOCToggle, voiceChat,
       el.style.height = "auto";
       el.style.height = Math.min(el.scrollHeight, 150) + "px";
 
+      // Mark that user has actually spoken
+      if (final.trim() || interim.trim()) hasEverSpoken = true;
+
       // Auto-send: cancel timer when user starts speaking again
       if (interim) {
         clearAutoSendTimer();
       }
-      // Start countdown when NEW final result appears and no pending interim
-      if (finalCount > prevFinalCount && !interim) {
+      // Start countdown only after user has spoken at least once, then paused
+      if (hasEverSpoken && finalCount > prevFinalCount && !interim) {
         clearAutoSendTimer();
         setAutoSendCountdown(true);
         autoSendTimerRef.current = setTimeout(() => {
@@ -270,7 +274,16 @@ function ChatInput({ disabled, onSend, choices, showOOC, onOOCToggle, voiceChat,
     };
 
     recognition.onerror = () => { clearAutoSendTimer(); stopWebSTT(); };
-    recognition.onend = () => { clearAutoSendTimer(); setSttActive(false); };
+    // If recognition ends before user spoke (silence timeout), auto-restart in voiceChat
+    recognition.onend = () => {
+      clearAutoSendTimer();
+      if (voiceChat && !hasEverSpoken && !sttSuppressRef.current) {
+        // User is still thinking — restart quietly
+        try { recognition.start(); } catch { setSttActive(false); }
+      } else {
+        setSttActive(false);
+      }
+    };
     recognition.start();
     recognitionRef.current = recognition;
     setSttActive(true);
