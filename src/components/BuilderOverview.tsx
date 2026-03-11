@@ -189,8 +189,8 @@ export default function BuilderOverview({
             <img
               src={`/api/personas/${encodeURIComponent(personaName)}/images?file=profile.png&t=${refreshTrigger}`}
               alt="Profile"
-              className="w-full rounded-xl border border-white/[0.06] object-cover"
-              style={{ maxHeight: "280px" }}
+              className="w-full rounded-xl border border-white/[0.06] object-contain"
+              style={{ maxHeight: "360px" }}
             />
           ) : (
             <div className="w-full aspect-[2/3] rounded-xl border border-dashed border-white/[0.1] flex items-center justify-center text-text-dim/30 text-xs">
