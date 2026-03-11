@@ -204,9 +204,17 @@ function ChatInput({ disabled, onSend, choices, showOOC, onOOCToggle, voiceChat,
     setAutoSendCountdown(false);
   }, []);
 
+  // Ref to allow onend to call a fresh startWebSTT without circular deps
+  const startWebSTTRef = useRef<(() => void) | null>(null);
+
   const startWebSTT = useCallback(() => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) return;
+    // Stop any existing recognition first
+    if (recognitionRef.current) {
+      try { recognitionRef.current.stop(); } catch { /* ignore */ }
+      recognitionRef.current = null;
+    }
     sttSuppressRef.current = false;
     clearAutoSendTimer();
     const recognition = new SR();
@@ -274,12 +282,13 @@ function ChatInput({ disabled, onSend, choices, showOOC, onOOCToggle, voiceChat,
     };
 
     recognition.onerror = () => { clearAutoSendTimer(); stopWebSTT(); };
-    // If recognition ends before user spoke (silence timeout), auto-restart in voiceChat
+    // If recognition ends before user spoke (silence timeout), create fresh instance to keep listening
     recognition.onend = () => {
       clearAutoSendTimer();
-      if (voiceChat && !hasEverSpoken && !sttSuppressRef.current) {
-        // User is still thinking — restart quietly
-        try { recognition.start(); } catch { setSttActive(false); }
+      if (!hasEverSpoken && !sttSuppressRef.current) {
+        // User hasn't spoken yet — create new recognition to keep red icon alive
+        recognitionRef.current = null;
+        setTimeout(() => startWebSTTRef.current?.(), 50);
       } else {
         setSttActive(false);
       }
@@ -288,6 +297,9 @@ function ChatInput({ disabled, onSend, choices, showOOC, onOOCToggle, voiceChat,
     recognitionRef.current = recognition;
     setSttActive(true);
   }, [stopWebSTT, clearAutoSendTimer, voiceChat, onSend]);
+
+  // Keep ref in sync
+  startWebSTTRef.current = startWebSTT;
 
   // -- Mode B: MediaRecorder → server Whisper --
   const stopRecorderSTT = useCallback(async () => {

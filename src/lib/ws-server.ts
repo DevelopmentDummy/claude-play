@@ -40,10 +40,7 @@ export function wsBroadcast(
     if (client.ws.readyState !== WebSocket.OPEN) continue;
     if (filter) {
       if (filter.exclude && client === filter.exclude) continue;
-      if (filter.sessionId && client.sessionId !== filter.sessionId) {
-        console.log(`[wsBroadcast] SKIP client(session=${client.sessionId}) — filter wants ${filter.sessionId}`);
-        continue;
-      }
+      if (filter.sessionId && client.sessionId !== filter.sessionId) continue;
       if (filter.isBuilder !== undefined && client.isBuilder !== filter.isBuilder) continue;
     }
     try {
@@ -61,27 +58,40 @@ export function wsBroadcast(
   }
 }
 
-/** Check if there are any connected clients; if not, schedule cleanup */
+/** Count active clients for a specific session */
+function countSessionClients(sessionId: string): number {
+  const { clients } = getWSState();
+  let count = 0;
+  for (const c of clients) {
+    if (c.ws.readyState === WebSocket.OPEN && c.sessionId === sessionId) count++;
+  }
+  return count;
+}
+
+/** Check if there are any connected clients for the current session; if not, schedule cleanup */
 function scheduleCleanupIfEmpty(): void {
   const state = getWSState();
+  const svc = getServices();
 
   if (state.disconnectTimer) {
     clearTimeout(state.disconnectTimer);
     state.disconnectTimer = null;
   }
 
-  const hasActiveClients = [...state.clients].some(
-    (c) => c.ws.readyState === WebSocket.OPEN
-  );
+  // Check for clients bound to the current active session
+  const activeSessionId = svc.currentSessionId;
+  const hasSessionClients = activeSessionId
+    ? countSessionClients(activeSessionId) > 0
+    : [...state.clients].some((c) => c.ws.readyState === WebSocket.OPEN);
 
-  if (!hasActiveClients) {
+  if (!hasSessionClients) {
     state.disconnectTimer = setTimeout(() => {
       state.disconnectTimer = null;
-      const stillEmpty = ![...state.clients].some(
-        (c) => c.ws.readyState === WebSocket.OPEN
-      );
+      const stillEmpty = activeSessionId
+        ? countSessionClients(activeSessionId) === 0
+        : ![...state.clients].some((c) => c.ws.readyState === WebSocket.OPEN);
       if (stillEmpty) {
-        console.log("[ws] No clients connected — cleaning up");
+        console.log(`[ws] No clients for session ${activeSessionId || "(global)"} — cleaning up`);
         cleanupServices();
       }
     }, DISCONNECT_GRACE_MS);
@@ -173,9 +183,16 @@ function handleMessage(
     }
 
     case "session:leave": {
-      console.log("[ws] Client sent session:leave");
-      svc.claude.kill();
-      svc.panels.stop();
+      const leavingSession = client.sessionId;
+      client.sessionId = null; // unbind first
+      if (leavingSession) {
+        const remaining = countSessionClients(leavingSession);
+        console.log(`[ws] Client left session ${leavingSession} — ${remaining} client(s) remaining`);
+        if (remaining === 0) {
+          svc.claude.kill();
+          svc.panels.stop();
+        }
+      }
       break;
     }
   }

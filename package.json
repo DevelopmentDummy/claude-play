@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx watch --ignore ./data/** --ignore ./.next/** server.ts",
     "build": "next build",
-    "start": "NODE_ENV=production tsx server.ts"
+    "start": "set NODE_ENV=production&& tsx server.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",
@@ -27,6 +27,6 @@
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
     "tsx": "^4.21.0",
-    "typescript": "^5.6.0"
+    "typescript": "5.9.3"
   }
 }
