@@ -75,6 +75,7 @@ function ChatInput({ disabled, onSend, choices, showOOC, onOOCToggle, voiceChat,
   const handleSend = useCallback(() => {
     // Suppress any pending STT results before clearing input
     clearAutoSendTimer();
+    const wasSTT = !!(recognitionRef.current || mediaRecorderRef.current);
     sttSuppressRef.current = true;
     if (recognitionRef.current) {
       recognitionRef.current.stop();
@@ -87,7 +88,8 @@ function ChatInput({ disabled, onSend, choices, showOOC, onOOCToggle, voiceChat,
     setSttActive(false);
     const raw = inputRef.current?.value.trim();
     if (!raw) return;
-    const text = oocModeRef.current && !raw.startsWith("OOC:") ? `OOC: ${raw}` : raw;
+    const tagged = wasSTT ? `[STT] ${raw}` : raw;
+    const text = oocModeRef.current && !tagged.startsWith("OOC:") ? `OOC: ${tagged}` : tagged;
     onSend(text);
     if (inputRef.current) {
       inputRef.current.value = "";
@@ -271,7 +273,8 @@ function ChatInput({ disabled, onSend, choices, showOOC, onOOCToggle, voiceChat,
             recognition.stop();
             recognitionRef.current = null;
             setSttActive(false);
-            const sendText = oocModeRef.current && !text.startsWith("OOC:") ? `OOC: ${text}` : text;
+            const tagged = `[STT] ${text}`;
+            const sendText = oocModeRef.current && !tagged.startsWith("OOC:") ? `OOC: ${tagged}` : tagged;
             el.value = "";
             el.style.height = "auto";
             onSend(sendText);
