@@ -155,7 +155,16 @@ function initServices(): Services {
   const sessions = new SessionManager(dataDir, getAppRoot());
 
   function broadcast(event: string, data: unknown): void {
-    wsBroadcast(event, data);
+    if (svc.isBuilderActive && svc.builderPersonaName) {
+      console.log(`[broadcast] ${event} → builder:${svc.builderPersonaName}`);
+      wsBroadcast(event, data, { sessionId: svc.builderPersonaName, isBuilder: true });
+    } else if (svc.currentSessionId) {
+      console.log(`[broadcast] ${event} → session:${svc.currentSessionId}`);
+      wsBroadcast(event, data, { sessionId: svc.currentSessionId });
+    } else {
+      console.log(`[broadcast] ${event} → all (no session)`);
+      wsBroadcast(event, data);
+    }
   }
 
   const panels = new PanelEngine(

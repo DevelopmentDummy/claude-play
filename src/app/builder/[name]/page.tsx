@@ -43,6 +43,7 @@ export default function BuilderPage() {
 
   // WebSocket connection — only connect after init completes
   const { sendChat, send: wsSend } = useWebSocket({
+    sessionId: name,
     isBuilder: true,
     handlers: {
       "claude:message": (data) => {

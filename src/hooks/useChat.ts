@@ -352,6 +352,7 @@ export function useChat() {
     sendMessage,
     handleClaudeMessage,
     assignMessageId,
+    addUserMessage,
     addOpeningMessage,
     clearMessages,
     loadHistory,

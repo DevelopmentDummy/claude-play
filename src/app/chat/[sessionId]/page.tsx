@@ -36,6 +36,7 @@ export default function ChatPage() {
     prepareSend,
     handleClaudeMessage,
     assignMessageId,
+    addUserMessage,
     addOpeningMessage,
     clearMessages,
     loadHistory,
@@ -144,6 +145,10 @@ export default function ChatPage() {
   const { sendChat, send: wsSend } = useWebSocket({
     sessionId,
     handlers: {
+      "chat:user": (d) => {
+        const { text, isOOC } = d as { text: string; isOOC?: boolean };
+        addUserMessage(text, isOOC);
+      },
       "claude:message": handleClaudeMessage,
       "claude:messageId": (d) => {
         const { messageId } = d as { messageId: string };

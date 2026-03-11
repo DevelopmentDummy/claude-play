@@ -55,6 +55,7 @@ function ChatInput({ disabled, onSend, choices, showOOC, onOOCToggle }: ChatInpu
   const oocModeRef = useRef(oocMode);
   oocModeRef.current = oocMode;
   const composingRef = useRef(false);
+  const sttSuppressRef = useRef(false); // suppress STT onresult after send
 
   // Sync oocMode when showOOC changes externally (e.g. sync OOC message)
   useEffect(() => {
@@ -65,7 +66,8 @@ function ChatInput({ disabled, onSend, choices, showOOC, onOOCToggle }: ChatInpu
   }, [showOOC]);
 
   const handleSend = useCallback(() => {
-    // Stop STT if active
+    // Suppress any pending STT results before clearing input
+    sttSuppressRef.current = true;
     if (recognitionRef.current) {
       recognitionRef.current.stop();
       recognitionRef.current = null;
@@ -185,6 +187,7 @@ function ChatInput({ disabled, onSend, choices, showOOC, onOOCToggle }: ChatInpu
   const startWebSTT = useCallback(() => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) return;
+    sttSuppressRef.current = false;
     const recognition = new SR();
     recognition.lang = "ko-KR";
     recognition.continuous = true;
@@ -194,7 +197,7 @@ function ChatInput({ disabled, onSend, choices, showOOC, onOOCToggle }: ChatInpu
     const before = el?.value || "";
 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
-      if (!el) return;
+      if (!el || sttSuppressRef.current) return;
       let final = "";
       let interim = "";
       for (let i = 0; i < event.results.length; i++) {

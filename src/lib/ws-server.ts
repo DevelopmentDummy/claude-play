@@ -31,21 +31,30 @@ const DISCONNECT_GRACE_MS = 5000;
 export function wsBroadcast(
   event: string,
   data: unknown,
-  filter?: { sessionId?: string; isBuilder?: boolean }
+  filter?: { sessionId?: string; isBuilder?: boolean; exclude?: WSClient }
 ): void {
   const { clients } = getWSState();
   const payload = JSON.stringify({ event, data });
+  let sent = 0;
   for (const client of clients) {
     if (client.ws.readyState !== WebSocket.OPEN) continue;
     if (filter) {
-      if (filter.sessionId && client.sessionId !== filter.sessionId) continue;
+      if (filter.exclude && client === filter.exclude) continue;
+      if (filter.sessionId && client.sessionId !== filter.sessionId) {
+        console.log(`[wsBroadcast] SKIP client(session=${client.sessionId}) — filter wants ${filter.sessionId}`);
+        continue;
+      }
       if (filter.isBuilder !== undefined && client.isBuilder !== filter.isBuilder) continue;
     }
     try {
       client.ws.send(payload);
+      sent++;
     } catch {
       clients.delete(client);
     }
+  }
+  if (sent === 0 && clients.size > 0) {
+    console.log(`[wsBroadcast] WARNING: ${event} sent to 0/${clients.size} clients, filter=${JSON.stringify(filter)}`);
   }
 }
 
@@ -97,7 +106,8 @@ export function setupWebSocket(server: HTTPServer): void {
     }
 
     wss.handleUpgrade(req, socket, head, (ws) => {
-      const sessionId = (query.sessionId as string) || null;
+      const rawSessionId = (query.sessionId as string) || null;
+      const sessionId = rawSessionId ? decodeURIComponent(rawSessionId) : null;
       const isBuilder = query.builder === "true";
 
       const client: WSClient = { ws, sessionId, isBuilder };
@@ -145,11 +155,16 @@ function handleMessage(
       svc.isOOC = isOOC;
       svc.addUserToHistory(text, isOOC);
       svc.claude.send(text);
+      // Broadcast user message to other clients in same session (sender already has it locally)
+      if (client.sessionId) {
+        wsBroadcast("chat:user", { text, isOOC }, { sessionId: client.sessionId, exclude: client });
+      }
       break;
     }
 
     case "session:bind": {
-      client.sessionId = (msg.sessionId as string) || null;
+      const rawId = (msg.sessionId as string) || null;
+      client.sessionId = rawId ? decodeURIComponent(rawId) : null;
       client.isBuilder = !!(msg.isBuilder);
       break;
     }
