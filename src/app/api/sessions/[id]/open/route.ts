@@ -75,7 +75,8 @@ export async function POST(
   }
 
   // Spawn with resume and model
-  const runtimeSystemPrompt = svc.sessions.buildServiceSystemPrompt(info.persona, provider);
+  const resolvedOptions = svc.sessions.resolveOptions(sessionDir);
+  const runtimeSystemPrompt = svc.sessions.buildServiceSystemPrompt(info.persona, provider, resolvedOptions);
   svc.claude.spawn(sessionDir, resumeId, effectiveModel || undefined, runtimeSystemPrompt, finalEffort);
 
   // Include initial panels + context in response (SSE may not be connected yet)
@@ -114,5 +115,5 @@ export async function POST(
   const voiceConfig = svc.sessions.readVoiceConfig(sessionDir);
   const voiceEnabled = voiceConfig?.enabled ?? false;
 
-  return NextResponse.json({ ...info, opening, isResume, layout, panels, panelContext, sharedPlacements, profileImage, iconImage, model: effectiveRaw || "", provider, voiceEnabled });
+  return NextResponse.json({ ...info, opening, isResume, layout, panels, panelContext, sharedPlacements, profileImage, iconImage, model: effectiveRaw || "", provider, voiceEnabled, chatOptions: resolvedOptions });
 }

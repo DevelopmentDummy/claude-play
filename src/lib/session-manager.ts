@@ -39,7 +39,7 @@ const SYSTEM_JSON = new Set([
   "variables.json", "session.json", "builder-session.json",
   "comfyui-config.json", "layout.json", "chat-history.json",
   "package.json", "tsconfig.json", "character-tags.json",
-  "voice.json", ".mcp.json",
+  "voice.json", ".mcp.json", "chat-options.json",
 ]);
 
 export interface PersonaInfo {
@@ -1406,6 +1406,51 @@ export class SessionManager {
     fs.writeFileSync(path.join(dir, "voice.json"), JSON.stringify(config, null, 2), "utf-8");
   }
 
+  // ── Chat Options ──────────────────────────────────────
+
+  /** Read chat-options-schema.json from data dir */
+  readOptionsSchema(): Record<string, unknown>[] {
+    const schemaPath = path.join(getDataDir(), "chat-options-schema.json");
+    if (!fs.existsSync(schemaPath)) return [];
+    try { return JSON.parse(fs.readFileSync(schemaPath, "utf-8")); } catch { return []; }
+  }
+
+  /** Read chat-options.json from a directory */
+  readOptions(dir: string): Record<string, unknown> {
+    const optPath = path.join(dir, "chat-options.json");
+    if (!fs.existsSync(optPath)) return {};
+    try { return JSON.parse(fs.readFileSync(optPath, "utf-8")); } catch { return {}; }
+  }
+
+  /** Write chat-options.json to a directory */
+  writeOptions(dir: string, options: Record<string, unknown>): void {
+    fs.writeFileSync(path.join(dir, "chat-options.json"), JSON.stringify(options, null, 2), "utf-8");
+  }
+
+  /** Resolve options: schema defaults → persona overrides → session overrides */
+  resolveOptions(sessionDir: string): Record<string, unknown> {
+    const schema = this.readOptionsSchema();
+    const defaults: Record<string, unknown> = {};
+    for (const opt of schema) {
+      defaults[(opt as { key: string }).key] = (opt as { default: unknown }).default;
+    }
+
+    // Persona overrides
+    const metaPath = path.join(sessionDir, "session.json");
+    let personaOverrides: Record<string, unknown> = {};
+    try {
+      const meta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
+      if (meta.persona) {
+        personaOverrides = this.readOptions(this.getPersonaDir(meta.persona));
+      }
+    } catch { /* ignore */ }
+
+    // Session overrides
+    const sessionOverrides = this.readOptions(sessionDir);
+
+    return { ...defaults, ...personaOverrides, ...sessionOverrides };
+  }
+
   // ── Tools ──────────────────────────────────────────────
 
   /** Re-copy global tool skills into an existing session (called on session open/resume) */
@@ -1572,34 +1617,44 @@ export class SessionManager {
     }
   }
 
-  buildServiceSystemPrompt(personaName?: string, provider?: "claude" | "codex"): string {
+  buildServiceSystemPrompt(personaName?: string, provider?: "claude" | "codex", options?: Record<string, unknown>): string {
     const files = provider === "codex" ? SERVICE_SESSION_GUIDE_FILES_CODEX : SERVICE_SESSION_GUIDE_FILES_CLAUDE;
-    return this.buildPromptFromGuideFiles(files, personaName);
+    return this.buildPromptFromGuideFiles(files, personaName, options);
   }
 
-  buildBuilderSystemPrompt(personaName?: string): string {
-    return this.buildPromptFromGuideFiles(BUILDER_GUIDE_FILES, personaName);
+  buildBuilderSystemPrompt(personaName?: string, options?: Record<string, unknown>): string {
+    return this.buildPromptFromGuideFiles(BUILDER_GUIDE_FILES, personaName, options);
   }
 
-  private buildPromptFromGuideFiles(files: readonly string[], personaName?: string): string {
+  private buildPromptFromGuideFiles(files: readonly string[], personaName?: string, options?: Record<string, unknown>): string {
     const sections: string[] = [];
     for (const filename of files) {
       const guidePath = path.join(this.appRoot, filename);
       if (!fs.existsSync(guidePath)) continue;
-      const content = this.readGuideContent(guidePath, personaName);
+      const content = this.readGuideContent(guidePath, personaName, options);
       if (content) sections.push(content);
     }
     return sections.join("\n\n").trim();
   }
 
-  private readGuideContent(guidePath: string, personaName?: string): string {
+  private readGuideContent(guidePath: string, personaName?: string, options?: Record<string, unknown>): string {
     const raw = fs.readFileSync(guidePath, "utf-8");
     const ext = path.extname(guidePath).toLowerCase();
-    const base = ext === ".yaml" || ext === ".yml"
+    let base = ext === ".yaml" || ext === ".yml"
       ? this.extractActiveSystemPrompt(raw) || raw
       : raw;
     const actorName = personaName || "the current persona";
-    return base.replace(/\{agent_name\}/g, actorName).trim();
+    base = base.replace(/\{agent_name\}/g, actorName).trim();
+
+    // Compile Handlebars for .md files when options are provided
+    if (options && ext === ".md") {
+      try {
+        const template = Handlebars.compile(base, { noEscape: true });
+        base = template({ options }, { allowProtoPropertiesByDefault: true });
+      } catch { /* fall through with uncompiled content */ }
+    }
+
+    return base;
   }
 
   private extractActiveSystemPrompt(yamlText: string): string | null {

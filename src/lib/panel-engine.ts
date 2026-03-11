@@ -20,6 +20,7 @@ const SYSTEM_JSON = new Set([
   "tsconfig.json",
   "character-tags.json",
   "voice.json",
+  "chat-options.json",
 ]);
 
 export interface PanelUpdate {

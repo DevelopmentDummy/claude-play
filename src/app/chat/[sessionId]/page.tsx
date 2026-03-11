@@ -16,6 +16,7 @@ import PanelDrawer from "@/components/PanelDrawer";
 import ModalPanel from "@/components/ModalPanel";
 import DockPanel from "@/components/DockPanel";
 import SyncModal from "@/components/SyncModal";
+import ChatOptionsModal from "@/components/ChatOptionsModal";
 
 interface Panel {
   name: string;
@@ -70,6 +71,9 @@ export default function ChatPage() {
   const audioQueueRef = useRef<{ messageId: string; nextChunk: number; playing: boolean; audioPlaying: boolean; totalChunks: number }>({ messageId: "", nextChunk: 0, playing: false, audioPlaying: false, totalChunks: 0 });
   const [ttsPlaying, setTtsPlaying] = useState(false);
   const [voiceChat, setVoiceChat] = useState(false);
+  const [chatOptions, setChatOptions] = useState<Record<string, unknown>>({});
+  const [chatOptionsSchema, setChatOptionsSchema] = useState<Record<string, unknown>[]>([]);
+  const [optionsModalOpen, setOptionsModalOpen] = useState(false);
   const isMobile = useIsMobile();
   const initRef = useRef(false);
 
@@ -317,6 +321,16 @@ export default function ChatPage() {
       setAutoPlay(voiceOn);
       localStorage.setItem("tts-autoplay", String(voiceOn));
 
+      // Load chat options
+      if (data.chatOptions) {
+        setChatOptions(data.chatOptions);
+      }
+      // Load options schema
+      try {
+        const schemaRes = await fetch("/api/chat-options/schema?scope=session");
+        if (schemaRes.ok) setChatOptionsSchema(await schemaRes.json());
+      } catch { /* ignore */ }
+
       // Load chat history from server (file-backed, survives restarts)
       const historyCount = await loadHistory();
 
@@ -354,6 +368,22 @@ export default function ChatPage() {
       setError("Failed to reconnect with new model");
     }
   }, [sessionId, setStatus, setError]);
+
+  const handleOptionsApply = useCallback(async (values: Record<string, unknown>) => {
+    setOptionsModalOpen(false);
+    const res = await fetch(`/api/sessions/${sessionId}/options/apply`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(values),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      setChatOptions(values);
+      if (data.restarted) {
+        setStatus("connected");
+      }
+    }
+  }, [sessionId, setStatus]);
 
   const panelPosition = layout?.panels?.position || "right";
   const panelSize = layout?.panels?.size || 280;
@@ -480,6 +510,7 @@ export default function ChatPage() {
         onAutoPlayToggle={handleAutoPlayToggle}
         voiceChat={voiceChat}
         onVoiceChatToggle={() => setVoiceChat((v) => !v)}
+        onSettings={() => setOptionsModalOpen(true)}
       />
       <ErrorBanner error={error} onDismiss={() => setError(null)} />
       <div className="flex-1 relative min-h-0">
@@ -537,6 +568,7 @@ export default function ChatPage() {
             choices={currentChoices}
             voiceChat={voiceChat}
             ttsPlaying={ttsPlaying}
+            autoSendDelay={typeof chatOptions.autoSendDelay === "number" ? chatOptions.autoSendDelay : undefined}
           />
         </div>
         {/* Desktop: left sidebar (profile + left panels) */}
@@ -620,6 +652,14 @@ export default function ChatPage() {
           sendMessage("OOC: 대화 세션이 원본 페르소나 데이터에 동기화 되었습니다. 변경사항을 확인하세요.");
         }}
       />
+      {optionsModalOpen && chatOptionsSchema.length > 0 && (
+        <ChatOptionsModal
+          schema={chatOptionsSchema as unknown as Parameters<typeof ChatOptionsModal>[0]["schema"]}
+          values={chatOptions}
+          onApply={handleOptionsApply}
+          onClose={() => setOptionsModalOpen(false)}
+        />
+      )}
     </div>
   );
 }

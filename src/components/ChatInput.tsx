@@ -24,6 +24,7 @@ interface ISpeechRecognition extends EventTarget {
   continuous: boolean;
   interimResults: boolean;
   onresult: ((event: SpeechRecognitionEvent) => void) | null;
+  onspeechstart: ((event: Event) => void) | null;
   onerror: ((event: Event) => void) | null;
   onend: (() => void) | null;
   start(): void;
@@ -51,9 +52,11 @@ interface ChatInputProps {
   voiceChat?: boolean;
   /** TTS is currently playing audio */
   ttsPlaying?: boolean;
+  /** Auto-send delay in ms (default 3000) */
+  autoSendDelay?: number;
 }
 
-function ChatInput({ disabled, onSend, choices, showOOC, onOOCToggle, voiceChat, ttsPlaying }: ChatInputProps) {
+function ChatInput({ disabled, onSend, choices, showOOC, onOOCToggle, voiceChat, ttsPlaying, autoSendDelay = 3000 }: ChatInputProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [oocMode, setOocMode] = useState(false);
   const oocModeRef = useRef(oocMode);
@@ -176,7 +179,7 @@ function ChatInput({ disabled, onSend, choices, showOOC, onOOCToggle, voiceChat,
   const autoSendTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [autoSendCountdown, setAutoSendCountdown] = useState(false); // true = 3s countdown active
   const prevDisabledRef = useRef(disabled);
-  const AUTO_SEND_DELAY = 3000;
+  const AUTO_SEND_DELAY = autoSendDelay;
 
   useEffect(() => {
     if (window.SpeechRecognition || window.webkitSpeechRecognition) {
@@ -213,17 +216,23 @@ function ChatInput({ disabled, onSend, choices, showOOC, onOOCToggle, voiceChat,
 
     const el = inputRef.current;
     const before = el?.value || "";
-    let hasFinalResult = false;
+    let prevFinalCount = 0;
+
+    // Cancel auto-send as soon as the engine detects new speech (before onresult fires)
+    recognition.onspeechstart = () => {
+      if (voiceChat) clearAutoSendTimer();
+    };
 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
       if (!el || sttSuppressRef.current) return;
       let final = "";
       let interim = "";
+      let finalCount = 0;
       for (let i = 0; i < event.results.length; i++) {
         const r = event.results[i];
         if (r.isFinal) {
           final += r[0].transcript;
-          hasFinalResult = true;
+          finalCount++;
         } else {
           interim += r[0].transcript;
         }
@@ -237,14 +246,13 @@ function ChatInput({ disabled, onSend, choices, showOOC, onOOCToggle, voiceChat,
       if (voiceChat && interim) {
         clearAutoSendTimer();
       }
-      // Start 3s countdown when speech settles (final result, no interim)
-      if (voiceChat && hasFinalResult && !interim) {
+      // Start 3s countdown only when NEW final result appears and no pending interim
+      if (voiceChat && finalCount > prevFinalCount && !interim) {
         clearAutoSendTimer();
         setAutoSendCountdown(true);
         autoSendTimerRef.current = setTimeout(() => {
           autoSendTimerRef.current = null;
           setAutoSendCountdown(false);
-          // Trigger send via handleSend
           const text = el.value.trim();
           if (text) {
             sttSuppressRef.current = true;
@@ -258,6 +266,7 @@ function ChatInput({ disabled, onSend, choices, showOOC, onOOCToggle, voiceChat,
           }
         }, AUTO_SEND_DELAY);
       }
+      prevFinalCount = finalCount;
     };
 
     recognition.onerror = () => { clearAutoSendTimer(); stopWebSTT(); };

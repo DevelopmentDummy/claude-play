@@ -25,6 +25,8 @@ interface StatusBarProps {
   /** Voice chat mode */
   voiceChat?: boolean;
   onVoiceChatToggle?: () => void;
+  /** Settings */
+  onSettings?: () => void;
 }
 
 const selectClass = `px-2 py-1 rounded-md text-xs text-text-dim bg-transparent border border-border/60 outline-none cursor-pointer appearance-none
@@ -58,6 +60,7 @@ export default function StatusBar({
   onAutoPlayToggle,
   voiceChat,
   onVoiceChatToggle,
+  onSettings,
 }: StatusBarProps) {
   const statusColors: Record<string, string> = {
     connected: "bg-success shadow-[0_0_8px_rgba(77,255,145,0.4)]",
@@ -118,6 +121,18 @@ export default function StatusBar({
             title={voiceChat ? "음성 대화 모드 ON" : "음성 대화 모드 OFF"}
           >
             {voiceChat ? "\u{1F3A4}" : "\u{1F3A4}"}
+          </button>
+        )}
+
+        {/* Settings button */}
+        {onSettings && (
+          <button
+            onClick={onSettings}
+            className="px-2 py-1 rounded-md text-xs border cursor-pointer transition-all duration-fast
+              border-border/40 text-text-dim/50 bg-transparent hover:border-border/60 hover:text-text-dim/80"
+            title="채팅 옵션"
+          >
+            &#9881;
           </button>
         )}
 
