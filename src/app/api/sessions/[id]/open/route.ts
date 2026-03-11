@@ -111,5 +111,8 @@ export async function POST(
     }
   }
 
-  return NextResponse.json({ ...info, opening, isResume, layout, panels, panelContext, sharedPlacements, profileImage, iconImage, model: effectiveRaw || "", provider });
+  const voiceConfig = svc.sessions.readVoiceConfig(sessionDir);
+  const voiceEnabled = voiceConfig?.enabled ?? false;
+
+  return NextResponse.json({ ...info, opening, isResume, layout, panels, panelContext, sharedPlacements, profileImage, iconImage, model: effectiveRaw || "", provider, voiceEnabled });
 }

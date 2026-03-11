@@ -31,6 +31,12 @@ interface GenerateResult {
   error?: string;
 }
 
+interface TranscribeResult {
+  success: boolean;
+  text?: string;
+  error?: string;
+}
+
 interface WorkflowMeta {
   params: Record<
     string,
@@ -1079,6 +1085,136 @@ export class ComfyUIClient {
       return { success: true };
     } catch (err) {
       console.error(`[comfyui-tts] Error after ${Date.now() - t0}ms:`, err instanceof Error ? err.message : String(err));
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
+  /** Upload audio file to ComfyUI input dir (reuses /upload/image endpoint) */
+  async uploadAudio(audioPath: string): Promise<string | null> {
+    try {
+      const audioBuffer = fs.readFileSync(audioPath);
+      const basename = path.basename(audioPath);
+      const ext = path.extname(basename).toLowerCase();
+      const mimeMap: Record<string, string> = {
+        ".wav": "audio/wav", ".mp3": "audio/mpeg", ".webm": "audio/webm",
+        ".ogg": "audio/ogg", ".m4a": "audio/mp4", ".mp4": "audio/mp4",
+      };
+      const mime = mimeMap[ext] || "application/octet-stream";
+
+      const formData = new FormData();
+      formData.append("image", new Blob([audioBuffer], { type: mime }), basename);
+      formData.append("overwrite", "true");
+      formData.append("subfolder", "");
+      formData.append("type", "input");
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30_000);
+      try {
+        const res = await fetch(`${this.baseUrl}/upload/image`, {
+          method: "POST",
+          body: formData,
+          signal: controller.signal,
+        });
+        if (!res.ok) {
+          console.error(`[comfyui-stt] Upload failed: ${res.status}`);
+          return null;
+        }
+        const data = (await res.json()) as { name: string };
+        console.log(`[comfyui-stt] Uploaded audio: ${data.name}`);
+        return data.name;
+      } finally {
+        clearTimeout(timeout);
+      }
+    } catch (err) {
+      console.error(`[comfyui-stt] Upload failed:`, err);
+      return null;
+    }
+  }
+
+  /** Extract text outputs from ComfyUI history entry */
+  private extractTextOutputs(historyEntry: Record<string, unknown>): string[] {
+    const outputs = historyEntry.outputs as Record<string, Record<string, unknown>> | undefined;
+    if (!outputs) return [];
+    const texts: string[] = [];
+    for (const nodeOutput of Object.values(outputs)) {
+      // ShowTextForGPT stores text in { text: [...] }
+      const textArr = nodeOutput.text as string[] | undefined;
+      if (textArr && Array.isArray(textArr)) {
+        texts.push(...textArr);
+      }
+      // Some nodes use string directly
+      if (typeof nodeOutput.string === "string") {
+        texts.push(nodeOutput.string);
+      }
+    }
+    return texts;
+  }
+
+  /** Transcribe audio using ComfyUI Whisper STT node */
+  async transcribeAudio(
+    audioPath: string,
+    language = "ko",
+    modelSize = "base",
+  ): Promise<TranscribeResult> {
+    const t0 = Date.now();
+    try {
+      // Upload audio to ComfyUI input dir
+      const uploadedName = await this.uploadAudio(audioPath);
+      if (!uploadedName) {
+        return { success: false, error: "Failed to upload audio to ComfyUI" };
+      }
+
+      const prompt: Record<string, unknown> = {
+        "1": {
+          class_type: "LoadAudio",
+          inputs: { audio: uploadedName },
+        },
+        "2": {
+          class_type: "AILab_Qwen3TTSWhisperSTT",
+          inputs: {
+            audio: ["1", 0],
+            model_size: modelSize,
+            language,
+            unload_models: true,
+          },
+        },
+        "3": {
+          class_type: "ShowTextForGPT",
+          inputs: {
+            text: ["2", 0],
+          },
+        },
+      };
+
+      await this.reconcileQueueBeforeSubmit();
+
+      const queueRes = await this.fetchWithRetry(`${this.baseUrl}/prompt`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt }),
+      }, { attempts: 5, timeoutMs: 30_000, baseDelayMs: 300 });
+
+      if (!queueRes.ok) {
+        const errText = await queueRes.text();
+        return { success: false, error: `ComfyUI queue failed: ${errText}` };
+      }
+
+      const { prompt_id } = (await queueRes.json()) as { prompt_id: string };
+      console.log(`[comfyui-stt] Queued ${prompt_id} (${Date.now() - t0}ms)`);
+
+      const history = await this.pollHistory(prompt_id, 120_000);
+      if (!history) {
+        await this.cancelPrompt(prompt_id);
+        return { success: false, error: "Timeout waiting for STT" };
+      }
+
+      const texts = this.extractTextOutputs(history);
+      const text = texts.join(" ").trim();
+      console.log(`[comfyui-stt] Done in ${Date.now() - t0}ms: "${text.substring(0, 80)}..."`);
+
+      return { success: true, text };
+    } catch (err) {
+      console.error(`[comfyui-stt] Error:`, err);
       return { success: false, error: err instanceof Error ? err.message : String(err) };
     }
   }

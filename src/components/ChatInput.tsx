@@ -2,6 +2,40 @@
 
 import { useState, useRef, useCallback, useEffect, memo } from "react";
 
+// Web Speech API type shim (not in default DOM lib)
+interface SpeechRecognitionEvent extends Event {
+  results: SpeechRecognitionResultList;
+}
+interface SpeechRecognitionResultList {
+  length: number;
+  [index: number]: SpeechRecognitionResult;
+}
+interface SpeechRecognitionResult {
+  isFinal: boolean;
+  length: number;
+  [index: number]: SpeechRecognitionAlternative;
+}
+interface SpeechRecognitionAlternative {
+  transcript: string;
+  confidence: number;
+}
+interface ISpeechRecognition extends EventTarget {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  onresult: ((event: SpeechRecognitionEvent) => void) | null;
+  onerror: ((event: Event) => void) | null;
+  onend: (() => void) | null;
+  start(): void;
+  stop(): void;
+}
+declare global {
+  interface Window {
+    SpeechRecognition?: { new(): ISpeechRecognition };
+    webkitSpeechRecognition?: { new(): ISpeechRecognition };
+  }
+}
+
 export interface Choice {
   text: string;
   score: number;
@@ -31,6 +65,16 @@ function ChatInput({ disabled, onSend, choices, showOOC, onOOCToggle }: ChatInpu
   }, [showOOC]);
 
   const handleSend = useCallback(() => {
+    // Stop STT if active
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      recognitionRef.current = null;
+    }
+    if (mediaRecorderRef.current) {
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current = null;
+    }
+    setSttActive(false);
     const raw = inputRef.current?.value.trim();
     if (!raw) return;
     const text = oocModeRef.current && !raw.startsWith("OOC:") ? `OOC: ${raw}` : raw;
@@ -113,6 +157,154 @@ function ChatInput({ disabled, onSend, choices, showOOC, onOOCToggle }: ChatInpu
     return () => window.removeEventListener("__panel_fill_input", handler);
   }, [insertAtCursor]);
 
+  // --- Speech-to-Text ---
+  // Mode A: Web Speech API (Chrome desktop, etc.) — real-time streaming
+  // Mode B: MediaRecorder → server Whisper (iPad Safari, Firefox, etc.) — record then transcribe
+  const recognitionRef = useRef<ISpeechRecognition | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const [sttActive, setSttActive] = useState(false);
+  const [sttTranscribing, setSttTranscribing] = useState(false);
+  const [sttMode, setSttMode] = useState<"none" | "web" | "recorder">("none");
+
+  useEffect(() => {
+    if (window.SpeechRecognition || window.webkitSpeechRecognition) {
+      setSttMode("web");
+    } else if (typeof MediaRecorder !== "undefined") {
+      setSttMode("recorder");
+    }
+  }, []);
+
+  // -- Mode A: Web Speech API --
+  const stopWebSTT = useCallback(() => {
+    recognitionRef.current?.stop();
+    recognitionRef.current = null;
+    setSttActive(false);
+  }, []);
+
+  const startWebSTT = useCallback(() => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return;
+    const recognition = new SR();
+    recognition.lang = "ko-KR";
+    recognition.continuous = true;
+    recognition.interimResults = true;
+
+    const el = inputRef.current;
+    const before = el?.value || "";
+
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
+      if (!el) return;
+      let final = "";
+      let interim = "";
+      for (let i = 0; i < event.results.length; i++) {
+        const r = event.results[i];
+        if (r.isFinal) {
+          final += r[0].transcript;
+        } else {
+          interim += r[0].transcript;
+        }
+      }
+      const sep = before && !before.endsWith(" ") && !before.endsWith("\n") ? " " : "";
+      el.value = before + sep + final + interim;
+      el.style.height = "auto";
+      el.style.height = Math.min(el.scrollHeight, 150) + "px";
+    };
+
+    recognition.onerror = () => stopWebSTT();
+    recognition.onend = () => setSttActive(false);
+    recognition.start();
+    recognitionRef.current = recognition;
+    setSttActive(true);
+  }, [stopWebSTT]);
+
+  // -- Mode B: MediaRecorder → server Whisper --
+  const stopRecorderSTT = useCallback(async () => {
+    const recorder = mediaRecorderRef.current;
+    if (!recorder || recorder.state === "inactive") return;
+
+    // Wrap stop in a promise to wait for final data
+    const blob = await new Promise<Blob>((resolve) => {
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+      recorder.onstop = () => {
+        resolve(new Blob(audioChunksRef.current, { type: recorder.mimeType }));
+      };
+      recorder.stop();
+    });
+
+    mediaRecorderRef.current = null;
+    audioChunksRef.current = [];
+    setSttActive(false);
+
+    if (blob.size < 1000) return; // too short, ignore
+
+    setSttTranscribing(true);
+    try {
+      const form = new FormData();
+      form.append("audio", blob, `stt.${blob.type.includes("webm") ? "webm" : "m4a"}`);
+      form.append("language", "ko");
+      form.append("model_size", "base");
+
+      const res = await fetch("/api/tools/comfyui/stt", { method: "POST", body: form });
+      const data = await res.json();
+      if (data.text) {
+        insertAtCursor(data.text);
+      }
+    } catch (err) {
+      console.error("[stt] Transcribe failed:", err);
+    } finally {
+      setSttTranscribing(false);
+    }
+  }, [insertAtCursor]);
+
+  const startRecorderSTT = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Prefer webm for smaller size; fall back to whatever is supported
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : MediaRecorder.isTypeSupported("audio/mp4")
+          ? "audio/mp4"
+          : "";
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      audioChunksRef.current = [];
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+      recorder.start(1000); // collect chunks every 1s
+      mediaRecorderRef.current = recorder;
+      setSttActive(true);
+    } catch (err) {
+      console.error("[stt] Mic access denied:", err);
+    }
+  }, []);
+
+  // -- Unified toggle --
+  const toggleSTT = useCallback(() => {
+    if (sttActive) {
+      if (sttMode === "web") stopWebSTT();
+      else stopRecorderSTT();
+    } else {
+      if (sttMode === "web") startWebSTT();
+      else startRecorderSTT();
+    }
+  }, [sttActive, sttMode, stopWebSTT, stopRecorderSTT, startWebSTT, startRecorderSTT]);
+
+  // Cleanup on unmount or disable
+  useEffect(() => {
+    if (disabled && sttActive) {
+      if (sttMode === "web") stopWebSTT();
+      else { mediaRecorderRef.current?.stop(); setSttActive(false); }
+    }
+  }, [disabled, sttActive, sttMode, stopWebSTT]);
+
+  useEffect(() => () => {
+    recognitionRef.current?.stop();
+    mediaRecorderRef.current?.stop();
+  }, []);
+
   const btnBase = "w-9 h-9 flex items-center justify-center rounded-lg border cursor-pointer text-xs font-medium shrink-0 transition-all duration-fast";
 
   return (
@@ -162,6 +354,30 @@ function ChatInput({ disabled, onSend, choices, showOOC, onOOCToggle }: ChatInpu
           >
             *
           </button>
+          {sttMode !== "none" && (
+            <button
+              onClick={toggleSTT}
+              disabled={sttTranscribing}
+              className={`${btnBase} ${
+                sttTranscribing
+                  ? "border-blue-500/60 text-blue-400 bg-blue-500/15 animate-pulse"
+                  : sttActive
+                    ? "border-red-500/60 text-red-400 bg-red-500/15 animate-pulse"
+                    : "border-border/40 text-text-dim/50 bg-transparent hover:border-border/60 hover:text-text-dim/80"
+              }`}
+              title={sttTranscribing ? "변환 중..." : sttActive ? "음성 입력 중지" : "음성 입력"}
+            >
+              {sttTranscribing ? (
+                <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+                  <circle cx="12" cy="12" r="3"/>
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+                  <path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm-1-9a1 1 0 1 1 2 0v6a1 1 0 1 1-2 0V5zm6 6a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.93V21h2v-3.07A7 7 0 0 0 19 11h-2z"/>
+                </svg>
+              )}
+            </button>
+          )}
         </div>
         <textarea
           ref={inputRef}

@@ -231,9 +231,23 @@ function initServices(): Services {
       .trim();
   }
 
-  /** Split sanitized TTS text into chunks by newline, skip empty/trivial lines */
+  /** Split sanitized TTS text into chunks, merging short lines until 60+ chars */
   function splitTtsChunks(text: string): string[] {
-    return text.split(/\n+/).map(s => s.trim()).filter(s => s.length > 1);
+    const lines = text.split(/\n+/).map(s => s.trim()).filter(s => s.length > 1);
+    const chunks: string[] = [];
+    let buf = "";
+    for (const line of lines) {
+      if (buf.length === 0) {
+        buf = line;
+      } else if ((buf + " " + line).length <= 60) {
+        buf += " " + line;
+      } else {
+        chunks.push(buf);
+        buf = line;
+      }
+    }
+    if (buf.length > 0) chunks.push(buf);
+    return chunks;
   }
 
   /** Build a ComfyUI TTS prompt for a single chunk */
@@ -300,7 +314,7 @@ function initServices(): Services {
     if (chunks.length === 0) return;
 
     const totalChunks = chunks.length;
-    const chunkDelay = voiceConfig.chunkDelay ?? 500;
+    const chunkDelay = voiceConfig.chunkDelay ?? 1000;
     const seed = Math.floor(Math.random() * 2 ** 32);
     broadcast("audio:status", { status: "queued", messageId, totalChunks });
 

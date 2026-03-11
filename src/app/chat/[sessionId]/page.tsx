@@ -112,9 +112,14 @@ export default function ChatPage() {
     setAutoPlay((prev) => {
       const next = !prev;
       localStorage.setItem("tts-autoplay", String(next));
+      fetch(`/api/sessions/${sessionId}/voice`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: next }),
+      });
       return next;
     });
-  }, []);
+  }, [sessionId]);
 
   // Auto re-open session when server restarts and WS reconnects
   const handleSessionLost = useCallback(async () => {
@@ -280,6 +285,11 @@ export default function ChatPage() {
       }
 
       setProfileImage(data.profileImage ? `/api/sessions/${sessionId}/files/${data.profileImage}` : null);
+
+      // Sync autoPlay with session voice config
+      const voiceOn = data.voiceEnabled ?? false;
+      setAutoPlay(voiceOn);
+      localStorage.setItem("tts-autoplay", String(voiceOn));
 
       // Load chat history from server (file-backed, survives restarts)
       const historyCount = await loadHistory();
