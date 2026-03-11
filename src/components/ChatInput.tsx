@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, memo } from "react";
 
 export interface Choice {
   text: string;
@@ -15,11 +15,12 @@ interface ChatInputProps {
   onOOCToggle?: (on: boolean) => void;
 }
 
-export default function ChatInput({ disabled, onSend, choices, showOOC, onOOCToggle }: ChatInputProps) {
+function ChatInput({ disabled, onSend, choices, showOOC, onOOCToggle }: ChatInputProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [oocMode, setOocMode] = useState(false);
   const oocModeRef = useRef(oocMode);
   oocModeRef.current = oocMode;
+  const composingRef = useRef(false);
 
   // Sync oocMode when showOOC changes externally (e.g. sync OOC message)
   useEffect(() => {
@@ -42,6 +43,8 @@ export default function ChatInput({ disabled, onSend, choices, showOOC, onOOCTog
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      // IME 조합 중에는 Enter 무시 (한글 등 조합형 입력기)
+      if (e.nativeEvent.isComposing || composingRef.current || e.keyCode === 229) return;
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         handleSend();
@@ -51,9 +54,23 @@ export default function ChatInput({ disabled, onSend, choices, showOOC, onOOCTog
   );
 
   // Refocus textarea when streaming ends (disabled → enabled)
+  // 윈도우가 비활성일 때 focus()를 호출하면 macOS IME 상태가 깨질 수 있으므로
+  // document.hasFocus() 체크 후, 비활성이면 visibilitychange로 지연
   useEffect(() => {
     if (!disabled) {
-      inputRef.current?.focus();
+      if (document.hasFocus() && !composingRef.current) {
+        requestAnimationFrame(() => inputRef.current?.focus());
+      } else {
+        // 윈도우가 비활성일 때는 다시 활성화될 때 포커스
+        const onVisible = () => {
+          if (document.visibilityState === "visible" && !composingRef.current) {
+            requestAnimationFrame(() => inputRef.current?.focus());
+            document.removeEventListener("visibilitychange", onVisible);
+          }
+        };
+        document.addEventListener("visibilitychange", onVisible);
+        return () => document.removeEventListener("visibilitychange", onVisible);
+      }
     }
   }, [disabled]);
 
@@ -158,6 +175,8 @@ export default function ChatInput({ disabled, onSend, choices, showOOC, onOOCTog
           }`}
           onKeyDown={handleKeyDown}
           onInput={handleInput}
+          onCompositionStart={() => { composingRef.current = true; }}
+          onCompositionEnd={() => { composingRef.current = false; }}
           autoFocus
         />
         <button
@@ -171,3 +190,8 @@ export default function ChatInput({ disabled, onSend, choices, showOOC, onOOCTog
     </footer>
   );
 }
+
+// React.memo로 감싸서 props가 실제로 변하지 않으면 리렌더 방지
+// → AI 스트리밍 중 부모(ChatPage)가 매 text_delta마다 리렌더되더라도
+//   ChatInput의 textarea DOM은 건드리지 않으므로 IME 상태 보존
+export default memo(ChatInput);

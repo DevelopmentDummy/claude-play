@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { useChat } from "@/hooks/useChat";
@@ -234,6 +234,8 @@ export default function ChatPage() {
     [prepareSend, sendChat]
   );
 
+  const handleOOCToggle = useCallback((on: boolean) => setShowOOC(on), []);
+
   // Open session on mount — ref prevents Strict Mode double-call
   useEffect(() => {
     if (initRef.current) return;
@@ -399,6 +401,20 @@ export default function ChatPage() {
   // Filter OOC messages unless toggle is on
   const visibleMessages = showOOC ? messages : messages.filter((m) => !m.ooc);
 
+  // choices를 useMemo로 캐싱하여 ChatInput 불필요한 리렌더 방지
+  const currentChoices = useMemo(() => {
+    if (isStreaming) return undefined;
+    for (let i = visibleMessages.length - 1; i >= 0; i--) {
+      const m = visibleMessages[i];
+      if (m.role === "assistant" && !m.ooc) {
+        const c = extractChoices(m.content);
+        return c.length > 0 ? c : undefined;
+      }
+      if (m.role === "user") return undefined;
+    }
+    return undefined;
+  }, [isStreaming, visibleMessages]);
+
   // Listen for panel bridge sendMessage events
   useEffect(() => {
     const handler = (e: Event) => {
@@ -479,19 +495,8 @@ export default function ChatPage() {
             disabled={isStreaming}
             onSend={sendMessage}
             showOOC={showOOC}
-            onOOCToggle={(on) => setShowOOC(on)}
-            choices={(() => {
-              if (isStreaming) return undefined;
-              for (let i = visibleMessages.length - 1; i >= 0; i--) {
-                const m = visibleMessages[i];
-                if (m.role === "assistant" && !m.ooc) {
-                  const c = extractChoices(m.content);
-                  return c.length > 0 ? c : undefined;
-                }
-                if (m.role === "user") return undefined;
-              }
-              return undefined;
-            })()}
+            onOOCToggle={handleOOCToggle}
+            choices={currentChoices}
           />
         </div>
         {/* Desktop: left sidebar (profile + left panels) */}
