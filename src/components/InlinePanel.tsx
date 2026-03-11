@@ -2,6 +2,7 @@
 
 import { useRef, useEffect, useCallback, useState } from "react";
 import ImageModal from "./ImageModal";
+import { installImagePolling } from "@/lib/panel-image-polling";
 
 interface InlinePanelProps {
   html: string;
@@ -41,6 +42,9 @@ export default function InlinePanel({ html, sessionId }: InlinePanelProps) {
         console.warn("[InlinePanel] Script error:", e);
       }
     }
+
+    // Auto-poll images that haven't loaded yet (deferred generation)
+    installImagePolling(shadow);
 
     // Intercept image clicks inside shadow DOM
     shadow.addEventListener("click", (e: Event) => {
