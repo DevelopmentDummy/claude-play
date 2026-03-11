@@ -396,10 +396,7 @@ function initServices(): Services {
         if (segments.length > 0 || tools.length > 0) {
           const rawContent = segments.join("");
           const dialogContent = isOOC ? rawContent : extractDialog(rawContent);
-          // Skip meta-commentary turns: tool calls present but no <dialog_response> tag
-          const hasDialogTag = rawContent.includes(DIALOG_OPEN);
-          const isMetaOnly = !isOOC && !hasDialogTag && tools.length > 0;
-          if (dialogContent && !isMetaOnly) {
+          if (dialogContent) {
             svc.chatHistory.push({
               id: `hist-a-${++historyId}`,
               role: "assistant",
