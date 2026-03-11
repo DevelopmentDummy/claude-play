@@ -5,9 +5,33 @@ import { getDataDir } from "./data-dir";
 import { getInternalToken } from "./auth";
 import { providerFromModel } from "./ai-provider";
 
-/** Replace opening.md placeholders like {{user}} with profile/session context */
-function resolveOpeningPlaceholders(text: string, profile?: Profile): string {
-  return text.replace(/\{\{user\}\}/gi, profile?.name ?? "사용자");
+/** Compile opening.md as a Handlebars template with variables.json + profile context */
+function resolveOpeningPlaceholders(text: string, sessionDir: string, profile?: Profile): string {
+  let context: Record<string, unknown> = {};
+  // Load variables.json
+  const varsPath = path.join(sessionDir, "variables.json");
+  if (fs.existsSync(varsPath)) {
+    try { context = JSON.parse(fs.readFileSync(varsPath, "utf-8")); } catch { /* ignore */ }
+  }
+  // Load custom data files (*.json excluding system files)
+  try {
+    for (const entry of fs.readdirSync(sessionDir)) {
+      if (!entry.endsWith(".json") || SYSTEM_JSON.has(entry)) continue;
+      const fp = path.join(sessionDir, entry);
+      if (fs.statSync(fp).isFile()) {
+        try { context[entry.replace(/\.json$/, "")] = JSON.parse(fs.readFileSync(fp, "utf-8")); } catch { /* skip */ }
+      }
+    }
+  } catch { /* ignore */ }
+  // Inject user from profile
+  context.user = profile?.name ?? context.user ?? "사용자";
+  try {
+    const template = Handlebars.compile(text, { noEscape: true });
+    return template(context, { allowProtoPropertiesByDefault: true });
+  } catch {
+    // Fallback: return raw text if template compilation fails
+    return text;
+  }
 }
 
 /** System JSON files excluded from custom data file loading */
@@ -503,7 +527,7 @@ export class SessionManager {
     if (fs.existsSync(openingPath)) {
       const rawOpening = fs.readFileSync(openingPath, "utf-8").trim();
       if (rawOpening) {
-        const openingContent = resolveOpeningPlaceholders(rawOpening, profile);
+        const openingContent = resolveOpeningPlaceholders(rawOpening, sessionDir, profile);
         const appendix = `\n\n## 오프닝 메시지\n아래 메시지는 세션 시작 시 사용자에게 이미 표시되었다. 이 메시지를 반복하지 마라.\n\n${openingContent}\n`;
         for (const file of ["CLAUDE.md", "AGENTS.md"]) {
           const mdPath = path.join(sessionDir, file);
@@ -573,6 +597,16 @@ export class SessionManager {
 
   getSessionDir(id: string): string {
     return path.join(this.sessionsDir(), id);
+  }
+
+  /** Read opening.md and resolve Handlebars placeholders from variables.json + profile */
+  resolveOpening(sessionDir: string, profileSlug?: string): string | null {
+    const openingPath = path.join(sessionDir, "opening.md");
+    if (!fs.existsSync(openingPath)) return null;
+    const raw = fs.readFileSync(openingPath, "utf-8").trim();
+    if (!raw) return null;
+    const profile = profileSlug ? this.getProfile(profileSlug) : undefined;
+    return resolveOpeningPlaceholders(raw, sessionDir, profile ?? undefined);
   }
 
   getSessionInfo(id: string): SessionInfo | null {
@@ -1233,7 +1267,7 @@ export class SessionManager {
       const rawOpening = fs.readFileSync(openingPath, "utf-8").trim();
       if (rawOpening) {
         const profile = meta.profileSlug ? this.getProfile(meta.profileSlug) : undefined;
-        const openingContent = resolveOpeningPlaceholders(rawOpening, profile ?? undefined);
+        const openingContent = resolveOpeningPlaceholders(rawOpening, sessionDir, profile ?? undefined);
         const appendix = `\n\n## 오프닝 메시지\n아래 메시지는 세션 시작 시 사용자에게 이미 표시되었다. 이 메시지를 반복하지 마라.\n\n${openingContent}\n`;
         for (const file of targets) {
           const mdPath = path.join(sessionDir, file);
