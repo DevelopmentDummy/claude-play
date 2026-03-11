@@ -97,6 +97,8 @@ export async function POST(req: Request) {
             language: lang,
             voice: ["10", 0],
             unload_models: false,
+            max_new_tokens: 512,
+            repetition_penalty: 1.2,
             seed,
           },
         },

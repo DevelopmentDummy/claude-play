@@ -1024,8 +1024,18 @@ export class ComfyUIClient {
     prompt: Record<string, unknown>,
     outputPath: string,
   ): Promise<{ success: boolean; error?: string }> {
+    const t0 = Date.now();
     try {
+      // Check queue state before submitting
+      const snapshot = await this.getQueueSnapshot();
+      if (snapshot) {
+        console.log(`[comfyui-tts] Queue state: pending=${snapshot.pendingIds.length} running=${snapshot.runningIds.length}`);
+      }
+
       await this.reconcileQueueBeforeSubmit();
+      const t1 = Date.now();
+      if (t1 - t0 > 1000) console.warn(`[comfyui-tts] reconcileQueue took ${t1 - t0}ms`);
+
       const queueRes = await this.fetchWithRetry(`${this.baseUrl}/prompt`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1039,8 +1049,13 @@ export class ComfyUIClient {
       }
 
       const { prompt_id } = (await queueRes.json()) as { prompt_id: string };
+      const t2 = Date.now();
+      console.log(`[comfyui-tts] Queued ${prompt_id} in ${t2 - t1}ms`);
 
       const history = await this.pollHistory(prompt_id, 600_000);
+      const t3 = Date.now();
+      console.log(`[comfyui-tts] pollHistory ${prompt_id} took ${t3 - t2}ms (total ${t3 - t0}ms)`);
+
       if (!history) {
         await this.cancelPrompt(prompt_id);
         return { success: false, error: "Timeout waiting for TTS generation" };
@@ -1057,8 +1072,13 @@ export class ComfyUIClient {
 
       fs.mkdirSync(path.dirname(outputPath), { recursive: true });
       fs.writeFileSync(outputPath, buffer);
+      const t4 = Date.now();
+      if (t4 - t0 > 30_000) {
+        console.warn(`[comfyui-tts] SLOW generation: total ${t4 - t0}ms (queue=${t2 - t1}ms poll=${t3 - t2}ms download=${t4 - t3}ms)`);
+      }
       return { success: true };
     } catch (err) {
+      console.error(`[comfyui-tts] Error after ${Date.now() - t0}ms:`, err instanceof Error ? err.message : String(err));
       return { success: false, error: err instanceof Error ? err.message : String(err) };
     }
   }

@@ -251,6 +251,8 @@ function initServices(): Services {
           language: lang,
           voice: ["10", 0],
           unload_models: false,
+          max_new_tokens: 512,
+          repetition_penalty: 1.2,
           seed,
         },
       },
@@ -394,7 +396,10 @@ function initServices(): Services {
         if (segments.length > 0 || tools.length > 0) {
           const rawContent = segments.join("");
           const dialogContent = isOOC ? rawContent : extractDialog(rawContent);
-          if (dialogContent) {
+          // Skip meta-commentary turns: tool calls present but no <dialog_response> tag
+          const hasDialogTag = rawContent.includes(DIALOG_OPEN);
+          const isMetaOnly = !isOOC && !hasDialogTag && tools.length > 0;
+          if (dialogContent && !isMetaOnly) {
             svc.chatHistory.push({
               id: `hist-a-${++historyId}`,
               role: "assistant",

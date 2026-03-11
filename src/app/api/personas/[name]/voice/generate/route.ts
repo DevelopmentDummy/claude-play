@@ -123,6 +123,8 @@ export async function POST(
           language: lang,
           voice: ["1", 0],
           unload_models: true,
+          max_new_tokens: 512,
+          repetition_penalty: 1.2,
           seed: Math.floor(Math.random() * 2 ** 32),
         },
       },
@@ -202,6 +204,8 @@ export async function POST(
           language: lang,
           voice: ["10", 0],
           unload_models: false,
+          max_new_tokens: 512,
+          repetition_penalty: 1.2,
           seed: Math.floor(Math.random() * 2 ** 32),
         },
       };
@@ -218,6 +222,8 @@ export async function POST(
           language: lang,
           reference_audio: ["10", 0],
           unload_models: false,
+          max_new_tokens: 512,
+          repetition_penalty: 1.2,
           seed: Math.floor(Math.random() * 2 ** 32),
         },
       };

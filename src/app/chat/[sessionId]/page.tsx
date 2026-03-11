@@ -349,9 +349,11 @@ export default function ChatPage() {
   const inlinePanels = panels.filter((p) => !placement[p.name]);
 
   // Fallback: if no per-panel placement configured, use legacy position for all panels
+  // But always respect shared placements (global tool panels like profile-crop)
   const hasPerPanelPlacement = Object.keys(rawPlacement).length > 0;
-  const sidebarLeftPanels = hasPerPanelPlacement ? leftPanels : (panelPosition === "left" ? panels : []);
-  const sidebarRightPanels = hasPerPanelPlacement ? rightPanels : (panelPosition === "right" ? panels : []);
+  const panelsWithoutSharedPlacement = panels.filter((p) => !sharedPlacements[p.name]);
+  const sidebarLeftPanels = hasPerPanelPlacement ? leftPanels : (panelPosition === "left" ? panelsWithoutSharedPlacement : []);
+  const sidebarRightPanels = hasPerPanelPlacement ? rightPanels : (panelPosition === "right" ? panelsWithoutSharedPlacement : []);
 
   const hasLeftSidebar = sidebarLeftPanels.length > 0 || !!profileImage;
   const hasRightSidebar = sidebarRightPanels.length > 0;
@@ -440,7 +442,7 @@ export default function ChatPage() {
             isStreaming={isStreaming}
             hideTools
             sessionId={sessionId}
-            panels={hasPerPanelPlacement ? inlinePanels : panels}
+            panels={inlinePanels}
             hasMore={hasMore}
             onLoadMore={loadMore}
             onToggleOOC={toggleMessageOOC}
@@ -531,7 +533,7 @@ export default function ChatPage() {
         <PanelDrawer
           open={drawerOpen}
           onClose={() => setDrawerOpen(false)}
-          panels={hasPerPanelPlacement ? [...sidebarLeftPanels, ...sidebarRightPanels] : panels}
+          panels={[...sidebarLeftPanels, ...sidebarRightPanels]}
           panelPosition="right"
           panelSize={panelSize}
           profileImageUrl={profileImage}
