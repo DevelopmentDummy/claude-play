@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import * as path from "path";
 import * as fs from "fs";
 import sharp from "sharp";
-import { getServices } from "@/lib/services";
+import { getSessionManager } from "@/lib/services";
 import { ComfyUIClient } from "@/lib/comfyui-client";
 import { wsBroadcast } from "@/lib/ws-server";
 
@@ -11,8 +11,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const svc = getServices();
-  const sessionDir = svc.sessions.getSessionDir(id);
+  const sm = getSessionManager();
+  const sessionDir = sm.getSessionDir(id);
 
   const body = (await req.json()) as {
     sourceImage: string;
@@ -70,13 +70,13 @@ export async function POST(
   }
 
   // Step 3: Sync to persona directory
-  const sessionInfo = svc.sessions.getSessionInfo(id);
+  const sessionInfo = sm.getSessionInfo(id);
   const personaName = sessionInfo?.persona;
   let personaSynced = false;
-  if (personaName && svc.sessions.personaExists(personaName)) {
+  if (personaName && sm.personaExists(personaName)) {
     try {
       const personaImagesDir = path.join(
-        svc.sessions.getPersonaDir(personaName), "images"
+        sm.getPersonaDir(personaName), "images"
       );
       fs.mkdirSync(personaImagesDir, { recursive: true });
       fs.copyFileSync(profilePath, path.join(personaImagesDir, "profile.png"));

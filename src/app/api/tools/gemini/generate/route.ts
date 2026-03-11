@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getServices } from "@/lib/services";
+import { getSessionManager } from "@/lib/services";
 import { GeminiImageClient } from "@/lib/gemini-image";
 
 export async function POST(req: Request) {
@@ -11,12 +11,13 @@ export async function POST(req: Request) {
     );
   }
 
-  const svc = getServices();
+  const sm = getSessionManager();
 
   const body = (await req.json()) as {
     prompt: string;
     filename?: string;
     persona?: string;
+    sessionId?: string;
   };
 
   if (!body.prompt) {
@@ -29,18 +30,18 @@ export async function POST(req: Request) {
   let targetDir: string;
 
   if (body.persona) {
-    if (!svc.sessions.personaExists(body.persona)) {
+    if (!sm.personaExists(body.persona)) {
       return NextResponse.json(
         { error: `Persona "${body.persona}" not found` },
         { status: 404 }
       );
     }
-    targetDir = svc.sessions.getPersonaDir(body.persona);
-  } else if (svc.currentSessionId) {
-    targetDir = svc.sessions.getSessionDir(svc.currentSessionId);
+    targetDir = sm.getPersonaDir(body.persona);
+  } else if (body.sessionId) {
+    targetDir = sm.getSessionDir(body.sessionId);
   } else {
     return NextResponse.json(
-      { error: "No active session and no persona specified" },
+      { error: "No sessionId and no persona specified" },
       { status: 400 }
     );
   }

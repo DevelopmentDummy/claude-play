@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import * as fs from "fs";
 import * as path from "path";
-import { getServices } from "@/lib/services";
+import { getServices, openSessionInstance, getSessionInstance } from "@/lib/services";
 import { getAppRoot } from "@/lib/data-dir";
 import { providerFromModel, parseModelEffort } from "@/lib/ai-provider";
 
@@ -10,9 +10,6 @@ export async function POST(req: Request) {
   const { name } = body;
   const { model, effort } = parseModelEffort(body.model || "");
   const svc = getServices();
-
-  svc.claude.kill();
-  svc.panels.stop();
 
   if (!svc.sessions.personaExists(name)) {
     return NextResponse.json(
@@ -23,9 +20,6 @@ export async function POST(req: Request) {
 
   const personaDir = svc.sessions.getPersonaDir(name);
   svc.sessions.ensureClaudeRuntimeConfig(personaDir, name, "builder");
-  svc.builderPersonaName = name;
-  svc.isBuilderActive = true;
-  svc.currentSessionId = null;
 
   // Always overwrite CLAUDE.md and AGENTS.md with builder prompt
   const builderPrompt = svc.sessions.getBuilderPrompt();
@@ -38,18 +32,24 @@ export async function POST(req: Request) {
     fs.copyFileSync(panelSpecSrc, path.join(personaDir, "panel-spec.md"));
   }
 
-  // Determine provider: explicit service > explicit model > saved provider > current provider
+  // Determine provider: explicit service > explicit model > saved provider > current instance provider > default
   const savedProvider = svc.sessions.getBuilderProvider(name);
-  const provider = body.service || (model ? providerFromModel(model) : (savedProvider || svc.provider));
-  console.log(`[builder/edit] name=${name} model=${model} service=${body.service} provider=${provider} (saved=${savedProvider} current=${svc.provider})`);
-  const providerChanged = provider !== svc.provider;
+  const existingInstance = getSessionInstance(name);
+  const currentProvider = existingInstance?.provider || savedProvider || "claude";
+  const provider = body.service || (model ? providerFromModel(model) : currentProvider);
+  console.log(`[builder/edit] name=${name} model=${model} service=${body.service} provider=${provider} (saved=${savedProvider} current=${currentProvider})`);
+
+  const instance = openSessionInstance(name, true, provider);
+  const providerChanged = existingInstance ? provider !== existingInstance.provider : false;
+
   if (providerChanged) {
-    svc.switchProvider(provider);
     // Provider switch = fresh start, clear history and don't resume
-    svc.clearHistory();
+    instance.clearHistory();
   } else {
-    svc.loadHistory(); // Load from chat-history.json (empty if new)
+    instance.loadHistory(); // Load from chat-history.json (empty if new)
   }
+
+  instance.panels.watch(personaDir);
 
   // Provider switch = always fresh session (no resume across providers)
   const resumeId = providerChanged ? undefined : svc.sessions.getBuilderSessionId(name, provider);
@@ -58,7 +58,7 @@ export async function POST(req: Request) {
   const effectiveModel = model || (provider === "codex" ? "gpt-5.4" : undefined);
   // Builder default effort: highest for each provider
   const effectiveEffort = effort || (provider === "codex" ? "xhigh" : "high");
-  svc.claude.spawn(personaDir, resumeId, effectiveModel, runtimeSystemPrompt, effectiveEffort);
+  instance.claude.spawn(personaDir, resumeId, effectiveModel, runtimeSystemPrompt, effectiveEffort);
 
   const displayName = svc.sessions.getPersonaDisplayName(name);
   return NextResponse.json({ name, displayName, dir: personaDir, resumed: !!resumeId, provider });

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import * as path from "path";
 import * as fs from "fs";
-import { getServices } from "@/lib/services";
+import { getSessionManager } from "@/lib/services";
 import { ComfyUIClient } from "@/lib/comfyui-client";
 import { wsBroadcast } from "@/lib/ws-server";
 
@@ -23,20 +23,20 @@ function splitTtsChunks(text: string): string[] {
 }
 
 export async function POST(req: Request) {
-  const svc = getServices();
-  const body = (await req.json()) as { messageId: string; text: string };
+  const body = (await req.json()) as { messageId: string; text: string; sessionId?: string };
 
   if (!body.messageId || !body.text) {
     return NextResponse.json({ error: "Missing messageId or text" }, { status: 400 });
   }
 
-  const sessionId = svc.currentSessionId;
+  const sessionId = body.sessionId;
   if (!sessionId) {
-    return NextResponse.json({ error: "No active session" }, { status: 400 });
+    return NextResponse.json({ error: "sessionId required" }, { status: 400 });
   }
 
-  const sessionDir = svc.sessions.getSessionDir(sessionId);
-  const voiceConfig = svc.sessions.readVoiceConfig(sessionDir);
+  const sm = getSessionManager();
+  const sessionDir = sm.getSessionDir(sessionId);
+  const voiceConfig = sm.readVoiceConfig(sessionDir);
   if (!voiceConfig?.enabled) {
     return NextResponse.json({ error: "TTS not enabled" }, { status: 400 });
   }

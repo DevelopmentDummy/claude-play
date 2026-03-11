@@ -1,15 +1,15 @@
 import { NextResponse } from "next/server";
-import { getServices } from "@/lib/services";
+import { getServices, closeSessionInstance } from "@/lib/services";
 
-export async function POST() {
+export async function POST(req: Request) {
+  const body = (await req.json()) as { name: string };
+  const { name } = body;
   const svc = getServices();
 
-  svc.claude.kill();
+  closeSessionInstance(name);
 
-  if (svc.builderPersonaName) {
-    svc.sessions.deletePersona(svc.builderPersonaName);
-    svc.builderPersonaName = null;
-    svc.isBuilderActive = false;
+  if (name && svc.sessions.personaExists(name)) {
+    svc.sessions.deletePersona(name);
   }
 
   return NextResponse.json({ ok: true });

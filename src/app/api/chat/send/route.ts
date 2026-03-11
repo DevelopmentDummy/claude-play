@@ -1,12 +1,18 @@
 import { NextResponse } from "next/server";
-import { getServices } from "@/lib/services";
+import { getSessionInstance } from "@/lib/services";
 
 export async function POST(req: Request) {
-  const { text } = (await req.json()) as { text: string };
-  const svc = getServices();
+  const { text, sessionId } = (await req.json()) as { text: string; sessionId?: string };
+  if (!sessionId) {
+    return NextResponse.json({ error: "sessionId required" }, { status: 400 });
+  }
+  const instance = getSessionInstance(sessionId);
+  if (!instance) {
+    return NextResponse.json({ error: "Session not found" }, { status: 404 });
+  }
   const isOOC = text.startsWith("OOC:");
-  svc.isOOC = isOOC;
-  svc.addUserToHistory(text, isOOC);
-  svc.claude.send(text);
+  instance.isOOC = isOOC;
+  instance.addUserToHistory(text, isOOC);
+  instance.claude.send(text);
   return NextResponse.json({ ok: true });
 }

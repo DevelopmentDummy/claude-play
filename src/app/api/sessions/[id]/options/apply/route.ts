@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getServices } from "@/lib/services";
+import { getSessionManager, getSessionInstance } from "@/lib/services";
 import { providerFromModel, parseModelEffort } from "@/lib/ai-provider";
 
 export async function POST(
@@ -8,19 +8,19 @@ export async function POST(
 ) {
   const { id } = await params;
   const body = await req.json();
-  const svc = getServices();
-  const info = svc.sessions.getSessionInfo(id);
+  const sm = getSessionManager();
+  const info = sm.getSessionInfo(id);
   if (!info) {
     return NextResponse.json({ error: "Session not found" }, { status: 404 });
   }
 
-  const sessionDir = svc.sessions.getSessionDir(id);
+  const sessionDir = sm.getSessionDir(id);
 
   // Save options
-  svc.sessions.writeOptions(sessionDir, body);
+  sm.writeOptions(sessionDir, body);
 
   // Check if any prompt-targeting options changed (need restart)
-  const schema = svc.sessions.readOptionsSchema();
+  const schema = sm.readOptionsSchema();
   const promptKeys = new Set(
     schema
       .filter((o: Record<string, unknown>) => o.target === "prompt" || o.target === "both")
@@ -28,26 +28,27 @@ export async function POST(
   );
   const hasPromptChanges = Object.keys(body).some(k => promptKeys.has(k));
 
-  if (hasPromptChanges && svc.currentSessionId === id) {
+  const instance = getSessionInstance(id);
+  if (hasPromptChanges && instance) {
     // Kill current process
-    svc.claude.kill();
+    instance.claude.kill();
 
     // Rebuild prompt with new options
-    const resolvedOptions = svc.sessions.resolveOptions(sessionDir);
-    const savedModel = svc.sessions.getSessionModel(id) || "";
+    const resolvedOptions = sm.resolveOptions(sessionDir);
+    const savedModel = sm.getSessionModel(id) || "";
     const { model, effort } = parseModelEffort(savedModel);
     const provider = providerFromModel(model);
 
-    if (provider !== svc.provider) {
-      svc.switchProvider(provider);
+    if (provider !== instance.provider) {
+      instance.switchProvider(provider);
     }
 
     const resumeId = provider === "codex"
-      ? svc.sessions.getCodexThreadId(id)
-      : svc.sessions.getClaudeSessionId(id);
+      ? sm.getCodexThreadId(id)
+      : sm.getClaudeSessionId(id);
 
-    const runtimeSystemPrompt = svc.sessions.buildServiceSystemPrompt(info.persona, provider, resolvedOptions);
-    svc.claude.spawn(sessionDir, resumeId, model || undefined, runtimeSystemPrompt, effort);
+    const runtimeSystemPrompt = sm.buildServiceSystemPrompt(info.persona, provider, resolvedOptions);
+    instance.claude.spawn(sessionDir, resumeId, model || undefined, runtimeSystemPrompt, effort);
 
     return NextResponse.json({ ok: true, restarted: true });
   }

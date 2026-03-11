@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getServices } from "@/lib/services";
+import { getSessionManager, getSessionInstance } from "@/lib/services";
 
 /** GET: Compare persona vs session to show diff */
 export async function GET(
@@ -10,15 +10,15 @@ export async function GET(
   const url = new URL(req.url);
   const direction = url.searchParams.get("direction") || "forward";
 
-  const svc = getServices();
-  const info = svc.sessions.getSessionInfo(id);
+  const sm = getSessionManager();
+  const info = sm.getSessionInfo(id);
   if (!info) {
     return NextResponse.json({ error: "Session not found" }, { status: 404 });
   }
 
   const diff = direction === "reverse"
-    ? svc.sessions.getReverseSyncDiff(id)
-    : svc.sessions.getSyncDiff(id);
+    ? sm.getReverseSyncDiff(id)
+    : sm.getSyncDiff(id);
 
   return NextResponse.json({ diff });
 }
@@ -36,19 +36,19 @@ export async function POST(
     variablesMode?: "merge" | "overwrite" | "skip";
   };
 
-  const svc = getServices();
-  const info = svc.sessions.getSessionInfo(id);
+  const sm = getSessionManager();
+  const info = sm.getSessionInfo(id);
   if (!info) {
     return NextResponse.json({ error: "Session not found" }, { status: 404 });
   }
 
   if (direction === "reverse") {
-    svc.sessions.syncSessionToPersonaSelective(id, elements, variablesMode);
+    sm.syncSessionToPersonaSelective(id, elements, variablesMode);
   } else {
-    svc.sessions.syncPersonaToSessionSelective(id, elements);
+    sm.syncPersonaToSessionSelective(id, elements);
     // Force panel refresh if panels or variables were synced
     if (elements.panels || elements.variables || elements.layout) {
-      svc.panels.reload();
+      getSessionInstance(id)?.panels.reload();
     }
   }
 

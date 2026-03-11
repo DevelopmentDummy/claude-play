@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import * as fs from "fs";
 import * as path from "path";
-import { getServices } from "@/lib/services";
+import { getServices, openSessionInstance } from "@/lib/services";
 import { providerFromModel, parseModelEffort } from "@/lib/ai-provider";
 
 export async function POST(
@@ -14,8 +14,6 @@ export async function POST(
   const { model, effort } = parseModelEffort(rawModel || "");
   const svc = getServices();
 
-  svc.claude.kill();
-
   const info = svc.sessions.getSessionInfo(id);
   if (!info) {
     return NextResponse.json(
@@ -25,12 +23,20 @@ export async function POST(
   }
 
   const sessionDir = svc.sessions.getSessionDir(id);
-  svc.currentSessionId = id;
-  svc.isBuilderActive = false;
-  svc.builderPersonaName = null;
+
+  // Determine the effective model and provider
+  // rawModel may be saved as "opus:medium" — re-parse if loading from session
+  const savedRaw = svc.sessions.getSessionModel(id) || "";
+  const effectiveRaw = rawModel || savedRaw;
+  const { model: effectiveModel, effort: effectiveEffort } = parseModelEffort(effectiveRaw);
+  const finalEffort = effort || effectiveEffort;
+  const provider = providerFromModel(effectiveModel);
+
+  // Open (or reuse) session instance
+  const instance = openSessionInstance(id, false, provider);
 
   // Start panel watching
-  svc.panels.watch(sessionDir);
+  instance.panels.watch(sessionDir);
 
   // Read opening message (resolve Handlebars placeholders from variables.json + profile)
   const opening = svc.sessions.resolveOpening(sessionDir, info.profileSlug);
@@ -44,29 +50,16 @@ export async function POST(
   // Ensure runtime configs exist (but don't auto-sync persona files — user can manually sync)
   svc.sessions.ensureClaudeRuntimeConfig(sessionDir, info.persona, "session");
 
-  // Determine the effective model and provider
-  // rawModel may be saved as "opus:medium" — re-parse if loading from session
-  const savedRaw = svc.sessions.getSessionModel(id) || "";
-  const effectiveRaw = rawModel || savedRaw;
-  const { model: effectiveModel, effort: effectiveEffort } = parseModelEffort(effectiveRaw);
-  const finalEffort = effort || effectiveEffort;
-  const provider = providerFromModel(effectiveModel);
-
-  // Switch provider if needed
-  if (provider !== svc.provider) {
-    svc.switchProvider(provider);
-  }
-
   // Resume previous session based on provider
   const resumeId = provider === "codex"
     ? svc.sessions.getCodexThreadId(id)
     : svc.sessions.getClaudeSessionId(id);
   const isResume = !!resumeId;
-  svc.loadHistory(); // Load from chat-history.json (empty if new)
+  instance.loadHistory(); // Load from chat-history.json (empty if new)
 
   // Save opening as first history entry for new sessions
-  if (svc.chatHistory.length === 0 && opening) {
-    svc.addOpeningToHistory(opening);
+  if (instance.chatHistory.length === 0 && opening) {
+    instance.addOpeningToHistory(opening);
   }
 
   // Save model choice (with effort suffix) to session.json so it persists across refreshes
@@ -77,10 +70,10 @@ export async function POST(
   // Spawn with resume and model
   const resolvedOptions = svc.sessions.resolveOptions(sessionDir);
   const runtimeSystemPrompt = svc.sessions.buildServiceSystemPrompt(info.persona, provider, resolvedOptions);
-  svc.claude.spawn(sessionDir, resumeId, effectiveModel || undefined, runtimeSystemPrompt, finalEffort);
+  instance.claude.spawn(sessionDir, resumeId, effectiveModel || undefined, runtimeSystemPrompt, finalEffort);
 
   // Include initial panels + context in response (SSE may not be connected yet)
-  const { panels, context: panelContext, sharedPlacements } = svc.panels.getCurrentPanels();
+  const { panels, context: panelContext, sharedPlacements } = instance.panels.getCurrentPanels();
 
   // Sync profile/icon images from persona to session (may have been added after session creation)
   const imagesDir = path.join(sessionDir, "images");

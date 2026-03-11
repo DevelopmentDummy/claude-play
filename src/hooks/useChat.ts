@@ -46,7 +46,7 @@ function detectImageToken(toolName: string, input: unknown): string | null {
   return `$IMAGE:images/${filename}$`;
 }
 
-export function useChat() {
+export function useChat(sessionId?: string) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [status, setStatus] = useState<string>("disconnected");
@@ -240,14 +240,14 @@ export function useChat() {
         await fetch("/api/chat/send", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text }),
+          body: JSON.stringify({ text, sessionId }),
         });
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to send");
         setIsStreaming(false);
       }
     },
-    [prepareSend]
+    [prepareSend, sessionId]
   );
 
   const addOpeningMessage = useCallback((text: string) => {
@@ -267,7 +267,8 @@ export function useChat() {
   const loadHistory = useCallback(async (): Promise<number> => {
     const TARGET_VISIBLE = 10;
     try {
-      const res = await fetch("/api/chat/history");
+      const historyBase = sessionId ? `/api/chat/history?sessionId=${encodeURIComponent(sessionId)}` : "/api/chat/history";
+      const res = await fetch(historyBase);
       if (!res.ok) return 0;
       const data = await res.json() as { messages: ChatMessage[]; total: number; offset: number };
       totalRef.current = data.total;
@@ -281,7 +282,7 @@ export function useChat() {
         const batchSize = 10;
         const newOffset = Math.max(0, loadedOffsetRef.current - batchSize);
         const limit = loadedOffsetRef.current - newOffset;
-        const moreRes = await fetch(`/api/chat/history?offset=${newOffset}&limit=${limit}`);
+        const moreRes = await fetch(`/api/chat/history?offset=${newOffset}&limit=${limit}${sessionId ? `&sessionId=${encodeURIComponent(sessionId)}` : ""}`);
         if (!moreRes.ok) break;
         const moreData = await moreRes.json() as { messages: ChatMessage[] };
         loadedOffsetRef.current = newOffset;
@@ -296,7 +297,7 @@ export function useChat() {
       return allMessages.length;
     } catch { /* ignore */ }
     return 0;
-  }, []);
+  }, [sessionId]);
 
   const loadMore = useCallback(async (): Promise<number> => {
     if (loadedOffsetRef.current <= 0) return 0;
@@ -309,7 +310,7 @@ export function useChat() {
         const batchSize = 10;
         const newOffset = Math.max(0, loadedOffsetRef.current - batchSize);
         const limit = loadedOffsetRef.current - newOffset;
-        const res = await fetch(`/api/chat/history?offset=${newOffset}&limit=${limit}`);
+        const res = await fetch(`/api/chat/history?offset=${newOffset}&limit=${limit}${sessionId ? `&sessionId=${encodeURIComponent(sessionId)}` : ""}`);
         if (!res.ok) break;
         const data = await res.json() as { messages: ChatMessage[] };
         loadedOffsetRef.current = newOffset;
@@ -325,20 +326,20 @@ export function useChat() {
       }
     } catch { /* ignore */ }
     return 0;
-  }, []);
+  }, [sessionId]);
 
   const toggleMessageOOC = useCallback(async (id: string, ooc: boolean) => {
     const res = await fetch("/api/chat/history", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, ooc }),
+      body: JSON.stringify({ id, ooc, sessionId }),
     });
     if (!res.ok) return;
     const data = await res.json() as { message: ChatMessage };
     setMessages((prev) =>
       prev.map((m) => (m.id === id ? { ...m, ooc: data.message.ooc, content: data.message.content } : m))
     );
-  }, []);
+  }, [sessionId]);
 
   return {
     messages,

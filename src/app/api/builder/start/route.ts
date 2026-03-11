@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import * as fs from "fs";
 import * as path from "path";
-import { getServices } from "@/lib/services";
+import { getServices, openSessionInstance, closeSessionInstance } from "@/lib/services";
 import { getAppRoot } from "@/lib/data-dir";
 import { providerFromModel, parseModelEffort } from "@/lib/ai-provider";
 
@@ -11,15 +11,15 @@ export async function POST(req: Request) {
   const { model, effort } = parseModelEffort(body.model || "");
   const svc = getServices();
 
-  svc.claude.kill();
-  svc.panels.stop();
+  // Close any existing builder instance for this persona
+  closeSessionInstance(name);
+
+  const provider = providerFromModel(model || "");
+  const instance = openSessionInstance(name, true, provider);
+  instance.clearHistory();
 
   const personaDir = svc.sessions.createPersonaDir(name);
   svc.sessions.ensureClaudeRuntimeConfig(personaDir, name, "builder");
-  svc.builderPersonaName = name;
-  svc.isBuilderActive = true;
-  svc.currentSessionId = null;
-  svc.clearHistory();
 
   // Copy builder prompt as both CLAUDE.md and AGENTS.md
   const builderPrompt = svc.sessions.getBuilderPrompt();
@@ -32,16 +32,12 @@ export async function POST(req: Request) {
     fs.copyFileSync(panelSpecSrc, path.join(personaDir, "panel-spec.md"));
   }
 
-  // Switch provider if needed
-  const provider = providerFromModel(model || "");
-  if (provider !== svc.provider) {
-    svc.switchProvider(provider);
-  }
+  instance.panels.watch(personaDir);
 
   const runtimeSystemPrompt = svc.sessions.buildBuilderSystemPrompt(name);
   // Builder default effort: highest for each provider
   const effectiveEffort = effort || (provider === "codex" ? "xhigh" : "high");
-  svc.claude.spawn(personaDir, undefined, model || undefined, runtimeSystemPrompt, effectiveEffort);
+  instance.claude.spawn(personaDir, undefined, model || undefined, runtimeSystemPrompt, effectiveEffort);
 
   const displayName = svc.sessions.getPersonaDisplayName(name);
   return NextResponse.json({ name, displayName, dir: personaDir, provider });

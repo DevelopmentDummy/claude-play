@@ -44,7 +44,7 @@ export default function ChatPage() {
     loadMore,
     hasMore,
     toggleMessageOOC,
-  } = useChat();
+  } = useChat(sessionId);
   const { applyLayout, resetLayout } = useLayout();
 
   const [panels, setPanels] = useState<Panel[]>([]);
@@ -543,7 +543,7 @@ export default function ChatPage() {
               fetch("/api/chat/tts", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ messageId, text }),
+                body: JSON.stringify({ messageId, text, sessionId }),
               }).catch(() => {});
             }}
             onPlayAudio={(messageId) => {

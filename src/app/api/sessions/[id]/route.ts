@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getServices } from "@/lib/services";
+import { getServices, closeSessionInstance } from "@/lib/services";
 
 export async function DELETE(
   _req: Request,
@@ -8,12 +8,8 @@ export async function DELETE(
   const { id } = await params;
   const svc = getServices();
 
-  // Stop Claude and panels if they're using this session's directory
-  if (svc.currentSessionId === id) {
-    svc.currentSessionId = null;
-  }
-  svc.claude.kill();
-  svc.panels.stop();
+  // Close session instance (kills process + stops panels) if active
+  closeSessionInstance(id);
 
   // Retry deletion — Windows may need time to release file handles
   const maxRetries = 4;

@@ -31,7 +31,7 @@ export default function BuilderPage() {
     loadHistory,
     loadMore,
     hasMore,
-  } = useChat();
+  } = useChat(decodedName);
 
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [wsEnabled, setWsEnabled] = useState(false);

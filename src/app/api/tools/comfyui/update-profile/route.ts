@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import * as path from "path";
 import * as fs from "fs";
 import sharp from "sharp";
-import { getServices } from "@/lib/services";
+import { getSessionManager } from "@/lib/services";
 import { ComfyUIClient } from "@/lib/comfyui-client";
 import { wsBroadcast } from "@/lib/ws-server";
 
@@ -13,11 +13,12 @@ import { wsBroadcast } from "@/lib/ws-server";
  * 3. Syncs both to persona directory
  */
 export async function POST(req: Request) {
-  const svc = getServices();
+  const sm = getSessionManager();
 
   const body = (await req.json()) as {
     sourceImage: string; // Relative path, e.g. "images/mira-walk-flustered-202.png"
     persona?: string;
+    sessionId?: string;
     crop?: { x: number; y: number; width: number; height: number };
   };
 
@@ -28,17 +29,15 @@ export async function POST(req: Request) {
     );
   }
 
-  // Determine session directory
-  let sessionDir: string | null = null;
-  if (svc.currentSessionId) {
-    sessionDir = svc.sessions.getSessionDir(svc.currentSessionId);
-  }
-  if (!sessionDir) {
+  const sessionId = body.sessionId;
+  if (!sessionId) {
     return NextResponse.json(
-      { error: "No active session" },
+      { error: "sessionId required" },
       { status: 400 }
     );
   }
+
+  const sessionDir = sm.getSessionDir(sessionId);
 
   const sourceImagePath = path.join(sessionDir, body.sourceImage);
   if (!fs.existsSync(sourceImagePath)) {
@@ -99,12 +98,12 @@ export async function POST(req: Request) {
   }
 
   // Step 3: Sync to persona directory
-  const sessionInfo = svc.sessions.getSessionInfo(svc.currentSessionId!);
+  const sessionInfo = sm.getSessionInfo(sessionId);
   const personaName = body.persona || sessionInfo?.persona;
   let personaSynced = false;
-  if (personaName && svc.sessions.personaExists(personaName)) {
+  if (personaName && sm.personaExists(personaName)) {
     try {
-      const personaImagesDir = path.join(svc.sessions.getPersonaDir(personaName), "images");
+      const personaImagesDir = path.join(sm.getPersonaDir(personaName), "images");
       fs.mkdirSync(personaImagesDir, { recursive: true });
       fs.copyFileSync(profilePath, path.join(personaImagesDir, "profile.png"));
       if (iconResult?.success) {
@@ -123,7 +122,7 @@ export async function POST(req: Request) {
   // Broadcast profile update to all connected clients so frontend can refresh images
   const timestamp = Date.now();
   wsBroadcast("profile:update", {
-    sessionId: svc.currentSessionId,
+    sessionId,
     profile: "images/profile.png",
     icon: iconResult?.success ? "images/icon.png" : null,
     timestamp,

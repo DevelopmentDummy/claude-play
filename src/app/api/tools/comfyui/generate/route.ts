@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import * as path from "path";
 import * as fs from "fs";
-import { getServices } from "@/lib/services";
+import { getSessionManager } from "@/lib/services";
 import { ComfyUIClient } from "@/lib/comfyui-client";
 
 export async function POST(req: Request) {
-  const svc = getServices();
+  const sm = getSessionManager();
 
   const body = (await req.json()) as {
     workflow?: string;
@@ -15,6 +15,7 @@ export async function POST(req: Request) {
     extraFiles?: Record<string, string>;
     loras?: Array<{ name: string; strength: number }>;
     persona?: string; // For builder: generate directly into persona directory
+    sessionId?: string;
   };
 
   if (!body.filename) {
@@ -37,26 +38,26 @@ export async function POST(req: Request) {
 
   if (body.persona) {
     // Builder mode: save directly to persona directory
-    if (!svc.sessions.personaExists(body.persona)) {
+    if (!sm.personaExists(body.persona)) {
       return NextResponse.json(
         { error: `Persona "${body.persona}" not found` },
         { status: 404 }
       );
     }
-    targetDir = svc.sessions.getPersonaDir(body.persona);
+    targetDir = sm.getPersonaDir(body.persona);
     // Workflows from the tools directory (source of truth)
     workflowsDir = path.join(
       process.cwd(), "data", "tools", "comfyui", "skills", "generate-image", "workflows"
     );
-  } else if (svc.currentSessionId) {
+  } else if (body.sessionId) {
     // Session mode: save to session directory
-    targetDir = svc.sessions.getSessionDir(svc.currentSessionId);
+    targetDir = sm.getSessionDir(body.sessionId);
     workflowsDir = path.join(
       process.cwd(), "data", "tools", "comfyui", "skills", "generate-image", "workflows"
     );
   } else {
     return NextResponse.json(
-      { error: "No active session and no persona specified" },
+      { error: "No sessionId and no persona specified" },
       { status: 400 }
     );
   }

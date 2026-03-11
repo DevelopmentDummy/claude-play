@@ -10,6 +10,7 @@ const apiBase = (process.env.CLAUDE_BRIDGE_API_BASE || `http://127.0.0.1:${proce
 const mode = process.env.CLAUDE_BRIDGE_MODE || "session";
 const persona = process.env.CLAUDE_BRIDGE_PERSONA || "";
 const sessionDir = process.env.CLAUDE_BRIDGE_SESSION_DIR || process.cwd();
+const sessionId = mode === "session" ? path.basename(sessionDir) : "";
 const authToken = process.env.CLAUDE_BRIDGE_AUTH_TOKEN || "";
 const POLICY_REVIEW_LOG_FILE = "policy-review.log";
 const HARD_DENY_PATTERNS = [
@@ -61,6 +62,9 @@ function withPersona(payload) {
   if (!payload || typeof payload !== "object") return payload;
   if (mode === "builder" && persona && !("persona" in payload)) {
     return { ...payload, persona };
+  }
+  if (mode === "session" && sessionId && !("sessionId" in payload)) {
+    return { ...payload, sessionId };
   }
   return payload;
 }
@@ -557,7 +561,7 @@ server.registerTool(
   },
   async (input) => {
     try {
-      const payload = { sourceImage: input.sourceImage };
+      const payload = withPersona({ sourceImage: input.sourceImage });
       if (input.crop) payload.crop = input.crop;
       const data = await requestJson("POST", "/api/tools/comfyui/update-profile", payload);
       return ok(data);
