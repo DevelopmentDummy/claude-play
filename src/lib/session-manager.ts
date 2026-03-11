@@ -39,7 +39,7 @@ const SYSTEM_JSON = new Set([
   "variables.json", "session.json", "builder-session.json",
   "comfyui-config.json", "layout.json", "chat-history.json",
   "package.json", "tsconfig.json", "character-tags.json",
-  "voice.json",
+  "voice.json", ".mcp.json",
 ]);
 
 export interface PersonaInfo {
@@ -512,7 +512,7 @@ export class SessionManager {
 
     // If profile is provided, inject user info into both instruction files
     if (profile) {
-      const userSection = `\n\n## 사용자 정보\n사용자의 이름: ${profile.name}\n${profile.description}\n`;
+      const userSection = `\n\n## __사용자 정보__\n사용자의 이름: ${profile.name}\n${profile.description}\n`;
       for (const file of ["CLAUDE.md", "AGENTS.md"]) {
         const mdPath = path.join(sessionDir, file);
         if (fs.existsSync(mdPath)) {
@@ -528,7 +528,7 @@ export class SessionManager {
       const rawOpening = fs.readFileSync(openingPath, "utf-8").trim();
       if (rawOpening) {
         const openingContent = resolveOpeningPlaceholders(rawOpening, sessionDir, profile);
-        const appendix = `\n\n## 오프닝 메시지\n아래 메시지는 세션 시작 시 사용자에게 이미 표시되었다. 이 메시지를 반복하지 마라.\n\n${openingContent}\n`;
+        const appendix = `\n\n## __오프닝 메시지__\n아래 메시지는 세션 시작 시 사용자에게 이미 표시되었다. 이 메시지를 반복하지 마라.\n\n${openingContent}\n`;
         for (const file of ["CLAUDE.md", "AGENTS.md"]) {
           const mdPath = path.join(sessionDir, file);
           const existing = fs.existsSync(mdPath) ? fs.readFileSync(mdPath, "utf-8") : "";
@@ -1134,8 +1134,8 @@ export class SessionManager {
       if (fs.existsSync(src)) {
         let content = fs.readFileSync(src, "utf-8");
         // Remove auto-assembled sections (appended during session creation / refresh)
-        content = content.replace(/\n\n## 사용자 정보\n[\s\S]*?(?=\n\n## |\s*$)/, "");
-        content = content.replace(/\n\n## 오프닝 메시지\n[\s\S]*$/, "");
+        content = content.replace(/\n\n## __사용자 정보__\n[\s\S]*?(?=\n\n## |\s*$)/, "");
+        content = content.replace(/\n\n## __오프닝 메시지__\n[\s\S]*$/, "");
         fs.writeFileSync(dst, content.trimEnd() + "\n", "utf-8");
       }
     }
@@ -1199,8 +1199,8 @@ export class SessionManager {
     if (!fs.existsSync(rawPath)) return true;
     try {
       let live = fs.readFileSync(livePath, "utf-8");
-      live = live.replace(/\n\n## 사용자 정보\n[\s\S]*?(?=\n\n## |\s*$)/, "");
-      live = live.replace(/\n\n## 오프닝 메시지\n[\s\S]*$/, "");
+      live = live.replace(/\n\n## __사용자 정보__\n[\s\S]*?(?=\n\n## |\s*$)/, "");
+      live = live.replace(/\n\n## __오프닝 메시지__\n[\s\S]*$/, "");
       live = live.trimEnd() + "\n";
       const raw = fs.readFileSync(rawPath, "utf-8");
       return live !== raw;
@@ -1252,7 +1252,7 @@ export class SessionManager {
     if (meta.profileSlug) {
       const profile = this.getProfile(meta.profileSlug);
       if (profile) {
-        const userSection = `\n\n## 사용자 정보\n사용자의 이름: ${profile.name}\n${profile.description}\n`;
+        const userSection = `\n\n## __사용자 정보__\n사용자의 이름: ${profile.name}\n${profile.description}\n`;
         for (const file of targets) {
           const mdPath = path.join(sessionDir, file);
           const existing = fs.readFileSync(mdPath, "utf-8");
@@ -1268,7 +1268,7 @@ export class SessionManager {
       if (rawOpening) {
         const profile = meta.profileSlug ? this.getProfile(meta.profileSlug) : undefined;
         const openingContent = resolveOpeningPlaceholders(rawOpening, sessionDir, profile ?? undefined);
-        const appendix = `\n\n## 오프닝 메시지\n아래 메시지는 세션 시작 시 사용자에게 이미 표시되었다. 이 메시지를 반복하지 마라.\n\n${openingContent}\n`;
+        const appendix = `\n\n## __오프닝 메시지__\n아래 메시지는 세션 시작 시 사용자에게 이미 표시되었다. 이 메시지를 반복하지 마라.\n\n${openingContent}\n`;
         for (const file of targets) {
           const mdPath = path.join(sessionDir, file);
           const existing = fs.readFileSync(mdPath, "utf-8");
