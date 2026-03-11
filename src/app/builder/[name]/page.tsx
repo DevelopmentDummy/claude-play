@@ -38,6 +38,7 @@ export default function BuilderPage() {
   const [builderService, setBuilderService] = useState<"claude" | "codex">("claude");
   const [displayName, setDisplayName] = useState(decodedName);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [voiceChat, setVoiceChat] = useState(false);
   const isMobile = useIsMobile();
   const initRef = useRef(false);
 
@@ -158,6 +159,8 @@ export default function BuilderPage() {
         onServiceChange={handleServiceChange}
         showPanelButton={isMobile}
         onPanelToggle={() => setDrawerOpen((v) => !v)}
+        voiceChat={voiceChat}
+        onVoiceChatToggle={() => setVoiceChat((v) => !v)}
       />
       <ErrorBanner error={error} onDismiss={() => setError(null)} />
       <div className="flex-1 flex min-h-0">
@@ -174,7 +177,7 @@ export default function BuilderPage() {
             hasMore={hasMore}
             onLoadMore={loadMore}
           />
-          <ChatInput disabled={isStreaming} onSend={sendMessage} />
+          <ChatInput disabled={isStreaming} onSend={sendMessage} voiceChat={voiceChat} />
         </div>
       </div>
       {/* Mobile: slide-over drawer for BuilderOverview */}
