@@ -708,6 +708,7 @@ export class SessionManager {
     this.syncPersonaToSessionSelective(id, {
       panels: true, variables: true, layout: true, opening: true,
       worldview: true, skills: true, instructions: true, voice: true,
+      chatOptions: true,
     });
   }
 
@@ -772,6 +773,7 @@ export class SessionManager {
       opening: "opening.md",
       worldview: "worldview.md",
       voice: "voice.json",
+      chatOptions: "chat-options.json",
     };
     for (const [key, file] of Object.entries(fileMap)) {
       if (elements[key]) {
@@ -914,6 +916,9 @@ export class SessionManager {
     const sCharTags = path.join(sessionDir, "character-tags.json");
     result.push({ key: "characterTags", label: "캐릭터 태그 (character-tags.json)", hasChanges: this.fileDiffers(pCharTags, sCharTags) });
 
+    // Check chat options
+    result.push({ key: "chatOptions", label: "채팅 옵션 (chat-options.json)", hasChanges: this.fileDiffers(path.join(personaDir, "chat-options.json"), path.join(sessionDir, "chat-options.json")) });
+
     // Check custom data files (*.json excluding system files)
     const allDataFiles = new Set([
       ...this.getCustomDataFiles(personaDir),
@@ -991,6 +996,9 @@ export class SessionManager {
     const sCharTags = path.join(sessionDir, "character-tags.json");
     const pCharTags = path.join(personaDir, "character-tags.json");
     result.push({ key: "characterTags", label: "캐릭터 태그 (character-tags.json)", hasChanges: this.fileDiffers(sCharTags, pCharTags) });
+
+    // Check chat options
+    result.push({ key: "chatOptions", label: "채팅 옵션 (chat-options.json)", hasChanges: this.fileDiffers(path.join(sessionDir, "chat-options.json"), path.join(personaDir, "chat-options.json")) });
 
     // Check custom data files
     const allDataFiles = new Set([
@@ -1080,6 +1088,7 @@ export class SessionManager {
       opening: "opening.md",
       worldview: "worldview.md",
       voice: "voice.json",
+      chatOptions: "chat-options.json",
     };
     for (const [key, file] of Object.entries(fileMap)) {
       if (elements[key]) {

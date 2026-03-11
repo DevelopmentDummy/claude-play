@@ -8,7 +8,6 @@ interface OptionSchema {
   description?: string;
   type: "boolean" | "slider" | "select" | "text" | "number";
   default: unknown;
-  scope: "session" | "builder" | "both";
   target: "prompt" | "frontend" | "both";
   group: string;
   // slider

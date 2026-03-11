@@ -327,7 +327,7 @@ export default function ChatPage() {
       }
       // Load options schema
       try {
-        const schemaRes = await fetch("/api/chat-options/schema?scope=session");
+        const schemaRes = await fetch("/api/chat-options/schema");
         if (schemaRes.ok) setChatOptionsSchema(await schemaRes.json());
       } catch { /* ignore */ }
 
