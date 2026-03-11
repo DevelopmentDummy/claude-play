@@ -32,11 +32,18 @@ export async function POST(
   // Start panel watching
   svc.panels.watch(sessionDir);
 
-  // Read opening message
+  // Read opening message (resolve {{user}} etc. from profile)
   const openingPath = path.join(sessionDir, "opening.md");
-  const opening = fs.existsSync(openingPath)
-    ? fs.readFileSync(openingPath, "utf-8").trim() || null
-    : null;
+  let opening: string | null = null;
+  if (fs.existsSync(openingPath)) {
+    const raw = fs.readFileSync(openingPath, "utf-8").trim();
+    if (raw) {
+      const profile = info.profileSlug
+        ? svc.sessions.getProfile(info.profileSlug)
+        : undefined;
+      opening = raw.replace(/\{\{user\}\}/gi, profile?.name ?? "사용자");
+    }
+  }
 
   // Read layout config
   const layout = svc.sessions.readLayout(sessionDir);
