@@ -67,16 +67,20 @@ export default function ChatPage() {
   // Chunked audio: per-message arrays of chunk URLs
   const [audioMap, setAudioMap] = useState<Record<string, string[]>>({});
   const [audioStatus, setAudioStatus] = useState<Record<string, { generating: boolean; totalChunks: number; readyCount: number }>>({});
-  const audioQueueRef = useRef<{ messageId: string; nextChunk: number; playing: boolean; audioPlaying: boolean }>({ messageId: "", nextChunk: 0, playing: false, audioPlaying: false });
+  const audioQueueRef = useRef<{ messageId: string; nextChunk: number; playing: boolean; audioPlaying: boolean; totalChunks: number }>({ messageId: "", nextChunk: 0, playing: false, audioPlaying: false, totalChunks: 0 });
+  const [ttsPlaying, setTtsPlaying] = useState(false);
+  const [voiceChat, setVoiceChat] = useState(false);
   const isMobile = useIsMobile();
   const initRef = useRef(false);
 
   /** Play chunks sequentially for a message, starting from a given index */
-  const playChunkSequence = useCallback((messageId: string, startChunk: number) => {
+  const playChunkSequence = useCallback((messageId: string, startChunk: number, totalChunks?: number) => {
     const queue = audioQueueRef.current;
     queue.messageId = messageId;
     queue.nextChunk = startChunk;
     queue.playing = true;
+    if (totalChunks !== undefined) queue.totalChunks = totalChunks;
+    setTtsPlaying(true);
 
     function playNext() {
       const q = audioQueueRef.current;
@@ -86,7 +90,12 @@ export default function ChatPage() {
       setAudioMap((current) => {
         const urls = current[messageId];
         if (!urls || q.nextChunk >= urls.length || !urls[q.nextChunk]) {
-          // Chunk not ready yet — will be resumed when audio:ready arrives
+          // Check if all chunks are done
+          if (q.totalChunks > 0 && q.nextChunk >= q.totalChunks) {
+            q.playing = false;
+            setTtsPlaying(false);
+          }
+          // Otherwise chunk not ready yet — will be resumed when audio:ready arrives
           return current;
         }
         const url = urls[q.nextChunk];
@@ -95,11 +104,22 @@ export default function ChatPage() {
         const audio = new Audio(url);
         audio.onended = () => {
           q.audioPlaying = false;
-          setTimeout(playNext, 250);
+          // Check if this was the last chunk
+          if (q.totalChunks > 0 && q.nextChunk >= q.totalChunks) {
+            q.playing = false;
+            setTtsPlaying(false);
+          } else {
+            setTimeout(playNext, 250);
+          }
         };
         audio.onerror = () => {
           q.audioPlaying = false;
-          setTimeout(playNext, 250);
+          if (q.totalChunks > 0 && q.nextChunk >= q.totalChunks) {
+            q.playing = false;
+            setTtsPlaying(false);
+          } else {
+            setTimeout(playNext, 250);
+          }
         };
         audio.play().catch(() => { q.audioPlaying = false; });
         return current;
@@ -197,10 +217,11 @@ export default function ChatPage() {
           if (queue.messageId !== messageId || !queue.playing) {
             // Start playback from chunk 0 on the first ready chunk
             if (chunkIndex === 0) {
-              playChunkSequence(messageId, 0);
+              playChunkSequence(messageId, 0, totalChunks);
             }
           } else if (!queue.audioPlaying && queue.nextChunk === chunkIndex) {
             // Was waiting for this chunk and nothing is currently playing — resume
+            if (totalChunks) queue.totalChunks = totalChunks;
             playChunkSequence(messageId, chunkIndex);
           }
         }
@@ -457,6 +478,8 @@ export default function ChatPage() {
         onSync={() => setSyncModalOpen(true)}
         autoPlay={autoPlay}
         onAutoPlayToggle={handleAutoPlayToggle}
+        voiceChat={voiceChat}
+        onVoiceChatToggle={() => setVoiceChat((v) => !v)}
       />
       <ErrorBanner error={error} onDismiss={() => setError(null)} />
       <div className="flex-1 relative min-h-0">
@@ -512,6 +535,8 @@ export default function ChatPage() {
             showOOC={showOOC}
             onOOCToggle={handleOOCToggle}
             choices={currentChoices}
+            voiceChat={voiceChat}
+            ttsPlaying={ttsPlaying}
           />
         </div>
         {/* Desktop: left sidebar (profile + left panels) */}

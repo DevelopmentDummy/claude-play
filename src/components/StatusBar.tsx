@@ -22,6 +22,9 @@ interface StatusBarProps {
   /** TTS auto-play */
   autoPlay?: boolean;
   onAutoPlayToggle?: () => void;
+  /** Voice chat mode */
+  voiceChat?: boolean;
+  onVoiceChatToggle?: () => void;
 }
 
 const selectClass = `px-2 py-1 rounded-md text-xs text-text-dim bg-transparent border border-border/60 outline-none cursor-pointer appearance-none
@@ -53,6 +56,8 @@ export default function StatusBar({
   onSync,
   autoPlay,
   onAutoPlayToggle,
+  voiceChat,
+  onVoiceChatToggle,
 }: StatusBarProps) {
   const statusColors: Record<string, string> = {
     connected: "bg-success shadow-[0_0_8px_rgba(77,255,145,0.4)]",
@@ -99,6 +104,20 @@ export default function StatusBar({
             title={autoPlay ? "Auto-play voice ON" : "Auto-play voice OFF"}
           >
             {autoPlay ? "\u{1F50A}" : "\u{1F507}"}
+          </button>
+        )}
+        {/* Voice chat toggle */}
+        {onVoiceChatToggle !== undefined && (
+          <button
+            onClick={onVoiceChatToggle}
+            className={`px-2 py-1 rounded-md text-xs border cursor-pointer transition-all duration-fast ${
+              voiceChat
+                ? "text-green-400 border-green-500/60 bg-green-500/10"
+                : "text-text-dim border-border/60 hover:border-border hover:text-text"
+            }`}
+            title={voiceChat ? "음성 대화 모드 ON" : "음성 대화 모드 OFF"}
+          >
+            {voiceChat ? "\u{1F3A4}" : "\u{1F3A4}"}
           </button>
         )}
 

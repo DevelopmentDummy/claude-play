@@ -47,9 +47,13 @@ interface ChatInputProps {
   choices?: Choice[];
   showOOC?: boolean;
   onOOCToggle?: (on: boolean) => void;
+  /** Voice chat mode: auto-start STT after AI response, auto-send after silence */
+  voiceChat?: boolean;
+  /** TTS is currently playing audio */
+  ttsPlaying?: boolean;
 }
 
-function ChatInput({ disabled, onSend, choices, showOOC, onOOCToggle }: ChatInputProps) {
+function ChatInput({ disabled, onSend, choices, showOOC, onOOCToggle, voiceChat, ttsPlaying }: ChatInputProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [oocMode, setOocMode] = useState(false);
   const oocModeRef = useRef(oocMode);
@@ -67,6 +71,7 @@ function ChatInput({ disabled, onSend, choices, showOOC, onOOCToggle }: ChatInpu
 
   const handleSend = useCallback(() => {
     // Suppress any pending STT results before clearing input
+    clearAutoSendTimer();
     sttSuppressRef.current = true;
     if (recognitionRef.current) {
       recognitionRef.current.stop();
@@ -168,6 +173,10 @@ function ChatInput({ disabled, onSend, choices, showOOC, onOOCToggle }: ChatInpu
   const [sttActive, setSttActive] = useState(false);
   const [sttTranscribing, setSttTranscribing] = useState(false);
   const [sttMode, setSttMode] = useState<"none" | "web" | "recorder">("none");
+  const autoSendTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [autoSendCountdown, setAutoSendCountdown] = useState(false); // true = 3s countdown active
+  const prevDisabledRef = useRef(disabled);
+  const AUTO_SEND_DELAY = 3000;
 
   useEffect(() => {
     if (window.SpeechRecognition || window.webkitSpeechRecognition) {
@@ -184,10 +193,19 @@ function ChatInput({ disabled, onSend, choices, showOOC, onOOCToggle }: ChatInpu
     setSttActive(false);
   }, []);
 
+  const clearAutoSendTimer = useCallback(() => {
+    if (autoSendTimerRef.current) {
+      clearTimeout(autoSendTimerRef.current);
+      autoSendTimerRef.current = null;
+    }
+    setAutoSendCountdown(false);
+  }, []);
+
   const startWebSTT = useCallback(() => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) return;
     sttSuppressRef.current = false;
+    clearAutoSendTimer();
     const recognition = new SR();
     recognition.lang = "ko-KR";
     recognition.continuous = true;
@@ -195,6 +213,7 @@ function ChatInput({ disabled, onSend, choices, showOOC, onOOCToggle }: ChatInpu
 
     const el = inputRef.current;
     const before = el?.value || "";
+    let hasFinalResult = false;
 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
       if (!el || sttSuppressRef.current) return;
@@ -204,6 +223,7 @@ function ChatInput({ disabled, onSend, choices, showOOC, onOOCToggle }: ChatInpu
         const r = event.results[i];
         if (r.isFinal) {
           final += r[0].transcript;
+          hasFinalResult = true;
         } else {
           interim += r[0].transcript;
         }
@@ -212,14 +232,40 @@ function ChatInput({ disabled, onSend, choices, showOOC, onOOCToggle }: ChatInpu
       el.value = before + sep + final + interim;
       el.style.height = "auto";
       el.style.height = Math.min(el.scrollHeight, 150) + "px";
+
+      // Voice chat auto-send: cancel timer when user starts speaking again
+      if (voiceChat && interim) {
+        clearAutoSendTimer();
+      }
+      // Start 3s countdown when speech settles (final result, no interim)
+      if (voiceChat && hasFinalResult && !interim) {
+        clearAutoSendTimer();
+        setAutoSendCountdown(true);
+        autoSendTimerRef.current = setTimeout(() => {
+          autoSendTimerRef.current = null;
+          setAutoSendCountdown(false);
+          // Trigger send via handleSend
+          const text = el.value.trim();
+          if (text) {
+            sttSuppressRef.current = true;
+            recognition.stop();
+            recognitionRef.current = null;
+            setSttActive(false);
+            const sendText = oocModeRef.current && !text.startsWith("OOC:") ? `OOC: ${text}` : text;
+            el.value = "";
+            el.style.height = "auto";
+            onSend(sendText);
+          }
+        }, AUTO_SEND_DELAY);
+      }
     };
 
-    recognition.onerror = () => stopWebSTT();
-    recognition.onend = () => setSttActive(false);
+    recognition.onerror = () => { clearAutoSendTimer(); stopWebSTT(); };
+    recognition.onend = () => { clearAutoSendTimer(); setSttActive(false); };
     recognition.start();
     recognitionRef.current = recognition;
     setSttActive(true);
-  }, [stopWebSTT]);
+  }, [stopWebSTT, clearAutoSendTimer, voiceChat, onSend]);
 
   // -- Mode B: MediaRecorder → server Whisper --
   const stopRecorderSTT = useCallback(async () => {
@@ -295,17 +341,33 @@ function ChatInput({ disabled, onSend, choices, showOOC, onOOCToggle }: ChatInpu
     }
   }, [sttActive, sttMode, stopWebSTT, stopRecorderSTT, startWebSTT, startRecorderSTT]);
 
-  // Cleanup on unmount or disable
+  const prevTtsPlayingRef = useRef(ttsPlaying);
+
+  // Cleanup on disable; auto-start STT on voiceChat after TTS finishes
   useEffect(() => {
     if (disabled && sttActive) {
+      clearAutoSendTimer();
       if (sttMode === "web") stopWebSTT();
       else { mediaRecorderRef.current?.stop(); setSttActive(false); }
     }
-  }, [disabled, sttActive, sttMode, stopWebSTT]);
+
+    // Voice chat: auto-start STT when ready
+    if (voiceChat && !disabled && !sttActive && sttMode === "web") {
+      const wasBusy = prevDisabledRef.current || prevTtsPlayingRef.current;
+      const isReady = !ttsPlaying;
+      if (wasBusy && isReady) {
+        startWebSTT();
+      }
+    }
+
+    prevDisabledRef.current = disabled;
+    prevTtsPlayingRef.current = ttsPlaying;
+  }, [disabled, ttsPlaying, sttActive, sttMode, stopWebSTT, voiceChat, startWebSTT, clearAutoSendTimer]);
 
   useEffect(() => () => {
     recognitionRef.current?.stop();
     mediaRecorderRef.current?.stop();
+    if (autoSendTimerRef.current) clearTimeout(autoSendTimerRef.current);
   }, []);
 
   const btnBase = "w-9 h-9 flex items-center justify-center rounded-lg border cursor-pointer text-xs font-medium shrink-0 transition-all duration-fast";
@@ -361,7 +423,7 @@ function ChatInput({ disabled, onSend, choices, showOOC, onOOCToggle }: ChatInpu
             <button
               onClick={toggleSTT}
               disabled={sttTranscribing}
-              className={`${btnBase} ${
+              className={`${btnBase} relative ${
                 sttTranscribing
                   ? "border-blue-500/60 text-blue-400 bg-blue-500/15 animate-pulse"
                   : sttActive
@@ -370,6 +432,29 @@ function ChatInput({ disabled, onSend, choices, showOOC, onOOCToggle }: ChatInpu
               }`}
               title={sttTranscribing ? "변환 중..." : sttActive ? "음성 입력 중지" : "음성 입력"}
             >
+              {/* Auto-send countdown ring */}
+              {autoSendCountdown && (
+                <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 36 36">
+                  <circle
+                    cx="18" cy="18" r="15"
+                    fill="none"
+                    stroke="rgba(96,165,250,0.3)"
+                    strokeWidth="2"
+                  />
+                  <circle
+                    cx="18" cy="18" r="15"
+                    fill="none"
+                    stroke="rgb(96,165,250)"
+                    strokeWidth="2.5"
+                    strokeDasharray={`${Math.PI * 30}`}
+                    strokeDashoffset="0"
+                    strokeLinecap="round"
+                    style={{
+                      animation: `stt-countdown ${AUTO_SEND_DELAY}ms linear forwards`,
+                    }}
+                  />
+                </svg>
+              )}
               {sttTranscribing ? (
                 <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
                   <circle cx="12" cy="12" r="3"/>
