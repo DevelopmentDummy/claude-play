@@ -9,9 +9,27 @@ interface VoiceSettingsProps {
   refreshTrigger?: number;
 }
 
+const EDGE_VOICES = [
+  { id: "ko-KR-SunHiNeural", label: "선히 (여성)", lang: "ko" },
+  { id: "ko-KR-InJoonNeural", label: "인준 (남성)", lang: "ko" },
+  { id: "ko-KR-HyunsuMultilingualNeural", label: "현수 (남성, 다국어)", lang: "ko" },
+  { id: "en-US-AriaNeural", label: "Aria (F)", lang: "en" },
+  { id: "en-US-GuyNeural", label: "Guy (M)", lang: "en" },
+  { id: "ja-JP-NanamiNeural", label: "七海 (女性)", lang: "ja" },
+  { id: "ja-JP-KeitaNeural", label: "圭太 (男性)", lang: "ja" },
+  { id: "zh-CN-XiaoxiaoNeural", label: "晓晓 (女)", lang: "zh" },
+  { id: "zh-CN-YunjianNeural", label: "云健 (男)", lang: "zh" },
+];
+
 export default function VoiceSettings({ personaName, accentColor = "var(--accent)", refreshTrigger = 0 }: VoiceSettingsProps) {
   const [config, setConfig] = useState({
     enabled: false,
+    ttsProvider: "comfyui" as "comfyui" | "edge",
+    // Edge TTS fields
+    edgeVoice: "ko-KR-SunHiNeural",
+    edgeRate: "",
+    edgePitch: "",
+    // ComfyUI fields
     referenceAudio: "",
     referenceText: "",
     design: "",
@@ -44,14 +62,12 @@ export default function VoiceSettings({ personaName, accentColor = "var(--accent
         .then((r) => r.json())
         .then((data) => {
           setConfig((prev) => ({ ...prev, ...data }));
-          // Auto-open YouTube modal if AI wrote youtubeSetup
           if (data.youtubeSetup?.url) {
             setYtUrl(data.youtubeSetup.url);
             setYtStart(String(data.youtubeSetup.start ?? 0));
             setYtEnd(String(data.youtubeSetup.end ?? 30));
             setYtError("");
             setYtModal(true);
-            // Clear youtubeSetup from voice.json
             fetch(`/api/personas/${enc}/voice`, {
               method: "PUT",
               headers: { "Content-Type": "application/json" },
@@ -61,7 +77,6 @@ export default function VoiceSettings({ personaName, accentColor = "var(--accent
         })
         .catch(() => {});
     }
-    // On refresh triggers (AI response complete), delay slightly to ensure file writes are flushed
     if (refreshTrigger > 0) {
       const t = setTimeout(loadVoice, 500);
       return () => clearTimeout(t);
@@ -198,7 +213,20 @@ export default function VoiceSettings({ personaName, accentColor = "var(--accent
     setYtLoading(false);
   }
 
-  const hasVoiceSource = !!(config.voiceFile || config.referenceAudio || config.design);
+  const isEdge = config.ttsProvider === "edge";
+  const hasVoiceSource = isEdge
+    ? !!config.edgeVoice
+    : !!(config.voiceFile || config.referenceAudio || config.design);
+
+  // Filter edge voices by selected language
+  const filteredEdgeVoices = EDGE_VOICES.filter((v) => v.lang === config.language);
+
+  const selectStyle = {
+    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M3 5l3 3 3-3'/%3E%3C/svg%3E")`,
+    backgroundRepeat: "no-repeat" as const,
+    backgroundPosition: "right 6px center",
+    paddingRight: "18px",
+  };
 
   return (
     <div
@@ -227,101 +255,57 @@ export default function VoiceSettings({ personaName, accentColor = "var(--accent
       </div>
 
       <div className="px-3.5 py-3 space-y-3">
-        {/* Reference Audio */}
+        {/* TTS Provider Selector */}
         <div>
-          <label className="text-[10px] text-text-dim/70 block mb-1">Reference Audio (3-30s)</label>
-          {config.referenceAudio ? (
-            <div className="flex items-center gap-2">
-              <audio
-                src={`/api/personas/${enc}/voice/upload`}
-                controls
-                className="h-7 flex-1"
-                style={{ maxWidth: "220px" }}
-              />
-              <span className="text-[10px] text-text-dim truncate max-w-[100px]">
-                {config.referenceAudio}
-              </span>
-              <button
-                onClick={handleDeleteRef}
-                className="text-[10px] text-error/70 hover:text-error transition-colors shrink-0"
-              >
-                Remove
-              </button>
-            </div>
-          ) : (
-            <div className="flex gap-1.5">
-              <input
-                ref={fileRef}
-                type="file"
-                accept=".wav,.mp3,.ogg,.flac"
-                onChange={handleUpload}
-                className="hidden"
-              />
-              <button
-                onClick={() => fileRef.current?.click()}
-                disabled={uploading}
-                className="px-3 py-1.5 text-[11px] rounded-lg border border-dashed transition-all
-                  border-border/40 text-text-dim/60 hover:border-accent/60 hover:text-accent disabled:opacity-50"
-              >
-                {uploading ? "Uploading..." : "Upload file"}
-              </button>
-              <button
-                onClick={openYtModal}
-                className="px-3 py-1.5 text-[11px] rounded-lg border border-dashed transition-all
-                  border-border/40 text-text-dim/60 hover:border-accent/60 hover:text-accent"
-              >
-                From YouTube
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Reference Text */}
-        {config.referenceAudio && (
-          <div>
-            <label className="text-[10px] text-text-dim/70 block mb-1">Reference Text</label>
-            <textarea
-              value={config.referenceText}
-              onChange={(e) => setConfig({ ...config, referenceText: e.target.value })}
-              onBlur={() => saveConfig(config)}
-              placeholder="레퍼런스 오디오에서 말하는 내용을 입력하세요"
-              rows={2}
-              className="w-full px-2.5 py-1.5 text-[11px] rounded-lg border border-border/40 bg-transparent text-text
-                outline-none focus:border-accent/60 transition-colors placeholder:text-text-dim/30 resize-y"
-            />
-            <p className="text-[9px] text-text-dim/40 mt-0.5">입력 시 ICL 모드로 더 정확한 음성 클로닝 (비우면 x-vector only)</p>
+          <label className="text-[10px] text-text-dim/70 block mb-1.5">Provider</label>
+          <div className="flex rounded-lg overflow-hidden border border-border/40">
+            <button
+              onClick={() => saveConfig({ ...config, ttsProvider: "edge" })}
+              className="flex-1 px-2 py-1.5 text-[10px] transition-all"
+              style={{
+                background: isEdge ? `${accentColor}20` : "transparent",
+                color: isEdge ? accentColor : "var(--text-dim)",
+                borderRight: "1px solid var(--border)",
+              }}
+            >
+              ⚡ Edge TTS
+            </button>
+            <button
+              onClick={() => saveConfig({ ...config, ttsProvider: "comfyui" })}
+              className="flex-1 px-2 py-1.5 text-[10px] transition-all"
+              style={{
+                background: !isEdge ? `${accentColor}20` : "transparent",
+                color: !isEdge ? accentColor : "var(--text-dim)",
+              }}
+            >
+              🎛 ComfyUI
+            </button>
           </div>
-        )}
-
-        {/* Voice Design Prompt */}
-        <div>
-          <label className="text-[10px] text-text-dim/70 block mb-1">Voice Design</label>
-          <input
-            type="text"
-            value={config.design}
-            onChange={(e) => setConfig({ ...config, design: e.target.value })}
-            onBlur={() => saveConfig(config)}
-            placeholder="e.g. 차갑고 낮은 톤의 성인 여성"
-            className="w-full px-2.5 py-1.5 text-[11px] rounded-lg border border-border/40 bg-transparent text-text
-              outline-none focus:border-accent/60 transition-colors placeholder:text-text-dim/30"
-          />
-          <p className="text-[9px] text-text-dim/40 mt-0.5">Reference audio가 없을 때 사용</p>
+          <p className="text-[9px] text-text-dim/40 mt-0.5">
+            {isEdge ? "클라우드 TTS — 빠르고 GPU 불필요" : "로컬 GPU — 보이스 클로닝 가능"}
+          </p>
         </div>
 
-        {/* Language */}
+        {/* Language (shared) */}
         <div>
           <label className="text-[10px] text-text-dim/70 block mb-1">Language</label>
           <select
             value={config.language}
-            onChange={(e) => saveConfig({ ...config, language: e.target.value })}
+            onChange={(e) => {
+              const newLang = e.target.value;
+              const updated = { ...config, language: newLang };
+              // Auto-select first voice for new language if current doesn't match
+              if (isEdge) {
+                const voicesForLang = EDGE_VOICES.filter((v) => v.lang === newLang);
+                if (voicesForLang.length > 0 && !voicesForLang.find((v) => v.id === config.edgeVoice)) {
+                  updated.edgeVoice = voicesForLang[0].id;
+                }
+              }
+              saveConfig(updated);
+            }}
             className="w-full px-2 py-1.5 text-[11px] rounded-lg border border-border/40 bg-transparent text-text
               outline-none cursor-pointer appearance-none"
-            style={{
-              backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M3 5l3 3 3-3'/%3E%3C/svg%3E")`,
-              backgroundRepeat: "no-repeat",
-              backgroundPosition: "right 6px center",
-              paddingRight: "18px",
-            }}
+            style={selectStyle}
           >
             <option value="ko" className="bg-[#1a1a2e] text-[#ccc]">Korean</option>
             <option value="en" className="bg-[#1a1a2e] text-[#ccc]">English</option>
@@ -330,28 +314,182 @@ export default function VoiceSettings({ personaName, accentColor = "var(--accent
           </select>
         </div>
 
-        {/* Model Size */}
-        <div>
-          <label className="text-[10px] text-text-dim/70 block mb-1">Model Size</label>
-          <select
-            value={config.modelSize}
-            onChange={(e) => saveConfig({ ...config, modelSize: e.target.value })}
-            className="w-full px-2 py-1.5 text-[11px] rounded-lg border border-border/40 bg-transparent text-text
-              outline-none cursor-pointer appearance-none"
-            style={{
-              backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M3 5l3 3 3-3'/%3E%3C/svg%3E")`,
-              backgroundRepeat: "no-repeat",
-              backgroundPosition: "right 6px center",
-              paddingRight: "18px",
-            }}
-          >
-            <option value="0.6B" className="bg-[#1a1a2e] text-[#ccc]">0.6B (Fast)</option>
-            <option value="1.7B" className="bg-[#1a1a2e] text-[#ccc]">1.7B (Quality)</option>
-          </select>
-          <p className="text-[9px] text-text-dim/40 mt-0.5">0.6B: 빠르지만 품질 낮음 / 1.7B: 느리지만 고품질</p>
-        </div>
+        {isEdge ? (
+          <>
+            {/* Edge TTS Voice */}
+            <div>
+              <label className="text-[10px] text-text-dim/70 block mb-1">Voice</label>
+              <select
+                value={config.edgeVoice}
+                onChange={(e) => saveConfig({ ...config, edgeVoice: e.target.value })}
+                className="w-full px-2 py-1.5 text-[11px] rounded-lg border border-border/40 bg-transparent text-text
+                  outline-none cursor-pointer appearance-none"
+                style={selectStyle}
+              >
+                {filteredEdgeVoices.map((v) => (
+                  <option key={v.id} value={v.id} className="bg-[#1a1a2e] text-[#ccc]">
+                    {v.label}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-        {/* Chunk Delay */}
+            {/* Edge Rate */}
+            <div>
+              <label className="text-[10px] text-text-dim/70 block mb-1">Speed</label>
+              <input
+                type="text"
+                value={config.edgeRate}
+                onChange={(e) => setConfig({ ...config, edgeRate: e.target.value })}
+                onBlur={() => saveConfig(config)}
+                placeholder="+0% (기본)"
+                className="w-full px-2.5 py-1.5 text-[11px] rounded-lg border border-border/40 bg-transparent text-text
+                  outline-none focus:border-accent/60 transition-colors placeholder:text-text-dim/30"
+              />
+              <p className="text-[9px] text-text-dim/40 mt-0.5">예: +20%, -10%</p>
+            </div>
+
+            {/* Edge Pitch */}
+            <div>
+              <label className="text-[10px] text-text-dim/70 block mb-1">Pitch</label>
+              <input
+                type="text"
+                value={config.edgePitch}
+                onChange={(e) => setConfig({ ...config, edgePitch: e.target.value })}
+                onBlur={() => saveConfig(config)}
+                placeholder="+0Hz (기본)"
+                className="w-full px-2.5 py-1.5 text-[11px] rounded-lg border border-border/40 bg-transparent text-text
+                  outline-none focus:border-accent/60 transition-colors placeholder:text-text-dim/30"
+              />
+              <p className="text-[9px] text-text-dim/40 mt-0.5">예: +5Hz, -10Hz</p>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* ComfyUI: Reference Audio */}
+            <div>
+              <label className="text-[10px] text-text-dim/70 block mb-1">Reference Audio (3-30s)</label>
+              {config.referenceAudio ? (
+                <div className="flex items-center gap-2">
+                  <audio
+                    src={`/api/personas/${enc}/voice/upload`}
+                    controls
+                    className="h-7 flex-1"
+                    style={{ maxWidth: "220px" }}
+                  />
+                  <span className="text-[10px] text-text-dim truncate max-w-[100px]">
+                    {config.referenceAudio}
+                  </span>
+                  <button
+                    onClick={handleDeleteRef}
+                    className="text-[10px] text-error/70 hover:text-error transition-colors shrink-0"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ) : (
+                <div className="flex gap-1.5">
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    accept=".wav,.mp3,.ogg,.flac"
+                    onChange={handleUpload}
+                    className="hidden"
+                  />
+                  <button
+                    onClick={() => fileRef.current?.click()}
+                    disabled={uploading}
+                    className="px-3 py-1.5 text-[11px] rounded-lg border border-dashed transition-all
+                      border-border/40 text-text-dim/60 hover:border-accent/60 hover:text-accent disabled:opacity-50"
+                  >
+                    {uploading ? "Uploading..." : "Upload file"}
+                  </button>
+                  <button
+                    onClick={openYtModal}
+                    className="px-3 py-1.5 text-[11px] rounded-lg border border-dashed transition-all
+                      border-border/40 text-text-dim/60 hover:border-accent/60 hover:text-accent"
+                  >
+                    From YouTube
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* ComfyUI: Reference Text */}
+            {config.referenceAudio && (
+              <div>
+                <label className="text-[10px] text-text-dim/70 block mb-1">Reference Text</label>
+                <textarea
+                  value={config.referenceText}
+                  onChange={(e) => setConfig({ ...config, referenceText: e.target.value })}
+                  onBlur={() => saveConfig(config)}
+                  placeholder="레퍼런스 오디오에서 말하는 내용을 입력하세요"
+                  rows={2}
+                  className="w-full px-2.5 py-1.5 text-[11px] rounded-lg border border-border/40 bg-transparent text-text
+                    outline-none focus:border-accent/60 transition-colors placeholder:text-text-dim/30 resize-y"
+                />
+                <p className="text-[9px] text-text-dim/40 mt-0.5">입력 시 ICL 모드로 더 정확한 음성 클로닝 (비우면 x-vector only)</p>
+              </div>
+            )}
+
+            {/* ComfyUI: Voice Design */}
+            <div>
+              <label className="text-[10px] text-text-dim/70 block mb-1">Voice Design</label>
+              <input
+                type="text"
+                value={config.design}
+                onChange={(e) => setConfig({ ...config, design: e.target.value })}
+                onBlur={() => saveConfig(config)}
+                placeholder="e.g. 차갑고 낮은 톤의 성인 여성"
+                className="w-full px-2.5 py-1.5 text-[11px] rounded-lg border border-border/40 bg-transparent text-text
+                  outline-none focus:border-accent/60 transition-colors placeholder:text-text-dim/30"
+              />
+              <p className="text-[9px] text-text-dim/40 mt-0.5">Reference audio가 없을 때 사용</p>
+            </div>
+
+            {/* ComfyUI: Model Size */}
+            <div>
+              <label className="text-[10px] text-text-dim/70 block mb-1">Model Size</label>
+              <select
+                value={config.modelSize}
+                onChange={(e) => saveConfig({ ...config, modelSize: e.target.value })}
+                className="w-full px-2 py-1.5 text-[11px] rounded-lg border border-border/40 bg-transparent text-text
+                  outline-none cursor-pointer appearance-none"
+                style={selectStyle}
+              >
+                <option value="0.6B" className="bg-[#1a1a2e] text-[#ccc]">0.6B (Fast)</option>
+                <option value="1.7B" className="bg-[#1a1a2e] text-[#ccc]">1.7B (Quality)</option>
+              </select>
+              <p className="text-[9px] text-text-dim/40 mt-0.5">0.6B: 빠르지만 품질 낮음 / 1.7B: 느리지만 고품질</p>
+            </div>
+
+            {/* ComfyUI: Voice .pt Generation */}
+            <div
+              className="rounded-lg p-2.5"
+              style={{ background: `${accentColor}08`, border: `1px solid ${accentColor}10` }}
+            >
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-[10px] text-text-dim/70">Voice Embedding (.pt)</label>
+                {config.voiceFile && (
+                  <span className="text-[9px] text-accent/70">{config.voiceFile}</span>
+                )}
+              </div>
+              <button
+                onClick={handleGenerateVoice}
+                disabled={generating || (!config.referenceAudio && !config.design)}
+                className="w-full px-3 py-1.5 text-[11px] rounded-lg border transition-all disabled:opacity-40
+                  border-accent/40 text-accent/80 hover:bg-accent/10 hover:text-accent"
+              >
+                {generating ? "Generating..." : config.voiceFile ? "Regenerate Voice" : "Generate Voice (.pt)"}
+              </button>
+              {!config.referenceAudio && !config.design && (
+                <p className="text-[9px] text-text-dim/40 mt-1">Reference audio 또는 voice design 필요</p>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* Chunk Delay (shared) */}
         <div>
           <label className="text-[10px] text-text-dim/70 block mb-1">Chunk Delay (ms)</label>
           <input
@@ -367,31 +505,7 @@ export default function VoiceSettings({ personaName, accentColor = "var(--accent
           <p className="text-[9px] text-text-dim/40 mt-0.5">줄바꿈 기준 분할 청크 간 딜레이</p>
         </div>
 
-        {/* Voice .pt Generation */}
-        <div
-          className="rounded-lg p-2.5"
-          style={{ background: `${accentColor}08`, border: `1px solid ${accentColor}10` }}
-        >
-          <div className="flex items-center justify-between mb-1.5">
-            <label className="text-[10px] text-text-dim/70">Voice Embedding (.pt)</label>
-            {config.voiceFile && (
-              <span className="text-[9px] text-accent/70">{config.voiceFile}</span>
-            )}
-          </div>
-          <button
-            onClick={handleGenerateVoice}
-            disabled={generating || (!config.referenceAudio && !config.design)}
-            className="w-full px-3 py-1.5 text-[11px] rounded-lg border transition-all disabled:opacity-40
-              border-accent/40 text-accent/80 hover:bg-accent/10 hover:text-accent"
-          >
-            {generating ? "Generating..." : config.voiceFile ? "Regenerate Voice" : "Generate Voice (.pt)"}
-          </button>
-          {!config.referenceAudio && !config.design && (
-            <p className="text-[9px] text-text-dim/40 mt-1">Reference audio 또는 voice design 필요</p>
-          )}
-        </div>
-
-        {/* Test TTS */}
+        {/* Test TTS (shared) */}
         <div
           className="rounded-lg p-2.5"
           style={{ background: `${accentColor}08`, border: `1px solid ${accentColor}10` }}
@@ -429,7 +543,9 @@ export default function VoiceSettings({ personaName, accentColor = "var(--accent
             <p className="text-[9px] text-error/70 mt-1">Generation failed</p>
           )}
           {!hasVoiceSource && (
-            <p className="text-[9px] text-text-dim/40 mt-1">음성 설정이 필요합니다</p>
+            <p className="text-[9px] text-text-dim/40 mt-1">
+              {isEdge ? "음성을 선택하세요" : "음성 설정이 필요합니다"}
+            </p>
           )}
         </div>
 

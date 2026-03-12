@@ -6,6 +6,7 @@ import { SessionManager } from "./session-manager";
 import { PanelEngine } from "./panel-engine";
 import { AIProvider } from "./ai-provider";
 import { ComfyUIClient } from "./comfyui-client";
+import { generateEdgeTts } from "./edge-tts-client";
 
 // --- Constants & helpers (extracted from services.ts) ---
 
@@ -373,58 +374,98 @@ export class SessionInstance {
     const messageId = this.chatHistory[this.chatHistory.length - 1]?.id;
     if (!messageId) return;
 
-    const languageMap: Record<string, string> = {
-      ko: "Korean", en: "English", ja: "Japanese", zh: "Chinese",
-      de: "German", fr: "French", ru: "Russian", pt: "Portuguese",
-      es: "Spanish", it: "Italian",
-    };
-    const lang = languageMap[voiceConfig.language || "ko"] || "Korean";
-    const modelSize = voiceConfig.modelSize || "1.7B";
-
-    const voiceFile = voiceConfig.voiceFile
-      ? path.join(dir, voiceConfig.voiceFile)
-      : undefined;
-    if (!voiceFile || !fs.existsSync(voiceFile)) return;
-
     const sanitized = sanitizeTtsText(dialogText);
     const chunks = splitTtsChunks(sanitized);
     if (chunks.length === 0) return;
 
     const totalChunks = chunks.length;
     const chunkDelay = voiceConfig.chunkDelay ?? 1000;
-    const seed = Math.floor(Math.random() * 2 ** 32);
-    this.broadcast("audio:status", { status: "queued", messageId, totalChunks });
-
-    const host = process.env.COMFYUI_HOST || "127.0.0.1";
-    const port = parseInt(process.env.COMFYUI_PORT || "8188", 10);
-    const client = new ComfyUIClient({ host, port }, "");
     const sessionId = this.id;
     const broadcastRef = this.broadcast.bind(this);
 
-    (async () => {
-      for (let i = 0; i < chunks.length; i++) {
-        if (i > 0) await new Promise(r => setTimeout(r, chunkDelay));
+    const provider = voiceConfig.ttsProvider || "comfyui";
 
-        const timestamp = Date.now();
-        const audioFilename = `tts-${timestamp}-${i}.mp3`;
-        const outputPath = path.join(dir, "audio", audioFilename);
-        const prompt = buildTtsPrompt(chunks[i], voiceFile, lang, modelSize, seed);
+    if (provider === "edge") {
+      // --- Edge TTS (cloud, no GPU) ---
+      const edgeVoice = voiceConfig.edgeVoice;
+      if (!edgeVoice) return;
 
-        try {
-          const result = await client.generateTts(prompt, outputPath);
-          if (result.success) {
-            const url = `/api/sessions/${sessionId}/files/audio/${audioFilename}`;
-            broadcastRef("audio:ready", { url, messageId, chunkIndex: i, totalChunks });
-          } else {
-            console.error(`[tts] Chunk ${i} failed:`, result.error);
+      this.broadcast("audio:status", { status: "queued", messageId, totalChunks });
+
+      (async () => {
+        for (let i = 0; i < chunks.length; i++) {
+          if (i > 0) await new Promise(r => setTimeout(r, chunkDelay));
+
+          const timestamp = Date.now();
+          const audioFilename = `tts-${timestamp}-${i}.mp3`;
+          const outputPath = path.join(dir, "audio", audioFilename);
+
+          try {
+            const result = await generateEdgeTts(chunks[i], outputPath, {
+              voice: edgeVoice,
+              rate: voiceConfig.edgeRate,
+              pitch: voiceConfig.edgePitch,
+            });
+            if (result.success) {
+              const url = `/api/sessions/${sessionId}/files/audio/${audioFilename}`;
+              broadcastRef("audio:ready", { url, messageId, chunkIndex: i, totalChunks });
+            } else {
+              console.error(`[tts] Edge chunk ${i} failed:`, result.error);
+              broadcastRef("audio:status", { status: "error", messageId, chunkIndex: i, totalChunks });
+            }
+          } catch (err) {
+            console.error(`[tts] Edge chunk ${i} error:`, err);
             broadcastRef("audio:status", { status: "error", messageId, chunkIndex: i, totalChunks });
           }
-        } catch (err) {
-          console.error(`[tts] Chunk ${i} error:`, err);
-          broadcastRef("audio:status", { status: "error", messageId, chunkIndex: i, totalChunks });
         }
-      }
-    })();
+      })();
+    } else {
+      // --- ComfyUI / Qwen3-TTS (local GPU) ---
+      const languageMap: Record<string, string> = {
+        ko: "Korean", en: "English", ja: "Japanese", zh: "Chinese",
+        de: "German", fr: "French", ru: "Russian", pt: "Portuguese",
+        es: "Spanish", it: "Italian",
+      };
+      const lang = languageMap[voiceConfig.language || "ko"] || "Korean";
+      const modelSize = voiceConfig.modelSize || "1.7B";
+
+      const voiceFile = voiceConfig.voiceFile
+        ? path.join(dir, voiceConfig.voiceFile)
+        : undefined;
+      if (!voiceFile || !fs.existsSync(voiceFile)) return;
+
+      const seed = Math.floor(Math.random() * 2 ** 32);
+      this.broadcast("audio:status", { status: "queued", messageId, totalChunks });
+
+      const host = process.env.COMFYUI_HOST || "127.0.0.1";
+      const port = parseInt(process.env.COMFYUI_PORT || "8188", 10);
+      const client = new ComfyUIClient({ host, port }, "");
+
+      (async () => {
+        for (let i = 0; i < chunks.length; i++) {
+          if (i > 0) await new Promise(r => setTimeout(r, chunkDelay));
+
+          const timestamp = Date.now();
+          const audioFilename = `tts-${timestamp}-${i}.mp3`;
+          const outputPath = path.join(dir, "audio", audioFilename);
+          const prompt = buildTtsPrompt(chunks[i], voiceFile, lang, modelSize, seed);
+
+          try {
+            const result = await client.generateTts(prompt, outputPath);
+            if (result.success) {
+              const url = `/api/sessions/${sessionId}/files/audio/${audioFilename}`;
+              broadcastRef("audio:ready", { url, messageId, chunkIndex: i, totalChunks });
+            } else {
+              console.error(`[tts] Chunk ${i} failed:`, result.error);
+              broadcastRef("audio:status", { status: "error", messageId, chunkIndex: i, totalChunks });
+            }
+          } catch (err) {
+            console.error(`[tts] Chunk ${i} error:`, err);
+            broadcastRef("audio:status", { status: "error", messageId, chunkIndex: i, totalChunks });
+          }
+        }
+      })();
+    }
   }
 
   // --- Process event binding ---

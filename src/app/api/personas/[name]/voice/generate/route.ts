@@ -14,6 +14,7 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ name: string }> }
 ) {
+  console.log("[voice/generate] WARNING: App Router route handler called!");
   const { name } = await params;
   const svc = getServices();
   const personaDir = svc.sessions.getPersonaDir(name);

@@ -240,7 +240,20 @@ export default function ChatPage() {
             delete next[messageId];
             return next;
           });
+          // Release ttsPlaying if this was the active message
+          const q = audioQueueRef.current;
+          if (q.messageId === messageId || !q.playing) {
+            q.playing = false;
+            setTtsPlaying(false);
+          }
         } else {
+          // Mark ttsPlaying early (before audio:ready arrives) to prevent auto-mic activation
+          setTtsPlaying(true);
+          const q = audioQueueRef.current;
+          q.messageId = messageId;
+          q.playing = true;
+          q.totalChunks = totalChunks;
+
           setAudioStatus((prev) => ({
             ...prev,
             [messageId]: { generating: true, totalChunks, readyCount: prev[messageId]?.readyCount || 0 },
