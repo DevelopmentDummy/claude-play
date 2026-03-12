@@ -267,7 +267,7 @@ export function useChat(sessionId?: string) {
   const loadHistory = useCallback(async (): Promise<number> => {
     const TARGET_VISIBLE = 10;
     try {
-      const historyBase = sessionId ? `/api/chat/history?sessionId=${encodeURIComponent(sessionId)}` : "/api/chat/history";
+      const historyBase = sessionId ? `/api/chat/history?sessionId=${sessionId}` : "/api/chat/history";
       const res = await fetch(historyBase);
       if (!res.ok) return 0;
       const data = await res.json() as { messages: ChatMessage[]; total: number; offset: number };
@@ -282,7 +282,7 @@ export function useChat(sessionId?: string) {
         const batchSize = 10;
         const newOffset = Math.max(0, loadedOffsetRef.current - batchSize);
         const limit = loadedOffsetRef.current - newOffset;
-        const moreRes = await fetch(`/api/chat/history?offset=${newOffset}&limit=${limit}${sessionId ? `&sessionId=${encodeURIComponent(sessionId)}` : ""}`);
+        const moreRes = await fetch(`/api/chat/history?offset=${newOffset}&limit=${limit}${sessionId ? `&sessionId=${sessionId}` : ""}`);
         if (!moreRes.ok) break;
         const moreData = await moreRes.json() as { messages: ChatMessage[] };
         loadedOffsetRef.current = newOffset;
@@ -310,7 +310,7 @@ export function useChat(sessionId?: string) {
         const batchSize = 10;
         const newOffset = Math.max(0, loadedOffsetRef.current - batchSize);
         const limit = loadedOffsetRef.current - newOffset;
-        const res = await fetch(`/api/chat/history?offset=${newOffset}&limit=${limit}${sessionId ? `&sessionId=${encodeURIComponent(sessionId)}` : ""}`);
+        const res = await fetch(`/api/chat/history?offset=${newOffset}&limit=${limit}${sessionId ? `&sessionId=${sessionId}` : ""}`);
         if (!res.ok) break;
         const data = await res.json() as { messages: ChatMessage[] };
         loadedOffsetRef.current = newOffset;

@@ -53,12 +53,16 @@ export async function POST(req: Request) {
 
   // Provider switch = always fresh session (no resume across providers)
   const resumeId = providerChanged ? undefined : svc.sessions.getBuilderSessionId(name, provider);
-  const runtimeSystemPrompt = svc.sessions.buildBuilderSystemPrompt(name);
   // If no model specified and provider is codex, use default codex model
   const effectiveModel = model || (provider === "codex" ? "gpt-5.4" : undefined);
   // Builder default effort: highest for each provider
   const effectiveEffort = effort || (provider === "codex" ? "xhigh" : "high");
-  instance.claude.spawn(personaDir, resumeId, effectiveModel, runtimeSystemPrompt, effectiveEffort);
+
+  // Only spawn if process is not running or provider changed
+  if (!instance.claude.isRunning() || providerChanged) {
+    const runtimeSystemPrompt = svc.sessions.buildBuilderSystemPrompt(name);
+    instance.claude.spawn(personaDir, resumeId, effectiveModel, runtimeSystemPrompt, effectiveEffort);
+  }
 
   const displayName = svc.sessions.getPersonaDisplayName(name);
   return NextResponse.json({ name, displayName, dir: personaDir, resumed: !!resumeId, provider });

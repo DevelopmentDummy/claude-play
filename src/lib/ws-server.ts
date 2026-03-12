@@ -5,7 +5,6 @@ import {
   getSessionInstance,
   scheduleSessionCleanup,
   cancelSessionCleanup,
-  destroyAllInstances,
 } from "./session-registry";
 
 interface WSClient {
@@ -61,14 +60,6 @@ function countSessionClients(sessionId: string): number {
   return count;
 }
 
-/** Check if there are any connected clients at all */
-function hasAnyClients(): boolean {
-  const { clients } = getWSState();
-  for (const c of clients) {
-    if (c.ws.readyState === WebSocket.OPEN) return true;
-  }
-  return false;
-}
 
 export function setupWebSocket(server: HTTPServer): void {
   const wss = new WebSocketServer({ noServer: true });
@@ -107,14 +98,9 @@ export function setupWebSocket(server: HTTPServer): void {
         const closedSessionId = client.sessionId;
         state.clients.delete(client);
 
-        // Schedule cleanup for the session this client was in
+        // Schedule cleanup for the session this client was in (5s grace period)
         if (closedSessionId && countSessionClients(closedSessionId) === 0) {
           scheduleSessionCleanup(closedSessionId);
-        }
-
-        // If no clients at all, destroy everything
-        if (!hasAnyClients()) {
-          destroyAllInstances();
         }
       });
 

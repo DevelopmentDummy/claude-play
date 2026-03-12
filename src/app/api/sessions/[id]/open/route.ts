@@ -67,10 +67,13 @@ export async function POST(
     svc.sessions.saveSessionModel(id, rawModel);
   }
 
-  // Spawn with resume and model
+  // Only spawn if process is not already running (avoid killing live process on page refresh)
+  // Force respawn if user explicitly changed model
   const resolvedOptions = svc.sessions.resolveOptions(sessionDir);
-  const runtimeSystemPrompt = svc.sessions.buildServiceSystemPrompt(info.persona, provider, resolvedOptions);
-  instance.claude.spawn(sessionDir, resumeId, effectiveModel || undefined, runtimeSystemPrompt, finalEffort);
+  if (!instance.claude.isRunning() || rawModel) {
+    const runtimeSystemPrompt = svc.sessions.buildServiceSystemPrompt(info.persona, provider, resolvedOptions);
+    instance.claude.spawn(sessionDir, resumeId, effectiveModel || undefined, runtimeSystemPrompt, finalEffort);
+  }
 
   // Include initial panels + context in response (SSE may not be connected yet)
   const { panels, context: panelContext, sharedPlacements } = instance.panels.getCurrentPanels();
