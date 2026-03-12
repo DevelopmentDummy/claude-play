@@ -77,11 +77,18 @@ export class PanelEngine {
   private getContext(): Record<string, unknown> {
     // Extract session ID from directory name for resource URL construction
     const sessionId = this.sessionDir ? path.basename(this.sessionDir) : "";
+    let layout: unknown = null;
+    if (this.sessionDir) {
+      try {
+        layout = JSON.parse(fs.readFileSync(path.join(this.sessionDir, "layout.json"), "utf-8"));
+      } catch {}
+    }
     return {
       ...this.variables,
       ...this.dataFiles,
       __sessionId: sessionId,
       __imageBase: sessionId ? `/api/sessions/${sessionId}/files/images/` : "",
+      __layout: layout,
     };
   }
 
