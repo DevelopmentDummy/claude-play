@@ -12,12 +12,13 @@ interface InlineImageProps {
 type ImageState = "loading" | "ready" | "error";
 
 const POLL_INTERVAL = 2000;
-const MAX_POLLS = 60;
+const MAX_POLLS = 23; // ~45 seconds
 
 export default function InlineImage({ sessionId, path: imgPath, onReady }: InlineImageProps) {
   const [state, setState] = useState<ImageState>("loading");
   const [showModal, setShowModal] = useState(false);
   const [cacheBuster] = useState(() => Date.now());
+  const [retryKey, setRetryKey] = useState(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollCountRef = useRef(0);
   const readyNotifiedRef = useRef(false);
@@ -60,10 +61,22 @@ export default function InlineImage({ sessionId, path: imgPath, onReady }: Inlin
           return;
         }
 
-        // Other error status
-        setState("error");
+        // Other error status — retry instead of giving up immediately
+        pollCountRef.current++;
+        if (pollCountRef.current >= MAX_POLLS) {
+          setState("error");
+          return;
+        }
+        timerRef.current = setTimeout(poll, POLL_INTERVAL);
       } catch {
-        if (!cancelled) setState("error");
+        if (cancelled) return;
+        // Network error — retry instead of giving up immediately
+        pollCountRef.current++;
+        if (pollCountRef.current >= MAX_POLLS) {
+          setState("error");
+          return;
+        }
+        timerRef.current = setTimeout(poll, POLL_INTERVAL);
       }
     };
 
@@ -73,7 +86,7 @@ export default function InlineImage({ sessionId, path: imgPath, onReady }: Inlin
       cancelled = true;
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [sessionId, imgPath]);
+  }, [sessionId, imgPath, retryKey]);
 
   if (state === "loading") {
     return (
@@ -86,8 +99,14 @@ export default function InlineImage({ sessionId, path: imgPath, onReady }: Inlin
 
   if (state === "error") {
     return (
-      <div className="inline-flex items-center gap-2 bg-[#2a1a1a] rounded-lg px-3 py-2 my-1">
-        <span className="text-[#a08888] text-sm">이미지 로드 실패</span>
+      <div
+        className="inline-flex items-center gap-2 bg-[#2a1a1a] rounded-lg px-3 py-2 my-1 cursor-pointer hover:bg-[#3a2a2a] transition-colors"
+        onClick={() => {
+          setState("loading");
+          setRetryKey((k) => k + 1);
+        }}
+      >
+        <span className="text-[#a08888] text-sm">이미지 로드 실패 — 탭하여 재시도</span>
       </div>
     );
   }

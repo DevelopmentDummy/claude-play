@@ -4,8 +4,9 @@ import { AIProvider } from "./ai-provider";
 import { getDataDir, getAppRoot } from "./data-dir";
 import { wsBroadcast } from "./ws-server";
 
-/** Grace period before destroying an instance after last client disconnects */
-const CLEANUP_GRACE_MS = 5000;
+/** Grace period before destroying an instance after last client disconnects.
+ *  10 minutes — long enough for mobile reconnects on unstable connections. */
+const CLEANUP_GRACE_MS = 10 * 60 * 1000;
 
 interface SessionRegistry {
   instances: Map<string, SessionInstance>;
