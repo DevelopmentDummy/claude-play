@@ -30,12 +30,17 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
     }
   }
 
+  // Store spawn parameters for retry on resume failure
+  private lastSpawnParams: { cwd: string; model?: string; appendSystemPrompt?: string; effort?: string } | null = null;
+
   /**
    * Spawn claude -p in the given directory.
    * If resumeId is provided, resumes that session with --resume.
    * CLAUDE.md in cwd is auto-loaded by Claude Code.
    */
   spawn(cwd: string, resumeId?: string, model?: string, appendSystemPrompt?: string, effort?: string): void {
+    // Save params for potential retry (without resumeId)
+    this.lastSpawnParams = { cwd, model, appendSystemPrompt, effort };
     if (this.proc) {
       this.kill();
     }
@@ -116,10 +121,17 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
       this.proc = null;
       this.buffer = "";
 
-      // If resume failed (quick exit), retry without resume
+      // If resume failed (quick exit), retry without resume but keep other params
       if (resumeId && code !== 0) {
         console.log("[claude-process] Resume failed, retrying without --resume");
-        this.spawn(cwd);
+        const params = this.lastSpawnParams;
+        this.spawn(
+          params?.cwd || cwd,
+          undefined,
+          params?.model,
+          params?.appendSystemPrompt,
+          params?.effort,
+        );
         return;
       }
 

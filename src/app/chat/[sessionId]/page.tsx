@@ -251,6 +251,8 @@ export default function ChatPage() {
           setTtsPlaying(true);
           const q = audioQueueRef.current;
           q.messageId = messageId;
+          q.nextChunk = 0;
+          q.audioPlaying = false;
           q.playing = true;
           q.totalChunks = totalChunks;
 

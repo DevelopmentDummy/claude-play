@@ -472,9 +472,13 @@ export class SessionInstance {
 
   private bindProcessEvents(p: AIProcess): void {
     p.on("message", (d) => {
-      this.broadcast("claude:message", d);
-
       const msg = d as Record<string, unknown>;
+
+      // For result messages, defer broadcasting until after TTS is triggered
+      // so frontend receives audio:status (ttsPlaying=true) BEFORE result (isStreaming=false)
+      if (msg.type !== "result") {
+        this.broadcast("claude:message", d);
+      }
 
       if (msg.type === "system" && msg.subtype === "status" && msg.status === "compacting") {
         this.broadcast("claude:status", "compacting");
@@ -575,6 +579,10 @@ export class SessionInstance {
             this.triggerTts(lastMsg.content);
           }
         }
+
+        // Broadcast result AFTER TTS trigger so frontend gets
+        // audio:status (ttsPlaying=true) before result (isStreaming=false)
+        this.broadcast("claude:message", d);
       }
     });
 
