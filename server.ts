@@ -11,7 +11,7 @@ const hostname = "0.0.0.0";
 const port = parseInt(process.env.PORT || "3340", 10);
 const ttsPort = parseInt(process.env.TTS_PORT || "3341", 10);
 
-/** Spawn standalone TTS server as a detached process */
+/** Spawn standalone TTS server as a child process (killed when parent exits) */
 function spawnTtsServer(): ChildProcess | null {
   if (process.env.TTS_ENABLED === "false") {
     console.log("[tts] TTS disabled via TTS_ENABLED=false");
@@ -21,7 +21,6 @@ function spawnTtsServer(): ChildProcess | null {
   const serverPath = path.join(process.cwd(), "tts-server.mjs");
   const child = spawn("node", [serverPath, String(ttsPort)], {
     stdio: ["ignore", "pipe", "pipe"],
-    detached: true,
     env: { ...process.env, NODE_OPTIONS: "" },
     windowsHide: true,
   });
@@ -35,8 +34,18 @@ function spawnTtsServer(): ChildProcess | null {
     }
   });
 
-  child.unref();
   return child;
+}
+
+/** Kill TTS server process (Windows-safe) */
+function killTtsServer(child: ChildProcess | null) {
+  if (!child || child.killed || !child.pid) return;
+  try {
+    const { execSync } = require("child_process") as typeof import("child_process");
+    execSync(`taskkill /T /F /PID ${child.pid}`, { stdio: "ignore" });
+  } catch {
+    try { child.kill(); } catch {}
+  }
 }
 
 const app = next({ dev, hostname, port });
@@ -62,13 +71,11 @@ function sendJson(res: ServerResponse, status: number, data: unknown) {
   res.end(body);
 }
 
-// Spawn TTS server
+// Spawn TTS server and ensure cleanup on exit
 const ttsProcess = spawnTtsServer();
-process.on("exit", () => {
-  if (ttsProcess && !ttsProcess.killed) {
-    try { process.kill(-ttsProcess.pid!); } catch {}
-  }
-});
+for (const sig of ["exit", "SIGINT", "SIGTERM", "SIGHUP"] as const) {
+  process.on(sig, () => killTtsServer(ttsProcess));
+}
 
 app.prepare().then(() => {
   const server = createServer(async (req, res) => {

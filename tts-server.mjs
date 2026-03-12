@@ -93,6 +93,14 @@ const server = createServer(async (req, res) => {
   sendJson(res, 404, { error: "Not found" });
 });
 
+server.on("error", (err) => {
+  if (err.code === "EADDRINUSE") {
+    console.error(`[tts-server] Port ${PORT} already in use — skipping (another instance running?)`);
+    process.exit(0); // Exit cleanly so parent doesn't see an error
+  }
+  throw err;
+});
+
 server.listen(PORT, "127.0.0.1", () => {
   console.log(`[tts-server] Listening on http://127.0.0.1:${PORT} (PID ${process.pid})`);
 });
