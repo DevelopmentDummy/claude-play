@@ -3,6 +3,16 @@ import * as path from "path";
 import { NextResponse } from "next/server";
 import { getServices } from "@/lib/services";
 
+// System JSON files that cannot be patched via this endpoint
+const PROTECTED_FILES = new Set([
+  "session.json",
+  "builder-session.json",
+  "layout.json",
+  "chat-history.json",
+  "package.json",
+  "tsconfig.json",
+]);
+
 export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -10,10 +20,26 @@ export async function PATCH(
   const { id } = await params;
   const svc = getServices();
   const sessionDir = svc.sessions.getSessionDir(id);
-  const varsPath = path.join(sessionDir, "variables.json");
 
-  if (!fs.existsSync(varsPath)) {
-    return NextResponse.json({ error: "variables.json not found" }, { status: 404 });
+  // Determine target file: ?file=inventory.json or default to variables.json
+  const url = new URL(req.url);
+  const fileName = url.searchParams.get("file") || "variables.json";
+
+  // Security: block path traversal and protected files
+  if (fileName.includes("/") || fileName.includes("\\") || fileName.includes("..")) {
+    return NextResponse.json({ error: "Invalid file name" }, { status: 400 });
+  }
+  if (!fileName.endsWith(".json")) {
+    return NextResponse.json({ error: "Only .json files supported" }, { status: 400 });
+  }
+  if (PROTECTED_FILES.has(fileName)) {
+    return NextResponse.json({ error: "Cannot modify protected file" }, { status: 403 });
+  }
+
+  const filePath = path.join(sessionDir, fileName);
+
+  if (!fs.existsSync(filePath)) {
+    return NextResponse.json({ error: `${fileName} not found` }, { status: 404 });
   }
 
   let patch: Record<string, unknown>;
@@ -24,11 +50,11 @@ export async function PATCH(
   }
 
   try {
-    const current = JSON.parse(fs.readFileSync(varsPath, "utf-8"));
+    const current = JSON.parse(fs.readFileSync(filePath, "utf-8"));
     const merged = { ...current, ...patch };
-    fs.writeFileSync(varsPath, JSON.stringify(merged, null, 2), "utf-8");
+    fs.writeFileSync(filePath, JSON.stringify(merged, null, 2), "utf-8");
     return NextResponse.json(merged);
   } catch {
-    return NextResponse.json({ error: "Failed to update variables" }, { status: 500 });
+    return NextResponse.json({ error: `Failed to update ${fileName}` }, { status: 500 });
   }
 }

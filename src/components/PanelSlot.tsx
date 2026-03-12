@@ -37,6 +37,15 @@ export default function PanelSlot({ name, html, sessionId, panelData, onSendMess
         });
         return res.json();
       },
+      async updateData(fileName: string, patch: Record<string, unknown>) {
+        if (!sessionId) return;
+        const res = await fetch(`/api/sessions/${sessionId}/variables?file=${encodeURIComponent(fileName)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(patch),
+        });
+        return res.json();
+      },
       sessionId,
       data: panelData || {},
     };
