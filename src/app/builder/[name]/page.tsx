@@ -10,6 +10,7 @@ import ErrorBanner from "@/components/ErrorBanner";
 import ChatMessages from "@/components/ChatMessages";
 import ChatInput from "@/components/ChatInput";
 import BuilderOverview from "@/components/BuilderOverview";
+import VersionHistoryModal from "@/components/VersionHistoryModal";
 
 export default function BuilderPage() {
   const { name } = useParams<{ name: string }>();
@@ -39,6 +40,8 @@ export default function BuilderPage() {
   const [displayName, setDisplayName] = useState(decodedName);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [voiceChat, setVoiceChat] = useState(false);
+  const [versionSaving, setVersionSaving] = useState(false);
+  const [showVersionHistory, setShowVersionHistory] = useState(false);
   const isMobile = useIsMobile();
   const initRef = useRef(false);
 
@@ -147,6 +150,24 @@ export default function BuilderPage() {
     }
   }, [decodedName, setStatus, setError, clearMessages, loadHistory]);
 
+  const handleVersionSave = useCallback(async () => {
+    if (versionSaving) return;
+    setVersionSaving(true);
+    try {
+      const res = await fetch(
+        `/api/personas/${encodeURIComponent(decodedName)}/versions`,
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) }
+      );
+      const data = await res.json();
+      if (!data.ok) {
+        setError(data.error || "Version save failed");
+      }
+    } catch {
+      setError("Version save failed");
+    }
+    setVersionSaving(false);
+  }, [decodedName, versionSaving, setError]);
+
   return (
     <div className="flex flex-col h-screen">
       <StatusBar
@@ -161,6 +182,9 @@ export default function BuilderPage() {
         onPanelToggle={() => setDrawerOpen((v) => !v)}
         voiceChat={voiceChat}
         onVoiceChatToggle={() => setVoiceChat((v) => !v)}
+        onVersionSave={handleVersionSave}
+        onVersionHistory={() => setShowVersionHistory(true)}
+        versionSaving={versionSaving}
       />
       <ErrorBanner error={error} onDismiss={() => setError(null)} />
       <div className="flex-1 flex min-h-0">
@@ -187,6 +211,13 @@ export default function BuilderPage() {
           onClose={() => setDrawerOpen(false)}
           personaName={decodedName}
           refreshTrigger={refreshTrigger}
+        />
+      )}
+      {showVersionHistory && (
+        <VersionHistoryModal
+          personaName={decodedName}
+          onClose={() => setShowVersionHistory(false)}
+          onRestored={() => setRefreshTrigger((n) => n + 1)}
         />
       )}
     </div>

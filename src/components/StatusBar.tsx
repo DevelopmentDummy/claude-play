@@ -27,6 +27,10 @@ interface StatusBarProps {
   onVoiceChatToggle?: () => void;
   /** Settings */
   onSettings?: () => void;
+  /** Version snapshot (builder mode) */
+  onVersionSave?: () => void;
+  onVersionHistory?: () => void;
+  versionSaving?: boolean;
 }
 
 const selectClass = `px-2 py-1 rounded-md text-xs text-text-dim bg-transparent border border-border/60 outline-none cursor-pointer appearance-none
@@ -61,6 +65,9 @@ export default function StatusBar({
   voiceChat,
   onVoiceChatToggle,
   onSettings,
+  onVersionSave,
+  onVersionHistory,
+  versionSaving,
 }: StatusBarProps) {
   const statusColors: Record<string, string> = {
     connected: "bg-success shadow-[0_0_8px_rgba(77,255,145,0.4)]",
@@ -185,14 +192,37 @@ export default function StatusBar({
           {statusLabels[status] || status}
         </span>
       </div>
-      {isBuilderMode && onReinit && (
-        <button
-          onClick={onReinit}
-          className="px-3 py-1 border border-border rounded-md bg-transparent text-text-dim cursor-pointer text-xs hover:bg-surface-light hover:text-text hover:-translate-y-px transition-all duration-fast"
-          title="Kill and respawn process"
-        >
-          Reconnect
-        </button>
+      {isBuilderMode && (
+        <div className="flex items-center gap-1.5">
+          {onVersionSave && (
+            <button
+              onClick={onVersionSave}
+              disabled={versionSaving}
+              className="px-2.5 py-1 border border-border rounded-md bg-transparent text-text-dim cursor-pointer text-xs hover:bg-surface-light hover:text-text hover:-translate-y-px transition-all duration-fast disabled:opacity-40 disabled:cursor-default"
+              title="현재 상태를 버전으로 보관"
+            >
+              {versionSaving ? "Saving..." : "Save Ver."}
+            </button>
+          )}
+          {onVersionHistory && (
+            <button
+              onClick={onVersionHistory}
+              className="px-2.5 py-1 border border-border rounded-md bg-transparent text-text-dim cursor-pointer text-xs hover:bg-surface-light hover:text-text hover:-translate-y-px transition-all duration-fast"
+              title="버전 히스토리"
+            >
+              History
+            </button>
+          )}
+          {onReinit && (
+            <button
+              onClick={onReinit}
+              className="px-3 py-1 border border-border rounded-md bg-transparent text-text-dim cursor-pointer text-xs hover:bg-surface-light hover:text-text hover:-translate-y-px transition-all duration-fast"
+              title="Kill and respawn process"
+            >
+              Reconnect
+            </button>
+          )}
+        </div>
       )}
     </header>
   );
