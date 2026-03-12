@@ -68,9 +68,11 @@ export async function POST(
 
   // Execute tool with timeout
   try {
-    const toolUrl = `file://${toolPath.replace(/\\/g, "/")}?t=${Date.now()}`;
-    const mod = await import(toolUrl);
-    const fn = typeof mod.default === "function" ? mod.default : mod;
+    // eslint-disable-next-line no-eval -- bypass webpack interception
+    const nativeRequire = eval("require") as NodeRequire;
+    delete nativeRequire.cache[toolPath];
+    const mod = nativeRequire(toolPath);
+    const fn = typeof mod === "function" ? mod : mod.default;
     if (typeof fn !== "function") {
       return NextResponse.json({ error: "Tool does not export a function" }, { status: 500 });
     }
@@ -113,6 +115,7 @@ export async function POST(
 
     return NextResponse.json({ ok: true, result: result?.result ?? null });
   } catch (err) {
+    console.error(`[tools/${name}] execution error:`, err);
     const message = err instanceof Error ? err.message : "Tool execution failed";
     return NextResponse.json({ error: message }, { status: 500 });
   }

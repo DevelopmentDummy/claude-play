@@ -4,6 +4,7 @@ import { useRef, useEffect, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import ImageModal from "./ImageModal";
 import { installImagePolling } from "@/lib/panel-image-polling";
+import { usePanelBridge } from "@/lib/use-panel-bridge";
 
 interface ModalPanelProps {
   name: string;
@@ -57,56 +58,17 @@ export default function ModalPanel({
     setTimeout(() => { setClosed(true); onClose(); }, 200);
   }, [onClose]);
 
-  // Install a modal-scoped bridge that auto-closes on sendMessage
+  // Install shared bridge + modal-specific sendMessage override that auto-closes
+  usePanelBridge(sessionId, panelData);
   useEffect(() => {
-    const bridge = {
-      sendMessage(text: string) {
-        window.dispatchEvent(
-          new CustomEvent("__panel_send_message", { detail: text })
-        );
-        // Auto-close modal after sending (always, regardless of dismissible)
+    const bridge = (window as unknown as Record<string, unknown>).__panelBridge as Record<string, unknown> | undefined;
+    if (bridge) {
+      const origSend = bridge.sendMessage as (text: string) => void;
+      bridge.sendMessage = (text: string) => {
+        origSend(text);
         window.dispatchEvent(new CustomEvent("__modal_panel_dismiss"));
-      },
-      fillInput(text: string) {
-        window.dispatchEvent(new CustomEvent("__panel_fill_input", { detail: text }));
-      },
-      async updateVariables(patch: Record<string, unknown>) {
-        if (!sessionId) return;
-        const res = await fetch(
-          `/api/sessions/${sessionId}/variables`,
-          {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(patch),
-          }
-        );
-        return res.json();
-      },
-      async updateData(fileName: string, patch: Record<string, unknown>) {
-        if (!sessionId) return;
-        const res = await fetch(
-          `/api/sessions/${sessionId}/variables?file=${encodeURIComponent(fileName)}`,
-          {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(patch),
-          }
-        );
-        return res.json();
-      },
-      async runTool(toolName: string, args?: Record<string, unknown>) {
-        if (!sessionId) return { ok: false, error: "No session" };
-        const res = await fetch(`/api/sessions/${sessionId}/tools/${encodeURIComponent(toolName)}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ args: args || {} }),
-        });
-        return res.json();
-      },
-      sessionId,
-      data: panelData || {},
-    };
-    (window as unknown as Record<string, unknown>).__panelBridge = bridge;
+      };
+    }
   }, [sessionId, panelData]);
 
   // Listen for dismiss event (fired by bridge.sendMessage — always force-closes)

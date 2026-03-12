@@ -194,6 +194,7 @@
 | `__panelBridge.fillInput(text)` | 입력창의 커서 위치에 텍스트를 삽입한다. 메시지를 보내지 않으므로 사용자가 추가 텍스트를 입력한 후 직접 전송할 수 있다. |
 | `__panelBridge.updateVariables(patch)` | `variables.json`을 부분 업데이트한다. 패널이 자동 재렌더링된다. `patch`는 `{ key: value }` 객체. |
 | `__panelBridge.updateData(fileName, patch)` | 커스텀 데이터 파일을 부분 업데이트한다. `fileName`은 확장자 포함 (예: `"inventory.json"`). `patch`는 `{ key: value }` 객체. |
+| `__panelBridge.updateLayout(patch)` | `layout.json`을 deep merge로 부분 업데이트한다. 패널 배치, 독 크기, 테마 등을 실시간 변경할 수 있다. `patch`는 `layout.json`과 동일한 구조의 객체. 예: `{ panels: { dockWidth: 500 } }`. |
 | `__panelBridge.runTool(name, args)` | 서버사이드 커스텀 툴을 실행한다. `name`은 `tools/` 폴더 내 `.js` 파일명 (확장자 제외). `args`는 툴에 전달할 인자 객체. 반환값은 `{ ok, result }`. |
 | `__panelBridge.data` | 전체 템플릿 컨텍스트 객체 (읽기 전용). `variables.json` 값 + 커스텀 데이터 파일이 합쳐져 있다. |
 | `__panelBridge.sessionId` | 현재 세션 ID (읽기 전용) |
