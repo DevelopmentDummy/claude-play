@@ -18,14 +18,18 @@
 ### Tool File Convention
 
 ```
-personas/{name}/tools/
-├── skills/            # 기존 Claude Code 스킬 (변경 없음)
-├── attack.js          # 커스텀 툴
-├── craft.js
-└── travel.js
+personas/{name}/
+├── skills/            # 기존 Claude Code 스킬 (별도 디렉토리, 변경 없음)
+├── tools/             # 커스텀 패널 툴 (신규)
+│   ├── attack.js
+│   ├── craft.js
+│   └── travel.js
+└── ...
 ```
 
-세션 생성 시 `tools/*.js` 파일이 세션 디렉토리 `tools/`로 복사된다.
+`tools/`는 `skills/`와 완전히 별개의 디렉토리. `skills/`는 Claude Code/Codex CLI 스킬, `tools/`는 패널에서 호출하는 서버사이드 JS 스크립트.
+
+세션 생성 시 `tools/*.js` 파일이 세션 디렉토리 `tools/`로 복사된다. 기존 `copyDirRecursive`가 `tools/`를 이미 복사하지만, `SKIP_FILES`에 포함되어 있지 않은지 확인 필요. 명시적 복사 로직 추가로 일관성 보장.
 
 ### Script Interface
 
@@ -104,9 +108,23 @@ __panelBridge.runTool(name, args) → Promise<{ ok: boolean, result: unknown }>
 - `data` 반환값의 파일명도 동일한 path traversal 검증
 - protected 시스템 파일 (`session.json`, `layout.json` 등) 쓰기 차단
 
-### Module Cache
+### Module Format & Cache
+
+스크립트는 CommonJS 형식 (`module.exports = async function(...)`) 사용. `import()`로 로드 시 모듈 객체에서 함수 추출: `const fn = mod.default || mod` (CommonJS interop).
 
 `import()`는 Node.js 모듈 캐시를 사용하므로, 동일 파일의 두 번째 호출부터는 캐시된 모듈을 사용한다. 개발 중 파일을 수정하면 캐시가 남아 있을 수 있으므로, 로드 시 `?t=timestamp` 쿼리를 붙여 캐시를 무효화한다.
+
+### Execution Safety
+
+인프로세스 실행이므로 스크립트 오류가 서버에 영향을 줄 수 있다. 방어 조치:
+
+- **try/catch**: 스크립트 실행을 try/catch로 감싸서 예외가 서버를 크래시하지 않도록
+- **타임아웃**: `Promise.race`로 10초 제한. 초과 시 에러 반환
+- **제한 사항 문서화**: 무한루프는 Node.js 단일 스레드 특성상 타임아웃으로 중단 불가. 스크립트 작성자(= 사용자 본인)의 책임.
+
+### Concurrency
+
+동일 세션에서 동일 툴의 동시 호출 시 race condition 가능 (shallow merge는 비원자적). 단일 사용자 서비스이므로 실질적 위험은 낮지만, 패널에서 버튼 더블클릭 방지(disabled 처리) 권장.
 
 ### Sync (양방향 싱크)
 
