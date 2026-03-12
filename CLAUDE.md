@@ -191,6 +191,7 @@ data/
 - `COMFYUI_HOST` — ComfyUI host (default: `127.0.0.1`)
 - `COMFYUI_PORT` — ComfyUI port (default: `8188`)
 - `TTS_ENABLED` — Enable/disable TTS globally (default: `true`)
+- `ADMIN_PASSWORD` — Admin login password. If not set, authentication is disabled (open access).
 
 ## Skills & Plugins
 

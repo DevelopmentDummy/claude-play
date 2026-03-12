@@ -5,6 +5,7 @@ import { spawn, type ChildProcess } from "child_process";
 import * as path from "path";
 import { setupWebSocket } from "./src/lib/ws-server";
 import { handleTtsRequest } from "./src/lib/tts-handler";
+import { isAuthEnabled, verifyAuthToken, parseCookieToken } from "./src/lib/auth";
 
 const dev = process.env.NODE_ENV !== "production";
 const hostname = "0.0.0.0";
@@ -81,6 +82,19 @@ app.prepare().then(() => {
   const server = createServer(async (req, res) => {
     const parsedUrl = parse(req.url!, true);
     const pathname = parsedUrl.pathname || "";
+
+    // Auth check for intercepted routes
+    if (isAuthEnabled()) {
+      const isIntercepted = pathname === "/api/chat/tts"
+        || /^\/api\/personas\/[^/]+\/voice\/generate$/.test(pathname);
+
+      if (isIntercepted) {
+        const cookieToken = parseCookieToken(req.headers.cookie);
+        if (!cookieToken || !verifyAuthToken(cookieToken)) {
+          return sendJson(res, 401, { error: "Unauthorized" });
+        }
+      }
+    }
 
     // Intercept TTS routes — run in plain Node context to avoid App Router runtime interference
     // with outbound WebSocket connections (node-edge-tts / ws)

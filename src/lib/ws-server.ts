@@ -6,6 +6,7 @@ import {
   scheduleSessionCleanup,
   cancelSessionCleanup,
 } from "./session-registry";
+import { isAuthEnabled, verifyAuthToken, parseCookieToken } from "./auth";
 
 interface WSClient {
   ws: WebSocket;
@@ -72,6 +73,16 @@ export function setupWebSocket(server: HTTPServer): void {
       return;
     }
 
+    // Auth check
+    if (isAuthEnabled()) {
+      const cookieToken = parseCookieToken(req.headers.cookie);
+      if (!cookieToken || !verifyAuthToken(cookieToken)) {
+        socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+    }
+
     wss.handleUpgrade(req, socket, head, (ws) => {
       const rawSessionId = (query.sessionId as string) || null;
       const sessionId = rawSessionId ? decodeURIComponent(rawSessionId) : null;
@@ -98,7 +109,7 @@ export function setupWebSocket(server: HTTPServer): void {
         const closedSessionId = client.sessionId;
         state.clients.delete(client);
 
-        // Schedule cleanup for the session this client was in (5s grace period)
+        // Schedule cleanup for the session this client was in (10min grace period)
         if (closedSessionId && countSessionClients(closedSessionId) === 0) {
           scheduleSessionCleanup(closedSessionId);
         }
