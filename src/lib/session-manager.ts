@@ -708,7 +708,7 @@ export class SessionManager {
     this.syncPersonaToSessionSelective(id, {
       panels: true, variables: true, layout: true, opening: true,
       worldview: true, skills: true, instructions: true, voice: true,
-      chatOptions: true,
+      chatOptions: true, tools: true,
     });
   }
 
@@ -816,6 +816,20 @@ export class SessionManager {
       }
     }
 
+    // Sync tools/ (custom panel tools — *.js files only)
+    if (elements.tools) {
+      const personaTools = path.join(personaDir, "tools");
+      const sessionTools = path.join(sessionDir, "tools");
+      if (fs.existsSync(personaTools)) {
+        if (!fs.existsSync(sessionTools)) fs.mkdirSync(sessionTools, { recursive: true });
+        for (const file of fs.readdirSync(personaTools)) {
+          if (file.endsWith(".js")) {
+            fs.copyFileSync(path.join(personaTools, file), path.join(sessionTools, file));
+          }
+        }
+      }
+    }
+
     // Sync skills/ directory (raw copy + both CLI skill dirs)
     if (elements.skills) {
       const personaSkills = path.join(personaDir, "skills");
@@ -895,6 +909,9 @@ export class SessionManager {
         result.push({ key, label, hasChanges: this.fileDiffers(src, dst) });
       }
     }
+
+    // Check tools (custom panel tools — *.js files only)
+    result.push({ key: "tools", label: "툴 (tools/)", hasChanges: this.toolsDiffer(path.join(personaDir, "tools"), path.join(sessionDir, "tools")) });
 
     // Check skills
     const pSkills = path.join(personaDir, "skills");
@@ -978,6 +995,9 @@ export class SessionManager {
         result.push({ key, label, hasChanges: this.fileDiffers(src, dst) });
       }
     }
+
+    // Check tools (reverse direction)
+    result.push({ key: "tools", label: "툴 (tools/)", hasChanges: this.toolsDiffer(path.join(sessionDir, "tools"), path.join(personaDir, "tools")) });
 
     // Check skills
     const sSkills = path.join(sessionDir, "skills");
@@ -1115,6 +1135,20 @@ export class SessionManager {
       }
     }
 
+    // Sync tools/ (session → persona, *.js files only)
+    if (elements.tools) {
+      const sessionTools = path.join(sessionDir, "tools");
+      const personaTools = path.join(personaDir, "tools");
+      if (fs.existsSync(sessionTools)) {
+        if (!fs.existsSync(personaTools)) fs.mkdirSync(personaTools, { recursive: true });
+        for (const file of fs.readdirSync(sessionTools)) {
+          if (file.endsWith(".js")) {
+            fs.copyFileSync(path.join(sessionTools, file), path.join(personaTools, file));
+          }
+        }
+      }
+    }
+
     // Sync skills/ (session → persona)
     if (elements.skills) {
       const sessionSkills = path.join(sessionDir, "skills");
@@ -1188,6 +1222,20 @@ export class SessionManager {
       }
       return false;
     } catch { return true; }
+  }
+
+  /** Compare tools/ directories (*.js files only) */
+  private toolsDiffer(dir1: string, dir2: string): boolean {
+    if (!fs.existsSync(dir1) && !fs.existsSync(dir2)) return false;
+    if (!fs.existsSync(dir1) || !fs.existsSync(dir2)) return true;
+    const jsFiles1 = fs.readdirSync(dir1).filter(f => f.endsWith(".js")).sort();
+    const jsFiles2 = fs.readdirSync(dir2).filter(f => f.endsWith(".js")).sort();
+    if (jsFiles1.length !== jsFiles2.length) return true;
+    for (let i = 0; i < jsFiles1.length; i++) {
+      if (jsFiles1[i] !== jsFiles2[i]) return true;
+      if (this.fileDiffers(path.join(dir1, jsFiles1[i]), path.join(dir2, jsFiles2[i]))) return true;
+    }
+    return false;
   }
 
   private variablesDiffer(src: string, dst: string): boolean {

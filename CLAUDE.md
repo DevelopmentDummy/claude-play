@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Claude Bridge is a Next.js web app that bridges interactive roleplay (RP) chat sessions with the Claude Code CLI (and optionally Codex CLI). Users create personas via a builder UI, then conduct immersive RP sessions with dynamic state, panels, and memory. Single-user personal service — no authentication required.
+Claude Bridge is a Next.js web app that bridges interactive roleplay (RP) chat sessions with the Claude Code CLI (and optionally Codex CLI). Users create personas via a builder UI, then conduct immersive RP sessions with dynamic state, panels, and memory. Single-user personal service with optional admin password authentication.
 
 ## Commands
 
@@ -26,7 +26,7 @@ No test framework is configured.
 
 | File | Role |
 |------|------|
-| `auth.ts` | Internal token for MCP server authentication. `getInternalToken()` generates per-process token. `validateInternalToken()` checks `x-bridge-token` header. |
+| `auth.ts` | Authentication. Internal MCP token (`getInternalToken()`, `validateInternalToken()`). Admin auth (`createAuthToken()`, `verifyAuthToken()`, `verifyPassword()`, `parseCookieToken()`). |
 | `services.ts` | Global singleton (`getServices()`) via `globalThis`. Accumulates assistant turns from NDJSON stream events, extracts `<dialog_response>` and `<choice>` tags, detects image tool tokens (`$IMAGE:...$/`), manages chat history persistence. Forwards `compacting` system status to frontend. |
 | `claude-process.ts` | Spawns `claude -p` subprocess with `--input-format stream-json --output-format stream-json --verbose`. NDJSON line-buffered parser. Emits `message/status/error/sessionId` events. Auto-retries without `--resume` on failed resume. |
 | `codex-process.ts` | Codex CLI integration via `codex app-server` mode (persistent JSON-RPC 2.0 over stdin/stdout). Same EventEmitter interface as ClaudeProcess. |
@@ -45,7 +45,7 @@ No test framework is configured.
 
 ### API Routes (`src/app/api/`)
 
-No authentication required — single-user service. MCP server requests include `x-bridge-token` for internal validation where needed.
+Optional admin password auth via `ADMIN_PASSWORD` env var. MCP server requests include `x-bridge-token` for internal validation.
 
 | Route | Methods | Purpose |
 |-------|---------|---------|
@@ -62,7 +62,7 @@ No authentication required — single-user service. MCP server requests include 
 | `/api/sessions/[id]` | GET, DELETE | Get/delete session |
 | `/api/sessions/[id]/open` | POST | Open session (spawn AI process, start panels) |
 | `/api/sessions/[id]/sync` | GET, POST | GET: diff (supports `?direction=reverse`); POST: selective sync with `direction` + `variablesMode` |
-| `/api/sessions/[id]/variables` | GET | Read session variables |
+| `/api/sessions/[id]/variables` | GET, PATCH | Read/patch session variables (PATCH supports `?file=` for custom data files) |
 | `/api/sessions/[id]/files` | GET | Serve session files (images, etc.) |
 | `/api/chat/send` | POST | Send message to AI process |
 | `/api/chat/history` | GET, PATCH | GET: paginated history; PATCH: toggle message OOC flag |
@@ -72,12 +72,16 @@ No authentication required — single-user service. MCP server requests include 
 | `/api/tools/comfyui/generate` | POST | Trigger ComfyUI image generation |
 | `/api/tools/comfyui/models` | GET | List ComfyUI models |
 | `/api/tools/gemini/generate` | POST | Trigger Gemini image generation |
+| `/api/sessions/[id]/tools/[name]` | POST | Execute custom panel tool script |
+| `/api/auth/login` | POST | Admin login (rate-limited: 5/min per IP) |
+| `/api/auth/logout` | POST | Admin logout (clear cookie) |
 | `/api/debug` | GET | Debug info |
 
 ### Frontend Pages
 
 | Route | Component | Purpose |
 |-------|-----------|---------|
+| `/login` | `login/page.tsx` | Admin login page (shown when `ADMIN_PASSWORD` is set) |
 | `/` | `page.tsx` | Home — persona list, session list, profile management |
 | `/builder/[name]` | `builder/[name]/page.tsx` | Persona builder UI |
 | `/chat/[sessionId]` | `chat/[sessionId]/page.tsx` | Main session chat UI with panels |
@@ -116,6 +120,7 @@ data/
 │   ├── images/                      # icon.png, profile.png, generated images
 │   ├── voice.json                   # TTS voice configuration
 │   ├── voice-ref.*                  # TTS reference audio file
+│   ├── tools/                       # Server-side custom tool scripts (*.js)
 │   └── *.json                       # Custom data files (inventory.json, world.json, etc.)
 ├── sessions/{persona}-{timestamp}/  # Ephemeral session instances
 │   ├── (cloned persona files)
@@ -148,7 +153,9 @@ data/
 - **Panel placement types**: `layout.json` `panels.placement` supports `"left"`, `"right"`, `"modal"`, `"dock"`. Panels without placement are inline.
 - **Modal panels**: Panels with `placement: "modal"` render as centered overlays. Visibility controlled by `__modals` in `variables.json`. Value `true` = required (no ESC/X/backdrop dismiss), `"dismissible"` = freely closable. `__panelBridge.sendMessage()` always auto-closes regardless. Multiple modals stack with incremental z-index; ESC only affects topmost dismissible modal.
 - **Dock panels**: Panels with `placement: "dock"` or `"dock-bottom"` render between chat messages and input area (full width). `"dock-left"` / `"dock-right"` float inside the chat scroll area with `position: sticky` — always visible at the bottom corner, and nearby messages shrink to make room (like CSS float/text-wrap around an image). Visibility controlled by `__modals` in `variables.json` (same as modal panels). Multiple dock panels in same direction show as tabs. `panels.dockHeight` (or legacy `panels.dockSize`) in layout.json controls max-height (px). `panels.dockWidth` controls width (px); if omitted, auto-sizes with min 280px / max 50%.
-- **Panel bridge methods**: `__panelBridge.sendMessage(text)` sends chat message immediately. `__panelBridge.fillInput(text)` inserts text at cursor in input box without sending. `__panelBridge.updateVariables(patch)` patches variables.json.
+- **Panel bridge methods**: `__panelBridge.sendMessage(text)` sends chat message immediately. `__panelBridge.fillInput(text)` inserts text at cursor in input box without sending. `__panelBridge.updateVariables(patch)` patches variables.json. `__panelBridge.updateData(fileName, patch)` patches custom data files (e.g., `inventory.json`). `__panelBridge.runTool(toolName, args)` executes server-side custom tool scripts.
+- **Custom panel tools**: Per-persona server-side JavaScript scripts in `tools/` dir. CommonJS format (`module.exports = async function(context, args)`). Context provides `{ variables, data, sessionDir }`. Return `{ variables, data }` patches to auto-apply. Executed in-process via dynamic `import()` with 10s timeout. Synced bidirectionally like other persona files.
+- **Admin authentication**: Optional via `ADMIN_PASSWORD` env var. HMAC-SHA256 signed tokens in httpOnly cookies (90-day expiry). Next.js Edge Runtime middleware. Rate-limited login (5 attempts/min per IP). MCP server bypasses via `x-bridge-token` header. If `ADMIN_PASSWORD` not set, auth is disabled.
 - **Shadow DOM isolation**: PanelSlot and ModalPanel render panel HTML inside Shadow DOM to isolate CSS.
 - **Image modal portal**: ImageModal uses `createPortal(document.body)` to escape `backdrop-blur` CSS containment from chat bubbles.
 - **Windows process killing**: Uses `taskkill /T /F /PID` because `shell: true` wraps the process in cmd.exe.

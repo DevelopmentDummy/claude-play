@@ -94,6 +94,15 @@ export default function ModalPanel({
         );
         return res.json();
       },
+      async runTool(toolName: string, args?: Record<string, unknown>) {
+        if (!sessionId) return { ok: false, error: "No session" };
+        const res = await fetch(`/api/sessions/${sessionId}/tools/${encodeURIComponent(toolName)}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ args: args || {} }),
+        });
+        return res.json();
+      },
       sessionId,
       data: panelData || {},
     };
