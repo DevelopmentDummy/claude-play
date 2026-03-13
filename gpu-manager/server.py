@@ -2,16 +2,20 @@
 
 import argparse
 import asyncio
+import json
 import logging
+import os
 import signal
 import sys
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 import uvicorn
 
 from queue_manager import QueueManager, Task, TaskType
 from comfyui_proxy import ComfyUIProxy
+from tts_engine import TTSEngine
+from voice_creator import VoiceCreator
 
 # ── Logging ──────────────────────────────────────────────
 logging.basicConfig(
@@ -31,6 +35,15 @@ args, _ = parser.parse_known_args()
 app = FastAPI(title="GPU Resource Manager")
 queue = QueueManager()
 comfyui = ComfyUIProxy(args.comfyui_url)
+tts_engine = TTSEngine(model_path=os.environ.get("TTS_MODEL_PATH"))
+voice_creator = VoiceCreator(tts_engine)
+
+
+# ── ComfyUI handler (force-unloads TTS first) ───────────
+async def _handle_comfyui(payload: dict) -> dict:
+    """Force-unload TTS model before ComfyUI work, then proxy."""
+    tts_engine.force_unload()
+    return await comfyui.generate(payload)
 
 
 # ── Startup / Shutdown ───────────────────────────────────
@@ -39,8 +52,10 @@ async def startup() -> None:
     # Start queue worker
     asyncio.create_task(queue.worker())
 
-    # Register ComfyUI handler
-    queue.register_handler(TaskType.COMFYUI, comfyui.generate)
+    # Register handlers
+    queue.register_handler(TaskType.COMFYUI, _handle_comfyui)
+    queue.register_handler(TaskType.TTS, tts_engine.synthesize_batch)
+    queue.register_handler(TaskType.CREATE_VOICE, voice_creator.create_voice)
 
     # Check ComfyUI connection
     connected = await comfyui.check_connection()
@@ -51,6 +66,7 @@ async def startup() -> None:
 
 @app.on_event("shutdown")
 async def shutdown() -> None:
+    await tts_engine.unload_model()
     await comfyui.close()
     logger.info("GPU Manager shut down")
 
@@ -68,7 +84,8 @@ async def status() -> dict:
     return {
         "queue_size": q.queue_size,
         "current_task": q.current_task,
-        "model_loaded": False,  # TTS engine added in Task 7
+        "model_loaded": tts_engine.is_loaded,
+        "model_size": tts_engine.loaded_size,
         "comfyui_connected": connected,
     }
 
@@ -85,6 +102,41 @@ async def comfyui_generate(request: Request) -> JSONResponse:
         return JSONResponse({"error": str(e)}, status_code=408)
     except Exception as e:
         logger.error("ComfyUI generate error: %s", e)
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ── TTS Synthesize ───────────────────────────────────────
+@app.post("/tts/synthesize")
+async def tts_synthesize(request: Request) -> StreamingResponse:
+    body = await request.json()
+    task = Task(type=TaskType.TTS, payload=body)
+    try:
+        results = await queue.submit(task)
+
+        async def stream():
+            for item in results:
+                yield json.dumps(item, ensure_ascii=False) + "\n"
+
+        return StreamingResponse(stream(), media_type="application/x-ndjson")
+    except TimeoutError as e:
+        return JSONResponse({"error": str(e)}, status_code=408)
+    except Exception as e:
+        logger.error("TTS synthesize error: %s", e)
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ── Voice Creation ───────────────────────────────────────
+@app.post("/tts/create-voice")
+async def tts_create_voice(request: Request) -> JSONResponse:
+    body = await request.json()
+    task = Task(type=TaskType.CREATE_VOICE, payload=body)
+    try:
+        result = await queue.submit(task)
+        return JSONResponse(result)
+    except TimeoutError as e:
+        return JSONResponse({"error": str(e)}, status_code=408)
+    except Exception as e:
+        logger.error("Voice creation error: %s", e)
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
