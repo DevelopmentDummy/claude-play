@@ -1,8 +1,9 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "http";
 import next from "next";
 import { parse } from "url";
-import { spawn, type ChildProcess } from "child_process";
+import { spawn, execSync, type ChildProcess } from "child_process";
 import * as path from "path";
+import * as fs from "fs";
 import { setupWebSocket } from "./src/lib/ws-server";
 import { handleTtsRequest } from "./src/lib/tts-handler";
 import { isAuthEnabled, verifyAuthToken, parseCookieToken } from "./src/lib/auth";
@@ -11,6 +12,8 @@ const dev = process.env.NODE_ENV !== "production";
 const hostname = "0.0.0.0";
 const port = parseInt(process.env.PORT || "3340", 10);
 const ttsPort = parseInt(process.env.TTS_PORT || "3341", 10);
+const GPU_MANAGER_PORT = parseInt(process.env.GPU_MANAGER_PORT || "3342", 10);
+const GPU_MANAGER_PYTHON = process.env.GPU_MANAGER_PYTHON || "python";
 
 /** Spawn standalone TTS server as a child process (killed when parent exits) */
 function spawnTtsServer(): ChildProcess | null {
@@ -42,11 +45,82 @@ function spawnTtsServer(): ChildProcess | null {
 function killTtsServer(child: ChildProcess | null) {
   if (!child || child.killed || !child.pid) return;
   try {
-    const { execSync } = require("child_process") as typeof import("child_process");
     execSync(`taskkill /T /F /PID ${child.pid}`, { stdio: "ignore" });
   } catch {
     try { child.kill(); } catch {}
   }
+}
+
+/** Spawn GPU Manager Python process (killed when parent exits) */
+let gpuManagerRestarts = 0;
+const GPU_MANAGER_MAX_RESTARTS = 3;
+
+function spawnGpuManager(): ChildProcess | null {
+  const serverScript = path.join(process.cwd(), "gpu-manager", "server.py");
+  if (!fs.existsSync(serverScript)) {
+    console.log("[gpu-manager] server.py not found, skipping");
+    return null;
+  }
+
+  const comfyuiHost = process.env.COMFYUI_HOST || "127.0.0.1";
+  const comfyuiPort = process.env.COMFYUI_PORT || "8188";
+  const comfyuiUrl = `http://${comfyuiHost}:${comfyuiPort}`;
+
+  const child = spawn(GPU_MANAGER_PYTHON, [
+    serverScript,
+    "--port", String(GPU_MANAGER_PORT),
+    "--comfyui-url", comfyuiUrl,
+  ], {
+    stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env },
+    windowsHide: true,
+  });
+
+  child.stdout?.on("data", (d: Buffer) => process.stdout.write(d));
+  child.stderr?.on("data", (d: Buffer) => process.stderr.write(d));
+
+  child.on("exit", (code) => {
+    if (code !== null && code !== 0) {
+      console.error(`[gpu-manager] exited with code ${code}`);
+      if (gpuManagerRestarts < GPU_MANAGER_MAX_RESTARTS) {
+        gpuManagerRestarts++;
+        console.log(`[gpu-manager] restarting (${gpuManagerRestarts}/${GPU_MANAGER_MAX_RESTARTS})...`);
+        setTimeout(() => {
+          gpuManagerProcess = spawnGpuManager();
+        }, 10_000);
+      } else {
+        console.error("[gpu-manager] max restarts reached, GPU features disabled");
+      }
+    }
+  });
+
+  return child;
+}
+
+function killGpuManager(child: ChildProcess | null) {
+  if (!child || child.killed || !child.pid) return;
+  try {
+    if (process.platform === "win32") {
+      execSync(`taskkill /T /F /PID ${child.pid}`, { stdio: "ignore" });
+    } else {
+      child.kill("SIGTERM");
+    }
+  } catch {
+    try { child.kill(); } catch {}
+  }
+}
+
+async function waitForGpuManager(maxWaitMs = 30_000): Promise<boolean> {
+  const url = `http://127.0.0.1:${GPU_MANAGER_PORT}/health`;
+  const deadline = Date.now() + maxWaitMs;
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(url);
+      if (res.ok) return true;
+    } catch { /* not ready yet */ }
+    await new Promise(r => setTimeout(r, 1000));
+  }
+  return false;
 }
 
 const app = next({ dev, hostname, port });
@@ -72,13 +146,27 @@ function sendJson(res: ServerResponse, status: number, data: unknown) {
   res.end(body);
 }
 
-// Spawn TTS server and ensure cleanup on exit
+// Spawn TTS server and GPU Manager, ensure cleanup on exit
 const ttsProcess = spawnTtsServer();
+let gpuManagerProcess = spawnGpuManager();
+
 for (const sig of ["exit", "SIGINT", "SIGTERM", "SIGHUP"] as const) {
-  process.on(sig, () => killTtsServer(ttsProcess));
+  process.on(sig, () => {
+    killTtsServer(ttsProcess);
+    killGpuManager(gpuManagerProcess);
+  });
 }
 
-app.prepare().then(() => {
+app.prepare().then(async () => {
+  // Wait for GPU Manager to be ready
+  if (gpuManagerProcess) {
+    const ready = await waitForGpuManager();
+    if (ready) {
+      console.log("[gpu-manager] ready");
+    } else {
+      console.warn("[gpu-manager] failed to start, GPU features may be unavailable");
+    }
+  }
   const server = createServer(async (req, res) => {
     const parsedUrl = parse(req.url!, true);
     const pathname = parsedUrl.pathname || "";
