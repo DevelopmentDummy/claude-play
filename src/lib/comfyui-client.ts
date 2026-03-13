@@ -800,38 +800,81 @@ export class ComfyUIClient {
     return results;
   }
 
+  private get gpuManagerUrl(): string {
+    const port = process.env.GPU_MANAGER_PORT || "3342";
+    return `http://127.0.0.1:${port}`;
+  }
+
+  private async gpuManagerAvailable(): Promise<boolean> {
+    try {
+      const res = await fetch(`${this.gpuManagerUrl}/health`);
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+
   private async submitAndWait(
     prompt: Record<string, unknown>,
     filename: string,
     sessionDir: string,
     extraFiles?: Record<string, string>
   ): Promise<GenerateResult> {
-    await this.reconcileQueueBeforeSubmit();
+    // Try GPU Manager first (queued), fall back to direct ComfyUI
+    const useGpuManager = await this.gpuManagerAvailable();
 
-    // POST /prompt to ComfyUI
-    const queueRes = await this.fetchWithRetry(`${this.baseUrl}/prompt`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt }),
-    }, { attempts: 5, timeoutMs: 30_000, baseDelayMs: 300 });
+    let outputFiles: Array<{ filename: string; prefix: string }>;
 
-    if (!queueRes.ok) {
-      const errText = await queueRes.text();
-      return { success: false, error: `ComfyUI queue failed: ${errText}` };
+    if (useGpuManager) {
+      // GPU Manager handles queueing and polling
+      const res = await this.fetchWithRetry(
+        `${this.gpuManagerUrl}/comfyui/generate`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt, timeout: 600_000 }),
+        },
+        { attempts: 2, timeoutMs: 660_000 },
+      );
+
+      if (!res.ok) {
+        const errText = await res.text();
+        return { success: false, error: `GPU Manager error: ${errText}` };
+      }
+
+      const data = await res.json() as {
+        prompt_id: string;
+        filenames: string[];
+        history: Record<string, unknown>;
+      };
+
+      outputFiles = this.extractOutputFilenames(data.history);
+    } else {
+      // Fallback: direct ComfyUI (no GPU Manager)
+      await this.reconcileQueueBeforeSubmit();
+
+      const queueRes = await this.fetchWithRetry(`${this.baseUrl}/prompt`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt }),
+      }, { attempts: 5, timeoutMs: 30_000, baseDelayMs: 300 });
+
+      if (!queueRes.ok) {
+        const errText = await queueRes.text();
+        return { success: false, error: `ComfyUI queue failed: ${errText}` };
+      }
+
+      const queueData = (await queueRes.json()) as { prompt_id: string };
+      const promptId = queueData.prompt_id;
+
+      const history = await this.pollHistory(promptId);
+      if (!history) {
+        await this.cancelPrompt(promptId);
+        return { success: false, error: "Timeout waiting for ComfyUI generation" };
+      }
+
+      outputFiles = this.extractOutputFilenames(history);
     }
-
-    const queueData = (await queueRes.json()) as { prompt_id: string };
-    const promptId = queueData.prompt_id;
-
-    // Poll /history until complete
-    const history = await this.pollHistory(promptId);
-    if (!history) {
-      await this.cancelPrompt(promptId);
-      return { success: false, error: "Timeout waiting for ComfyUI generation" };
-    }
-
-    // Extract all output filenames
-    const outputFiles = this.extractOutputFilenames(history);
     if (outputFiles.length === 0) {
       return { success: false, error: "No output image in ComfyUI result" };
     }
