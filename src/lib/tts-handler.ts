@@ -5,9 +5,58 @@
 import * as path from "path";
 import * as fs from "fs";
 import { getServices, getSessionManager } from "./services";
-import { ComfyUIClient } from "./comfyui-client";
 import { generateEdgeTts } from "./edge-tts-client";
 import { wsBroadcast } from "./ws-server";
+
+const GPU_MANAGER_URL = `http://127.0.0.1:${process.env.GPU_MANAGER_PORT || "3342"}`;
+
+async function gpuManagerAvailable(): Promise<boolean> {
+  try {
+    const res = await fetch(`${GPU_MANAGER_URL}/health`);
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Synthesize via GPU Manager — sends all chunks as a batch,
+ * receives NDJSON stream of {chunk_index, total, audio_base64}.
+ */
+async function synthesizeViaGpuManager(
+  chunks: string[],
+  voiceFile: string,
+  language: string,
+  modelSize: string,
+): Promise<Array<{ chunkIndex: number; audioBuffer: Buffer }>> {
+  const res = await fetch(`${GPU_MANAGER_URL}/tts/synthesize`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chunks,
+      voice_file: voiceFile,
+      language,
+      model_size: modelSize,
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`GPU Manager TTS error: ${err}`);
+  }
+
+  const text = await res.text();
+  const results: Array<{ chunkIndex: number; audioBuffer: Buffer }> = [];
+  for (const line of text.split("\n")) {
+    if (!line.trim()) continue;
+    const item = JSON.parse(line);
+    results.push({
+      chunkIndex: item.chunk_index,
+      audioBuffer: Buffer.from(item.audio_base64, "base64"),
+    });
+  }
+  return results;
+}
 
 interface HandlerResult {
   status: number;
@@ -26,15 +75,21 @@ function sanitizeTtsText(raw: string): string {
     .trim();
 }
 
-function splitTtsChunks(text: string): string[] {
-  return text.split(/\n+/).map(s => s.trim()).filter(s => s.length > 1);
+function splitTtsChunks(text: string, minLen = 80): string[] {
+  const lines = text.split(/\n+/).map(s => s.trim()).filter(s => s.length > 1);
+  const chunks: string[] = [];
+  let buf = "";
+  for (const line of lines) {
+    if (buf) buf += " ";
+    buf += line;
+    if (buf.length >= minLen) {
+      chunks.push(buf);
+      buf = "";
+    }
+  }
+  if (buf) chunks.push(buf);
+  return chunks;
 }
-
-const languageMap: Record<string, string> = {
-  ko: "Korean", en: "English", ja: "Japanese", zh: "Chinese",
-  de: "German", fr: "French", ru: "Russian", pt: "Portuguese",
-  es: "Spanish", it: "Italian",
-};
 
 async function handleChatTts(body: Record<string, unknown>): Promise<HandlerResult> {
   if (!body.messageId || !body.text) {
@@ -64,6 +119,7 @@ async function handleChatTts(body: Record<string, unknown>): Promise<HandlerResu
   const messageId = body.messageId as string;
   const chunkDelay = voiceConfig.chunkDelay ?? 500;
   const provider = voiceConfig.ttsProvider || "comfyui";
+  const isLocalTts = provider === "local" || provider === "comfyui";
 
   wsBroadcast("audio:status", { status: "generating", messageId, totalChunks });
 
@@ -100,7 +156,7 @@ async function handleChatTts(body: Record<string, unknown>): Promise<HandlerResu
         }
       }
     })();
-  } else {
+  } else if (isLocalTts) {
     const voiceFile = voiceConfig.voiceFile
       ? path.join(sessionDir, voiceConfig.voiceFile)
       : undefined;
@@ -108,61 +164,28 @@ async function handleChatTts(body: Record<string, unknown>): Promise<HandlerResu
       return { status: 400, data: { error: "No voice .pt file" } };
     }
 
-    const host = process.env.COMFYUI_HOST || "127.0.0.1";
-    const port = parseInt(process.env.COMFYUI_PORT || "8188", 10);
-    const client = new ComfyUIClient({ host, port }, "");
-
-    const lang = languageMap[voiceConfig.language || "ko"] || "Korean";
+    const lang = voiceConfig.language || "ko";
     const modelSize = voiceConfig.modelSize || "1.7B";
-    const seed = Math.floor(Math.random() * 2 ** 32);
+
+    const audioDir = path.join(sessionDir, "audio");
+    if (!fs.existsSync(audioDir)) fs.mkdirSync(audioDir, { recursive: true });
 
     (async () => {
       for (let i = 0; i < chunks.length; i++) {
         if (i > 0) await new Promise(r => setTimeout(r, chunkDelay));
 
-        const timestamp = Date.now();
-        const audioFilename = `tts-${timestamp}-${i}.mp3`;
-        const outputPath = path.join(sessionDir, "audio", audioFilename);
-
-        const prompt: Record<string, unknown> = {
-          "10": {
-            class_type: "AILab_Qwen3TTSLoadVoice",
-            inputs: { voice_name: "", custom_path: voiceFile },
-          },
-          "1": {
-            class_type: "AILab_Qwen3TTSVoiceClone",
-            inputs: {
-              target_text: chunks[i],
-              model_size: modelSize,
-              language: lang,
-              voice: ["10", 0],
-              unload_models: false,
-              max_new_tokens: 512,
-              repetition_penalty: 1.2,
-              seed,
-            },
-          },
-          "2": {
-            class_type: "SaveAudioMP3",
-            inputs: {
-              audio: ["1", 0],
-              filename_prefix: "tts_bridge",
-              quality: "128k",
-            },
-          },
-        };
-
         try {
-          const result = await client.generateTts(prompt, outputPath);
-          if (result.success) {
+          const results = await synthesizeViaGpuManager([chunks[i]], voiceFile, lang, modelSize);
+          if (results.length > 0) {
+            const timestamp = Date.now();
+            const audioFilename = `tts-${timestamp}-${i}.mp3`;
+            fs.writeFileSync(path.join(audioDir, audioFilename), results[0].audioBuffer);
+
             const url = `/api/sessions/${sessionId}/files/audio/${audioFilename}`;
             wsBroadcast("audio:ready", { url, messageId, chunkIndex: i, totalChunks });
-          } else {
-            console.error(`[tts] Chunk ${i} failed:`, result.error);
-            wsBroadcast("audio:status", { status: "error", messageId, chunkIndex: i, totalChunks });
           }
         } catch (err) {
-          console.error(`[tts] Chunk ${i} error:`, err);
+          console.error(`[tts] GPU Manager chunk ${i} error:`, err);
           wsBroadcast("audio:status", { status: "error", messageId, chunkIndex: i, totalChunks });
         }
       }
@@ -180,97 +203,67 @@ async function handleVoiceGeneratePost(body: Record<string, unknown>, personaNam
     return { status: 404, data: { error: "Persona not found" } };
   }
 
-  const host = process.env.COMFYUI_HOST || "127.0.0.1";
-  const port = parseInt(process.env.COMFYUI_PORT || "8188", 10);
-  const client = new ComfyUIClient({ host, port }, "");
-
-  const lang = languageMap[body.language as string || "ko"] || "Korean";
   const voiceConfig = svc.sessions.readVoiceConfig(personaDir);
+  const voiceProvider = voiceConfig?.ttsProvider || "comfyui";
+  const isLocalProvider = voiceProvider === "local" || voiceProvider === "comfyui";
 
   if (body.mode === "create-voice") {
+    if (!isLocalProvider) {
+      return { status: 400, data: { error: "Voice creation requires local TTS provider" } };
+    }
+
     const refAudioPath = voiceConfig?.referenceAudio
       ? path.join(personaDir, voiceConfig.referenceAudio)
       : null;
     const hasRefAudio = refAudioPath && fs.existsSync(refAudioPath);
 
-    let audioForVoiceLib: string;
-
-    if (hasRefAudio) {
-      audioForVoiceLib = refAudioPath;
-    } else if (body.design) {
-      const samplePrompt: Record<string, unknown> = {
-        "1": {
-          class_type: "AILab_Qwen3TTSVoiceDesign",
-          inputs: {
-            text: "안녕하세요. 반갑습니다. 오늘도 좋은 하루 되세요.",
-            instruct: body.design,
-            model_size: "1.7B",
-            language: lang,
-            unload_models: true,
-            seed: Math.floor(Math.random() * 2 ** 32),
-          },
-        },
-        "2": {
-          class_type: "SaveAudio",
-          inputs: { audio: ["1", 0], filename_prefix: "voice_sample" },
-        },
-      };
-
-      const samplePath = path.join(personaDir, "voice-ref-generated.flac");
-      const sampleResult = await client.generateTts(samplePrompt, samplePath);
-      if (!sampleResult.success) {
-        return { status: 500, data: { error: `Failed to generate voice sample: ${sampleResult.error}` } };
-      }
-      audioForVoiceLib = samplePath;
-    } else {
+    if (!hasRefAudio && !body.design) {
       return { status: 400, data: { error: "Need either reference audio or design prompt" } };
     }
 
     const voiceName = personaName.replace(/[^a-zA-Z0-9_-]/g, "_");
-    const testText = "안녕하세요. 반갑습니다. 오늘도 좋은 하루 되세요.";
-    const extractPrompt: Record<string, unknown> = {
-      "10": { class_type: "LoadAudio", inputs: { audio: audioForVoiceLib } },
-      "1": {
-        class_type: "AILab_Qwen3TTSVoicesLibrary",
-        inputs: {
-          reference_audio: ["10", 0],
-          reference_text: voiceConfig?.referenceText || "",
-          model_size: voiceConfig?.modelSize || "1.7B",
-          device: "auto", precision: "bf16",
-          x_vector_only: !(voiceConfig?.referenceText),
-          voice_name: voiceName,
-          save_path: path.join(personaDir, "voice"),
-          unload_models: true,
-        },
-      },
-      "2": {
-        class_type: "AILab_Qwen3TTSVoiceClone",
-        inputs: {
-          target_text: testText, model_size: voiceConfig?.modelSize || "1.7B",
-          language: lang, voice: ["1", 0], unload_models: true,
-          max_new_tokens: 512, repetition_penalty: 1.2,
-          seed: Math.floor(Math.random() * 2 ** 32),
-        },
-      },
-      "3": {
-        class_type: "SaveAudioMP3",
-        inputs: { audio: ["2", 0], filename_prefix: "voice_test", quality: "128k" },
-      },
+    const outputPath = path.join(personaDir, "voice", `${voiceName}.pt`);
+
+    const payload: Record<string, unknown> = {
+      output_path: outputPath,
+      model_size: voiceConfig?.modelSize || "1.7B",
+      language: voiceConfig?.language || "ko",
     };
 
+    if (hasRefAudio) {
+      payload.mode = "reference";
+      payload.reference_audio = refAudioPath;
+      payload.reference_text = voiceConfig?.referenceText || "";
+    } else {
+      payload.mode = "design";
+      payload.design_prompt = body.design;
+    }
+
+    const res = await fetch(`${GPU_MANAGER_URL}/tts/create-voice`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      return { status: 500, data: { error: `Voice creation failed: ${err}` } };
+    }
+
+    const result = await res.json() as { success: boolean; voice_file: string; sample_audio: string };
+    if (!result.success) {
+      return { status: 500, data: { error: "Voice creation failed" } };
+    }
+
+    // Save sample audio for preview
+    const audioDir = path.join(personaDir, "audio");
+    if (!fs.existsSync(audioDir)) fs.mkdirSync(audioDir, { recursive: true });
     const timestamp = Date.now();
     const testAudioFilename = `voice-test-${timestamp}.mp3`;
-    const testOutputPath = path.join(personaDir, "audio", testAudioFilename);
-    const result = await client.generateTts(extractPrompt, testOutputPath);
-
-    if (!result.success) {
-      return { status: 500, data: { error: `Voice generation failed: ${result.error}` } };
-    }
-
-    const ptPath = path.join(personaDir, "voice", `${voiceName}.pt`);
-    if (!fs.existsSync(ptPath)) {
-      return { status: 500, data: { error: "Voice .pt file was not created" } };
-    }
+    fs.writeFileSync(
+      path.join(audioDir, testAudioFilename),
+      Buffer.from(result.sample_audio, "base64"),
+    );
 
     const updatedConfig = svc.sessions.readVoiceConfig(personaDir) || { enabled: true };
     svc.sessions.writeVoiceConfig(personaDir, {
@@ -292,7 +285,7 @@ async function handleVoiceGeneratePost(body: Record<string, unknown>, personaNam
     }
 
     // Edge TTS test
-    if ((voiceConfig?.ttsProvider || "comfyui") === "edge") {
+    if (voiceProvider === "edge") {
       const edgeVoice = voiceConfig?.edgeVoice;
       if (!edgeVoice) {
         return { status: 400, data: { error: "No Edge TTS voice configured" } };
@@ -318,64 +311,29 @@ async function handleVoiceGeneratePost(body: Record<string, unknown>, personaNam
       };
     }
 
-    // ComfyUI test
-    const prompt: Record<string, unknown> = {};
-    let ttsNode: Record<string, unknown>;
-
+    // Local TTS test via GPU Manager
     const voiceFile = voiceConfig?.voiceFile ? path.join(personaDir, voiceConfig.voiceFile) : null;
-    const hasVoiceFile = voiceFile && fs.existsSync(voiceFile);
-    const refAudio = voiceConfig?.referenceAudio ? path.join(personaDir, voiceConfig.referenceAudio) : null;
-    const hasRefAudio = refAudio && fs.existsSync(refAudio);
-
-    if (hasVoiceFile) {
-      prompt["10"] = { class_type: "AILab_Qwen3TTSLoadVoice", inputs: { voice_name: "", custom_path: voiceFile } };
-      ttsNode = {
-        class_type: "AILab_Qwen3TTSVoiceClone",
-        inputs: {
-          target_text: body.text, model_size: voiceConfig?.modelSize || "1.7B",
-          language: lang, voice: ["10", 0], unload_models: false,
-          max_new_tokens: 512, repetition_penalty: 1.2,
-          seed: Math.floor(Math.random() * 2 ** 32),
-        },
-      };
-    } else if (hasRefAudio) {
-      prompt["10"] = { class_type: "LoadAudio", inputs: { audio: refAudio } };
-      ttsNode = {
-        class_type: "AILab_Qwen3TTSVoiceClone",
-        inputs: {
-          target_text: body.text, model_size: voiceConfig?.modelSize || "1.7B",
-          language: lang, reference_audio: ["10", 0], unload_models: false,
-          max_new_tokens: 512, repetition_penalty: 1.2,
-          seed: Math.floor(Math.random() * 2 ** 32),
-        },
-      };
-    } else if ((body.design as string) || voiceConfig?.design) {
-      ttsNode = {
-        class_type: "AILab_Qwen3TTSVoiceDesign",
-        inputs: {
-          text: body.text, instruct: (body.design as string) || voiceConfig?.design || "",
-          model_size: "1.7B", language: lang, unload_models: false,
-          seed: Math.floor(Math.random() * 2 ** 32),
-        },
-      };
-    } else {
-      return { status: 400, data: { error: "No voice configuration" } };
+    if (!voiceFile || !fs.existsSync(voiceFile)) {
+      return { status: 400, data: { error: "No voice .pt file — create a voice first" } };
     }
 
-    prompt["1"] = ttsNode;
-    prompt["2"] = {
-      class_type: "SaveAudioMP3",
-      inputs: { audio: ["1", 0], filename_prefix: "tts_test", quality: "128k" },
-    };
+    const audioDir = path.join(personaDir, "audio");
+    if (!fs.existsSync(audioDir)) fs.mkdirSync(audioDir, { recursive: true });
+
+    const results = await synthesizeViaGpuManager(
+      [body.text as string],
+      voiceFile,
+      voiceConfig?.language || "ko",
+      voiceConfig?.modelSize || "1.7B",
+    );
+
+    if (results.length === 0) {
+      return { status: 500, data: { error: "TTS synthesis returned no audio" } };
+    }
 
     const timestamp = Date.now();
     const audioFilename = `tts-test-${timestamp}.mp3`;
-    const outputPath = path.join(personaDir, "audio", audioFilename);
-
-    const result = await client.generateTts(prompt, outputPath);
-    if (!result.success) {
-      return { status: 500, data: { error: result.error } };
-    }
+    fs.writeFileSync(path.join(audioDir, audioFilename), results[0].audioBuffer);
 
     return {
       status: 200,

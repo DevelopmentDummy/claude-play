@@ -21,6 +21,7 @@ interface ChatMessagesProps {
   align?: "stretch" | "center";
   hideTools?: boolean;
   sessionId?: string;
+  personaName?: string;
   panels?: PanelInfo[];
   hasMore?: boolean;
   onLoadMore?: () => Promise<number>;
@@ -173,7 +174,8 @@ function renderInline(
   keyPrefix: string,
   sessionId?: string,
   panels?: PanelInfo[],
-  onMediaReady?: () => void
+  onMediaReady?: () => void,
+  personaName?: string,
 ): React.ReactNode[] {
   const regex = /(\$PANEL:[^$]+\$|\$IMAGE:[^$]+\$|\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`|\u2018[^\u2019]+\u2019|'[^']+['''])/g;
   const nodes: React.ReactNode[] = [];
@@ -202,12 +204,13 @@ function renderInline(
           />
         );
       }
-    } else if (m.startsWith("$IMAGE:") && m.endsWith("$") && sessionId) {
+    } else if (m.startsWith("$IMAGE:") && m.endsWith("$") && (sessionId || personaName)) {
       const imgPath = m.slice(7, -1);
       nodes.push(
         <InlineImage
           key={`${keyPrefix}-img-${match.index}`}
           sessionId={sessionId}
+          personaName={personaName}
           path={imgPath}
           onReady={onMediaReady}
         />
@@ -267,7 +270,8 @@ function renderMarkdown(
   text: string,
   sessionId?: string,
   panels?: PanelInfo[],
-  onMediaReady?: () => void
+  onMediaReady?: () => void,
+  personaName?: string,
 ): React.ReactNode[] {
   const parts = text.split(/(```[\s\S]*?```)/g);
   const nodes: React.ReactNode[] = [];
@@ -286,7 +290,7 @@ function renderMarkdown(
         </pre>
       );
     } else {
-      nodes.push(...renderInline(part, `${i}`, sessionId, panels, onMediaReady));
+      nodes.push(...renderInline(part, `${i}`, sessionId, panels, onMediaReady, personaName));
     }
   });
 
@@ -314,6 +318,7 @@ export default function ChatMessages({
   align,
   hideTools,
   sessionId,
+  personaName,
   panels,
   hasMore,
   onLoadMore,
@@ -642,7 +647,7 @@ export default function ChatMessages({
             {msg.ooc && (
               <div className="text-[10px] font-semibold text-yellow-500/70 uppercase tracking-wider mb-1">OOC</div>
             )}
-            {renderMarkdown(displayContent, sessionId, panels, handleMediaReady)}
+            {renderMarkdown(displayContent, sessionId, panels, handleMediaReady, personaName)}
             {isLastAssistant && <StreamingDots />}
             {!hideTools &&
               msg.tools?.map((tool, i) => (

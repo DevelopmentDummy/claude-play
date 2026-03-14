@@ -1448,7 +1448,7 @@ export class SessionManager {
   // ── Voice ──────────────────────────────────────────────
 
   /** Read voice.json from a directory (persona or session) */
-  readVoiceConfig(dir: string): { enabled: boolean; ttsProvider?: "comfyui" | "edge"; edgeVoice?: string; edgeRate?: string; edgePitch?: string; referenceAudio?: string; referenceText?: string; design?: string; language?: string; speed?: number; modelSize?: string; speaker?: string; voiceFile?: string; chunkDelay?: number } | null {
+  readVoiceConfig(dir: string): { enabled: boolean; ttsProvider?: "comfyui" | "edge" | "local"; edgeVoice?: string; edgeRate?: string; edgePitch?: string; referenceAudio?: string; referenceText?: string; design?: string; language?: string; speed?: number; modelSize?: string; speaker?: string; voiceFile?: string; chunkDelay?: number } | null {
     const voicePath = path.join(dir, "voice.json");
     if (!fs.existsSync(voicePath)) return null;
     try {

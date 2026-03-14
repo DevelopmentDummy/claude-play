@@ -4,7 +4,8 @@ import { useState, useEffect, useRef } from "react";
 import ImageModal from "./ImageModal";
 
 interface InlineImageProps {
-  sessionId: string;
+  sessionId?: string;
+  personaName?: string;
   path: string;
   onReady?: () => void;
 }
@@ -14,7 +15,16 @@ type ImageState = "loading" | "ready" | "error";
 const POLL_INTERVAL = 2000;
 const MAX_POLLS = 23; // ~45 seconds
 
-export default function InlineImage({ sessionId, path: imgPath, onReady }: InlineImageProps) {
+function buildFileUrl(imgPath: string, sessionId?: string, personaName?: string, cacheBuster?: number): string {
+  if (personaName) {
+    // Builder mode: strip "images/" prefix for persona images API
+    const file = imgPath.startsWith("images/") ? imgPath.slice(7) : imgPath;
+    return `/api/personas/${encodeURIComponent(personaName)}/images?file=${encodeURIComponent(file)}&v=${cacheBuster}`;
+  }
+  return `/api/sessions/${sessionId}/files/${encodeURIComponent(imgPath)}?v=${cacheBuster}`;
+}
+
+export default function InlineImage({ sessionId, personaName, path: imgPath, onReady }: InlineImageProps) {
   const [state, setState] = useState<ImageState>("loading");
   const [showModal, setShowModal] = useState(false);
   const [cacheBuster] = useState(() => Date.now());
@@ -33,7 +43,7 @@ export default function InlineImage({ sessionId, path: imgPath, onReady }: Inlin
 
       try {
         const res = await fetch(
-          `/api/sessions/${sessionId}/files/${encodeURIComponent(imgPath)}?v=${cacheBuster}`,
+          buildFileUrl(imgPath, sessionId, personaName, cacheBuster),
           {
             method: "HEAD",
             cache: "no-store",
@@ -86,7 +96,7 @@ export default function InlineImage({ sessionId, path: imgPath, onReady }: Inlin
       cancelled = true;
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [sessionId, imgPath, retryKey]);
+  }, [sessionId, personaName, imgPath, retryKey]);
 
   if (state === "loading") {
     return (
@@ -111,7 +121,7 @@ export default function InlineImage({ sessionId, path: imgPath, onReady }: Inlin
     );
   }
 
-  const src = `/api/sessions/${sessionId}/files/${encodeURIComponent(imgPath)}?v=${cacheBuster}`;
+  const src = buildFileUrl(imgPath, sessionId, personaName, cacheBuster);
   const handleImageLoad = () => {
     if (readyNotifiedRef.current) return;
     readyNotifiedRef.current = true;

@@ -20,7 +20,19 @@ No test framework is configured.
 
 ### Server Entry
 
-`server.ts` — Custom HTTP server wrapping Next.js with WebSocket upgrade support. Calls `setupWebSocket()` to attach the WS server on `/ws`.
+`server.ts` — Custom HTTP server wrapping Next.js with WebSocket upgrade support. Calls `setupWebSocket()` to attach the WS server on `/ws`. Also spawns TTS server and GPU Manager as child processes.
+
+### GPU Manager (`gpu-manager/`)
+
+Python FastAPI child process (port 3342) for serial GPU task queueing. Prevents VRAM conflicts between image generation and TTS by processing one GPU task at a time.
+
+| File | Role |
+|------|------|
+| `server.py` | FastAPI app with `/health`, `/status`, `/comfyui/generate`, `/tts/synthesize`, `/tts/create-voice` endpoints |
+| `queue_manager.py` | Serial asyncio queue — FIFO, one task at a time, per-type timeouts |
+| `comfyui_proxy.py` | Proxies image generation requests to ComfyUI API |
+| `tts_engine.py` | Qwen3-TTS direct inference — on-demand loading, 30s idle timeout, model size switching |
+| `voice_creator.py` | Voice embedding (.pt) generator from design prompt or reference audio |
 
 ### Core Libraries (`src/lib/`)
 
@@ -34,7 +46,8 @@ No test framework is configured.
 | `session-manager.ts` | CRUD for personas, sessions, profiles. Copies persona → session directory. Writes `.claude/settings.json` + `.mcp.json` + `.codex/config.toml` per session. Manages layout config, builder sessions, skill copying, CLAUDE.md + AGENTS.md assembly. Bidirectional sync with diff comparison (forward: persona→session, reverse: session→persona). |
 | `panel-engine.ts` | Watches `variables.json` + `panels/*.html` + custom `*.json` data files + `layout.json` via `fs.watch`. Compiles Handlebars templates with registered helpers (eq, gt, add, percentage, etc.). Broadcasts rendered HTML and layout updates via WebSocket. |
 | `ws-server.ts` | WebSocket server on `/ws?sessionId=X&builder=true/false`. Handles `chat:send`, `session:bind`, `session:leave` messages. `wsBroadcast()` for global broadcasts. 5s grace period cleanup on last client disconnect. |
-| `comfyui-client.ts` | Optional ComfyUI integration — image generation and TTS. Queues workflows, polls for results, downloads output images/audio to session dir. `generateTts()` builds TTS workflow using AILab_Qwen3TTS nodes. |
+| `comfyui-client.ts` | Optional ComfyUI integration — image generation. Queues workflows, polls for results, downloads output images to session dir. Can route through GPU Manager when available. |
+| `tts-handler.ts` | TTS request handler (runs in plain Node via server.ts). Routes to Edge TTS or GPU Manager for local TTS. Handles chat TTS and voice creation/testing. |
 | `gemini-image.ts` | Optional Gemini image generation via `generativelanguage.googleapis.com` API. Saves base64 response to session `images/` dir. |
 | `data-dir.ts` | Resolves `DATA_DIR` env var or defaults to `./data`. Provides `getDataDir()` and `getAppRoot()`. |
 | `color-utils.ts` | Frontend helpers: `hexToRgba()`, `lightenHex()`. |
@@ -163,9 +176,10 @@ data/
 - **System JSON exclusion**: Files like `session.json`, `layout.json`, `chat-history.json` are excluded from custom data file loading in both `PanelEngine` and `SessionManager`.
 - **Real-time layout updates**: `panel-engine.ts` watches `layout.json` via `fs.watch` and broadcasts `layout:update` WebSocket events. Changes reflect immediately without session re-entry.
 - **Compacting status**: Claude CLI `system.status.compacting` events are forwarded to frontend and shown as blue pulsing indicator in StatusBar.
-- **Voice config**: `voice.json` in persona/session dir configures per-character TTS. Fields: `enabled`, `referenceAudio`, `referenceText`, `design`, `language`, `modelSize` ("0.6B"/"1.7B"), `voiceFile`, `chunkDelay`. `referenceAudio` (clone from sample) → `AILab_Qwen3TTSVoiceClone`, `design` (text prompt) → `AILab_Qwen3TTSVoiceDesign`. Copied to session on creation.
+- **Voice config**: `voice.json` in persona/session dir configures per-character TTS. Fields: `enabled`, `ttsProvider` ("edge"|"local"|"comfyui"), `referenceAudio`, `referenceText`, `design`, `language`, `modelSize` ("0.6B"/"1.7B"), `voiceFile`, `chunkDelay`, `edgeVoice`, `edgeRate`, `edgePitch`. Copied to session on creation.
 - **Voice referenceText**: 레퍼런스 오디오의 대본(transcript). 입력 시 ICL 모드로 정확한 음성 클로닝, 비우면 x-vector only (낮은 품질). 레퍼런스 오디오에서 실제로 말하는 내용과 정확히 일치해야 함. 캐릭터의 성격과 말투를 잘 드러내는 3~30초 분량의 대사를 레퍼런스 오디오로 녹음하고, 그 대사를 referenceText에 기입할 것.
-- **TTS via ComfyUI**: TTS generation uses ComfyUI's AILab_Qwen3TTS custom nodes (same GPU queue as image generation). No separate TTS server needed. Output saved as MP3 to session `audio/` dir.
+- **TTS providers**: Edge TTS (cloud, free) via `tts-server.mjs`, Local TTS via GPU Manager (Qwen3-TTS direct inference). `ttsProvider: "local"` or `"comfyui"` (legacy alias) routes through GPU Manager. Output saved as MP3 to session `audio/` dir.
+- **GPU Manager**: Python child process auto-spawned by `server.ts`. Serial queue prevents VRAM conflicts. Health check on startup (30s timeout). Auto-restarts on crash (max 3, 10s backoff). `GPU_MANAGER_PORT` (default 3342), `GPU_MANAGER_PYTHON` env vars.
 - **Audio files**: TTS output saved to `audio/` subdir in session. Served via existing `/api/sessions/[id]/files` route. `audio:ready` WebSocket event notifies frontend with URL and messageId.
 
 ## Session Lifecycle
@@ -198,6 +212,9 @@ data/
 - `COMFYUI_HOST` — ComfyUI host (default: `127.0.0.1`)
 - `COMFYUI_PORT` — ComfyUI port (default: `8188`)
 - `TTS_ENABLED` — Enable/disable TTS globally (default: `true`)
+- `TTS_PORT` — Edge TTS server port (default: `3341`)
+- `GPU_MANAGER_PORT` — GPU Manager port (default: `3342`)
+- `GPU_MANAGER_PYTHON` — Python executable for GPU Manager (default: `python`)
 - `ADMIN_PASSWORD` — Admin login password. If not set, authentication is disabled (open access).
 
 ## Skills & Plugins

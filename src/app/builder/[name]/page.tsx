@@ -200,6 +200,7 @@ export default function BuilderPage() {
             isStreaming={isStreaming}
             hasMore={hasMore}
             onLoadMore={loadMore}
+            personaName={decodedName}
           />
           <ChatInput disabled={isStreaming} onSend={sendMessage} voiceChat={voiceChat} />
         </div>

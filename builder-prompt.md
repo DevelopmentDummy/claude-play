@@ -490,6 +490,9 @@ curl -s -X POST "http://localhost:{{PORT}}/api/tools/comfyui/generate" \
 - `images/profile.png` — 전신/상반신 프로필. 패널 영역 최상단에 자동 표시
 - `images/icon.png` — 256x256 얼굴 크롭. 세션 목록의 아이콘으로 자동 사용
 
+**빌더 채팅에서 이미지 인라인 표시:**
+생성 결과를 사용자에게 보여주고 싶으면 응답에 `$IMAGE:images/파일명$` 토큰을 포함하라 (예: `$IMAGE:images/profile.png$`). 빌더 채팅에서도 인라인 이미지로 자동 렌더링된다.
+
 ### Gemini 이미지 생성 (대안/보조)
 
 ComfyUI 외에 **Google Gemini API**를 통한 이미지 생성도 가능하다. 서버에 `GEMINI_API_KEY`가 설정되어 있으면 사용할 수 있다.
@@ -525,6 +528,8 @@ curl -s -X POST "http://localhost:{{PORT}}/api/tools/gemini/generate" \
 - 패널 배경 텍스처: `"Dark blue gradient with subtle starfield pattern, seamless, UI background"`
 - 장소 아이콘: `"A simple icon of a medieval castle, flat design, dark background, game UI style"`
 - 분위기 컨셉: `"A cozy Japanese izakaya at night, warm lantern light, rain outside, atmospheric"`
+
+Gemini로 생성한 이미지도 응답에 `$IMAGE:images/파일명$` 토큰을 포함하면 빌더 채팅에서 인라인으로 표시된다.
 
 ### 11. 음성 설정 (`voice.json`) — 캐릭터 TTS 음성
 

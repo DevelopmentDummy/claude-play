@@ -87,6 +87,7 @@ function spawnGpuManager(): ChildProcess | null {
         console.log(`[gpu-manager] restarting (${gpuManagerRestarts}/${GPU_MANAGER_MAX_RESTARTS})...`);
         setTimeout(() => {
           gpuManagerProcess = spawnGpuManager();
+          g.__gpuManagerPid = gpuManagerProcess?.pid;
         }, 10_000);
       } else {
         console.error("[gpu-manager] max restarts reached, GPU features disabled");
@@ -147,8 +148,41 @@ function sendJson(res: ServerResponse, status: number, data: unknown) {
 }
 
 // Spawn TTS server and GPU Manager, ensure cleanup on exit
+// Use globalThis PIDs to survive tsx watch hot-reloads
+const g = globalThis as Record<string, unknown>;
+
+/** Kill process by PID (Windows-safe, ignores errors) */
+function killPid(pid: number | undefined) {
+  if (!pid) return;
+  try {
+    if (process.platform === "win32") {
+      execSync(`taskkill /T /F /PID ${pid}`, { stdio: "ignore" });
+    } else {
+      process.kill(pid, "SIGTERM");
+    }
+  } catch { /* already dead */ }
+}
+
+/** Kill any process listening on a given port (Windows) */
+function killProcessOnPort(p: number) {
+  if (process.platform !== "win32") return;
+  try {
+    const out = execSync(`netstat -ano | findstr :${p} | findstr LISTENING`, { encoding: "utf8", stdio: ["pipe", "pipe", "ignore"] });
+    const pids = new Set(out.split("\n").map(l => parseInt(l.trim().split(/\s+/).pop() || "", 10)).filter(n => n > 0));
+    for (const pid of pids) killPid(pid);
+  } catch { /* nothing listening */ }
+}
+
+// Kill previous child processes from prior hot-reload cycle
+killPid(g.__ttsPid as number | undefined);
+killPid(g.__gpuManagerPid as number | undefined);
+// Also kill anything still on GPU Manager port (fallback)
+killProcessOnPort(GPU_MANAGER_PORT);
+
 const ttsProcess = spawnTtsServer();
 let gpuManagerProcess = spawnGpuManager();
+g.__ttsPid = ttsProcess?.pid;
+g.__gpuManagerPid = gpuManagerProcess?.pid;
 
 for (const sig of ["exit", "SIGINT", "SIGTERM", "SIGHUP"] as const) {
   process.on(sig, () => {

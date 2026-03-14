@@ -32,7 +32,6 @@ parser.add_argument("--comfyui-url", type=str, default="http://127.0.0.1:8188")
 args, _ = parser.parse_known_args()
 
 # ── Globals ──────────────────────────────────────────────
-app = FastAPI(title="GPU Resource Manager")
 queue = QueueManager()
 comfyui = ComfyUIProxy(args.comfyui_url)
 tts_engine = TTSEngine(model_path=os.environ.get("TTS_MODEL_PATH"))
@@ -46,29 +45,31 @@ async def _handle_comfyui(payload: dict) -> dict:
     return await comfyui.generate(payload)
 
 
-# ── Startup / Shutdown ───────────────────────────────────
-@app.on_event("startup")
-async def startup() -> None:
-    # Start queue worker
+# ── Lifespan ─────────────────────────────────────────────
+from contextlib import asynccontextmanager
+
+
+@asynccontextmanager
+async def lifespan(app):
+    # Startup
     asyncio.create_task(queue.worker())
 
-    # Register handlers
     queue.register_handler(TaskType.COMFYUI, _handle_comfyui)
     queue.register_handler(TaskType.TTS, tts_engine.synthesize_batch)
     queue.register_handler(TaskType.CREATE_VOICE, voice_creator.create_voice)
 
-    # Check ComfyUI connection
     connected = await comfyui.check_connection()
     logger.info("ComfyUI connected: %s", connected)
 
     logger.info("GPU Manager ready on port %d", args.port)
-
-
-@app.on_event("shutdown")
-async def shutdown() -> None:
+    yield
+    # Shutdown
     await tts_engine.unload_model()
     await comfyui.close()
     logger.info("GPU Manager shut down")
+
+
+app = FastAPI(title="GPU Resource Manager", lifespan=lifespan)
 
 
 # ── Health / Status ──────────────────────────────────────
