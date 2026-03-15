@@ -172,6 +172,27 @@ if (res.result?.success) {
 - **반환값의 `result`에 충분한 정보를.** 패널이 결과를 표시하거나, `queueEvent`로 AI에게 요약을 전달할 때 필요하다.
 - **엔진은 판정만, 서사는 AI가.** 엔진이 "데미지 12, 크리티컬" 같은 결과를 내면, AI가 이를 "검이 빛을 내며 급소를 관통했다"로 풀어쓴다. 엔진에 서사 텍스트를 넣지 않는다.
 
+### 엔진-패널 간 계약 (중요)
+
+패널에서 엔진 결과를 참조할 때, **반드시 엔진 코드를 읽고 실제 반환 구조를 확인한 뒤** 필드를 참조하라. 추측하지 마라.
+
+엔진의 `result` 구조가 flat인지 nested인지는 엔진마다 다르다:
+
+```javascript
+// flat 구조 — result.damage로 바로 접근
+result: { success: true, damage: 12, crit: true }
+
+// nested 구조 — result.economy.name으로 접근해야 함
+result: { success: true, economy: { name: '회복포션', price: 50, newBalance: 450 } }
+```
+
+**흔한 실수:** 엔진이 `result.economy.name`을 반환하는데, 패널에서 `result.name`으로 접근하면 `undefined`가 된다. 이런 버그는 실행 전까지 드러나지 않는다.
+
+**원칙:**
+- 엔진의 반환 구조를 코드 상단 주석에 문서화하라 (액션별 result 필드)
+- 패널을 작성하거나 수정할 때, 엔진의 해당 액션 코드를 먼저 읽어라
+- `queueEvent` 헤더에 쓸 필드도 엔진 반환값에서 정확한 경로로 참조하라
+
 ### 패널 액션과 AI 인지의 연결
 
 패널에서 사용자가 행동(아이템 사용, 이동 등)을 수행할 때, 데이터는 엔진을 통해 즉시 갱신되지만 **AI는 이를 모른다**. 다음 메시지에 맥락을 전달하려면 `queueEvent`를 사용한다:
