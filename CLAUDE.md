@@ -54,7 +54,7 @@ Python FastAPI child process (port 3342) for serial GPU task queueing. Prevents 
 
 ### MCP Server
 
-`src/mcp/claude-bridge-mcp-server.mjs` — Per-session MCP server spawned as a child process by Claude/Codex. Configured via `.mcp.json` (Claude) or `.codex/config.toml` (Codex) in the session directory. Provides `claude_bridge` tools for AI to interact with the bridge (image generation, panel updates, policy review, etc.). Authenticates to Bridge API via internal `x-bridge-token` header.
+`src/mcp/claude-bridge-mcp-server.mjs` — Per-session MCP server spawned as a child process by Claude/Codex. Configured via `.mcp.json` (Claude) or `.codex/config.toml` (Codex) in the session directory. Provides `claude_bridge` tools for AI to interact with the bridge (image generation, panel updates, policy review, custom tool execution, etc.). Authenticates to Bridge API via internal `x-bridge-token` header. Key tool: `run_tool` — executes custom tool scripts (`tools/*.js`) from the session directory via `/api/sessions/{id}/tools/{name}`, enriches response with a state snapshot formatted by `hint-rules.json` (when present).
 
 ### API Routes (`src/app/api/`)
 
@@ -135,6 +135,7 @@ data/
 │   ├── voice.json                   # TTS voice configuration
 │   ├── voice-ref.*                  # TTS reference audio file
 │   ├── tools/                       # Server-side custom tool scripts (*.js)
+│   ├── hint-rules.json              # Snapshot formatting rules for MCP run_tool responses
 │   └── *.json                       # Custom data files (inventory.json, world.json, etc.)
 ├── sessions/{persona}-{timestamp}/  # Ephemeral session instances
 │   ├── (cloned persona files)
@@ -169,6 +170,8 @@ data/
 - **Dock panels**: Panels with `placement: "dock"` or `"dock-bottom"` render between chat messages and input area (full width). `"dock-left"` / `"dock-right"` float inside the chat scroll area with `position: sticky` — always visible at the bottom corner, and nearby messages shrink to make room (like CSS float/text-wrap around an image). Visibility controlled by `__modals` in `variables.json` (same as modal panels). Multiple dock panels in same direction show as tabs. `panels.dockHeight` (or legacy `panels.dockSize`) in layout.json controls max-height (px). `panels.dockWidth` controls width (px); if omitted, auto-sizes with min 280px / max 50%.
 - **Panel bridge methods**: `__panelBridge.sendMessage(text)` sends chat message immediately. `__panelBridge.fillInput(text)` inserts text at cursor in input box without sending. `__panelBridge.updateVariables(patch)` patches variables.json. `__panelBridge.updateData(fileName, patch)` patches custom data files (e.g., `inventory.json`). `__panelBridge.updateLayout(patch)` deep-merges patch into layout.json (e.g., `{ panels: { dockWidth: 500 } }`). `__panelBridge.queueEvent(header)` queues an event header to prepend to the next user message (AI sees it, history doesn't include it; skipped for OOC messages). `__panelBridge.runTool(toolName, args)` executes server-side custom tool scripts.
 - **Custom panel tools**: Per-persona server-side JavaScript scripts in `tools/` dir. CommonJS format (`module.exports = async function(context, args)`). Context provides `{ variables, data, sessionDir }`. Return `{ variables, data }` patches to auto-apply. Executed in-process via dynamic `import()` with 10s timeout. Synced bidirectionally like other persona files.
+- **MCP `run_tool`**: Session AI calls custom tools via `mcp__claude_bridge__run_tool` instead of curl/bash. Supports single (`{ tool, args }`) and chained (`{ chain: [{tool, args}, ...] }`) execution. Response includes tool results plus an auto-generated state snapshot (formatted by `hint-rules.json` when present). Snapshot includes `display` (formatted value) and `hint` (narrative hint text) per variable.
+- **`hint-rules.json`**: Optional per-persona file defining snapshot formatting rules. Each key maps a variable name to `{ format, max_key, tier_mode, tiers }`. `format` supports `{value}`, `{max}`, `{pct}` placeholders. `tiers` maps value ranges to narrative hint strings. Common variables (`location`, `time`, `outfit`, etc.) are auto-included in snapshot without rules.
 - **Admin authentication**: Optional via `ADMIN_PASSWORD` env var. HMAC-SHA256 signed tokens in httpOnly cookies (90-day expiry). Next.js Edge Runtime middleware. Rate-limited login (5 attempts/min per IP). MCP server bypasses via `x-bridge-token` header. If `ADMIN_PASSWORD` not set, auth is disabled.
 - **Shadow DOM isolation**: PanelSlot and ModalPanel render panel HTML inside Shadow DOM to isolate CSS.
 - **Image modal portal**: ImageModal uses `createPortal(document.body)` to escape `backdrop-blur` CSS containment from chat bubbles.

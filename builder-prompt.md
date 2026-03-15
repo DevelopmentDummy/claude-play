@@ -382,7 +382,104 @@ allowed-tools: Read, Edit, Write, Glob (필요한 것만)
 - **일관되게**: 스킬에서 참조하는 변수명은 variables.json과, 패널 파일명은 panels/ 디렉토리와 정확히 일치해야 한다
 - **description이 핵심**: Claude는 description을 보고 스킬을 호출할지 판단한다. 모호하지 않게 작성하라
 
-### 9. `comfyui-config.json` — 이미지 생성 프리셋 설정
+### `tools/*.js` — 커스텀 도구 스크립트 (선택)
+
+서버 사이드에서 실행되는 커스텀 도구 스크립트. 게임 엔진, 장비 관리, 전투 시스템 등 복잡한 상태 변환 로직을 JavaScript로 구현한다. 세션 AI가 MCP `run_tool` 도구로 호출한다.
+
+**언제 만드는가:**
+- 상태 변수가 많고 변환 규칙이 복잡한 페르소나 (경제 시스템, 전투 시스템, 시뮬레이션 등)
+- 여러 변수가 연쇄적으로 변하는 로직 (예: 착유 → 젖량 감소 + 품질 계산 + 수입 증가 + 경제 기록)
+- 단순 호감도/신뢰도 증감만 있는 페르소나에서는 불필요하다 — update-state 스킬로 충분하다
+
+**파일 형식:**
+```javascript
+// tools/{name}.js — CommonJS 형식
+module.exports = async function(context, args) {
+  const v = { ...context.variables };        // 현재 변수
+  const data = context.data;                  // 커스텀 데이터 파일들 (inventory, economy 등)
+  // const sessionDir = context.sessionDir;   // 세션 디렉토리 (파일 I/O 필요 시)
+
+  // ... 로직 ...
+
+  return {
+    variables: { /* 변경된 변수만 */ },
+    data: { "economy.json": eco, "inventory.json": inv },  // 변경된 데이터 파일만
+    result: { /* AI에게 전달할 결과 */ }
+  };
+};
+```
+
+**context 구조:**
+- `context.variables`: `variables.json`의 현재 값 (복사본)
+- `context.data`: 세션 디렉토리의 커스텀 JSON 파일들 (시스템 JSON 제외). 키는 파일명에서 `.json` 제거 (예: `inventory.json` → `context.data.inventory`)
+- `context.sessionDir`: 세션 디렉토리 절대 경로
+
+**반환 규칙:**
+- `variables`: shallow merge로 `variables.json`에 적용됨 — 변경된 키만 포함
+- `data`: 키는 파일명 (`.json` 포함, 예: `"economy.json"`). 각 파일도 shallow merge
+- `result`: AI에게 전달되는 자유 형식 결과. 서사 힌트, 변경 내역, 이벤트 등을 포함
+- 실행 타임아웃: 10초
+
+**세션 AI의 호출 방식:**
+세션 AI는 `mcp__claude_bridge__run_tool` MCP 도구로 호출한다 (curl 불필요):
+```
+mcp__claude_bridge__run_tool({ tool: "engine", args: { action: "milking", params: {} } })
+```
+
+**설계 원칙:**
+- result에 `changes` (변경 전/후), `hints` (서사 힌트), `warnings` (경고)를 포함하면 AI가 서사에 반영하기 쉽다
+- 데이터 파일(`*.json`)을 활용하여 경제/인벤토리/업적 등 구조화된 상태를 관리한다
+- 관련 변수/데이터 파일은 빌더 단계에서 함께 초기 파일을 생성해야 한다
+
+### `hint-rules.json` — 스냅샷 포매팅 규칙 (선택)
+
+`tools/*.js` 커스텀 도구가 있는 페르소나에서, MCP `run_tool` 응답에 **현재 상태 스냅샷**을 자동 합성하기 위한 규칙 파일. 도구 실행 후 AI가 전체 상태를 한눈에 파악할 수 있도록 수치를 포매팅하고 서사 힌트를 붙인다.
+
+**언제 만드는가:**
+- 커스텀 도구(`tools/*.js`)가 있는 페르소나에서만 의미가 있다
+- 없으면 `run_tool` 응답에 snapshot이 생략되며, 도구 결과(`result`)만 반환된다
+
+**파일 형식:**
+```json
+{
+  "변수명": {
+    "format": "{value}/{max}",
+    "max_key": "변수명_max",
+    "tier_mode": "percentage",
+    "tiers": [
+      { "max": 20, "hint": "거의 비어있음" },
+      { "max": 50, "hint": "중간" },
+      { "max": 100, "hint": "가득 참" }
+    ]
+  }
+}
+```
+
+**필드 설명:**
+- `format`: 표시 형식. 플레이스홀더: `{value}` (현재 값), `{max}` (최대값), `{pct}` (퍼센트)
+- `max_key`: 최대값을 읽어올 변수명 (예: `"arousal_max"`). `max`로 고정 숫자도 가능
+- `tier_mode`: `"percentage"` 면 max 대비 비율로 tier 판정, 생략하면 절대값 기준
+- `tiers`: `max` 이하일 때 해당 `hint`를 반환. **오름차순으로 정렬**
+
+**스냅샷 응답 예시:**
+```json
+{
+  "arousal": { "display": "35/100", "hint": "살짝 달아오름" },
+  "milk_amount": { "display": "84/800ml (10%)", "hint": "거의 비어있음" },
+  "balance": { "display": "1618G" },
+  "location": "주방",
+  "time": "오전"
+}
+```
+
+- `location`, `owner_location`, `time`, `outfit`, `cycle_phase`, `cycle_day`, `day_number`는 hint-rules에 없어도 자동으로 스냅샷에 포함된다
+
+**작성 원칙:**
+- 서사에 직접 반영할 수치만 포함한다 (내부 계산용 변수는 제외)
+- hint 텍스트는 AI가 서사에 바로 녹일 수 있는 자연어로 작성한다
+- 캐릭터/세계관의 톤에 맞춘다
+
+### `comfyui-config.json` — 이미지 생성 프리셋 설정
 
 페르소나 생성 시 글로벌 기본 `comfyui-config.json`이 자동으로 복사된다. 이 파일은 **프리셋 시스템**을 사용하여 아트 스타일(애니메/반실사 등)을 한 번에 전환할 수 있다.
 
@@ -429,7 +526,7 @@ curl -s http://localhost:3340/api/tools/comfyui/models
 - ComfyUI가 연결되지 않은 환경에서는 이 단계와 이후 이미지 생성 단계를 건너뛴다
 - **프리셋의 `style_tags`와 `quality_tags`는 대화 세션에서 이미지 생성 시 프롬프트에 자동 삽입된다.** `session-instructions.md`에 이미지 생성 시 `comfyui-config.json`을 참조하라는 지시를 포함하라
 
-### 10. `profile.png` + `icon.png` — 캐릭터 프로필 이미지 & 아이콘
+### `profile.png` + `icon.png` — 캐릭터 프로필 이미지 & 아이콘
 
 세션 화면의 패널 영역 상단에 표시되는 캐릭터 대표 이미지와, 세션 목록에서 사용되는 얼굴 아이콘.
 
@@ -533,7 +630,7 @@ curl -s -X POST "http://localhost:{{PORT}}/api/tools/gemini/generate" \
 
 Gemini로 생성한 이미지도 응답에 `$IMAGE:images/파일명$` 토큰을 포함하면 빌더 채팅에서 인라인으로 표시된다.
 
-### 11. 음성 설정 (`voice.json`) — 캐릭터 TTS 음성
+### 음성 설정 (`voice.json`) — 캐릭터 TTS 음성
 
 대화 세션에서 캐릭터의 대사를 음성으로 재생하는 TTS(Text-to-Speech) 기능을 설정한다. ComfyUI의 Qwen3-TTS 노드를 통해 음성을 생성한다.
 
@@ -642,6 +739,8 @@ yt-dlp "ytsearch5:{검색어}" --flat-playlist --dump-json --no-download 2>/dev/
 - [ ] `skills/` 에 최소 update-state, update-panels, update-memory 스킬이 있는가?
 - [ ] 각 스킬의 description이 구체적인가?
 - [ ] 스킬 내용이 이 페르소나의 변수명/패널명과 일치하는가?
+- [ ] 커스텀 도구(`tools/*.js`)가 있다면, `hint-rules.json`이 적절히 작성되어 있는가?
+- [ ] `hint-rules.json`의 변수명이 `variables.json`의 키와 일치하는가?
 - [ ] `comfyui-config.json`에 `active_preset`과 프리셋이 설정되어 있는가? (ComfyUI 연결 시)
 - [ ] `comfyui-config.json`의 각 프리셋에 checkpoint, quality_tags, style_tags, negative가 있는가?
 - [ ] `session-instructions.md`에 이미지 생성 시 `comfyui-config.json`을 참조하라는 지시가 있는가?

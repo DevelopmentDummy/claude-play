@@ -648,6 +648,153 @@ server.registerTool(
   }
 );
 
+// ═══ run_tool: 범용 커스텀 툴 실행 + 스냅샷 ═══
+
+function readVariables() {
+  const varsPath = path.join(sessionDir, "variables.json");
+  try {
+    return JSON.parse(fs.readFileSync(varsPath, "utf-8"));
+  } catch {
+    return {};
+  }
+}
+
+function readHintRules() {
+  const rulesPath = path.join(sessionDir, "hint-rules.json");
+  try {
+    if (fs.existsSync(rulesPath)) {
+      return JSON.parse(fs.readFileSync(rulesPath, "utf-8"));
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
+function buildSnapshot(vars, hintRules) {
+  if (!hintRules) return null;
+
+  const snapshot = {};
+  for (const [key, rule] of Object.entries(hintRules)) {
+    const value = vars[key];
+    if (value === undefined) continue;
+
+    const entry = {};
+
+    // Format: e.g. "{value}/{max}" or "{value}G"
+    if (rule.format) {
+      let formatted = rule.format;
+      formatted = formatted.replace("{value}", String(value));
+      if (rule.max_key && vars[rule.max_key] !== undefined) {
+        formatted = formatted.replace("{max}", String(vars[rule.max_key]));
+      } else if (rule.max !== undefined) {
+        formatted = formatted.replace("{max}", String(rule.max));
+      }
+      // Percentage calculation
+      const maxVal = rule.max_key ? vars[rule.max_key] : rule.max;
+      if (typeof value === "number" && typeof maxVal === "number" && maxVal > 0) {
+        const pct = Math.round((value / maxVal) * 100);
+        formatted = formatted.replace("{pct}", String(pct));
+      }
+      entry.display = formatted;
+    } else {
+      entry.display = String(value);
+    }
+
+    // Tier-based hint
+    if (Array.isArray(rule.tiers) && typeof value === "number") {
+      const maxVal = rule.max_key ? vars[rule.max_key] : rule.max;
+      const pct = typeof maxVal === "number" && maxVal > 0
+        ? (value / maxVal) * 100
+        : value;
+      const checkValue = rule.tier_mode === "percentage" ? pct : value;
+      for (const tier of rule.tiers) {
+        if (checkValue <= tier.max) {
+          entry.hint = tier.hint;
+          break;
+        }
+      }
+    }
+
+    snapshot[key] = typeof value === "string" ? entry.display : entry;
+  }
+
+  // Pass through non-rule variables that are commonly useful
+  for (const passKey of ["location", "owner_location", "time", "outfit", "cycle_phase", "cycle_day", "day_number"]) {
+    if (vars[passKey] !== undefined && !(passKey in snapshot)) {
+      snapshot[passKey] = String(vars[passKey]);
+    }
+  }
+
+  return snapshot;
+}
+
+async function executeOneTool(toolName, toolArgs) {
+  const route = `/api/sessions/${encodeURIComponent(sessionId)}/tools/${encodeURIComponent(toolName)}`;
+  return await requestJson("POST", route, { args: toolArgs });
+}
+
+server.registerTool(
+  "run_tool",
+  {
+    description:
+      "Execute a custom tool script from the session's tools/ directory. " +
+      "Supports single execution or chained sequential execution of multiple tools. " +
+      "Returns tool results enriched with a current-state snapshot and narrative hints " +
+      "(when hint-rules.json is configured in the session).",
+    inputSchema: {
+      // Single execution mode
+      tool: z.string().optional().describe("Tool name (filename without .js in tools/ dir)"),
+      args: z.record(z.string(), z.unknown()).optional().describe("Arguments passed to the tool function"),
+      // Chain execution mode
+      chain: z.array(z.object({
+        tool: z.string().describe("Tool name"),
+        args: z.record(z.string(), z.unknown()).optional().describe("Arguments for this tool"),
+      })).optional().describe("Sequential chain of tool calls. Final snapshot returned after all complete."),
+    },
+  },
+  async (input) => {
+    if (mode !== "session" || !sessionId) {
+      return fail("run_tool is only available in session mode");
+    }
+
+    try {
+      const steps = input.chain
+        ? input.chain
+        : input.tool
+          ? [{ tool: input.tool, args: input.args || {} }]
+          : null;
+
+      if (!steps || steps.length === 0) {
+        return fail("Provide either 'tool' + 'args' for single execution, or 'chain' for sequential execution.");
+      }
+
+      const results = [];
+      for (const step of steps) {
+        const res = await executeOneTool(step.tool, step.args || {});
+        results.push({
+          tool: step.tool,
+          ...(res.ok ? { success: true, result: res.result } : { success: false, error: res.error }),
+        });
+        // Stop chain on failure
+        if (!res.ok) break;
+      }
+
+      // Build snapshot from current variables after all tools executed
+      const vars = readVariables();
+      const hintRules = readHintRules();
+      const snapshot = buildSnapshot(vars, hintRules);
+
+      const response = {
+        results: steps.length === 1 ? results[0] : results,
+        ...(snapshot ? { snapshot } : {}),
+      };
+
+      return ok(response);
+    } catch (error) {
+      return fail(error);
+    }
+  }
+);
+
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
