@@ -98,8 +98,9 @@ export async function POST(
 
     // Apply data file patches
     if (result?.data && typeof result.data === "object") {
-      for (const [fileName, patch] of Object.entries(result.data)) {
-        if (!fileName.endsWith(".json") || fileName.includes("/") || fileName.includes("\\") || fileName.includes("..")) continue;
+      for (const [rawKey, patch] of Object.entries(result.data)) {
+        const fileName = rawKey.endsWith(".json") ? rawKey : `${rawKey}.json`;
+        if (fileName.includes("/") || fileName.includes("\\") || fileName.includes("..")) continue;
         if (PROTECTED_FILES.has(fileName)) continue;
         const filePath = path.join(sessionDir, fileName);
         try {
