@@ -46,7 +46,8 @@ function detectImageToken(toolName: string, input: unknown): string | null {
   return `$IMAGE:images/${filename}$`;
 }
 
-export function useChat(sessionId?: string) {
+export function useChat(rawSessionId?: string) {
+  const sessionId = rawSessionId ? decodeURIComponent(rawSessionId) : undefined;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [status, setStatus] = useState<string>("disconnected");
