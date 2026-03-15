@@ -213,16 +213,16 @@ export default function StatusBar({
               History
             </button>
           )}
-          {onReinit && (
-            <button
-              onClick={onReinit}
-              className="px-3 py-1 border border-border rounded-md bg-transparent text-text-dim cursor-pointer text-xs hover:bg-surface-light hover:text-text hover:-translate-y-px transition-all duration-fast"
-              title="Kill and respawn process"
-            >
-              Reconnect
-            </button>
-          )}
         </div>
+      )}
+      {onReinit && (
+        <button
+          onClick={onReinit}
+          className="px-3 py-1 border border-border rounded-md bg-transparent text-text-dim cursor-pointer text-xs hover:bg-surface-light hover:text-text hover:-translate-y-px transition-all duration-fast"
+          title="Kill and respawn process"
+        >
+          Reconnect
+        </button>
       )}
     </header>
   );

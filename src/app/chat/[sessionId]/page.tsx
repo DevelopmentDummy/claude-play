@@ -240,6 +240,27 @@ export default function ChatPage() {
     });
   }, [sessionId]);
 
+  // Manual reconnect — kill and respawn CLI process (e.g. after prompt changes)
+  const handleReinit = useCallback(async () => {
+    setStatus("reconnecting");
+    const res = await fetch(
+      `/api/sessions/${sessionId}/open`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: currentModel || undefined }),
+      }
+    );
+    if (res.ok) {
+      const data = await res.json();
+      if (data.model) setCurrentModel(data.model);
+      if (data.provider) setCurrentProvider(data.provider);
+      setStatus("connected");
+    } else {
+      setError("Reconnect failed");
+    }
+  }, [sessionId, currentModel, setStatus, setError]);
+
   // Auto re-open session when server restarts and WS reconnects
   const handleSessionLost = useCallback(async () => {
     setStatus("disconnected");
@@ -606,6 +627,7 @@ export default function ChatPage() {
         status={status}
         isBuilderMode={false}
         onBack={handleBack}
+        onReinit={handleReinit}
         showPanelButton={hasSidebar && isMobile}
         onPanelToggle={() => setDrawerOpen((v) => !v)}
         model={currentModel}
