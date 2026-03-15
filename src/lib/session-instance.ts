@@ -173,8 +173,7 @@ export class SessionInstance {
   readonly sessions: SessionManager;
   private readonly broadcastFn: BroadcastFn;
 
-  // Pending event headers (queued by panels, flushed on next chat:send)
-  private pendingEventHeaders: string[] = [];
+  // Pending event headers are persisted to pending-events.json in the session dir
 
   // Accumulator for assistant turn
   private segments: string[] = [];
@@ -241,19 +240,55 @@ export class SessionInstance {
     }
   }
 
-  // --- Event queue ---
+  // --- Event queue (file-backed: pending-events.json) ---
+
+  private get pendingEventsPath(): string | null {
+    const dir = this.getDir();
+    return dir ? path.join(dir, "pending-events.json") : null;
+  }
+
+  private readPendingEvents(): string[] {
+    const fp = this.pendingEventsPath;
+    if (!fp) return [];
+    try {
+      if (fs.existsSync(fp)) {
+        return JSON.parse(fs.readFileSync(fp, "utf-8"));
+      }
+    } catch { /* ignore */ }
+    return [];
+  }
+
+  private writePendingEvents(headers: string[]): void {
+    const fp = this.pendingEventsPath;
+    if (!fp) return;
+    try {
+      if (headers.length === 0) {
+        if (fs.existsSync(fp)) fs.unlinkSync(fp);
+      } else {
+        fs.writeFileSync(fp, JSON.stringify(headers), "utf-8");
+      }
+    } catch { /* ignore */ }
+  }
 
   /** Queue an event header to prepend to the next user message */
   queueEvent(header: string): void {
-    this.pendingEventHeaders.push(header);
+    const headers = this.readPendingEvents();
+    headers.push(header);
+    this.writePendingEvents(headers);
   }
 
   /** Flush all pending event headers, returning formatted string (or empty) */
   flushEvents(): string {
-    if (this.pendingEventHeaders.length === 0) return "";
-    const headers = this.pendingEventHeaders.join("\n");
-    this.pendingEventHeaders = [];
-    return headers;
+    const headers = this.readPendingEvents();
+    if (headers.length === 0) return "";
+    this.writePendingEvents([]);
+    this.broadcast("event:pending", { headers: [] });
+    return headers.join("\n");
+  }
+
+  /** Get current pending event headers (read-only) */
+  getPendingEvents(): string[] {
+    return this.readPendingEvents();
   }
 
   // --- History ---

@@ -59,12 +59,11 @@ export default function ChatPage() {
   const [currentProvider, setCurrentProvider] = useState<"claude" | "codex">("claude");
   const [showOOC, setShowOOC] = useState(false);
   const [syncModalOpen, setSyncModalOpen] = useState(false);
-  const [autoPlay, setAutoPlay] = useState(() => {
-    if (typeof window !== "undefined") {
-      return localStorage.getItem("tts-autoplay") !== "false";
-    }
-    return true;
-  });
+  const [autoPlay, setAutoPlay] = useState(true);
+  useEffect(() => {
+    const stored = localStorage.getItem("tts-autoplay");
+    if (stored === "false") setAutoPlay(false);
+  }, []);
   // Chunked audio: per-message arrays of chunk URLs
   const [audioMap, setAudioMap] = useState<Record<string, string[]>>({});
   const [audioStatus, setAudioStatus] = useState<Record<string, { generating: boolean; totalChunks: number; readyCount: number }>>({});
@@ -76,6 +75,7 @@ export default function ChatPage() {
   }>({ messageId: "", nextChunk: 0, playing: false, audioPlaying: false, totalChunks: 0, currentAudio: null, pendingMessages: [] });
   const [ttsPlaying, setTtsPlaying] = useState(false);
   const [voiceChat, setVoiceChat] = useState(false);
+  const [pendingEvents, setPendingEvents] = useState<string[]>([]);
   const [chatOptions, setChatOptions] = useState<Record<string, unknown>>({});
   const [chatOptionsSchema, setChatOptionsSchema] = useState<Record<string, unknown>[]>([]);
   const [optionsModalOpen, setOptionsModalOpen] = useState(false);
@@ -348,6 +348,10 @@ export default function ChatPage() {
             enqueueMessage(messageId, totalChunks);
           }
         }
+      },
+      "event:pending": (d) => {
+        const { headers } = d as { headers: string[] };
+        setPendingEvents(headers || []);
       },
       "profile:update": (p) => {
         const update = p as { profile?: string; timestamp?: number };
@@ -674,6 +678,7 @@ export default function ChatPage() {
             showOOC={showOOC}
             onOOCToggle={handleOOCToggle}
             choices={currentChoices}
+            pendingEvents={pendingEvents}
             voiceChat={voiceChat}
             ttsPlaying={ttsPlaying}
             autoSendDelay={typeof chatOptions.autoSendDelay === "number" ? chatOptions.autoSendDelay : undefined}

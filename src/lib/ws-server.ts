@@ -122,6 +122,17 @@ export function setupWebSocket(server: HTTPServer): void {
         event: "connected",
         data: { sessionId, isBuilder, sessionActive },
       }));
+
+      // Send pending events if any
+      if (instance) {
+        const pendingHeaders = instance.getPendingEvents();
+        if (pendingHeaders.length > 0) {
+          ws.send(JSON.stringify({
+            event: "event:pending",
+            data: { headers: pendingHeaders },
+          }));
+        }
+      }
     });
   });
 }
@@ -160,6 +171,7 @@ function handleMessage(
       if (!instance) return;
 
       instance.queueEvent(header.trim());
+      instance.broadcast("event:pending", { headers: instance.getPendingEvents() });
       break;
     }
 

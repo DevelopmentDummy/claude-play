@@ -18,5 +18,6 @@ export async function POST(
   }
 
   instance.queueEvent(header.trim());
+  instance.broadcast("event:pending", { headers: instance.getPendingEvents() });
   return NextResponse.json({ ok: true });
 }

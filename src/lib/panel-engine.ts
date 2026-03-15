@@ -21,6 +21,7 @@ const SYSTEM_JSON = new Set([
   "character-tags.json",
   "voice.json",
   "chat-options.json",
+  "pending-events.json",
 ]);
 
 export interface PanelUpdate {

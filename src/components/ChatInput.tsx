@@ -46,6 +46,7 @@ interface ChatInputProps {
   disabled: boolean;
   onSend: (text: string) => void;
   choices?: Choice[];
+  pendingEvents?: string[];
   showOOC?: boolean;
   onOOCToggle?: (on: boolean) => void;
   /** Voice chat mode: auto-start STT after AI response, auto-send after silence */
@@ -56,7 +57,7 @@ interface ChatInputProps {
   autoSendDelay?: number;
 }
 
-function ChatInput({ disabled, onSend, choices, showOOC, onOOCToggle, voiceChat, ttsPlaying, autoSendDelay = 3000 }: ChatInputProps) {
+function ChatInput({ disabled, onSend, choices, pendingEvents, showOOC, onOOCToggle, voiceChat, ttsPlaying, autoSendDelay = 3000 }: ChatInputProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [oocMode, setOocMode] = useState(false);
   const oocModeRef = useRef(oocMode);
@@ -426,6 +427,19 @@ function ChatInput({ disabled, onSend, choices, showOOC, onOOCToggle, voiceChat,
             >
               {c.text}
             </button>
+          ))}
+        </div>
+      )}
+      {pendingEvents && pendingEvents.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 px-4 pt-2 pb-1">
+          {pendingEvents.map((header, i) => (
+            <span
+              key={i}
+              className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs
+                bg-amber-500/10 text-amber-300/90 border border-amber-500/20"
+            >
+              {header}
+            </span>
           ))}
         </div>
       )}
