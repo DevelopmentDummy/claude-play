@@ -506,7 +506,7 @@ export class ComfyUIClient {
     return selected;
   }
 
-  private async buildPrompt(
+  async buildPrompt(
     workflowName: string,
     params: Record<string, unknown>,
     sessionDir?: string,
@@ -814,76 +814,69 @@ export class ComfyUIClient {
     }
   }
 
-  private async submitAndWait(
+  /**
+   * Submit prompt to ComfyUI queue (direct, no GPU Manager).
+   * Returns promptId on success — does NOT wait for completion.
+   */
+  async submitToQueue(
     prompt: Record<string, unknown>,
+  ): Promise<{ promptId: string } | { error: string }> {
+    await this.reconcileQueueBeforeSubmit();
+
+    const queueRes = await this.fetchWithRetry(`${this.baseUrl}/prompt`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt }),
+    }, { attempts: 5, timeoutMs: 30_000, baseDelayMs: 300 });
+
+    if (!queueRes.ok) {
+      const errText = await queueRes.text();
+      return { error: `ComfyUI queue failed: ${errText}` };
+    }
+
+    const queueData = (await queueRes.json()) as { prompt_id: string };
+    return { promptId: queueData.prompt_id };
+  }
+
+  /**
+   * Poll for ComfyUI completion and download results.
+   * Call after submitToQueue succeeds.
+   */
+  async waitAndDownload(
+    promptId: string,
     filename: string,
     sessionDir: string,
     extraFiles?: Record<string, string>
   ): Promise<GenerateResult> {
-    // Try GPU Manager first (queued), fall back to direct ComfyUI
-    const useGpuManager = await this.gpuManagerAvailable();
-
-    let outputFiles: Array<{ filename: string; prefix: string }>;
-
-    if (useGpuManager) {
-      // GPU Manager handles queueing and polling
-      const res = await this.fetchWithRetry(
-        `${this.gpuManagerUrl}/comfyui/generate`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt, timeout: 600_000 }),
-        },
-        { attempts: 2, timeoutMs: 660_000 },
-      );
-
-      if (!res.ok) {
-        const errText = await res.text();
-        return { success: false, error: `GPU Manager error: ${errText}` };
-      }
-
-      const data = await res.json() as {
-        prompt_id: string;
-        filenames: string[];
-        history: Record<string, unknown>;
-      };
-
-      outputFiles = this.extractOutputFilenames(data.history);
-    } else {
-      // Fallback: direct ComfyUI (no GPU Manager)
-      await this.reconcileQueueBeforeSubmit();
-
-      const queueRes = await this.fetchWithRetry(`${this.baseUrl}/prompt`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt }),
-      }, { attempts: 5, timeoutMs: 30_000, baseDelayMs: 300 });
-
-      if (!queueRes.ok) {
-        const errText = await queueRes.text();
-        return { success: false, error: `ComfyUI queue failed: ${errText}` };
-      }
-
-      const queueData = (await queueRes.json()) as { prompt_id: string };
-      const promptId = queueData.prompt_id;
-
-      const history = await this.pollHistory(promptId);
-      if (!history) {
-        await this.cancelPrompt(promptId);
-        return { success: false, error: "Timeout waiting for ComfyUI generation" };
-      }
-
-      outputFiles = this.extractOutputFilenames(history);
+    const history = await this.pollHistory(promptId);
+    if (!history) {
+      await this.cancelPrompt(promptId);
+      return { success: false, error: "Timeout waiting for ComfyUI generation" };
     }
+
+    return this.downloadResults(history, filename, sessionDir, extraFiles);
+  }
+
+  /** Check if GPU Manager is available */
+  async isGpuManagerAvailable(): Promise<boolean> {
+    return this.gpuManagerAvailable();
+  }
+
+  /** Download output files from ComfyUI history and save to session dir */
+  private async downloadResults(
+    history: Record<string, unknown>,
+    filename: string,
+    sessionDir: string,
+    extraFiles?: Record<string, string>
+  ): Promise<GenerateResult> {
+    const outputFiles = this.extractOutputFilenames(history);
     if (outputFiles.length === 0) {
       return { success: false, error: "No output image in ComfyUI result" };
     }
 
-    // Save to session images/ directory
     const imagesDir = path.join(sessionDir, "images");
     fs.mkdirSync(imagesDir, { recursive: true });
 
-    // Download and save the main output (first file)
     const mainOutput = outputFiles[0];
     const mainBuffer = await this.downloadImage(mainOutput.filename);
     if (!mainBuffer) {
@@ -893,7 +886,6 @@ export class ComfyUIClient {
     const safeName = path.basename(filename);
     fs.writeFileSync(path.join(imagesDir, safeName), mainBuffer);
 
-    // Download and save extra outputs matched by prefix
     const extraPaths: Record<string, string> = {};
     if (extraFiles) {
       for (const [prefix, extraFilename] of Object.entries(extraFiles)) {
@@ -915,6 +907,45 @@ export class ComfyUIClient {
       filepath: `images/${safeName}`,
       ...(Object.keys(extraPaths).length > 0 ? { extraPaths } : {}),
     };
+  }
+
+  /**
+   * Submit + wait in one call. Uses GPU Manager when available (synchronous),
+   * falls back to direct ComfyUI (queue + poll). Used by faceCrop, generateTts, etc.
+   */
+  private async submitAndWait(
+    prompt: Record<string, unknown>,
+    filename: string,
+    sessionDir: string,
+    extraFiles?: Record<string, string>
+  ): Promise<GenerateResult> {
+    const useGpuManager = await this.gpuManagerAvailable();
+
+    if (useGpuManager) {
+      const res = await this.fetchWithRetry(
+        `${this.gpuManagerUrl}/comfyui/generate`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt, timeout: 600_000 }),
+        },
+        { attempts: 2, timeoutMs: 660_000 },
+      );
+
+      if (!res.ok) {
+        const errText = await res.text();
+        return { success: false, error: `GPU Manager error: ${errText}` };
+      }
+
+      const data = await res.json() as { prompt_id: string; history: Record<string, unknown> };
+      return this.downloadResults(data.history, filename, sessionDir, extraFiles);
+    } else {
+      const handle = await this.submitToQueue(prompt);
+      if ("error" in handle) {
+        return { success: false, error: handle.error };
+      }
+      return this.waitAndDownload(handle.promptId, filename, sessionDir, extraFiles);
+    }
   }
 
   private async downloadImage(filename: string): Promise<Buffer | null> {
