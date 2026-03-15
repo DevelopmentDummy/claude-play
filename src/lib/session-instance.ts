@@ -136,7 +136,7 @@ function sanitizeTtsText(raw: string): string {
     .replace(/<choice>[\s\S]*?<\/choice>/g, "")
     .replace(/<[^>]+>/g, "")
     .replace(/\*+/g, "")
-    .replace(/\.{2,}/g, "")
+    .replace(/\.{4,}/g, "...")
     .replace(/["""""]/g, "")
     .trim();
 }
@@ -173,6 +173,9 @@ export class SessionInstance {
   readonly sessions: SessionManager;
   private readonly broadcastFn: BroadcastFn;
 
+  // Pending event headers (queued by panels, flushed on next chat:send)
+  private pendingEventHeaders: string[] = [];
+
   // Accumulator for assistant turn
   private segments: string[] = [];
   private tools: Array<{ name: string; input: unknown }> = [];
@@ -181,6 +184,10 @@ export class SessionInstance {
   private sawTextDelta = false;
   private currentBlockType = "text";
   private historyId = 0;
+
+  // TTS queue — serialize requests to avoid ENOBUFS
+  private ttsQueue: Array<() => Promise<void>> = [];
+  private ttsRunning = false;
 
   constructor(
     id: string,
@@ -234,6 +241,21 @@ export class SessionInstance {
     }
   }
 
+  // --- Event queue ---
+
+  /** Queue an event header to prepend to the next user message */
+  queueEvent(header: string): void {
+    this.pendingEventHeaders.push(header);
+  }
+
+  /** Flush all pending event headers, returning formatted string (or empty) */
+  flushEvents(): string {
+    if (this.pendingEventHeaders.length === 0) return "";
+    const headers = this.pendingEventHeaders.join("\n");
+    this.pendingEventHeaders = [];
+    return headers;
+  }
+
   // --- History ---
 
   addUserToHistory(text: string, ooc?: boolean): void {
@@ -244,6 +266,11 @@ export class SessionInstance {
       ooc: ooc || undefined,
     });
     this.saveHistory();
+
+    // TTS for user messages (skip OOC)
+    if (!ooc && text && !text.startsWith("OOC:")) {
+      this.triggerTts(text, `hist-u-${this.historyId}`);
+    }
   }
 
   addOpeningToHistory(text: string): void {
@@ -328,7 +355,8 @@ export class SessionInstance {
 
   // --- TTS ---
 
-  private triggerTts(dialogText: string): void {
+  /** Enqueue a TTS job; jobs run sequentially to avoid ENOBUFS. */
+  private triggerTts(dialogText: string, overrideMessageId?: string): void {
     if (process.env.TTS_ENABLED === "false") return;
     if (this.isBuilder) return;
 
@@ -338,7 +366,7 @@ export class SessionInstance {
     const voiceConfig = this.sessions.readVoiceConfig(dir);
     if (!voiceConfig?.enabled) return;
 
-    const messageId = this.chatHistory[this.chatHistory.length - 1]?.id;
+    const messageId = overrideMessageId || this.chatHistory[this.chatHistory.length - 1]?.id;
     if (!messageId) return;
 
     const sanitized = sanitizeTtsText(dialogText);
@@ -349,17 +377,16 @@ export class SessionInstance {
     const chunkDelay = voiceConfig.chunkDelay ?? 1000;
     const sessionId = this.id;
     const broadcastRef = this.broadcast.bind(this);
-
     const provider = voiceConfig.ttsProvider || "comfyui";
 
-    if (provider === "edge") {
-      // --- Edge TTS (cloud, no GPU) ---
-      const edgeVoice = voiceConfig.edgeVoice;
-      if (!edgeVoice) return;
+    // Build the async job, then enqueue it
+    const job = async (): Promise<void> => {
+      if (provider === "edge") {
+        const edgeVoice = voiceConfig.edgeVoice;
+        if (!edgeVoice) return;
 
-      this.broadcast("audio:status", { status: "queued", messageId, totalChunks });
+        broadcastRef("audio:status", { status: "queued", messageId, totalChunks });
 
-      (async () => {
         for (let i = 0; i < chunks.length; i++) {
           if (i > 0) await new Promise(r => setTimeout(r, chunkDelay));
 
@@ -385,36 +412,39 @@ export class SessionInstance {
             broadcastRef("audio:status", { status: "error", messageId, chunkIndex: i, totalChunks });
           }
         }
-      })();
-    } else {
-      // --- GPU Manager / Qwen3-TTS (local GPU) ---
-      const voiceFile = voiceConfig.voiceFile
-        ? path.join(dir, voiceConfig.voiceFile)
-        : undefined;
-      if (!voiceFile || !fs.existsSync(voiceFile)) return;
+      } else {
+        // --- GPU Manager / Qwen3-TTS (local GPU) ---
+        const voiceFile = voiceConfig.voiceFile
+          ? path.join(dir, voiceConfig.voiceFile)
+          : undefined;
+        if (!voiceFile || !fs.existsSync(voiceFile)) return;
 
-      const lang = voiceConfig.language || "ko";
-      const modelSize = voiceConfig.modelSize || "1.7B";
-      const gpuManagerUrl = `http://127.0.0.1:${process.env.GPU_MANAGER_PORT || "3342"}`;
+        const lang = voiceConfig.language || "ko";
+        const modelSize = voiceConfig.modelSize || "1.7B";
+        const gpuManagerUrl = `http://127.0.0.1:${process.env.GPU_MANAGER_PORT || "3342"}`;
 
-      this.broadcast("audio:status", { status: "queued", messageId, totalChunks });
+        broadcastRef("audio:status", { status: "queued", messageId, totalChunks });
 
-      const audioDir = path.join(dir, "audio");
-      if (!fs.existsSync(audioDir)) fs.mkdirSync(audioDir, { recursive: true });
+        const audioDir = path.join(dir, "audio");
+        if (!fs.existsSync(audioDir)) fs.mkdirSync(audioDir, { recursive: true });
 
-      (async () => {
-        for (let i = 0; i < chunks.length; i++) {
-          if (i > 0) await new Promise(r => setTimeout(r, chunkDelay));
+        const TTS_BATCH_SIZE = 3;
+
+        for (let batchStart = 0; batchStart < chunks.length; batchStart += TTS_BATCH_SIZE) {
+          if (batchStart > 0) await new Promise(r => setTimeout(r, chunkDelay));
+
+          const batch = chunks.slice(batchStart, batchStart + TTS_BATCH_SIZE);
 
           try {
             const res = await fetch(`${gpuManagerUrl}/tts/synthesize`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
-                chunks: [chunks[i]],
+                chunks: batch,
                 voice_file: voiceFile,
                 language: lang,
                 model_size: modelSize,
+                batch_size: TTS_BATCH_SIZE,
               }),
             });
 
@@ -425,24 +455,45 @@ export class SessionInstance {
 
             const text = await res.text();
             const lines = text.split("\n").filter(l => l.trim());
-            if (lines.length > 0) {
-              const item = JSON.parse(lines[0]);
+            for (const line of lines) {
+              const item = JSON.parse(line);
+              const globalIdx = batchStart + item.chunk_index;
               const audioBuffer = Buffer.from(item.audio_base64, "base64");
 
               const timestamp = Date.now();
-              const audioFilename = `tts-${timestamp}-${i}.mp3`;
+              const audioFilename = `tts-${timestamp}-${globalIdx}.mp3`;
               fs.writeFileSync(path.join(audioDir, audioFilename), audioBuffer);
 
               const url = `/api/sessions/${sessionId}/files/audio/${audioFilename}`;
-              broadcastRef("audio:ready", { url, messageId, chunkIndex: i, totalChunks });
+              broadcastRef("audio:ready", { url, messageId, chunkIndex: globalIdx, totalChunks });
             }
           } catch (err) {
-            console.error(`[tts] GPU Manager chunk ${i} error:`, err);
-            broadcastRef("audio:status", { status: "error", messageId, chunkIndex: i, totalChunks });
+            console.error(`[tts] GPU Manager batch ${batchStart} error:`, err);
+            for (let j = 0; j < batch.length; j++) {
+              broadcastRef("audio:status", { status: "error", messageId, chunkIndex: batchStart + j, totalChunks });
+            }
           }
         }
-      })();
-    }
+      }
+    };
+
+    this.ttsQueue.push(job);
+    this.processTtsQueue();
+  }
+
+  /** Process TTS queue sequentially — one job at a time. */
+  private processTtsQueue(): void {
+    if (this.ttsRunning) return;
+    const job = this.ttsQueue.shift();
+    if (!job) return;
+
+    this.ttsRunning = true;
+    job()
+      .catch((err) => console.error("[tts] Queue job error:", err))
+      .finally(() => {
+        this.ttsRunning = false;
+        this.processTtsQueue();
+      });
   }
 
   // --- Process event binding ---

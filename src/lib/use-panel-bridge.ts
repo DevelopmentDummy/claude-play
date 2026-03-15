@@ -41,6 +41,15 @@ export function usePanelBridge(
         });
         return res.json();
       },
+      async queueEvent(header: string) {
+        if (!sessionId) return;
+        const res = await fetch(`/api/sessions/${sessionId}/events`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ header }),
+        });
+        return res.json();
+      },
       async runTool(toolName: string, args?: Record<string, unknown>) {
         if (!sessionId) return { ok: false, error: "No session" };
         const res = await fetch(`/api/sessions/${sessionId}/tools/${encodeURIComponent(toolName)}`, {

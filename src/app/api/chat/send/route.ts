@@ -13,6 +13,10 @@ export async function POST(req: Request) {
   const isOOC = text.startsWith("OOC:");
   instance.isOOC = isOOC;
   instance.addUserToHistory(text, isOOC);
-  instance.claude.send(text);
+
+  // Flush pending event headers and prepend to AI message
+  const eventHeaders = isOOC ? "" : instance.flushEvents();
+  const aiText = eventHeaders ? `${eventHeaders}\n${text}` : text;
+  instance.claude.send(aiText);
   return NextResponse.json({ ok: true });
 }

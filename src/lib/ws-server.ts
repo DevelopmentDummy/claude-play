@@ -141,10 +141,25 @@ function handleMessage(
       const isOOC = text.startsWith("OOC:");
       instance.isOOC = isOOC;
       instance.addUserToHistory(text, isOOC);
-      instance.claude.send(text);
+
+      // Flush pending event headers and prepend to AI message
+      const eventHeaders = isOOC ? "" : instance.flushEvents();
+      const aiText = eventHeaders ? `${eventHeaders}\n${text}` : text;
+      instance.claude.send(aiText);
 
       // Broadcast user message to other clients in same session (sender already has it locally)
       wsBroadcast("chat:user", { text, isOOC }, { sessionId: client.sessionId, exclude: client });
+      break;
+    }
+
+    case "event:queue": {
+      const header = msg.header as string;
+      if (!header?.trim() || !client.sessionId) return;
+
+      const instance = getSessionInstance(client.sessionId);
+      if (!instance) return;
+
+      instance.queueEvent(header.trim());
       break;
     }
 
