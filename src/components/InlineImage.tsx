@@ -27,7 +27,7 @@ function buildFileUrl(imgPath: string, sessionId?: string, personaName?: string,
 export default function InlineImage({ sessionId, personaName, path: imgPath, onReady }: InlineImageProps) {
   const [state, setState] = useState<ImageState>("loading");
   const [showModal, setShowModal] = useState(false);
-  const [cacheBuster] = useState(() => Date.now());
+  const cacheBuster = useRef(Date.now()).current;
   const [retryKey, setRetryKey] = useState(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollCountRef = useRef(0);

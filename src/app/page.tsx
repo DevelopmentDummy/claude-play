@@ -53,10 +53,10 @@ export default function LobbyPage() {
     description: string;
     isPrimary?: boolean;
   } | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(() => {
-    if (typeof window !== "undefined") return window.innerWidth >= 768;
-    return true;
-  });
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  useEffect(() => {
+    if (window.innerWidth < 768) setSidebarOpen(false);
+  }, []);
   const [startModal, setStartModal] = useState<{
     open: boolean;
     personaName: string;
