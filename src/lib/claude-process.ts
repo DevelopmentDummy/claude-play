@@ -31,16 +31,16 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
   }
 
   // Store spawn parameters for retry on resume failure
-  private lastSpawnParams: { cwd: string; model?: string; appendSystemPrompt?: string; effort?: string } | null = null;
+  private lastSpawnParams: { cwd: string; model?: string; appendSystemPrompt?: string; effort?: string; skipPermissions?: boolean } | null = null;
 
   /**
    * Spawn claude -p in the given directory.
    * If resumeId is provided, resumes that session with --resume.
    * CLAUDE.md in cwd is auto-loaded by Claude Code.
    */
-  spawn(cwd: string, resumeId?: string, model?: string, appendSystemPrompt?: string, effort?: string): void {
+  spawn(cwd: string, resumeId?: string, model?: string, appendSystemPrompt?: string, effort?: string, skipPermissions = true): void {
     // Save params for potential retry (without resumeId)
-    this.lastSpawnParams = { cwd, model, appendSystemPrompt, effort };
+    this.lastSpawnParams = { cwd, model, appendSystemPrompt, effort, skipPermissions };
     if (this.proc) {
       this.kill();
     }
@@ -55,7 +55,7 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
 
     const args = [
       "-p",
-      "--dangerously-skip-permissions",
+      ...(skipPermissions ? ["--dangerously-skip-permissions"] : ["--permission-mode", "acceptEdits"]),
       "--input-format",
       "stream-json",
       "--output-format",
@@ -131,6 +131,7 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
           params?.model,
           params?.appendSystemPrompt,
           params?.effort,
+          params?.skipPermissions,
         );
         return;
       }

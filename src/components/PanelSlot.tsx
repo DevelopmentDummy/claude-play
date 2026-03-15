@@ -64,7 +64,7 @@ export default function PanelSlot({ name, html, sessionId, panelData, onSendMess
       oldScript.remove();
       try {
         let code = oldScript.textContent || "";
-        code = code.replace(/document\.currentScript\.getRootNode\(\)/g, "shadow");
+        code = code.replace(/document\.currentScript\??\.getRootNode\??\(\)/g, "shadow");
         const fn = new Function("shadow", code);
         fn(shadow);
       } catch (e) {

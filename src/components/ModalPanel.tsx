@@ -121,7 +121,7 @@ export default function ModalPanel({
       try {
         let code = oldScript.textContent || "";
         code = code.replace(
-          /document\.currentScript\.getRootNode\(\)/g,
+          /document\.currentScript\??\.getRootNode\??\(\)/g,
           "shadow"
         );
         const fn = new Function("shadow", code);

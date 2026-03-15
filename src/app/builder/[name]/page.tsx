@@ -11,6 +11,7 @@ import ChatMessages from "@/components/ChatMessages";
 import ChatInput from "@/components/ChatInput";
 import BuilderOverview from "@/components/BuilderOverview";
 import VersionHistoryModal from "@/components/VersionHistoryModal";
+import ChatOptionsModal from "@/components/ChatOptionsModal";
 
 export default function BuilderPage() {
   const { name } = useParams<{ name: string }>();
@@ -42,6 +43,9 @@ export default function BuilderPage() {
   const [voiceChat, setVoiceChat] = useState(false);
   const [versionSaving, setVersionSaving] = useState(false);
   const [showVersionHistory, setShowVersionHistory] = useState(false);
+  const [chatOptions, setChatOptions] = useState<Record<string, unknown>>({});
+  const [chatOptionsSchema, setChatOptionsSchema] = useState<Record<string, unknown>[]>([]);
+  const [optionsModalOpen, setOptionsModalOpen] = useState(false);
   const isMobile = useIsMobile();
   const initRef = useRef(false);
 
@@ -94,6 +98,19 @@ export default function BuilderPage() {
       const data = await res.json();
       if (data.provider) setBuilderService(data.provider);
       if (data.displayName) setDisplayName(data.displayName);
+
+      // Load chat options schema + persona defaults
+      try {
+        const schemaRes = await fetch("/api/chat-options/schema");
+        if (schemaRes.ok) setChatOptionsSchema(await schemaRes.json());
+      } catch { /* ignore */ }
+      try {
+        const optRes = await fetch(`/api/personas/${encodeURIComponent(decodedName)}/file?file=chat-options.json`);
+        if (optRes.ok) {
+          const { content } = await optRes.json();
+          if (content) setChatOptions(JSON.parse(content));
+        }
+      } catch { /* ignore */ }
 
       await loadHistory();
       setStatus("connected");
@@ -150,6 +167,18 @@ export default function BuilderPage() {
     }
   }, [decodedName, setStatus, setError, clearMessages, loadHistory]);
 
+  const handleOptionsApply = useCallback(async (values: Record<string, unknown>) => {
+    setOptionsModalOpen(false);
+    try {
+      await fetch(`/api/personas/${encodeURIComponent(decodedName)}/file?file=chat-options.json`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: values }),
+      });
+      setChatOptions(values);
+    } catch { /* ignore */ }
+  }, [decodedName]);
+
   const handleVersionSave = useCallback(async () => {
     if (versionSaving) return;
     setVersionSaving(true);
@@ -185,6 +214,7 @@ export default function BuilderPage() {
         onVersionSave={handleVersionSave}
         onVersionHistory={() => setShowVersionHistory(true)}
         versionSaving={versionSaving}
+        onSettings={() => setOptionsModalOpen(true)}
       />
       <ErrorBanner error={error} onDismiss={() => setError(null)} />
       <div className="flex-1 flex min-h-0">
@@ -219,6 +249,14 @@ export default function BuilderPage() {
           personaName={decodedName}
           onClose={() => setShowVersionHistory(false)}
           onRestored={() => setRefreshTrigger((n) => n + 1)}
+        />
+      )}
+      {optionsModalOpen && chatOptionsSchema.length > 0 && (
+        <ChatOptionsModal
+          schema={chatOptionsSchema as unknown as Parameters<typeof ChatOptionsModal>[0]["schema"]}
+          values={chatOptions}
+          onApply={handleOptionsApply}
+          onClose={() => setOptionsModalOpen(false)}
         />
       )}
     </div>

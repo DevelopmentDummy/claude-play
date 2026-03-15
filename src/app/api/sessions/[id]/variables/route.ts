@@ -50,7 +50,9 @@ export async function PATCH(
   }
 
   try {
-    const current = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+    let raw = fs.readFileSync(filePath, "utf-8");
+    if (raw.charCodeAt(0) === 0xfeff) raw = raw.slice(1);
+    const current = JSON.parse(raw);
     const merged = { ...current, ...patch };
     fs.writeFileSync(filePath, JSON.stringify(merged, null, 2), "utf-8");
     return NextResponse.json(merged);

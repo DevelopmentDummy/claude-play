@@ -72,7 +72,8 @@ export async function POST(
   const resolvedOptions = svc.sessions.resolveOptions(sessionDir);
   if (!instance.claude.isRunning() || rawModel) {
     const runtimeSystemPrompt = svc.sessions.buildServiceSystemPrompt(info.persona, provider, resolvedOptions);
-    instance.claude.spawn(sessionDir, resumeId, effectiveModel || undefined, runtimeSystemPrompt, finalEffort);
+    const skipPerms = resolvedOptions.skipPermissions !== false;
+    instance.claude.spawn(sessionDir, resumeId, effectiveModel || undefined, runtimeSystemPrompt, finalEffort, skipPerms);
   }
 
   // Include initial panels + context in response (SSE may not be connected yet)

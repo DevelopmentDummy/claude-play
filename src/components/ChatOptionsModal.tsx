@@ -8,7 +8,7 @@ interface OptionSchema {
   description?: string;
   type: "boolean" | "slider" | "select" | "text" | "number";
   default: unknown;
-  target: "prompt" | "frontend" | "both";
+  target: "prompt" | "frontend" | "both" | "runtime";
   group: string;
   // slider
   min?: number;
@@ -42,7 +42,7 @@ export default function ChatOptionsModal({ schema, values, onApply, onClose }: C
   const hasPromptChanges = useMemo(() => {
     return schema.some(
       (o) =>
-        (o.target === "prompt" || o.target === "both") &&
+        (o.target === "prompt" || o.target === "both" || o.target === "runtime") &&
         draft[o.key] !== values[o.key]
     );
   }, [schema, draft, values]);
@@ -136,7 +136,7 @@ function OptionRow({
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
           <span className="text-sm text-text">{opt.label}</span>
-          {opt.target === "prompt" && (
+          {(opt.target === "prompt" || opt.target === "runtime") && (
             <span className="text-[10px] text-amber-400/70" title="변경 시 세션 재시작">
               &#9889;
             </span>

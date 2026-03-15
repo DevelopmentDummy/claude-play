@@ -70,7 +70,7 @@ function sanitizeTtsText(raw: string): string {
     .replace(/<choice>[\s\S]*?<\/choice>/g, "")
     .replace(/<[^>]+>/g, "")
     .replace(/\*+/g, "")
-    .replace(/\.{2,}/g, "")
+    .replace(/\.{4,}/g, "...")
     .replace(/["""""]/g, "")
     .trim();
 }
@@ -170,23 +170,29 @@ async function handleChatTts(body: Record<string, unknown>): Promise<HandlerResu
     const audioDir = path.join(sessionDir, "audio");
     if (!fs.existsSync(audioDir)) fs.mkdirSync(audioDir, { recursive: true });
 
-    (async () => {
-      for (let i = 0; i < chunks.length; i++) {
-        if (i > 0) await new Promise(r => setTimeout(r, chunkDelay));
+    const TTS_BATCH_SIZE = 3;
 
+    (async () => {
+      for (let batchStart = 0; batchStart < chunks.length; batchStart += TTS_BATCH_SIZE) {
+        if (batchStart > 0) await new Promise(r => setTimeout(r, chunkDelay));
+
+        const batch = chunks.slice(batchStart, batchStart + TTS_BATCH_SIZE);
         try {
-          const results = await synthesizeViaGpuManager([chunks[i]], voiceFile, lang, modelSize);
-          if (results.length > 0) {
+          const results = await synthesizeViaGpuManager(batch, voiceFile, lang, modelSize);
+          for (const { chunkIndex, audioBuffer } of results) {
+            const globalIdx = batchStart + chunkIndex;
             const timestamp = Date.now();
-            const audioFilename = `tts-${timestamp}-${i}.mp3`;
-            fs.writeFileSync(path.join(audioDir, audioFilename), results[0].audioBuffer);
+            const audioFilename = `tts-${timestamp}-${globalIdx}.mp3`;
+            fs.writeFileSync(path.join(audioDir, audioFilename), audioBuffer);
 
             const url = `/api/sessions/${sessionId}/files/audio/${audioFilename}`;
-            wsBroadcast("audio:ready", { url, messageId, chunkIndex: i, totalChunks });
+            wsBroadcast("audio:ready", { url, messageId, chunkIndex: globalIdx, totalChunks });
           }
         } catch (err) {
-          console.error(`[tts] GPU Manager chunk ${i} error:`, err);
-          wsBroadcast("audio:status", { status: "error", messageId, chunkIndex: i, totalChunks });
+          console.error(`[tts] GPU Manager batch ${batchStart} error:`, err);
+          for (let j = 0; j < batch.length; j++) {
+            wsBroadcast("audio:status", { status: "error", messageId, chunkIndex: batchStart + j, totalChunks });
+          }
         }
       }
     })();

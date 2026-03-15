@@ -26,10 +26,16 @@ export async function POST(
       .filter((o: Record<string, unknown>) => o.target === "prompt" || o.target === "both")
       .map((o: Record<string, unknown>) => o.key as string)
   );
+  const runtimeKeys = new Set(
+    schema
+      .filter((o: Record<string, unknown>) => o.target === "runtime")
+      .map((o: Record<string, unknown>) => o.key as string)
+  );
   const hasPromptChanges = Object.keys(body).some(k => promptKeys.has(k));
+  const hasRuntimeChanges = Object.keys(body).some(k => runtimeKeys.has(k));
 
   const instance = getSessionInstance(id);
-  if (hasPromptChanges && instance) {
+  if ((hasPromptChanges || hasRuntimeChanges) && instance) {
     // Kill current process
     instance.claude.kill();
 
@@ -48,7 +54,8 @@ export async function POST(
       : sm.getClaudeSessionId(id);
 
     const runtimeSystemPrompt = sm.buildServiceSystemPrompt(info.persona, provider, resolvedOptions);
-    instance.claude.spawn(sessionDir, resumeId, model || undefined, runtimeSystemPrompt, effort);
+    const skipPerms = resolvedOptions.skipPermissions !== false;
+    instance.claude.spawn(sessionDir, resumeId, model || undefined, runtimeSystemPrompt, effort, skipPerms);
 
     return NextResponse.json({ ok: true, restarted: true });
   }

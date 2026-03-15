@@ -68,7 +68,12 @@ export default function ChatPage() {
   // Chunked audio: per-message arrays of chunk URLs
   const [audioMap, setAudioMap] = useState<Record<string, string[]>>({});
   const [audioStatus, setAudioStatus] = useState<Record<string, { generating: boolean; totalChunks: number; readyCount: number }>>({});
-  const audioQueueRef = useRef<{ messageId: string; nextChunk: number; playing: boolean; audioPlaying: boolean; totalChunks: number }>({ messageId: "", nextChunk: 0, playing: false, audioPlaying: false, totalChunks: 0 });
+  const audioStatusRef = useRef<Record<string, { generating: boolean; totalChunks: number; readyCount: number }>>({});
+  const audioQueueRef = useRef<{
+    messageId: string; nextChunk: number; playing: boolean; audioPlaying: boolean; totalChunks: number; currentAudio: HTMLAudioElement | null;
+    // Playback queue: list of pending messages to play after current finishes
+    pendingMessages: Array<{ messageId: string; totalChunks: number }>;
+  }>({ messageId: "", nextChunk: 0, playing: false, audioPlaying: false, totalChunks: 0, currentAudio: null, pendingMessages: [] });
   const [ttsPlaying, setTtsPlaying] = useState(false);
   const [voiceChat, setVoiceChat] = useState(false);
   const [chatOptions, setChatOptions] = useState<Record<string, unknown>>({});
@@ -77,61 +82,150 @@ export default function ChatPage() {
   const isMobile = useIsMobile();
   const initRef = useRef(false);
 
-  /** Play chunks sequentially for a message, starting from a given index */
-  const playChunkSequence = useCallback((messageId: string, startChunk: number, totalChunks?: number) => {
-    const queue = audioQueueRef.current;
-    queue.messageId = messageId;
-    queue.nextChunk = startChunk;
-    queue.playing = true;
-    if (totalChunks !== undefined) queue.totalChunks = totalChunks;
+  /**
+   * Audio playback system.
+   *
+   * playQueue: ordered list of messageIds to play. First entry is "now playing".
+   * playNext(): try to play the next chunk of the current message.
+   *   - If chunk URL exists → play it, on end call playNext again.
+   *   - If chunk URL is null and still generating → do nothing (audio:ready will call tryResume).
+   *   - If chunk URL is null and done generating → skip to next non-null.
+   *   - If current message has no more chunks → shift queue, start next message.
+   *   - If queue empty → stop.
+   * tryResume(): called from audio:ready, nudges playNext if it was waiting.
+   * enqueueMessage(): adds a message to the play queue.
+   */
+  const playQueueRef = useRef<string[]>([]);
+  const playStateRef = useRef<Record<string, { nextChunk: number; totalChunks: number }>>({});
+
+  const tryResume = useCallback(() => {
+    const queue = playQueueRef.current;
+    const q = audioQueueRef.current;
+    if (queue.length === 0 || q.audioPlaying) return;
+    // Trigger playNext for current message
+    const currentMsgId = queue[0];
+    if (!currentMsgId) return;
+    const state = playStateRef.current[currentMsgId];
+    if (!state) return;
+    playNextRef.current?.();
+  }, []);
+
+  // Use a ref to hold playNext so tryResume can call it without circular deps
+  const playNextRef = useRef<(() => void) | null>(null);
+
+  const startMessage = useCallback((messageId: string) => {
+    const q = audioQueueRef.current;
+    q.messageId = messageId;
+    q.audioPlaying = false;
+    q.currentAudio = null;
+    q.playing = true;
     setTtsPlaying(true);
 
     function playNext() {
-      const q = audioQueueRef.current;
-      if (q.messageId !== messageId || !q.playing || q.audioPlaying) return;
+      const qq = audioQueueRef.current;
+      const pq = playQueueRef.current;
+      if (pq[0] !== messageId || qq.audioPlaying) return;
 
-      // Read latest audioMap from DOM closure workaround
+      const state = playStateRef.current[messageId];
+      if (!state) { advanceQueue(); return; }
+
       setAudioMap((current) => {
         const urls = current[messageId];
-        if (!urls || q.nextChunk >= urls.length || !urls[q.nextChunk]) {
-          // Check if all chunks are done
-          if (q.totalChunks > 0 && q.nextChunk >= q.totalChunks) {
-            q.playing = false;
-            setTtsPlaying(false);
+        if (!urls || state.nextChunk >= urls.length) {
+          if (state.totalChunks > 0 && state.nextChunk >= state.totalChunks) {
+            setTimeout(advanceQueue, 250);
+          } else if (!audioStatusRef.current[messageId]) {
+            // Not generating, no more URLs — done
+            setTimeout(advanceQueue, 250);
           }
-          // Otherwise chunk not ready yet — will be resumed when audio:ready arrives
+          // else: still generating, urls array might grow — wait for audio:ready
           return current;
         }
-        const url = urls[q.nextChunk];
-        q.nextChunk++;
-        q.audioPlaying = true;
+        if (!urls[state.nextChunk]) {
+          const isGenerating = !!audioStatusRef.current[messageId];
+          if (isGenerating) {
+            // Wait for audio:ready → tryResume
+            return current;
+          }
+          // Skip null (failed) chunks
+          const nextValid = urls.findIndex((u, i) => i > state.nextChunk && u != null);
+          if (nextValid === -1) {
+            setTimeout(advanceQueue, 250);
+            return current;
+          }
+          state.nextChunk = nextValid;
+          setTimeout(playNext, 50);
+          return current;
+        }
+        const url = urls[state.nextChunk];
+        state.nextChunk++;
+        qq.audioPlaying = true;
         const audio = new Audio(url);
-        audio.onended = () => {
-          q.audioPlaying = false;
-          // Check if this was the last chunk
-          if (q.totalChunks > 0 && q.nextChunk >= q.totalChunks) {
-            q.playing = false;
-            setTtsPlaying(false);
-          } else {
-            setTimeout(playNext, 250);
-          }
+        qq.currentAudio = audio;
+        const onDone = () => {
+          qq.audioPlaying = false;
+          qq.currentAudio = null;
+          setTimeout(playNext, 250);
         };
-        audio.onerror = () => {
-          q.audioPlaying = false;
-          if (q.totalChunks > 0 && q.nextChunk >= q.totalChunks) {
-            q.playing = false;
-            setTtsPlaying(false);
-          } else {
-            setTimeout(playNext, 250);
-          }
-        };
-        audio.play().catch(() => { q.audioPlaying = false; });
+        audio.onended = onDone;
+        audio.onerror = onDone;
+        audio.play().catch(() => { qq.audioPlaying = false; qq.currentAudio = null; });
         return current;
       });
     }
 
+    playNextRef.current = playNext;
     playNext();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const advanceQueue = useCallback(() => {
+    const pq = playQueueRef.current;
+    const finished = pq.shift();
+    if (finished) delete playStateRef.current[finished];
+    if (pq.length > 0) {
+      startMessage(pq[0]);
+    } else {
+      const q = audioQueueRef.current;
+      q.playing = false;
+      q.messageId = "";
+      q.audioPlaying = false;
+      setTtsPlaying(false);
+      playNextRef.current = null;
+    }
+  }, [startMessage]);
+
+  const enqueueMessage = useCallback((messageId: string, totalChunks: number) => {
+    const pq = playQueueRef.current;
+    if (pq.includes(messageId)) return; // already queued
+    pq.push(messageId);
+    playStateRef.current[messageId] = { nextChunk: 0, totalChunks };
+    if (pq.length === 1) {
+      // Nothing was playing — start immediately
+      startMessage(messageId);
+    }
+  }, [startMessage]);
+
+  /** Public API: queue or replay a message */
+  const playChunkSequence = useCallback((messageId: string, startChunk: number, totalChunks?: number) => {
+    const pq = playQueueRef.current;
+    if (pq.includes(messageId)) {
+      // Already queued or playing — update state if replay
+      const state = playStateRef.current[messageId];
+      if (state && pq[0] === messageId) {
+        // Currently playing this message — restart from startChunk
+        state.nextChunk = startChunk;
+        if (totalChunks !== undefined) state.totalChunks = totalChunks;
+        tryResume();
+      }
+      return;
+    }
+    playStateRef.current[messageId] = { nextChunk: startChunk, totalChunks: totalChunks || 0 };
+    pq.push(messageId);
+    if (pq.length === 1) {
+      startMessage(messageId);
+    }
+  }, [startMessage, tryResume]);
 
   const handleAutoPlayToggle = useCallback(() => {
     setAutoPlay((prev) => {
@@ -208,26 +302,23 @@ export default function ChatPage() {
         setAudioStatus((prev) => {
           const current = prev[messageId] || { generating: true, totalChunks, readyCount: 0 };
           const readyCount = current.readyCount + 1;
+          let next;
           if (readyCount >= totalChunks) {
-            const next = { ...prev };
+            next = { ...prev };
             delete next[messageId];
-            return next;
+          } else {
+            next = { ...prev, [messageId]: { ...current, readyCount } };
           }
-          return { ...prev, [messageId]: { ...current, readyCount } };
+          audioStatusRef.current = next;
+          return next;
         });
-        // Auto-play: start sequential playback from first chunk
+        // Auto-play: enqueue or resume
         if (localStorage.getItem("tts-autoplay") !== "false") {
-          const queue = audioQueueRef.current;
-          if (queue.messageId !== messageId || !queue.playing) {
-            // Start playback from chunk 0 on the first ready chunk
-            if (chunkIndex === 0) {
-              playChunkSequence(messageId, 0, totalChunks);
-            }
-          } else if (!queue.audioPlaying && queue.nextChunk === chunkIndex) {
-            // Was waiting for this chunk and nothing is currently playing — resume
-            if (totalChunks) queue.totalChunks = totalChunks;
-            playChunkSequence(messageId, chunkIndex);
-          }
+          // Update totalChunks in play state if already queued
+          const state = playStateRef.current[messageId];
+          if (state && totalChunks) state.totalChunks = totalChunks;
+          // Nudge playback in case it was waiting for this chunk
+          tryResume();
         }
       },
       "audio:status": (d) => {
@@ -238,28 +329,24 @@ export default function ChatPage() {
           setAudioStatus((prev) => {
             const next = { ...prev };
             delete next[messageId];
+            audioStatusRef.current = next;
             return next;
           });
-          // Release ttsPlaying if this was the active message
-          const q = audioQueueRef.current;
-          if (q.messageId === messageId || !q.playing) {
-            q.playing = false;
-            setTtsPlaying(false);
-          }
+          // Nudge playback — if waiting for this message's chunks, it can now skip/advance
+          tryResume();
         } else {
-          // Mark ttsPlaying early (before audio:ready arrives) to prevent auto-mic activation
-          setTtsPlaying(true);
-          const q = audioQueueRef.current;
-          q.messageId = messageId;
-          q.nextChunk = 0;
-          q.audioPlaying = false;
-          q.playing = true;
-          q.totalChunks = totalChunks;
-
-          setAudioStatus((prev) => ({
-            ...prev,
-            [messageId]: { generating: true, totalChunks, readyCount: prev[messageId]?.readyCount || 0 },
-          }));
+          // Generation started — register in audioStatus and enqueue for auto-play
+          setAudioStatus((prev) => {
+            const next = {
+              ...prev,
+              [messageId]: { generating: true, totalChunks, readyCount: prev[messageId]?.readyCount || 0 },
+            };
+            audioStatusRef.current = next;
+            return next;
+          });
+          if (localStorage.getItem("tts-autoplay") !== "false") {
+            enqueueMessage(messageId, totalChunks);
+          }
         }
       },
       "profile:update": (p) => {
@@ -555,6 +642,12 @@ export default function ChatPage() {
             audioMap={audioMap}
             audioStatus={audioStatus}
             onRequestTts={(messageId, text) => {
+              // Clear any partial/failed audio for this message before regenerating
+              setAudioMap((prev) => {
+                const next = { ...prev };
+                delete next[messageId];
+                return next;
+              });
               fetch("/api/chat/tts", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },

@@ -60,5 +60,27 @@
     "default": 1000,
     "target": "frontend",
     "group": "음성"
+  },
+  {
+    "key": "responseLength",
+    "label": "응답 길이",
+    "description": "응답 한 회의 목표 글자 수",
+    "type": "slider",
+    "min": 500,
+    "max": 3000,
+    "step": 100,
+    "unit": "자",
+    "default": 1000,
+    "target": "prompt",
+    "group": "서사"
+  },
+  {
+    "key": "skipPermissions",
+    "label": "권한 검사 건너뛰기",
+    "description": "dangerously-skip-permissions로 실행합니다. 끄면 settings.json 허용 목록 내에서만 동작합니다.",
+    "type": "boolean",
+    "default": true,
+    "target": "runtime",
+    "group": "런타임"
   }
 ]

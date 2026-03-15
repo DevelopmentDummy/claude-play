@@ -588,62 +588,75 @@ export default function ChatMessages({
                 : "self-start bg-assistant-bubble backdrop-blur-[12px] rounded-bl-[4px] shadow-sm"
             }`}
           >
-            {/* OOC toggle button on hover */}
-            {onToggleOOC && !isLive && (
-              <button
-                onClick={() => onToggleOOC(msg.id, !msg.ooc)}
-                className={`absolute top-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150
-                  px-1.5 py-0.5 rounded text-[9px] font-medium cursor-pointer border
-                  right-1
-                  ${msg.ooc
-                    ? "border-yellow-500/50 text-yellow-400/80 bg-yellow-500/10 hover:bg-yellow-500/20"
-                    : "border-border/40 text-text-dim/50 bg-surface/80 hover:bg-surface-light hover:text-text-dim/80"
-                  }`}
-                title={msg.ooc ? "OOC 해제" : "OOC로 전환"}
-              >
-                OOC
-              </button>
+            {/* Hover toolbar — positioned above the bubble */}
+            {!isLive && (
+              <div className="absolute -top-5 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                {/* TTS buttons */}
+                {!msg.ooc && (() => {
+                  const chunks = audioMap?.[msg.id];
+                  const status = audioStatus?.[msg.id];
+                  const hasAudio = chunks && chunks.some(u => u != null);
+                  if (hasAudio) {
+                    return (
+                      <>
+                        {onRequestTts && (
+                          <button
+                            onClick={() => onRequestTts(msg.id, msg.content)}
+                            className="px-1.5 py-0.5 rounded text-[9px] cursor-pointer border
+                              border-border/40 text-text-dim/50 bg-surface/80 hover:bg-surface-light hover:text-text-dim/80"
+                            title="Regenerate voice"
+                          >
+                            &#x1F504;
+                          </button>
+                        )}
+                        <button
+                          onClick={() => onPlayAudio?.(msg.id)}
+                          className="px-1.5 py-0.5 rounded text-[9px] cursor-pointer border
+                            border-border/40 text-text-dim/50 bg-surface/80 hover:bg-surface-light hover:text-accent"
+                          title="Play voice"
+                        >
+                          &#x1F50A;
+                        </button>
+                      </>
+                    );
+                  }
+                  if (status) {
+                    return (
+                      <span className="text-[9px] text-accent animate-pulse px-1.5 py-0.5">
+                        &#x1F3A4; {status.readyCount}/{status.totalChunks}
+                      </span>
+                    );
+                  }
+                  if (onRequestTts) {
+                    return (
+                      <button
+                        onClick={() => onRequestTts(msg.id, msg.content)}
+                        className="px-1.5 py-0.5 rounded text-[9px] cursor-pointer border
+                          border-border/40 text-text-dim/50 bg-surface/80 hover:bg-surface-light hover:text-text-dim/80"
+                        title="Generate voice"
+                      >
+                        &#x1F3A4;
+                      </button>
+                    );
+                  }
+                  return null;
+                })()}
+                {/* OOC toggle */}
+                {onToggleOOC && (
+                  <button
+                    onClick={() => onToggleOOC(msg.id, !msg.ooc)}
+                    className={`px-1.5 py-0.5 rounded text-[9px] font-medium cursor-pointer border
+                      ${msg.ooc
+                        ? "border-yellow-500/50 text-yellow-400/80 bg-yellow-500/10 hover:bg-yellow-500/20"
+                        : "border-border/40 text-text-dim/50 bg-surface/80 hover:bg-surface-light hover:text-text-dim/80"
+                      }`}
+                    title={msg.ooc ? "OOC 해제" : "OOC로 전환"}
+                  >
+                    OOC
+                  </button>
+                )}
+              </div>
             )}
-            {/* TTS button on hover: play if audio exists, request generation if not */}
-            {msg.role === "assistant" && !msg.ooc && !isLive && (() => {
-              const chunks = audioMap?.[msg.id];
-              const status = audioStatus?.[msg.id];
-              const hasAudio = chunks && chunks.some(u => u != null);
-              if (hasAudio) {
-                return (
-                  <button
-                    onClick={() => onPlayAudio?.(msg.id)}
-                    className="absolute top-1 right-12 opacity-0 group-hover:opacity-100 transition-opacity duration-150
-                      px-1.5 py-0.5 rounded text-[9px] cursor-pointer border
-                      border-border/40 text-text-dim/50 bg-surface/80 hover:bg-surface-light hover:text-accent"
-                    title="Play voice"
-                  >
-                    &#x1F50A;
-                  </button>
-                );
-              }
-              if (status) {
-                return (
-                  <span className="absolute top-1 right-12 text-[9px] text-accent animate-pulse px-1.5 py-0.5">
-                    &#x1F3A4; {status.readyCount}/{status.totalChunks}
-                  </span>
-                );
-              }
-              if (onRequestTts) {
-                return (
-                  <button
-                    onClick={() => onRequestTts(msg.id, msg.content)}
-                    className="absolute top-1 right-12 opacity-0 group-hover:opacity-100 transition-opacity duration-150
-                      px-1.5 py-0.5 rounded text-[9px] cursor-pointer border
-                      border-border/40 text-text-dim/50 bg-surface/80 hover:bg-surface-light hover:text-text-dim/80"
-                    title="Generate voice"
-                  >
-                    &#x1F3A4;
-                  </button>
-                );
-              }
-              return null;
-            })()}
             {msg.ooc && (
               <div className="text-[10px] font-semibold text-yellow-500/70 uppercase tracking-wider mb-1">OOC</div>
             )}

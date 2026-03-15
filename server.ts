@@ -85,10 +85,13 @@ function spawnGpuManager(): ChildProcess | null {
       if (gpuManagerRestarts < GPU_MANAGER_MAX_RESTARTS) {
         gpuManagerRestarts++;
         console.log(`[gpu-manager] restarting (${gpuManagerRestarts}/${GPU_MANAGER_MAX_RESTARTS})...`);
-        setTimeout(() => {
+        (async () => {
+          // Kill anything still holding the port, then wait for it to be free
+          killProcessOnPort(GPU_MANAGER_PORT);
+          await waitForPortFree(GPU_MANAGER_PORT);
           gpuManagerProcess = spawnGpuManager();
           g.__gpuManagerPid = gpuManagerProcess?.pid;
-        }, 10_000);
+        })();
       } else {
         console.error("[gpu-manager] max restarts reached, GPU features disabled");
       }
@@ -161,6 +164,22 @@ function killPid(pid: number | undefined) {
       process.kill(pid, "SIGTERM");
     }
   } catch { /* already dead */ }
+}
+
+/** Wait until a port is free (no LISTENING process), up to maxWaitMs */
+async function waitForPortFree(p: number, maxWaitMs = 15_000): Promise<void> {
+  const deadline = Date.now() + maxWaitMs;
+  while (Date.now() < deadline) {
+    try {
+      const out = execSync(`netstat -ano | findstr :${p} | findstr LISTENING`, {
+        encoding: "utf8", stdio: ["pipe", "pipe", "ignore"],
+      });
+      if (!out.trim()) break;
+    } catch {
+      break; // findstr found nothing — port is free
+    }
+    await new Promise(r => setTimeout(r, 1000));
+  }
 }
 
 /** Kill any process listening on a given port (Windows) */

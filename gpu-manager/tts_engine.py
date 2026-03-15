@@ -98,67 +98,95 @@ class TTSEngine:
         logger.info("Qwen3-TTS unloaded, VRAM freed")
 
     async def synthesize_batch(self, payload: dict) -> list[dict]:
-        """Synthesize multiple text chunks. Returns list of {chunk_index, total, audio_base64}."""
+        """Synthesize text chunks with native batch inference.
+
+        Processes up to batch_size chunks in a single forward pass for efficiency.
+        """
         chunks = payload["chunks"]
         voice_file = payload["voice_file"]
         language = payload.get("language", "ko")
         model_size = payload.get("model_size", "1.7B")
+        batch_size = payload.get("batch_size", 3)
 
         async with self._lock:
-            # Cancel idle timer to prevent model unload during synthesis
             self._cancel_idle_timer()
             await self.load_model(model_size)
-            # Cancel again — load_model resets the timer internally
             self._cancel_idle_timer()
 
             results = []
-            for i, text in enumerate(chunks):
+            # Process chunks in batches
+            for batch_start in range(0, len(chunks), batch_size):
+                batch = chunks[batch_start:batch_start + batch_size]
+                batch_indices = list(range(batch_start, batch_start + len(batch)))
+
                 t0 = time.monotonic()
-                logger.info("TTS chunk %d/%d: %s...", i + 1, len(chunks), text[:40])
+                logger.info(
+                    "TTS batch %d-%d/%d: %s...",
+                    batch_start + 1, batch_start + len(batch), len(chunks),
+                    batch[0][:40],
+                )
 
                 loop = asyncio.get_event_loop()
-                audio_bytes = await loop.run_in_executor(
+                audio_list = await loop.run_in_executor(
                     None,
-                    self._synthesize_sync,
-                    text, voice_file, language,
+                    self._synthesize_batch_sync,
+                    batch, voice_file, language,
                 )
 
                 elapsed = time.monotonic() - t0
-                logger.info("TTS chunk %d done in %.1fs", i + 1, elapsed)
+                logger.info(
+                    "TTS batch %d-%d done in %.1fs (%.1fs/chunk)",
+                    batch_start + 1, batch_start + len(batch),
+                    elapsed, elapsed / len(batch),
+                )
 
-                audio_b64 = base64.b64encode(audio_bytes).decode("ascii")
-                results.append({
-                    "chunk_index": i,
-                    "total": len(chunks),
-                    "audio_base64": audio_b64,
-                })
+                for j, audio_bytes in enumerate(audio_list):
+                    idx = batch_indices[j]
+                    audio_b64 = base64.b64encode(audio_bytes).decode("ascii")
+                    results.append({
+                        "chunk_index": idx,
+                        "total": len(chunks),
+                        "audio_base64": audio_b64,
+                    })
 
             self._reset_idle_timer()
             return results
 
-    def _synthesize_sync(
-        self, text: str, voice_file: str, language: str,
-    ) -> bytes:
-        """Synchronous TTS inference using voice clone prompt (runs in thread pool)."""
+    def _synthesize_batch_sync(
+        self, texts: list[str], voice_file: str, language: str,
+    ) -> list[bytes]:
+        """Batch TTS inference — multiple texts in one forward pass."""
         import torch
-        from qwen_tts.inference.qwen3_tts_model import VoiceClonePromptItem
 
-        # Load pre-built voice clone prompt from .pt file
         raw = torch.load(voice_file, map_location="cuda:0", weights_only=False)
-
-        # Convert saved format to VoiceClonePromptItem list
         voice_clone_prompt = _to_voice_clone_prompt(raw)
-
         lang = _LANGUAGE_MAP.get(language, "Korean")
 
-        wavs, sr = self._model.generate_voice_clone(
-            text=text,
-            language=lang,
-            voice_clone_prompt=voice_clone_prompt,
-        )
+        try:
+            wavs, sr = self._model.generate_voice_clone(
+                text=texts,
+                language=[lang] * len(texts),
+                voice_clone_prompt=voice_clone_prompt,
+            )
+        except torch.cuda.OutOfMemoryError:
+            logger.error("CUDA OOM during TTS — clearing cache and retrying one-by-one")
+            torch.cuda.empty_cache()
+            # Fallback: process one at a time
+            wavs = []
+            sr = 24000
+            for t in texts:
+                w, sr = self._model.generate_voice_clone(
+                    text=[t],
+                    language=[lang],
+                    voice_clone_prompt=voice_clone_prompt,
+                )
+                wavs.extend(w)
 
-        audio_np = wavs[0] if isinstance(wavs[0], np.ndarray) else wavs[0].cpu().numpy()
-        return self._encode_mp3(audio_np.astype(np.float32), sample_rate=sr)
+        results = []
+        for wav in wavs:
+            audio_np = wav if isinstance(wav, np.ndarray) else wav.cpu().numpy()
+            results.append(self._encode_mp3(audio_np.astype(np.float32), sample_rate=sr))
+        return results
 
     def create_voice_clone_prompt(
         self, ref_audio: str, ref_text: str,
