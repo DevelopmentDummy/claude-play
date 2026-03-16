@@ -47,6 +47,9 @@ export async function POST(
   // Refresh global tool skills (always sync on open — these are shared, not persona-specific)
   svc.sessions.refreshToolSkills(sessionDir);
 
+  // Always copy latest panel-spec.md from project root
+  svc.sessions.refreshPanelSpec(sessionDir);
+
   // Ensure runtime configs exist (but don't auto-sync persona files — user can manually sync)
   svc.sessions.ensureClaudeRuntimeConfig(sessionDir, info.persona, "session");
 

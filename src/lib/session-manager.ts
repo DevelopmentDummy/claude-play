@@ -1558,6 +1558,14 @@ export class SessionManager {
   // ── Tools ──────────────────────────────────────────────
 
   /** Re-copy global tool skills into an existing session (called on session open/resume) */
+  /** Copy latest panel-spec.md from project root to session */
+  refreshPanelSpec(sessionDir: string): void {
+    const src = path.join(this.appRoot, "panel-spec.md");
+    if (fs.existsSync(src)) {
+      fs.copyFileSync(src, path.join(sessionDir, "panel-spec.md"));
+    }
+  }
+
   refreshToolSkills(sessionDir: string): void {
     const claudeSkillsDest = path.join(sessionDir, ".claude", "skills");
     const agentsSkillsDest = path.join(sessionDir, ".agents", "skills");
