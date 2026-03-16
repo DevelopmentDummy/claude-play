@@ -706,11 +706,22 @@ export class SessionManager {
   /** Sync updated files from persona to session (panels, variables, opening, layout, skills) */
   /** Full sync — syncs all elements from persona to session */
   syncPersonaToSession(id: string): void {
-    this.syncPersonaToSessionSelective(id, {
+    const elements: Record<string, boolean> = {
       panels: true, variables: true, layout: true, opening: true,
       worldview: true, skills: true, instructions: true, voice: true,
       chatOptions: true, tools: true, popups: true,
-    });
+    };
+    // Include all custom data files from persona
+    const sessionDir = this.getSessionDir(id);
+    const metaPath = path.join(sessionDir, "session.json");
+    try {
+      const meta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
+      const personaDir = this.getPersonaDir(meta.persona);
+      for (const f of this.getCustomDataFiles(personaDir)) {
+        elements[`data:${f}`] = true;
+      }
+    } catch { /* ignore */ }
+    this.syncPersonaToSessionSelective(id, elements);
   }
 
   /** Selective sync — only sync the specified elements */
@@ -826,10 +837,13 @@ export class SessionManager {
       }
     }
 
-    // Sync custom data files
-    if (elements.dataFiles) {
-      for (const f of this.getCustomDataFiles(personaDir)) {
-        fs.copyFileSync(path.join(personaDir, f), path.join(sessionDir, f));
+    // Sync custom data files (individual per-file keys: data:filename.json)
+    for (const [key, enabled] of Object.entries(elements)) {
+      if (!enabled || !key.startsWith("data:")) continue;
+      const f = key.slice("data:".length);
+      const src = path.join(personaDir, f);
+      if (fs.existsSync(src)) {
+        fs.copyFileSync(src, path.join(sessionDir, f));
       }
     }
 
@@ -958,20 +972,14 @@ export class SessionManager {
     // Check chat options
     result.push({ key: "chatOptions", label: "채팅 옵션 (chat-options.json)", hasChanges: this.fileDiffers(path.join(personaDir, "chat-options.json"), path.join(sessionDir, "chat-options.json")) });
 
-    // Check custom data files (*.json excluding system files)
+    // Check custom data files individually (*.json excluding system files)
     const allDataFiles = new Set([
       ...this.getCustomDataFiles(personaDir),
       ...this.getCustomDataFiles(sessionDir),
     ]);
-    if (allDataFiles.size > 0) {
-      let dataChanged = false;
-      for (const f of allDataFiles) {
-        if (this.fileDiffers(path.join(personaDir, f), path.join(sessionDir, f))) {
-          dataChanged = true;
-          break;
-        }
-      }
-      result.push({ key: "dataFiles", label: `데이터 파일 (${allDataFiles.size}개)`, hasChanges: dataChanged });
+    for (const f of [...allDataFiles].sort()) {
+      const key = `data:${f}`;
+      result.push({ key, label: f, hasChanges: this.fileDiffers(path.join(personaDir, f), path.join(sessionDir, f)) });
     }
 
     return result;
@@ -1047,20 +1055,14 @@ export class SessionManager {
     // Check chat options
     result.push({ key: "chatOptions", label: "채팅 옵션 (chat-options.json)", hasChanges: this.fileDiffers(path.join(sessionDir, "chat-options.json"), path.join(personaDir, "chat-options.json")) });
 
-    // Check custom data files
+    // Check custom data files individually
     const allDataFiles = new Set([
       ...this.getCustomDataFiles(personaDir),
       ...this.getCustomDataFiles(sessionDir),
     ]);
-    if (allDataFiles.size > 0) {
-      let dataChanged = false;
-      for (const f of allDataFiles) {
-        if (this.fileDiffers(path.join(sessionDir, f), path.join(personaDir, f))) {
-          dataChanged = true;
-          break;
-        }
-      }
-      result.push({ key: "dataFiles", label: `데이터 파일 (${allDataFiles.size}개)`, hasChanges: dataChanged });
+    for (const f of [...allDataFiles].sort()) {
+      const key = `data:${f}`;
+      result.push({ key, label: f, hasChanges: this.fileDiffers(path.join(sessionDir, f), path.join(personaDir, f)) });
     }
 
     return result;
@@ -1234,10 +1236,13 @@ export class SessionManager {
       }
     }
 
-    // Sync custom data files
-    if (elements.dataFiles) {
-      for (const f of this.getCustomDataFiles(sessionDir)) {
-        fs.copyFileSync(path.join(sessionDir, f), path.join(personaDir, f));
+    // Sync custom data files (individual per-file keys: data:filename.json)
+    for (const [key, enabled] of Object.entries(elements)) {
+      if (!enabled || !key.startsWith("data:")) continue;
+      const f = key.slice("data:".length);
+      const src = path.join(sessionDir, f);
+      if (fs.existsSync(src)) {
+        fs.copyFileSync(src, path.join(personaDir, f));
       }
     }
   }
