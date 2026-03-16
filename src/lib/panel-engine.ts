@@ -29,6 +29,7 @@ export interface PanelUpdate {
   context: Record<string, unknown>;
   /** Default placement for shared panels (panel name → placement type) */
   sharedPlacements?: Record<string, "modal">;
+  popups?: Array<{ template: string; html: string; duration: number }>;
 }
 
 
@@ -136,6 +137,19 @@ export class PanelEngine {
       this.watchers.push(watcher);
     }
 
+    // Watch popups/ directory
+    const popupsDir = path.join(sessionDir, "popups");
+    if (fs.existsSync(popupsDir)) {
+      const watcher = fs.watch(popupsDir, (_event, filename) => {
+        if (filename && filename.endsWith(".html")) {
+          const name = filename.replace(/\.html$/, "");
+          this.templateCache.delete(`popup:${name}`);
+        }
+        this.scheduleRender();
+      });
+      this.watchers.push(watcher);
+    }
+
     // Watch each existing data JSON file individually (more reliable on Windows)
     this.watchDataFiles();
 
@@ -236,7 +250,8 @@ export class PanelEngine {
       sharedPlacements[name] = "modal";
     }
 
-    return { panels, context, sharedPlacements };
+    const popups = this.renderPopups(context);
+    return { panels, context, sharedPlacements, ...(popups.length > 0 ? { popups } : {}) };
   }
 
   /** Stop watching */
@@ -265,8 +280,39 @@ export class PanelEngine {
     this.render();
   }
 
+  /** Render popup templates from __popups queue in variables */
+  private renderPopups(context: Record<string, unknown>): Array<{ template: string; html: string; duration: number }> {
+    if (!this.sessionDir) return [];
+    const popupQueue = this.variables.__popups as Array<{ template: string; duration?: number; vars?: Record<string, unknown> }> | undefined;
+    if (!Array.isArray(popupQueue) || popupQueue.length === 0) return [];
+
+    const popupsDir = path.join(this.sessionDir, "popups");
+    const result: Array<{ template: string; html: string; duration: number }> = [];
+
+    for (const entry of popupQueue) {
+      if (!entry.template) continue;
+      const filePath = path.join(popupsDir, `${entry.template}.html`);
+      if (!fs.existsSync(filePath)) continue;
+
+      const cacheKey = `popup:${entry.template}`;
+      try {
+        if (!this.templateCache.has(cacheKey)) {
+          const source = fs.readFileSync(filePath, "utf-8");
+          this.templateCache.set(cacheKey, Handlebars.compile(source));
+        }
+        const template = this.templateCache.get(cacheKey)!;
+        const popupContext = entry.vars ? { ...context, ...entry.vars } : context;
+        const html = template(popupContext, { allowProtoPropertiesByDefault: true });
+        result.push({ template: entry.template, html, duration: entry.duration || 4000 });
+      } catch {
+        // skip broken templates
+      }
+    }
+    return result;
+  }
+
   /** Debounced render to coalesce rapid file changes */
-  private scheduleRender(): void {
+  scheduleRender(): void {
     if (this.debounceTimer) clearTimeout(this.debounceTimer);
     this.debounceTimer = setTimeout(() => {
       this.render();
