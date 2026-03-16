@@ -82,6 +82,9 @@ export class PanelEngine {
     Handlebars.registerHelper("formatNumber", (n) =>
       Number(n).toLocaleString()
     );
+    Handlebars.registerHelper("json", (val) =>
+      new Handlebars.SafeString(JSON.stringify(val ?? null))
+    );
   }
 
   /** Build the merged template context: variables at root + data files as named keys + system vars */
@@ -324,6 +327,8 @@ export class PanelEngine {
     this.loadVariables();
     this.loadDataFiles();
     this.watchDataFiles();
+    // Clear autoRefresh cache so that autoRefresh:false panels also re-render at turn end
+    this.autoRefreshCache.clear();
     console.log("[panel-engine] reload — dataFiles keys:", Object.keys(this.dataFiles), "inventory items:", (this.dataFiles.inventory as Record<string, unknown>)?.items ? "yes" : "no");
     this.render();
   }

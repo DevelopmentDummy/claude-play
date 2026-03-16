@@ -118,7 +118,7 @@ export default function ModalPanel({
 
     installImagePolling(shadow);
 
-    const scripts = Array.from(shadow.querySelectorAll("script"));
+    const scripts = Array.from(shadow.querySelectorAll("script:not([type]), script[type='text/javascript']"));
     for (const oldScript of scripts) {
       oldScript.remove();
       try {

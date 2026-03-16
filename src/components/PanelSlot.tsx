@@ -62,7 +62,8 @@ export default function PanelSlot({ name, html, sessionId, panelData, onSendMess
     installImagePolling(shadow);
 
     // Execute <script> tags manually via Function() to avoid DOM insertion issues
-    const scripts = Array.from(shadow.querySelectorAll("script"));
+    // Skip non-JS scripts (e.g. type="application/json" used as embedded data)
+    const scripts = Array.from(shadow.querySelectorAll("script:not([type]), script[type='text/javascript']"));
     for (const oldScript of scripts) {
       oldScript.remove();
       try {

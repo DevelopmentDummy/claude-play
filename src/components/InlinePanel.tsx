@@ -29,7 +29,7 @@ export default function InlinePanel({ html, sessionId }: InlinePanelProps) {
       html;
 
     // Execute <script> tags via Function() with shadow reference
-    const scripts = Array.from(shadow.querySelectorAll("script"));
+    const scripts = Array.from(shadow.querySelectorAll("script:not([type]), script[type='text/javascript']"));
     for (const oldScript of scripts) {
       oldScript.remove();
       try {

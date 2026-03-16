@@ -182,6 +182,7 @@ export class SessionInstance {
   private seenToolKeys = new Set<string>();
   private sawTextDelta = false;
   private currentBlockType = "text";
+  private isCompacting = false;
   private historyId = 0;
 
   // TTS queue — serialize requests to avoid ENOBUFS
@@ -560,10 +561,16 @@ export class SessionInstance {
       }
 
       if (msg.type === "system" && msg.subtype === "status" && msg.status === "compacting") {
+        this.isCompacting = true;
         this.broadcast("claude:status", "compacting");
       }
 
       if (msg.type === "stream_event") {
+        // Compacting finished — resume streaming status
+        if (this.isCompacting) {
+          this.isCompacting = false;
+          this.broadcast("claude:status", "streaming");
+        }
         const event = msg.event as Record<string, unknown> | undefined;
         if (!event) return;
         if (event.type === "content_block_start") {
@@ -649,6 +656,7 @@ export class SessionInstance {
         this.seenToolKeys.clear();
         this.sawTextDelta = false;
         this.currentBlockType = "text";
+        this.isCompacting = false;
 
         this.panels.reload();
 

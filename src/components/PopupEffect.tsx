@@ -110,7 +110,7 @@ export default function PopupEffect({ popups, themeColor, onQueueComplete }: Pop
       ${current.html}
     `;
 
-    const scripts = shadow.querySelectorAll("script");
+    const scripts = shadow.querySelectorAll("script:not([type]), script[type='text/javascript']");
     scripts.forEach((s) => {
       try {
         const code = s.textContent || "";
