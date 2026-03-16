@@ -291,6 +291,21 @@ export class SessionInstance {
     return this.readPendingEvents();
   }
 
+  /** Clear __popups from variables.json (called on new user message) */
+  clearPopups(): void {
+    const dir = this.getDir();
+    if (!dir) return;
+    const varsPath = path.join(dir, "variables.json");
+    try {
+      if (!fs.existsSync(varsPath)) return;
+      const vars = JSON.parse(fs.readFileSync(varsPath, "utf-8"));
+      if (!Array.isArray(vars.__popups) || vars.__popups.length === 0) return;
+      vars.__popups = [];
+      fs.writeFileSync(varsPath, JSON.stringify(vars, null, 2), "utf-8");
+      this.panels.scheduleRender();
+    } catch { /* ignore */ }
+  }
+
   // --- History ---
 
   addUserToHistory(text: string, ooc?: boolean): void {
