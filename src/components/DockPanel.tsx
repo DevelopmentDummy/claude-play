@@ -69,10 +69,14 @@ export default function DockPanel({
     }
   }, []);
 
-  // Re-render shadow content when active panel changes
+  // Re-render shadow content only when html actually changes
+  const prevHtmlRef = useRef<string>("");
   useEffect(() => {
     const shadow = shadowRef.current;
     if (!shadow || !current) return;
+    if (current.html === prevHtmlRef.current) return;
+    prevHtmlRef.current = current.html;
+
     shadow.innerHTML =
       `<style>:host{display:block;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:14px;line-height:1.6;color:#e0e0e0;}img{cursor:zoom-in;}</style>` +
       current.html;
@@ -93,7 +97,7 @@ export default function DockPanel({
         console.warn(`[DockPanel] Script error in "${current.name}":`, e);
       }
     }
-  }, [current?.html, current?.name, panelData]);
+  }, [current?.html, current?.name]);
 
   if (!current) return null;
 

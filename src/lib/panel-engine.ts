@@ -39,6 +39,8 @@ export class PanelEngine {
   private watchers: fs.FSWatcher[] = [];
   private dataFileWatchers = new Map<string, fs.FSWatcher>();
   private templateCache = new Map<string, HandlebarsTemplateDelegate>();
+  private autoRefreshCache = new Map<string, string>(); // panel name → cached rendered HTML
+  private templateDirty = new Set<string>(); // panels whose templates just changed
   private variables: Record<string, unknown> = {};
   private dataFiles: Record<string, unknown> = {};
   private onUpdate: (update: PanelUpdate) => void;
@@ -131,6 +133,8 @@ export class PanelEngine {
           const rawName = filename.replace(/\.html$/, "");
           const name = rawName.replace(/^\d+-/, "");
           this.templateCache.delete(name);
+          this.autoRefreshCache.delete(name);
+          this.templateDirty.add(name);
         }
         this.scheduleRender();
       });
@@ -227,8 +231,26 @@ export class PanelEngine {
     }
 
     const context = this.getContext();
+
+    // Read autoRefresh config from layout.json
+    let autoRefreshConfig: Record<string, boolean> = {};
+    if (this.sessionDir) {
+      try {
+        const layout = JSON.parse(fs.readFileSync(path.join(this.sessionDir, "layout.json"), "utf-8"));
+        autoRefreshConfig = layout?.panels?.autoRefresh || {};
+      } catch { /* ignore */ }
+    }
+
     const panels: PanelData[] = [];
     for (const { filePath, name } of allFiles) {
+      const isAutoRefresh = autoRefreshConfig[name] !== false; // default true
+
+      // If autoRefresh is disabled and we have cached HTML (and template hasn't changed), use cache
+      if (!isAutoRefresh && this.autoRefreshCache.has(name) && !this.templateDirty.has(name)) {
+        panels.push({ name, html: this.autoRefreshCache.get(name)! });
+        continue;
+      }
+
       try {
         if (!this.templateCache.has(name)) {
           const source = fs.readFileSync(filePath, "utf-8");
@@ -236,6 +258,12 @@ export class PanelEngine {
         }
         const template = this.templateCache.get(name)!;
         const html = template(context, { allowProtoPropertiesByDefault: true });
+
+        // Cache for autoRefresh:false panels
+        if (!isAutoRefresh) {
+          this.autoRefreshCache.set(name, html);
+        }
+
         panels.push({ name, html });
       } catch {
         panels.push({
@@ -263,6 +291,8 @@ export class PanelEngine {
     this.dataFileWatchers.clear();
     this.sessionDir = null;
     this.templateCache.clear();
+    this.autoRefreshCache.clear();
+    this.templateDirty.clear();
     this.variables = {};
     this.dataFiles = {};
     if (this.debounceTimer) {
@@ -383,6 +413,7 @@ export class PanelEngine {
   private render(): void {
     if (!this.sessionDir) return;
     const result = this.getCurrentPanels();
+    this.templateDirty.clear();
     this.onUpdate(result);
   }
 }

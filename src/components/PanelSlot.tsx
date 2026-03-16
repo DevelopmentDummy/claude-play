@@ -46,10 +46,13 @@ export default function PanelSlot({ name, html, sessionId, panelData, onSendMess
     }
   }, []);
 
-  // Re-render shadow content when html or panelData changes
+  // Re-render shadow content only when html actually changes
+  const prevHtmlRef = useRef<string>("");
   useEffect(() => {
     const shadow = shadowRef.current;
     if (!shadow) return;
+    if (html === prevHtmlRef.current) return;
+    prevHtmlRef.current = html;
 
     shadow.innerHTML =
       `<style>:host{display:block;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:13px;line-height:1.6;color:#e0e0e0;}img{cursor:zoom-in;}</style>` +
@@ -75,7 +78,7 @@ export default function PanelSlot({ name, html, sessionId, panelData, onSendMess
         console.warn(`[PanelSlot] Script error in "${name}":`, e);
       }
     }
-  }, [html, panelData, name]);
+  }, [html, name]);
 
   return (
     <>

@@ -104,10 +104,13 @@ export default function ModalPanel({
     }
   }, []);
 
-  // Render shadow content
+  // Render shadow content only when html actually changes
+  const prevHtmlRef = useRef<string>("");
   useEffect(() => {
     const shadow = shadowRef.current;
     if (!shadow) return;
+    if (html === prevHtmlRef.current) return;
+    prevHtmlRef.current = html;
 
     shadow.innerHTML =
       `<style>:host{display:block;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:14px;line-height:1.6;color:#e0e0e0;}img{cursor:zoom-in;}</style>` +
@@ -129,7 +132,7 @@ export default function ModalPanel({
         console.warn(`[ModalPanel] Script error in "${name}":`, e);
       }
     }
-  }, [html, panelData, name]);
+  }, [html, name]);
 
   // Close on Escape key (only if dismissible AND topmost in stack)
   useEffect(() => {
