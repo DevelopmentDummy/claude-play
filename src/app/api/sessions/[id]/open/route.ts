@@ -77,7 +77,7 @@ export async function POST(
   }
 
   // Include initial panels + context in response (SSE may not be connected yet)
-  const { panels, context: panelContext, sharedPlacements } = instance.panels.getCurrentPanels();
+  const { panels, context: panelContext, sharedPlacements, popups } = instance.panels.getCurrentPanels();
 
   // Sync profile/icon images from persona to session (may have been added after session creation)
   const imagesDir = path.join(sessionDir, "images");
@@ -112,5 +112,5 @@ export async function POST(
   const voiceConfig = svc.sessions.readVoiceConfig(sessionDir);
   const voiceEnabled = voiceConfig?.enabled ?? false;
 
-  return NextResponse.json({ ...info, opening, isResume, layout, panels, panelContext, sharedPlacements, profileImage, iconImage, model: effectiveRaw || "", provider, voiceEnabled, chatOptions: resolvedOptions });
+  return NextResponse.json({ ...info, opening, isResume, layout, panels, panelContext, sharedPlacements, popups: popups || [], profileImage, iconImage, model: effectiveRaw || "", provider, voiceEnabled, chatOptions: resolvedOptions });
 }

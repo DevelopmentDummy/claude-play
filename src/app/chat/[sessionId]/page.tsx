@@ -17,6 +17,7 @@ import ModalPanel from "@/components/ModalPanel";
 import DockPanel from "@/components/DockPanel";
 import SyncModal from "@/components/SyncModal";
 import ChatOptionsModal from "@/components/ChatOptionsModal";
+import PopupEffect from "@/components/PopupEffect";
 
 interface Panel {
   name: string;
@@ -79,6 +80,7 @@ export default function ChatPage() {
   const [chatOptions, setChatOptions] = useState<Record<string, unknown>>({});
   const [chatOptionsSchema, setChatOptionsSchema] = useState<Record<string, unknown>[]>([]);
   const [optionsModalOpen, setOptionsModalOpen] = useState(false);
+  const [popupQueue, setPopupQueue] = useState<Array<{ template: string; html: string; duration: number }>>([]);
   const isMobile = useIsMobile();
   const initRef = useRef(false);
 
@@ -296,10 +298,19 @@ export default function ChatPage() {
       "claude:error": (e) => setError(e as string),
       "claude:status": (s) => setStatus(s as string),
       "panels:update": (p) => {
-        const update = p as { panels: Panel[]; context: Record<string, unknown>; sharedPlacements?: Record<string, "modal" | "dock" | "dock-left" | "dock-right" | "dock-bottom"> };
+        const update = p as {
+          panels: Panel[];
+          context: Record<string, unknown>;
+          sharedPlacements?: Record<string, "modal" | "dock" | "dock-left" | "dock-right" | "dock-bottom">;
+          popups?: Array<{ template: string; html: string; duration: number }>;
+        };
         setPanels(update.panels);
         setPanelData(update.context);
         if (update.sharedPlacements) setSharedPlacements(update.sharedPlacements);
+        // Only update popup queue when explicitly present in update
+        if (update.popups !== undefined) {
+          setPopupQueue(update.popups.length > 0 ? update.popups : []);
+        }
       },
       "layout:update": (p) => {
         const update = p as { layout: LayoutConfig };
@@ -390,6 +401,7 @@ export default function ChatPage() {
   const sendMessage = useCallback(
     (text: string) => {
       if (text.startsWith("OOC:")) setShowOOC(true);
+      if (!text.startsWith("OOC:")) setPopupQueue([]); // Clear popups immediately
       prepareSend(text);
       sendChat(text);
     },
@@ -439,6 +451,9 @@ export default function ChatPage() {
       }
       if (data.sharedPlacements) {
         setSharedPlacements(data.sharedPlacements);
+      }
+      if (data.popups && data.popups.length > 0) {
+        setPopupQueue(data.popups);
       }
 
       setProfileImage(data.profileImage ? `/api/sessions/${sessionId}/files/${data.profileImage}` : null);
@@ -608,6 +623,8 @@ export default function ChatPage() {
     }
     return undefined;
   }, [isStreaming, visibleMessages]);
+
+  const themeColor = (layout as Record<string, unknown> & { theme?: { primaryColor?: string } })?.theme?.primaryColor;
 
   // Expose streaming state to panels via global flag + custom event
   useEffect(() => {
@@ -785,6 +802,12 @@ export default function ChatPage() {
           onSendMessage={sendMessage}
         />
       ))}
+      {popupQueue.length > 0 && (
+        <PopupEffect
+          popups={popupQueue}
+          themeColor={themeColor}
+        />
+      )}
       <SyncModal
         open={syncModalOpen}
         sessionId={sessionId}
