@@ -550,7 +550,8 @@ export default function ChatPage() {
   const sidebarLeftPanels = hasPerPanelPlacement ? leftPanels : (panelPosition === "left" ? panelsWithoutSharedPlacement : []);
   const sidebarRightPanels = hasPerPanelPlacement ? rightPanels : (panelPosition === "right" ? panelsWithoutSharedPlacement : []);
 
-  const hasLeftSidebar = sidebarLeftPanels.length > 0 || !!profileImage;
+  const showProfile = profileImage && layout?.panels?.showProfileImage !== false;
+  const hasLeftSidebar = sidebarLeftPanels.length > 0 || !!showProfile;
   const hasRightSidebar = sidebarRightPanels.length > 0;
   const hasSidebar = hasLeftSidebar || hasRightSidebar;
 
@@ -607,6 +608,12 @@ export default function ChatPage() {
     }
     return undefined;
   }, [isStreaming, visibleMessages]);
+
+  // Expose streaming state to panels via global flag + custom event
+  useEffect(() => {
+    (window as unknown as Record<string, unknown>).__bridgeIsStreaming = isStreaming;
+    window.dispatchEvent(new CustomEvent("__bridge_streaming_change", { detail: isStreaming }));
+  }, [isStreaming]);
 
   // Listen for panel bridge sendMessage events
   useEffect(() => {
@@ -716,7 +723,7 @@ export default function ChatPage() {
               panels={sidebarLeftPanels}
               position="left"
               size={panelSize}
-              profileImageUrl={profileImage}
+              profileImageUrl={showProfile ? profileImage : null}
               sessionId={sessionId}
               panelData={panelData}
               onSendMessage={sendMessage}
@@ -748,7 +755,7 @@ export default function ChatPage() {
           panels={[...sidebarLeftPanels, ...sidebarRightPanels]}
           panelPosition="right"
           panelSize={panelSize}
-          profileImageUrl={profileImage}
+          profileImageUrl={showProfile ? profileImage : null}
           sessionId={sessionId}
           panelData={panelData}
           onSendMessage={sendMessage}

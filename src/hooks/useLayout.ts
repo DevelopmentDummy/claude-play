@@ -12,6 +12,7 @@ export interface LayoutConfig {
     dockSize?: number;   // deprecated, use dockHeight
     dockHeight?: number;
     dockWidth?: number;
+    showProfileImage?: boolean;
   };
   chat: {
     maxWidth: number | null;

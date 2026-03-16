@@ -925,6 +925,7 @@ $PANEL:거래$
 | `dockWidth` | dock-left/right 패널의 너비 (px). 생략 시 콘텐츠에 맞게 자동 조정. | auto (min 280px, max 50%) |
 | `dockHeight` | 모든 dock 패널의 최대 높이 (px). | 50vh |
 | `dockSize` | `dockHeight`의 하위호환 별칭. `dockHeight`가 우선한다. | 50vh |
+| `showProfileImage` | 좌측 사이드바에 캐릭터 프로필 이미지를 표시할지 여부. | `true` |
 
 ---
 
