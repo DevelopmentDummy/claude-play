@@ -59,6 +59,19 @@ export function usePanelBridge(
         });
         return res.json();
       },
+      async showPopup(template: string, opts?: { duration?: number; vars?: Record<string, unknown> }) {
+        if (!sessionId) return;
+        const existing = ((panelData || {}).__popups as Array<Record<string, unknown>>) || [];
+        const entry: Record<string, unknown> = { template };
+        if (opts?.duration) entry.duration = opts.duration;
+        if (opts?.vars) entry.vars = opts.vars;
+        const res = await fetch(`/api/sessions/${sessionId}/variables`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ __popups: [...existing, entry] }),
+        });
+        return res.json();
+      },
       sessionId,
       data: panelData || {},
       get isStreaming() {
