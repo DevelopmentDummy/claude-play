@@ -211,6 +211,7 @@ export class SessionInstance {
           this.broadcast("layout:update", { layout: sessions.readLayout(dir) });
         }
       },
+      (filename) => this.broadcast("image:updated", { filename }),
     );
 
     this.bindProcessEvents(this._process);

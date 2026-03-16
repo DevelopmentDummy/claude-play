@@ -320,6 +320,12 @@ export default function ChatPage() {
           applyLayout(update.layout, imageBase);
         }
       },
+      "image:updated": (d) => {
+        const { filename } = d as { filename: string };
+        if (filename) {
+          import("@/lib/panel-image-polling").then(({ bustImageCache }) => bustImageCache(filename));
+        }
+      },
       "audio:ready": (d) => {
         const { url, messageId, chunkIndex = 0, totalChunks = 1 } = d as {
           url: string; messageId: string; chunkIndex?: number; totalChunks?: number;

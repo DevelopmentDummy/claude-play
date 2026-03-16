@@ -45,11 +45,18 @@ export class PanelEngine {
   private dataFiles: Record<string, unknown> = {};
   private onUpdate: (update: PanelUpdate) => void;
   private onLayoutUpdate: (() => void) | null = null;
+  private onImageUpdate: ((filename: string) => void) | null = null;
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private imageDebounce = new Map<string, ReturnType<typeof setTimeout>>();
 
-  constructor(onUpdate: (update: PanelUpdate) => void, onLayoutUpdate?: () => void) {
+  constructor(
+    onUpdate: (update: PanelUpdate) => void,
+    onLayoutUpdate?: () => void,
+    onImageUpdate?: (filename: string) => void,
+  ) {
     this.onUpdate = onUpdate;
     this.onLayoutUpdate = onLayoutUpdate || null;
+    this.onImageUpdate = onImageUpdate || null;
     this.registerHelpers();
   }
 
@@ -154,13 +161,21 @@ export class PanelEngine {
       this.watchers.push(watcher);
     }
 
+    // Watch images/ directory for file changes (new or overwritten images)
+    this.watchImagesDir(sessionDir);
+
     // Watch each existing data JSON file individually (more reliable on Windows)
     this.watchDataFiles();
 
-    // Also watch session dir for NEW json files appearing
+    // Also watch session dir for NEW json files or images/ dir appearing
     const dirWatcher = fs.watch(sessionDir, (_event, filename) => {
       if (filename === "layout.json") {
         this.broadcastLayout();
+        return;
+      }
+      if (filename === "images") {
+        // images/ directory may have just been created — start watching it
+        this.watchImagesDir(sessionDir);
         return;
       }
       if (filename && filename.endsWith(".json") && !SYSTEM_JSON.has(filename)) {
@@ -293,6 +308,9 @@ export class PanelEngine {
     this.templateCache.clear();
     this.autoRefreshCache.clear();
     this.templateDirty.clear();
+    this.imageWatcherActive = false;
+    for (const t of this.imageDebounce.values()) clearTimeout(t);
+    this.imageDebounce.clear();
     this.variables = {};
     this.dataFiles = {};
     if (this.debounceTimer) {
@@ -408,6 +426,28 @@ export class PanelEngine {
   private broadcastLayout(): void {
     if (!this.sessionDir || !this.onLayoutUpdate) return;
     this.onLayoutUpdate();
+  }
+
+  /** Track whether images/ watcher is already active */
+  private imageWatcherActive = false;
+
+  /** Watch images/ directory for file changes, with lazy init */
+  private watchImagesDir(sessionDir: string): void {
+    if (!this.onImageUpdate || this.imageWatcherActive) return;
+    const imagesDir = path.join(sessionDir, "images");
+    if (!fs.existsSync(imagesDir)) return;
+    this.imageWatcherActive = true;
+    const imgWatcher = fs.watch(imagesDir, (_event, filename) => {
+      if (!filename) return;
+      // Debounce per-file to coalesce rapid writes
+      const existing = this.imageDebounce.get(filename);
+      if (existing) clearTimeout(existing);
+      this.imageDebounce.set(filename, setTimeout(() => {
+        this.imageDebounce.delete(filename);
+        this.onImageUpdate?.(filename);
+      }, 300));
+    });
+    this.watchers.push(imgWatcher);
   }
 
   private render(): void {
