@@ -454,6 +454,7 @@ AI가 받게 되는 메시지:
 | `__panelBridge.updateLayout(patch)` | `layout.json`을 deep merge로 부분 업데이트한다. 패널 배치, 독 크기, 테마 등을 실시간 변경할 수 있다. `patch`는 `layout.json`과 동일한 구조의 객체. 예: `{ panels: { dockWidth: 500 } }`. |
 | `__panelBridge.queueEvent(header)` | 다음 사용자 메시지에 이벤트 헤더를 첨부한다. 큐에 쌓이며, 사용자가 다음 메시지를 보낼 때 AI에게 전달되는 텍스트 앞에 자동 prepend된다. OOC 메시지에는 첨부되지 않는다. |
 | `__panelBridge.runTool(name, args)` | 서버사이드 커스텀 툴을 실행한다. `name`은 `tools/` 폴더 내 `.js` 파일명 (확장자 제외). `args`는 툴에 전달할 인자 객체. 반환값은 `{ ok, result }`. |
+| `__panelBridge.showPopup(template, opts?)` | 팝업 이펙트를 큐에 추가한다. `template`은 `popups/` 폴더 내 `.html` 파일명 (확장자 제외). `opts`는 `{ duration?: number, vars?: object }`. 현재 큐에 append되어 순차 재생된다. |
 | `__panelBridge.data` | 전체 템플릿 컨텍스트 객체 (읽기 전용). `variables.json` 값 + 커스텀 데이터 파일이 합쳐져 있다. |
 | `__panelBridge.sessionId` | 현재 세션 ID (읽기 전용) |
 
@@ -873,6 +874,102 @@ module.exports = async function(context, args) {
 - `data` 반환의 키는 파일명 확장자를 포함해야 한다 (예: `"world.json"`, `"inventory.json"`).
 - `session.json`, `layout.json` 등 시스템 파일은 수정할 수 없다.
 - 여러 버튼의 빠른 연타는 race condition을 유발할 수 있다. 클릭 시 `btn.disabled = true`로 중복 방지를 권장한다.
+
+---
+
+## 팝업 이펙트 시스템
+
+화면 중앙에 일시적으로 표시되는 연출용 이펙트. 진행상황 갱신, 성과 달성, 이벤트 발생 등 주목할 만한 정보를 극적으로 표현한다.
+
+### 팝업 템플릿
+
+`popups/` 디렉토리에 Handlebars HTML 파일로 작성한다. 패널과 동일한 헬퍼 함수를 사용할 수 있다.
+
+```
+personas/{name}/
+  popups/
+    level-up.html
+    item-acquired.html
+    quest-start.html
+```
+
+### 팝업 큐 (`variables.json`의 `__popups`)
+
+```json
+{
+  "__popups": [
+    { "template": "level-up", "duration": 4000 },
+    { "template": "item-acquired", "duration": 3000, "vars": { "itemName": "신비한 검" } }
+  ]
+}
+```
+
+| 필드 | 타입 | 필수 | 설명 |
+|------|------|------|------|
+| `template` | string | O | `popups/` 디렉토리의 파일명 (확장자 없이) |
+| `duration` | number | X | 표시 시간(ms). 기본값 4000ms |
+| `vars` | object | X | 해당 팝업에만 적용할 추가 변수. 기존 variables 컨텍스트에 머지됨 |
+
+### 동작 방식
+
+- **큐 기반**: 배열 순서대로 하나씩 표시 → 자동 소멸 → 다음 팝업
+- **턴 단위 유지**: 새로고침해도 큐에 남아있으면 다시 재생
+- **자동 클리어**: 다음 비-OOC 메시지 전송 시 서버/클라이언트 양쪽에서 클리어. OOC 메시지는 클리어하지 않음
+- **테마 연동**: `layout.json`의 theme 컬러를 기반으로 그라디언트/글로우 자동 적용
+- **CSS 변수**: 팝업 템플릿 내부에서 `--popup-primary`, `--popup-glow` CSS 변수를 사용 가능
+
+### 애니메이션
+
+- **진입**: scale 0.7 → 1.0 + fade in + 배경 딤 (~300ms)
+- **퇴장**: scale 1.0 → 0.9 + fade out + 배경 딤 해제 (~300ms)
+
+### 트리거 방법
+
+**AI (MCP)에서:**
+```
+run_tool("engine", { action: "trigger_popup", template: "level-up", vars: { level: 10 } })
+```
+또는 `update_variables`로 `__popups` 배열을 직접 설정.
+
+**패널 스크립트에서:**
+```javascript
+await __panelBridge.showPopup("level-up", { duration: 5000, vars: { level: 10 } });
+```
+
+**엔진 스크립트에서:**
+```javascript
+// tools/engine.js 내 액션에서 반환
+return {
+  variables: { __popups: [{ template: "item-acquired", duration: 3000, vars: { itemName: "신비한 검" } }] },
+};
+```
+
+### 팝업 템플릿 예시
+
+```html
+<!-- popups/level-up.html -->
+<style>
+  .popup-content { text-align: center; padding: 12px; }
+  .icon { font-size: 48px; margin-bottom: 12px; }
+  .title { font-size: 22px; font-weight: 800; margin-bottom: 6px; }
+  .desc { font-size: 14px; opacity: 0.85; }
+  .level { font-size: 36px; font-weight: 900; color: var(--popup-primary); margin-top: 8px; }
+</style>
+
+<div class="popup-content">
+  <div class="icon">⚔️</div>
+  <div class="title">LEVEL UP!</div>
+  <div class="desc">새로운 레벨에 도달했습니다</div>
+  <div class="level">Lv. {{level}}</div>
+</div>
+```
+
+### 주의사항
+
+- 팝업 표시 중 배경은 클릭할 수 없다 (딤 오버레이가 입력을 차단)
+- 여러 팝업이 동시에 트리거되면 큐잉되어 순차 재생된다
+- 존재하지 않는 템플릿을 참조하면 해당 항목은 무시(skip)된다
+- 팝업은 모달 패널(z-index 9998+)보다 위에 표시된다 (z-index 10100+)
 
 ---
 
