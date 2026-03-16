@@ -151,6 +151,9 @@ function handleMessage(
 
       const isOOC = text.startsWith("OOC:");
       instance.isOOC = isOOC;
+      if (!isOOC) {
+        instance.clearPopups();
+      }
       instance.addUserToHistory(text, isOOC);
 
       // Flush pending event headers and prepend to AI message
