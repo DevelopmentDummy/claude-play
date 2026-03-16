@@ -709,7 +709,7 @@ export class SessionManager {
     this.syncPersonaToSessionSelective(id, {
       panels: true, variables: true, layout: true, opening: true,
       worldview: true, skills: true, instructions: true, voice: true,
-      chatOptions: true, tools: true,
+      chatOptions: true, tools: true, popups: true,
     });
   }
 
@@ -736,6 +736,22 @@ export class SessionManager {
         for (const file of fs.readdirSync(personaPanels)) {
           const src = path.join(personaPanels, file);
           const dst = path.join(sessionPanels, file);
+          if (fs.statSync(src).isFile()) {
+            fs.copyFileSync(src, dst);
+          }
+        }
+      }
+    }
+
+    // Sync popups/ directory
+    if (elements.popups) {
+      const personaPopups = path.join(personaDir, "popups");
+      const sessionPopups = path.join(sessionDir, "popups");
+      if (fs.existsSync(personaPopups)) {
+        if (!fs.existsSync(sessionPopups)) fs.mkdirSync(sessionPopups, { recursive: true });
+        for (const file of fs.readdirSync(personaPopups)) {
+          const src = path.join(personaPopups, file);
+          const dst = path.join(sessionPopups, file);
           if (fs.statSync(src).isFile()) {
             fs.copyFileSync(src, dst);
           }
@@ -887,6 +903,11 @@ export class SessionManager {
     const sPanels = path.join(sessionDir, "panels");
     result.push({ key: "panels", label: "패널 (panels/)", hasChanges: this.dirDiffers(pPanels, sPanels) });
 
+    // Check popups
+    const pPopups = path.join(personaDir, "popups");
+    const sPopups = path.join(sessionDir, "popups");
+    result.push({ key: "popups", label: "팝업 (popups/)", hasChanges: this.dirDiffers(pPopups, sPopups) });
+
     // Check individual files
     const files: Array<{ key: string; label: string; file: string }> = [
       { key: "layout", label: "레이아웃 (layout.json)", file: "layout.json" },
@@ -976,6 +997,11 @@ export class SessionManager {
     const sPanels = path.join(sessionDir, "panels");
     const pPanels = path.join(personaDir, "panels");
     result.push({ key: "panels", label: "패널 (panels/)", hasChanges: this.dirDiffers(sPanels, pPanels) });
+
+    // Check popups (session → persona direction)
+    const sPopups = path.join(sessionDir, "popups");
+    const pPopups = path.join(personaDir, "popups");
+    result.push({ key: "popups", label: "팝업 (popups/)", hasChanges: this.dirDiffers(sPopups, pPopups) });
 
     // Check individual files
     const files: Array<{ key: string; label: string; file: string }> = [
@@ -1068,6 +1094,21 @@ export class SessionManager {
           const src = path.join(sessionPanels, file);
           if (fs.statSync(src).isFile()) {
             fs.copyFileSync(src, path.join(personaPanels, file));
+          }
+        }
+      }
+    }
+
+    // Sync popups/ (session → persona)
+    if (elements.popups) {
+      const sessionPopups = path.join(sessionDir, "popups");
+      const personaPopups = path.join(personaDir, "popups");
+      if (fs.existsSync(sessionPopups)) {
+        if (!fs.existsSync(personaPopups)) fs.mkdirSync(personaPopups, { recursive: true });
+        for (const file of fs.readdirSync(sessionPopups)) {
+          const src = path.join(sessionPopups, file);
+          if (fs.statSync(src).isFile()) {
+            fs.copyFileSync(src, path.join(personaPopups, file));
           }
         }
       }
