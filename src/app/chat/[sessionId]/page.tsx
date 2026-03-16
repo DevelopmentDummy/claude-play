@@ -18,6 +18,7 @@ import DockPanel from "@/components/DockPanel";
 import SyncModal from "@/components/SyncModal";
 import ChatOptionsModal from "@/components/ChatOptionsModal";
 import PopupEffect from "@/components/PopupEffect";
+import { dispatchBridgeEvent } from "@/lib/use-panel-bridge";
 
 interface Panel {
   name: string;
@@ -324,6 +325,7 @@ export default function ChatPage() {
         const { filename } = d as { filename: string };
         if (filename) {
           import("@/lib/panel-image-polling").then(({ bustImageCache }) => bustImageCache(filename));
+          dispatchBridgeEvent("imageUpdated", { filename });
         }
       },
       "audio:ready": (d) => {
@@ -632,10 +634,18 @@ export default function ChatPage() {
 
   const themeColor = layout?.theme?.accent;
 
-  // Expose streaming state to panels via global flag + custom event
+  // Expose streaming state to panels via global flag + bridge events
+  const prevStreamingRef = useRef(false);
   useEffect(() => {
     (window as unknown as Record<string, unknown>).__bridgeIsStreaming = isStreaming;
     window.dispatchEvent(new CustomEvent("__bridge_streaming_change", { detail: isStreaming }));
+    // Fire bridge events on transitions
+    if (isStreaming && !prevStreamingRef.current) {
+      dispatchBridgeEvent("turnStart");
+    } else if (!isStreaming && prevStreamingRef.current) {
+      dispatchBridgeEvent("turnEnd");
+    }
+    prevStreamingRef.current = isStreaming;
   }, [isStreaming]);
 
   // Listen for panel bridge sendMessage events

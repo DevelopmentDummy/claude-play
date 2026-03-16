@@ -2,6 +2,20 @@
 
 import { useEffect } from "react";
 
+/** Internal event prefix for bridge events dispatched on window */
+const EVT_PREFIX = "__bridge_evt:";
+
+/** Supported panel bridge event names */
+type BridgeEvent = "turnStart" | "turnEnd" | "imageUpdated";
+
+/**
+ * Dispatch a bridge event from the app to panel scripts.
+ * Called by ChatPage when relevant state changes happen.
+ */
+export function dispatchBridgeEvent(event: BridgeEvent, detail?: unknown): void {
+  window.dispatchEvent(new CustomEvent(`${EVT_PREFIX}${event}`, { detail }));
+}
+
 export function usePanelBridge(
   sessionId: string | undefined,
   panelData: Record<string, unknown> | undefined,
@@ -71,6 +85,12 @@ export function usePanelBridge(
           body: JSON.stringify({ __popups: [...existing, entry] }),
         });
         return res.json();
+      },
+      /** Subscribe to a bridge event. Returns an unsubscribe function. */
+      on(event: string, handler: (detail?: unknown) => void): () => void {
+        const wrapped = (e: Event) => handler((e as CustomEvent).detail);
+        window.addEventListener(`${EVT_PREFIX}${event}`, wrapped);
+        return () => window.removeEventListener(`${EVT_PREFIX}${event}`, wrapped);
       },
       sessionId,
       data: panelData || {},

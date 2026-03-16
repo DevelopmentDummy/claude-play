@@ -455,8 +455,38 @@ AI가 받게 되는 메시지:
 | `__panelBridge.queueEvent(header)` | 다음 사용자 메시지에 이벤트 헤더를 첨부한다. 큐에 쌓이며, 사용자가 다음 메시지를 보낼 때 AI에게 전달되는 텍스트 앞에 자동 prepend된다. OOC 메시지에는 첨부되지 않는다. |
 | `__panelBridge.runTool(name, args)` | 서버사이드 커스텀 툴을 실행한다. `name`은 `tools/` 폴더 내 `.js` 파일명 (확장자 제외). `args`는 툴에 전달할 인자 객체. 반환값은 `{ ok, result }`. |
 | `__panelBridge.showPopup(template, opts?)` | 팝업 이펙트를 큐에 추가한다. `template`은 `popups/` 폴더 내 `.html` 파일명 (확장자 제외). `opts`는 `{ duration?: number, vars?: object }`. 현재 큐에 append되어 순차 재생된다. |
+| `__panelBridge.on(event, handler)` | 브릿지 이벤트를 구독한다. 반환값은 구독 해제 함수. 이벤트 목록은 아래 "브릿지 이벤트" 섹션 참조. |
 | `__panelBridge.data` | 전체 템플릿 컨텍스트 객체 (읽기 전용). `variables.json` 값 + 커스텀 데이터 파일이 합쳐져 있다. |
 | `__panelBridge.sessionId` | 현재 세션 ID (읽기 전용) |
+| `__panelBridge.isStreaming` | AI가 현재 응답 중인지 여부 (읽기 전용, boolean) |
+
+### 브릿지 이벤트
+
+`__panelBridge.on(event, handler)` 로 구독할 수 있는 이벤트 목록:
+
+| 이벤트 | detail | 설명 |
+|--------|--------|------|
+| `turnStart` | 없음 | AI가 응답을 시작했을 때 (스트리밍 시작) |
+| `turnEnd` | 없음 | AI 응답이 완료되어 사용자 턴이 되었을 때 |
+| `imageUpdated` | `{ filename: string }` | 세션 이미지 파일이 새로 생성되거나 덮어씌워졌을 때 |
+
+```html
+<script>
+  // AI 응답 완료 시 최신 데이터로 UI 갱신
+  const off = __panelBridge.on('turnEnd', () => {
+    const d = __panelBridge.data;
+    shadow.querySelector('.hp').textContent = d.hp;
+  });
+
+  // 이미지 갱신 감지
+  __panelBridge.on('imageUpdated', (detail) => {
+    const img = shadow.querySelector(`img[data-name="${detail.filename}"]`);
+    if (img) img.src = img.src.replace(/[?&]_t=\d+/, '') + '?_t=' + Date.now();
+  });
+</script>
+```
+
+`on()`의 반환값은 구독 해제 함수다. 패널이 재렌더링되면 스크립트도 다시 실행되므로, `autoRefresh: false`가 아닌 패널에서는 이벤트가 중복 등록될 수 있다. 필요하면 반환된 함수로 이전 구독을 해제하라.
 
 ### 세션 이미지 리소스 사용
 
