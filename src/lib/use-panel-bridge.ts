@@ -61,6 +61,9 @@ export function usePanelBridge(
       },
       sessionId,
       data: panelData || {},
+      get isStreaming() {
+        return !!(window as unknown as Record<string, unknown>).__bridgeIsStreaming;
+      },
     };
     (window as unknown as Record<string, unknown>).__panelBridge = bridge;
   }, [sessionId, panelData]);

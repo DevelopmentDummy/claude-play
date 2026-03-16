@@ -64,6 +64,10 @@ export default function PanelSlot({ name, html, sessionId, panelData, onSendMess
       oldScript.remove();
       try {
         let code = oldScript.textContent || "";
+        // Remove full declaration (e.g. `const shadow = document.currentScript.getRootNode();`)
+        // to avoid TDZ collision with the Function("shadow", ...) parameter
+        code = code.replace(/(?:const|let|var)\s+shadow\s*=\s*document\.currentScript\??\.getRootNode\??\(\)\s*;?/g, "");
+        // Replace remaining standalone calls
         code = code.replace(/document\.currentScript\??\.getRootNode\??\(\)/g, "shadow");
         const fn = new Function("shadow", code);
         fn(shadow);

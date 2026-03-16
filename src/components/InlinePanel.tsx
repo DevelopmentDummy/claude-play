@@ -33,8 +33,9 @@ export default function InlinePanel({ html, sessionId }: InlinePanelProps) {
     for (const oldScript of scripts) {
       oldScript.remove();
       try {
-        // Auto-fix: replace document.currentScript.getRootNode() with shadow parameter
         let code = oldScript.textContent || "";
+        // Remove full declaration to avoid TDZ collision with Function("shadow", ...) parameter
+        code = code.replace(/(?:const|let|var)\s+shadow\s*=\s*document\.currentScript\??\.getRootNode\??\(\)\s*;?/g, "");
         code = code.replace(/document\.currentScript\??\.getRootNode\??\(\)/g, "shadow");
         const fn = new Function("shadow", code);
         fn(shadow);
