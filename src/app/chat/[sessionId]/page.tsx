@@ -624,7 +624,7 @@ export default function ChatPage() {
     return undefined;
   }, [isStreaming, visibleMessages]);
 
-  const themeColor = (layout as Record<string, unknown> & { theme?: { primaryColor?: string } })?.theme?.primaryColor;
+  const themeColor = layout?.theme?.accent;
 
   // Expose streaming state to panels via global flag + custom event
   useEffect(() => {
