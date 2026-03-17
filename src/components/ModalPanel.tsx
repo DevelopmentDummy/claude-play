@@ -46,6 +46,17 @@ export default function ModalPanel({
     requestAnimationFrame(() => setVisible(true));
   }, []);
 
+  // Safety: if component is mounted but was internally closed (stale state desync),
+  // reset to visible. This handles edge cases where onClose PATCH was overwritten.
+  useEffect(() => {
+    if (closed) {
+      setClosed(false);
+      setVisible(false);
+      requestAnimationFrame(() => setVisible(true));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [html]);
+
   const handleClose = useCallback(() => {
     if (!dismissible) return;
     setVisible(false);
@@ -59,24 +70,30 @@ export default function ModalPanel({
   }, [onClose]);
 
   // Install shared bridge + modal-specific sendMessage override that auto-closes
+  // ONLY the topmost modal wraps sendMessage to prevent closing all stacked modals
   usePanelBridge(sessionId, panelData);
   useEffect(() => {
+    if (!isTopmost) return;
     const bridge = (window as unknown as Record<string, unknown>).__panelBridge as Record<string, unknown> | undefined;
     if (bridge) {
       const origSend = bridge.sendMessage as (text: string) => void;
       bridge.sendMessage = (text: string) => {
         origSend(text);
-        window.dispatchEvent(new CustomEvent("__modal_panel_dismiss"));
+        window.dispatchEvent(new CustomEvent("__modal_panel_dismiss", { detail: name }));
       };
     }
-  }, [sessionId, panelData]);
+  }, [sessionId, panelData, isTopmost, name]);
 
-  // Listen for dismiss event (fired by bridge.sendMessage — always force-closes)
+  // Listen for dismiss event — only respond if targeted at this modal or untargeted (legacy)
   useEffect(() => {
-    const handler = () => forceClose();
+    if (!isTopmost) return;
+    const handler = (e: Event) => {
+      const target = (e as CustomEvent).detail;
+      if (!target || target === name) forceClose();
+    };
     window.addEventListener("__modal_panel_dismiss", handler);
     return () => window.removeEventListener("__modal_panel_dismiss", handler);
-  }, [forceClose]);
+  }, [forceClose, isTopmost, name]);
 
   // Attach shadow DOM (once)
   useEffect(() => {
@@ -153,8 +170,7 @@ export default function ModalPanel({
         className="fixed inset-0 transition-opacity duration-200"
         style={{
           zIndex: backdropZ,
-          backgroundColor: "rgba(0, 0, 0, 0.5)",
-          backdropFilter: "blur(4px)",
+          backgroundColor: "rgba(0, 0, 0, 0.25)",
           opacity: visible ? 1 : 0,
         }}
         onClick={dismissible ? handleClose : undefined}
@@ -177,9 +193,9 @@ export default function ModalPanel({
         >
           {/* Panel card */}
           <div
-            className="rounded-2xl overflow-hidden border border-white/[0.08] shadow-2xl"
+            className="rounded-2xl overflow-hidden border border-white/[0.1] shadow-[0_8px_40px_rgba(0,0,0,0.5)]"
             style={{
-              backgroundColor: "var(--surface, rgba(15, 15, 26, 0.95))",
+              backgroundColor: "var(--surface, rgb(15, 15, 26))",
             }}
           >
             {/* Header */}

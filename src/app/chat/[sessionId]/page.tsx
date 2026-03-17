@@ -51,6 +51,8 @@ export default function ChatPage() {
 
   const [panels, setPanels] = useState<Panel[]>([]);
   const [panelData, setPanelData] = useState<Record<string, unknown>>({});
+  const panelDataRef = useRef<Record<string, unknown>>({});
+  useEffect(() => { panelDataRef.current = panelData; }, [panelData]);
   const [sharedPlacements, setSharedPlacements] = useState<Record<string, "modal" | "dock" | "dock-left" | "dock-right" | "dock-bottom">>({});
   const [layout, setLayout] = useState<LayoutConfig | null>(null);
   const [title, setTitle] = useState("");
@@ -409,7 +411,13 @@ export default function ChatPage() {
   const sendMessage = useCallback(
     (text: string) => {
       if (text.startsWith("OOC:")) setShowOOC(true);
-      if (!text.startsWith("OOC:")) setPopupQueue([]); // Clear popups immediately
+      if (!text.startsWith("OOC:")) {
+        setPopupQueue([]);
+        // Clear popup flags so panel scripts don't get stuck queuing
+        const win = window as unknown as Record<string, unknown>;
+        win.__popupsPlaying = false;
+        win.__pendingPanelMsg = null;
+      }
       prepareSend(text);
       sendChat(text);
     },
@@ -611,9 +619,9 @@ export default function ChatPage() {
     fetch(`/api/sessions/${sessionId}/variables`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ __modals: { ...modalsState, [name]: false } }),
+      body: JSON.stringify({ __modals: { [name]: false } }),
     });
-  }, [sessionId, modalsState]);
+  }, [sessionId]);
 
   // Filter OOC messages unless toggle is on
   const visibleMessages = showOOC ? messages : messages.filter((m) => !m.ooc);
@@ -659,6 +667,27 @@ export default function ChatPage() {
     window.addEventListener("__panel_send_message", handler);
     return () => window.removeEventListener("__panel_send_message", handler);
   }, [sendMessage]);
+
+  // Popup queue completion: flush any pending panel messages that were queued during playback
+  const handlePopupQueueComplete = useCallback(() => {
+    const win = window as unknown as Record<string, unknown>;
+    win.__popupsPlaying = false;
+    setPopupQueue([]);
+    // Clear __popups from variables.json so panel engine doesn't re-broadcast them
+    if (sessionId) {
+      fetch(`/api/sessions/${sessionId}/variables`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ __popups: [] }),
+      });
+    }
+    const pending = win.__pendingPanelMsg as string | null;
+    if (pending) {
+      win.__pendingPanelMsg = null;
+      // Brief delay to let popup exit animation finish before sending message
+      setTimeout(() => sendMessage(pending), 200);
+    }
+  }, [sendMessage, sessionId]);
 
   return (
     <div className="flex flex-col h-screen">
@@ -724,16 +753,15 @@ export default function ChatPage() {
               playChunkSequence(messageId, 0);
             }}
           />
-          {activeDockBottom.length > 0 && (
-            <DockPanel
-              panels={activeDockBottom}
-              direction="bottom"
-              maxSize={dockMaxHeight}
-              sessionId={sessionId}
-              panelData={panelData}
-              onClose={handleDockClose}
-            />
-          )}
+          <DockPanel
+            panels={activeDockBottom}
+            direction="bottom"
+            maxSize={dockMaxHeight}
+            sessionId={sessionId}
+            panelData={panelData}
+            onClose={handleDockClose}
+            open={activeDockBottom.length > 0}
+          />
           <ChatInput
             disabled={isStreaming}
             onSend={sendMessage}
@@ -808,11 +836,11 @@ export default function ChatPage() {
           sessionId={sessionId}
           panelData={panelData}
           onClose={() => {
-            // Update __modals to close this panel
+            // Server deep-merges __modals, so only send the key being changed
             fetch(`/api/sessions/${sessionId}/variables`, {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ __modals: { ...modalsState, [p.name]: false } }),
+              body: JSON.stringify({ __modals: { [p.name]: false } }),
             });
           }}
           onSendMessage={sendMessage}
@@ -822,6 +850,7 @@ export default function ChatPage() {
         <PopupEffect
           popups={popupQueue}
           themeColor={themeColor}
+          onQueueComplete={handlePopupQueueComplete}
         />
       )}
       <SyncModal

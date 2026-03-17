@@ -53,7 +53,21 @@ export async function PATCH(
     let raw = fs.readFileSync(filePath, "utf-8");
     if (raw.charCodeAt(0) === 0xfeff) raw = raw.slice(1);
     const current = JSON.parse(raw);
+    // Deep-merge __modals to prevent race conditions between concurrent panel updates.
+    // Without this, two panels reading __modals, spreading, and PATCHing can overwrite
+    // each other's changes (last-write-wins on the full __modals object).
     const merged = { ...current, ...patch };
+    if (
+      patch.__modals &&
+      typeof patch.__modals === "object" &&
+      !Array.isArray(patch.__modals) &&
+      typeof current.__modals === "object" &&
+      !Array.isArray(current.__modals) &&
+      current.__modals !== null
+    ) {
+      merged.__modals = { ...current.__modals, ...patch.__modals };
+      console.log("[PATCH __modals] current:", JSON.stringify(current.__modals), "patch:", JSON.stringify(patch.__modals), "result:", JSON.stringify(merged.__modals));
+    }
     fs.writeFileSync(filePath, JSON.stringify(merged, null, 2), "utf-8");
     return NextResponse.json(merged);
   } catch {

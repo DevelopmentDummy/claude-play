@@ -23,6 +23,12 @@ export function usePanelBridge(
   useEffect(() => {
     const bridge = {
       sendMessage(text: string) {
+        const win = window as unknown as Record<string, unknown>;
+        // If popups are playing/pending, queue the message for later delivery
+        if (win.__popupsPlaying) {
+          win.__pendingPanelMsg = text;
+          return;
+        }
         window.dispatchEvent(new CustomEvent("__panel_send_message", { detail: text }));
       },
       fillInput(text: string) {
@@ -75,6 +81,9 @@ export function usePanelBridge(
       },
       async showPopup(template: string, opts?: { duration?: number; vars?: Record<string, unknown> }) {
         if (!sessionId) return;
+        // Signal that popups are pending — sendMessage will queue until playback finishes
+        const win = window as unknown as Record<string, unknown>;
+        win.__popupsPlaying = true;
         const existing = ((panelData || {}).__popups as Array<Record<string, unknown>>) || [];
         const entry: Record<string, unknown> = { template };
         if (opts?.duration) entry.duration = opts.duration;

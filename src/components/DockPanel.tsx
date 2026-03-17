@@ -19,6 +19,7 @@ interface DockPanelProps {
   panelData?: Record<string, unknown>;
   onClose: (name: string) => void;
   floating?: boolean;
+  open?: boolean;
 }
 
 export default function DockPanel({
@@ -29,11 +30,24 @@ export default function DockPanel({
   panelData,
   onClose,
   floating,
+  open = true,
 }: DockPanelProps) {
   const [activeTab, setActiveTab] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const shadowRef = useRef<ShadowRoot | null>(null);
   const [modalSrc, setModalSrc] = useState<string | null>(null);
+  const [visible, setVisible] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  // Animate open/close
+  useEffect(() => {
+    if (open) {
+      // Delay to allow mount before animating in
+      requestAnimationFrame(() => setVisible(true));
+    } else {
+      setVisible(false);
+    }
+  }, [open]);
 
   // Clamp activeTab if panels shrink
   useEffect(() => {
@@ -99,8 +113,6 @@ export default function DockPanel({
     }
   }, [current?.html, current?.name]);
 
-  if (!current) return null;
-
   const showTabs = panels.length > 1;
   const isSide = direction === "left" || direction === "right";
 
@@ -116,7 +128,7 @@ export default function DockPanel({
       ? { width: "380px", maxHeight: maxSize ? `${maxSize}px` : "50vh" }
       : { maxHeight: maxSize ? `${maxSize}px` : "50vh" };
 
-  const tabBar = showTabs && (
+  const tabBar = showTabs && current && (
     <div className={`flex items-center gap-0 ${isSide ? "border-b" : "border-b"} border-border/50 px-2 shrink-0`}>
       {panels.map((p, i) => (
         <button
@@ -145,7 +157,7 @@ export default function DockPanel({
     </div>
   );
 
-  const singleHeader = !showTabs && (
+  const singleHeader = !showTabs && current && (
     <div className="flex items-center justify-between px-4 py-2 border-b border-border/50 shrink-0">
       <span
         className="text-[11px] font-semibold uppercase tracking-wider"
@@ -167,8 +179,21 @@ export default function DockPanel({
   return (
     <>
       <div
-        className={`${borderClass} bg-surface/80 backdrop-blur-[16px] shrink-0 flex flex-col ${floating ? "overflow-hidden" : ""}`}
-        style={sizeStyle}
+        ref={wrapperRef}
+        className={`${borderClass} bg-surface/80 backdrop-blur-[16px] shrink-0 flex flex-col ${floating ? "overflow-hidden" : ""} transition-all duration-200 ease-out`}
+        style={{
+          ...sizeStyle,
+          ...(visible
+            ? { opacity: 1, transform: "translateY(0)" }
+            : {
+                opacity: 0,
+                transform: isSide ? (direction === "left" ? "translateX(-8px)" : "translateX(8px)") : "translateY(8px)",
+                maxHeight: floating ? sizeStyle.maxHeight : "0px",
+                overflow: "hidden",
+                borderWidth: 0,
+                padding: 0,
+              }),
+        }}
       >
         {tabBar}
         {singleHeader}

@@ -673,7 +673,7 @@ export default function ChatMessages({
           <ThinkingIndicator />
         )}
         {/* Floating dock panel — sticky at bottom, overlaps messages like CSS float */}
-        {hasDockFloat && activeDockPanels && activeDockPanels.length > 0 && onDockClose && (
+        {onDockClose && (
           <div
             ref={dockWrapperRef}
             className={`sticky bottom-2 z-10 ${dockSide === "right" ? "self-end" : "self-start"}`}
@@ -682,16 +682,18 @@ export default function ChatMessages({
               minWidth: dockWidthProp ? undefined : "280px",
               maxWidth: dockWidthProp ? `min(${dockWidthProp}px, calc(100vw - 2rem))` : "50%",
               marginTop: dockMeasuredHeight > 0 ? `-${dockMeasuredHeight}px` : undefined,
+              pointerEvents: hasDockFloat ? "auto" : "none",
             }}
           >
             <DockPanel
-              panels={activeDockPanels}
+              panels={activeDockPanels || []}
               direction={dockSide as "left" | "right"}
               maxSize={dockMaxSize}
               sessionId={sessionId}
               panelData={panelData}
               onClose={onDockClose}
               floating
+              open={hasDockFloat && (activeDockPanels?.length ?? 0) > 0}
             />
           </div>
         )}

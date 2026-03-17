@@ -92,6 +92,19 @@ export async function POST(
       try {
         const current = JSON.parse(fs.readFileSync(varsPath, "utf-8"));
         const merged = { ...current, ...result.variables };
+        // Deep-merge __modals: engine returns full variables (including stale __modals
+        // from when it first read the file). Without deep-merge, concurrent panel PATCHes
+        // to __modals (e.g. advance:true, values:dismissible) get overwritten.
+        if (
+          result.variables.__modals &&
+          typeof result.variables.__modals === "object" &&
+          !Array.isArray(result.variables.__modals) &&
+          typeof current.__modals === "object" &&
+          !Array.isArray(current.__modals) &&
+          current.__modals !== null
+        ) {
+          merged.__modals = { ...current.__modals, ...result.variables.__modals };
+        }
         fs.writeFileSync(varsPath, JSON.stringify(merged, null, 2), "utf-8");
       } catch {}
     }

@@ -73,6 +73,37 @@ function pickString(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+/**
+ * Track filenames requested in this session to detect same-turn collisions.
+ * Intentional overwrites (e.g. standing_portrait.png across turns) are allowed —
+ * only duplicate names within a single AI turn (rapid successive calls) are deduped.
+ */
+const _pendingImageNames = new Set();
+
+function deduplicateImageFilename(name) {
+  if (!name || !sessionDir) return name;
+  // First time this name is used → allow it (may intentionally overwrite an older file)
+  if (!_pendingImageNames.has(name)) {
+    _pendingImageNames.add(name);
+    // Auto-clear after 30s — by then the turn is long done
+    setTimeout(() => _pendingImageNames.delete(name), 30_000);
+    return name;
+  }
+  // Same name requested again while still pending → collision within same turn
+  const imagesDir = path.join(sessionDir, "images");
+  const ext = path.extname(name);
+  const base = name.slice(0, ext.length ? -ext.length : undefined);
+  let counter = 2;
+  let candidate = `${base}_${counter}${ext}`;
+  while (_pendingImageNames.has(candidate) || fs.existsSync(path.join(imagesDir, candidate))) {
+    counter++;
+    candidate = `${base}_${counter}${ext}`;
+  }
+  _pendingImageNames.add(candidate);
+  setTimeout(() => _pendingImageNames.delete(candidate), 30_000);
+  return candidate;
+}
+
 function buildComfyPrompt(prompt, useDefaults = true) {
   const body = pickString(prompt);
   if (!body) return "";
@@ -374,7 +405,7 @@ server.registerTool(
       const workflow = pickString(input.workflow) || pickString(input.template) || defaultTemplate;
       const useDefaults = input.use_defaults !== false;
       const explicitPrompt = pickString(input.prompt);
-      const filename = pickString(input.filename) || `comfyui_${Date.now()}.png`;
+      const filename = deduplicateImageFilename(pickString(input.filename) || `comfyui_${Date.now()}.png`);
       const params = { ...(input.params || {}) };
 
       if (explicitPrompt) {
@@ -487,7 +518,7 @@ server.registerTool(
           negative_prompt: getComfyNegative(input.negative_prompt),
           ...(typeof input.seed === "number" ? { seed: input.seed } : {}),
         },
-        filename: pickString(input.filename) || `comfyui_${Date.now()}.png`,
+        filename: deduplicateImageFilename(pickString(input.filename) || `comfyui_${Date.now()}.png`),
         loras: input.loras,
         ...(input.persona ? { persona: input.persona } : {}),
       });
