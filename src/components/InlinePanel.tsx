@@ -25,7 +25,7 @@ export default function InlinePanel({ html, sessionId }: InlinePanelProps) {
     if (!shadow) return;
 
     shadow.innerHTML =
-      `<style>:host{display:block;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:13px;line-height:1.6;color:#e0e0e0;}img{cursor:zoom-in;}</style>` +
+      `<style>:host{font-family:inherit;font-size:inherit;line-height:inherit;color:inherit;}img{cursor:zoom-in;}</style>` +
       html;
 
     // Execute <script> tags via Function() with shadow reference
@@ -74,7 +74,7 @@ export default function InlinePanel({ html, sessionId }: InlinePanelProps) {
     <>
       <div
         ref={containerRef}
-        className="my-2 rounded-xl overflow-hidden border border-white/[0.06] bg-[rgba(15,15,26,0.25)] p-3"
+        style={{ display: 'contents' }}
         data-session-id={sessionId}
       />
       {modalSrc && <ImageModal src={modalSrc} onClose={() => setModalSrc(null)} />}

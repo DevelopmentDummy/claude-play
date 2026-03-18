@@ -183,15 +183,22 @@ function renderInline(
   let match;
 
   while ((match = regex.exec(text)) !== null) {
+    const m = match[0];
+    const isMediaToken = (m.startsWith("$PANEL:") || m.startsWith("$IMAGE:")) && m.endsWith("$");
+
     if (match.index > lastIndex) {
-      nodes.push(
-        <span key={`${keyPrefix}-${lastIndex}`}>
-          {text.slice(lastIndex, match.index)}
-        </span>
-      );
+      let preText = text.slice(lastIndex, match.index);
+      // Strip trailing newlines before $PANEL:/$IMAGE: tokens (whitespace-pre-wrap would render them as blank lines)
+      if (isMediaToken) preText = preText.replace(/\n+$/, "");
+      if (preText) {
+        nodes.push(
+          <span key={`${keyPrefix}-${lastIndex}`}>
+            {preText}
+          </span>
+        );
+      }
     }
 
-    const m = match[0];
     if (m.startsWith("$PANEL:") && m.endsWith("$") && panels) {
       const panelName = m.slice(7, -1);
       const panel = panels.find((p) => p.name === panelName);
@@ -204,6 +211,12 @@ function renderInline(
           />
         );
       }
+      // Skip leading newlines after panel token
+      const afterIdx = match.index + m.length;
+      const leadingNl = text.slice(afterIdx).match(/^\n+/);
+      if (leadingNl) lastIndex = afterIdx + leadingNl[0].length;
+      else lastIndex = afterIdx;
+      continue;
     } else if (m.startsWith("$IMAGE:") && m.endsWith("$") && (sessionId || personaName)) {
       const imgPath = m.slice(7, -1);
       nodes.push(
@@ -215,6 +228,12 @@ function renderInline(
           onReady={onMediaReady}
         />
       );
+      // Skip leading newlines after image token
+      const afterIdx = match.index + m.length;
+      const leadingNl = text.slice(afterIdx).match(/^\n+/);
+      if (leadingNl) lastIndex = afterIdx + leadingNl[0].length;
+      else lastIndex = afterIdx;
+      continue;
     } else if (m.startsWith("**") && m.endsWith("**")) {
       nodes.push(
         <strong key={`${keyPrefix}-${match.index}`} className="font-semibold">
@@ -673,7 +692,7 @@ export default function ChatMessages({
           <ThinkingIndicator />
         )}
         {/* Floating dock panel — sticky at bottom, overlaps messages like CSS float */}
-        {onDockClose && (
+        {onDockClose && hasDockFloat && (
           <div
             ref={dockWrapperRef}
             className={`sticky bottom-2 z-10 ${dockSide === "right" ? "self-end" : "self-start"}`}

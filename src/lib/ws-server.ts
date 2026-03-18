@@ -158,7 +158,8 @@ function handleMessage(
 
       // Flush pending event headers and prepend to AI message
       const eventHeaders = isOOC ? "" : instance.flushEvents();
-      const aiText = eventHeaders ? `${eventHeaders}\n${text}` : text;
+      const oocHint = isOOC ? "[OOC 메시지입니다. RP 응답(dialog_response)을 포함하지 마세요. 메타/시스템 수준으로만 응답하세요.]\n" : "";
+      const aiText = `${oocHint}${eventHeaders}${eventHeaders ? "\n" : ""}${text}`;
       instance.claude.send(aiText);
 
       // Broadcast user message to other clients in same session (sender already has it locally)

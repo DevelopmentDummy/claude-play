@@ -188,7 +188,7 @@ export default function DockPanel({
             : {
                 opacity: 0,
                 transform: isSide ? (direction === "left" ? "translateX(-8px)" : "translateX(8px)") : "translateY(8px)",
-                maxHeight: floating ? sizeStyle.maxHeight : "0px",
+                maxHeight: "0px",
                 overflow: "hidden",
                 borderWidth: 0,
                 padding: 0,
