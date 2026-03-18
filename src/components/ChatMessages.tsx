@@ -184,12 +184,12 @@ function renderInline(
 
   while ((match = regex.exec(text)) !== null) {
     const m = match[0];
-    const isMediaToken = (m.startsWith("$PANEL:") || m.startsWith("$IMAGE:")) && m.endsWith("$");
+    const isImageToken = m.startsWith("$IMAGE:") && m.endsWith("$");
 
     if (match.index > lastIndex) {
       let preText = text.slice(lastIndex, match.index);
-      // Strip trailing newlines before $PANEL:/$IMAGE: tokens (whitespace-pre-wrap would render them as blank lines)
-      if (isMediaToken) preText = preText.replace(/\n+$/, "");
+      // Strip trailing newlines before $IMAGE: tokens (whitespace-pre-wrap would render them as blank lines)
+      if (isImageToken) preText = preText.replace(/\n+$/, "");
       if (preText) {
         nodes.push(
           <span key={`${keyPrefix}-${lastIndex}`}>
@@ -211,12 +211,6 @@ function renderInline(
           />
         );
       }
-      // Skip leading newlines after panel token
-      const afterIdx = match.index + m.length;
-      const leadingNl = text.slice(afterIdx).match(/^\n+/);
-      if (leadingNl) lastIndex = afterIdx + leadingNl[0].length;
-      else lastIndex = afterIdx;
-      continue;
     } else if (m.startsWith("$IMAGE:") && m.endsWith("$") && (sessionId || personaName)) {
       const imgPath = m.slice(7, -1);
       nodes.push(

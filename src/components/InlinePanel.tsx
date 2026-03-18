@@ -25,7 +25,7 @@ export default function InlinePanel({ html, sessionId }: InlinePanelProps) {
     if (!shadow) return;
 
     shadow.innerHTML =
-      `<style>:host{font-family:inherit;font-size:inherit;line-height:inherit;color:inherit;}img{cursor:zoom-in;}</style>` +
+      `<style>:host{font-family:inherit;font-size:inherit;line-height:inherit;color:inherit;white-space:normal;display:block;}img{cursor:zoom-in;}</style>` +
       html;
 
     // Execute <script> tags via Function() with shadow reference
