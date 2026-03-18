@@ -939,6 +939,9 @@ export class ComfyUIClient {
     const useGpuManager = await this.gpuManagerAvailable();
 
     if (useGpuManager) {
+      // No retry (attempts: 1) — GPU Manager has its own queue and error handling.
+      // Retrying would duplicate the request in the queue.
+      // Generous timeout (30 min) to account for queue wait + processing time.
       const res = await this.fetchWithRetry(
         `${this.gpuManagerUrl}/comfyui/generate`,
         {
@@ -946,7 +949,7 @@ export class ComfyUIClient {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ prompt, timeout: 600_000 }),
         },
-        { attempts: 2, timeoutMs: 660_000 },
+        { attempts: 1, timeoutMs: 1_800_000 },
       );
 
       if (!res.ok) {
