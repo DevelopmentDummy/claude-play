@@ -805,13 +805,30 @@ export class ComfyUIClient {
     return `http://127.0.0.1:${port}`;
   }
 
+  /** Cache GPU Manager availability for 30s to avoid repeated health checks
+   *  and prevent fallback to direct ComfyUI when GPU Manager is just busy. */
+  private _gpuManagerUp: boolean | null = null;
+  private _gpuManagerCheckedAt = 0;
+
   private async gpuManagerAvailable(): Promise<boolean> {
-    try {
-      const res = await fetch(`${this.gpuManagerUrl}/health`);
-      return res.ok;
-    } catch {
-      return false;
+    const now = Date.now();
+    // Return cached result if checked recently (30s)
+    if (this._gpuManagerUp !== null && now - this._gpuManagerCheckedAt < 30_000) {
+      return this._gpuManagerUp;
     }
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5_000);
+      const res = await fetch(`${this.gpuManagerUrl}/health`, {
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      this._gpuManagerUp = res.ok;
+    } catch {
+      this._gpuManagerUp = false;
+    }
+    this._gpuManagerCheckedAt = now;
+    return this._gpuManagerUp;
   }
 
   /**
