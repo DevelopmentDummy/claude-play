@@ -322,6 +322,11 @@ export class PanelEngine {
     }
   }
 
+  /** Invalidate autoRefresh cache for a specific panel, forcing re-render on next render cycle */
+  invalidatePanel(name: string): void {
+    this.autoRefreshCache.delete(name);
+  }
+
   /** Force reload all data and re-render (called at end of Claude turn) */
   reload(): void {
     this.loadVariables();

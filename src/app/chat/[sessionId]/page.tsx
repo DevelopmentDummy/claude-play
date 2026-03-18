@@ -615,11 +615,11 @@ export default function ChatPage() {
   const activeDockLeft = isMobile ? [] : toDockEntries(dockLeftPanels);
   const activeDockRight = isMobile ? [] : toDockEntries(dockRightPanels);
 
-  const handleDockClose = useCallback((name: string) => {
-    fetch(`/api/sessions/${sessionId}/variables`, {
-      method: "PATCH",
+  const handleModalClose = useCallback((name: string) => {
+    fetch(`/api/sessions/${sessionId}/modals`, {
+      method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ __modals: { [name]: false } }),
+      body: JSON.stringify({ action: "close", name }),
     });
   }, [sessionId]);
 
@@ -733,7 +733,7 @@ export default function ChatPage() {
             dockMaxSize={dockMaxHeight}
             dockWidth={dockWidth}
             panelData={panelData}
-            onDockClose={handleDockClose}
+            onDockClose={handleModalClose}
             audioMap={audioMap}
             audioStatus={audioStatus}
             onRequestTts={(messageId, text) => {
@@ -759,7 +759,7 @@ export default function ChatPage() {
             maxSize={dockMaxHeight}
             sessionId={sessionId}
             panelData={panelData}
-            onClose={handleDockClose}
+            onClose={handleModalClose}
             open={activeDockBottom.length > 0}
           />
           <ChatInput
@@ -835,14 +835,7 @@ export default function ChatPage() {
           maxHeight={modalSize[p.name]?.maxHeight}
           sessionId={sessionId}
           panelData={panelData}
-          onClose={() => {
-            // Server deep-merges __modals, so only send the key being changed
-            fetch(`/api/sessions/${sessionId}/variables`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ __modals: { [p.name]: false } }),
-            });
-          }}
+          onClose={() => handleModalClose(p.name)}
           onSendMessage={sendMessage}
         />
       ))}

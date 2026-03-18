@@ -79,6 +79,36 @@ export function usePanelBridge(
         });
         return res.json();
       },
+      /** Open a modal. Auto-closes other modals in the same group (defined in layout.json). */
+      async openModal(name: string, mode?: "dismissible" | true) {
+        if (!sessionId) return;
+        const res = await fetch(`/api/sessions/${sessionId}/modals`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "open", name, mode: mode ?? "dismissible" }),
+        });
+        return res.json();
+      },
+      /** Close a specific modal. */
+      async closeModal(name: string) {
+        if (!sessionId) return;
+        const res = await fetch(`/api/sessions/${sessionId}/modals`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "close", name }),
+        });
+        return res.json();
+      },
+      /** Close all modals, optionally keeping some open. */
+      async closeAllModals(except?: string[]) {
+        if (!sessionId) return;
+        const res = await fetch(`/api/sessions/${sessionId}/modals`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "closeAll", except }),
+        });
+        return res.json();
+      },
       async showPopup(template: string, opts?: { duration?: number; vars?: Record<string, unknown> }) {
         if (!sessionId) return;
         // Signal that popups are pending — sendMessage will queue until playback finishes

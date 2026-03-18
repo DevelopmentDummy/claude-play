@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { NextResponse } from "next/server";
 import { getServices } from "@/lib/services";
+import { getSessionInstance } from "@/lib/session-registry";
 
 // System JSON files that cannot be patched via this endpoint
 const PROTECTED_FILES = new Set([
@@ -49,6 +50,10 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
+  // Extract __refreshPanels before merging — it's a signal, not persistent data
+  const refreshPanels = patch.__refreshPanels as string[] | undefined;
+  delete patch.__refreshPanels;
+
   try {
     let raw = fs.readFileSync(filePath, "utf-8");
     if (raw.charCodeAt(0) === 0xfeff) raw = raw.slice(1);
@@ -68,7 +73,20 @@ export async function PATCH(
       merged.__modals = { ...current.__modals, ...patch.__modals };
       console.log("[PATCH __modals] current:", JSON.stringify(current.__modals), "patch:", JSON.stringify(patch.__modals), "result:", JSON.stringify(merged.__modals));
     }
+    // Strip __refreshPanels from merged output (should not persist)
+    delete merged.__refreshPanels;
     fs.writeFileSync(filePath, JSON.stringify(merged, null, 2), "utf-8");
+
+    // Invalidate autoRefresh cache for requested panels (before fs.watch triggers render)
+    if (Array.isArray(refreshPanels) && refreshPanels.length > 0) {
+      const instance = getSessionInstance(id);
+      if (instance) {
+        for (const name of refreshPanels) {
+          instance.panels.invalidatePanel(name);
+        }
+      }
+    }
+
     return NextResponse.json(merged);
   } catch {
     return NextResponse.json({ error: `Failed to update ${fileName}` }, { status: 500 });

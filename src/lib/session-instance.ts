@@ -272,9 +272,16 @@ export class SessionInstance {
     } catch { /* ignore */ }
   }
 
-  /** Queue an event header to prepend to the next user message */
+  /** Queue an event header to prepend to the next user message.
+   *  If the header starts with a [TAG] prefix (e.g., [SCHEDULE_SET]),
+   *  any existing event with the same prefix is replaced to prevent duplicates. */
   queueEvent(header: string): void {
-    const headers = this.readPendingEvents();
+    let headers = this.readPendingEvents();
+    const prefixMatch = header.match(/^\[([^\]]+)\]/);
+    if (prefixMatch) {
+      const prefix = prefixMatch[0];
+      headers = headers.filter(h => !h.startsWith(prefix));
+    }
     headers.push(header);
     this.writePendingEvents(headers);
   }
