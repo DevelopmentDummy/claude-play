@@ -35,6 +35,10 @@ export async function POST(req: Request) {
   instance.panels.watch(personaDir);
 
   const runtimeSystemPrompt = svc.sessions.buildBuilderSystemPrompt(name);
+  // For Codex: write instructions file (file-based prompt delivery via model_instructions_file)
+  if (provider === "codex") {
+    svc.sessions.writeCodexInstructions(personaDir, runtimeSystemPrompt);
+  }
   // Builder default effort: highest for each provider
   const effectiveEffort = effort || (provider === "codex" ? "xhigh" : "high");
   instance.claude.spawn(personaDir, undefined, model || undefined, runtimeSystemPrompt, effectiveEffort);

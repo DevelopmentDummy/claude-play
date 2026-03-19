@@ -75,6 +75,10 @@ export async function POST(
   const resolvedOptions = svc.sessions.resolveOptions(sessionDir);
   if (!instance.claude.isRunning() || rawModel) {
     const runtimeSystemPrompt = svc.sessions.buildServiceSystemPrompt(info.persona, provider, resolvedOptions);
+    // For Codex: write instructions file (file-based prompt delivery via model_instructions_file)
+    if (provider === "codex") {
+      svc.sessions.writeCodexInstructions(sessionDir, runtimeSystemPrompt);
+    }
     const skipPerms = resolvedOptions.skipPermissions !== false;
     instance.claude.spawn(sessionDir, resumeId, effectiveModel || undefined, runtimeSystemPrompt, finalEffort, skipPerms);
   }

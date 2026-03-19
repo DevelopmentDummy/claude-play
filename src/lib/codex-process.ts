@@ -25,7 +25,6 @@ export class CodexProcess extends EventEmitter<CodexProcessEvents> {
   private cwd = "";
   private threadId: string | null = null;
   private model: string | undefined;
-  private systemPrompt: string | undefined;
   private effort: string | undefined;
 
   private requestId = 0;
@@ -40,7 +39,7 @@ export class CodexProcess extends EventEmitter<CodexProcessEvents> {
   /**
    * Start the codex app-server process and perform the initialize handshake.
    */
-  spawn(cwd: string, resumeId?: string, model?: string, appendSystemPrompt?: string, effort?: string): void {
+  spawn(cwd: string, resumeId?: string, model?: string, _appendSystemPrompt?: string, effort?: string): void {
     if (this.proc) {
       this.kill();
     }
@@ -48,7 +47,6 @@ export class CodexProcess extends EventEmitter<CodexProcessEvents> {
     this.cwd = cwd;
     this.threadId = resumeId || null;
     this.model = model;
-    this.systemPrompt = appendSystemPrompt;
     this.effort = effort;
     this.initialized = false;
     this.threadCreated = false;
@@ -182,13 +180,12 @@ export class CodexProcess extends EventEmitter<CodexProcessEvents> {
       }
 
       // Start turn (fire-and-forget, notifications stream back)
+      // System prompt is delivered via .codex/model-instructions.md (file-based),
+      // so baseInstructions is not needed here.
       const params: Record<string, unknown> = {
         threadId: this.threadId,
         input: [{ type: "text", text }],
       };
-      if (this.systemPrompt) {
-        params.baseInstructions = this.systemPrompt;
-      }
       if (this.model) {
         params.model = this.model;
       }
@@ -206,11 +203,12 @@ export class CodexProcess extends EventEmitter<CodexProcessEvents> {
    * Create or resume a thread.
    */
   private async ensureThread(): Promise<void> {
+    // System prompt is delivered via .codex/model-instructions.md (file-based),
+    // so baseInstructions is not needed for thread creation.
     const params: Record<string, unknown> = {};
 
     if (this.cwd) params.cwd = this.cwd;
     if (this.model) params.model = this.model;
-    if (this.systemPrompt) params.baseInstructions = this.systemPrompt;
     params.sandbox = "danger-full-access";
     params.approvalPolicy = "never";
 

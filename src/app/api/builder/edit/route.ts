@@ -61,6 +61,10 @@ export async function POST(req: Request) {
   // Only spawn if process is not running or provider changed
   if (!instance.claude.isRunning() || providerChanged) {
     const runtimeSystemPrompt = svc.sessions.buildBuilderSystemPrompt(name);
+    // For Codex: write instructions file (file-based prompt delivery via model_instructions_file)
+    if (provider === "codex") {
+      svc.sessions.writeCodexInstructions(personaDir, runtimeSystemPrompt);
+    }
     instance.claude.spawn(personaDir, resumeId, effectiveModel, runtimeSystemPrompt, effectiveEffort);
   }
 

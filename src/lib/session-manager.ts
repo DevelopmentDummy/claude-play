@@ -1660,7 +1660,7 @@ export class SessionManager {
     );
   }
 
-  /** Write .codex/config.toml with MCP server config for Codex CLI */
+  /** Write .codex/config.toml with MCP server config + model_instructions_file for Codex CLI */
   private writeCodexConfig(
     projectDir: string,
     personaName?: string,
@@ -1673,8 +1673,13 @@ export class SessionManager {
     const apiBase = (process.env.CLAUDE_BRIDGE_API_BASE || `http://127.0.0.1:${process.env.PORT || "3340"}`)
       .replace(/\/+$/, "");
 
+    // model_instructions_file: absolute path to instructions file
+    const instructionsPath = path.join(codexDir, "model-instructions.md");
+
     // Build TOML content
     const lines: string[] = [];
+    lines.push(`model_instructions_file = ${JSON.stringify(instructionsPath)}`);
+    lines.push(``);
     lines.push(`[mcp_servers.${CLAUDE_MCP_SERVER_NAME}]`);
     lines.push(`command = "node"`);
     lines.push(`args = [${JSON.stringify(serverScript)}]`);
@@ -1693,6 +1698,18 @@ export class SessionManager {
       lines.join("\n") + "\n",
       "utf-8"
     );
+  }
+
+  /**
+   * Write Codex model instructions file (.codex/model-instructions.md).
+   * Called before spawning Codex to ensure file-based prompt delivery.
+   */
+  writeCodexInstructions(projectDir: string, content: string): void {
+    const codexDir = path.join(projectDir, ".codex");
+    fs.mkdirSync(codexDir, { recursive: true });
+    const instructionsPath = path.join(codexDir, "model-instructions.md");
+    fs.writeFileSync(instructionsPath, content, "utf-8");
+    console.log(`[codex] Wrote model instructions: ${instructionsPath} (${content.length} chars)`);
   }
 
   private ensurePolicyContext(projectDir: string): void {
