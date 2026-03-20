@@ -22,8 +22,8 @@ function ask(question, defaultValue = "") {
 function confirm(question, defaultYes = true) {
   const hint = defaultYes ? "(Y/n)" : "(y/N)";
   if (AUTO_YES) {
-    console.log(`  ${question} ${hint} Y (auto)`);
-    return Promise.resolve(true);
+    console.log(`  ${question} ${hint} ${defaultYes ? "Y" : "N"} (auto)`);
+    return Promise.resolve(defaultYes);
   }
   return new Promise((resolve) => {
     rl.question(`  ${question} ${hint} `, (a) => {
@@ -162,7 +162,7 @@ async function stepComfyUI(gpuInfo) {
   const hasSource = fs.existsSync(path.join(submodulePath, "main.py"));
 
   if (!hasSource) {
-    if (await confirm("시스템에 ComfyUI가 이미 설치되어 있나요?")) {
+    if (await confirm("시스템에 ComfyUI가 이미 설치되어 있나요?", false)) {
       info("웹 셋업 마법사에서 ComfyUI 호스트/포트를 설정할 수 있습니다.");
       return true;
     }
