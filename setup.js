@@ -140,54 +140,50 @@ async function stepLocalTTS(pip, gpuInfo) {
 }
 
 async function stepComfyUI(gpuInfo) {
-  if (!gpuInfo || !gpuInfo.hasGpu || gpuInfo.vram < 8000) return null;
+  if (!gpuInfo || !gpuInfo.hasGpu || gpuInfo.vram < 8000) return false;
   header("Step 7: ComfyUI Setup (Optional)");
   info(`VRAM ${gpuInfo.vram} MB — ComfyUI image generation supported`);
 
-  if (await confirm("시스템에 ComfyUI가 이미 설치되어 있나요?")) {
-    const defaultPath = path.resolve(__dirname, "..", "ComfyUI");
-    const installPath = await ask(`ComfyUI 경로 (default: ${defaultPath}):`, defaultPath);
-    if (fs.existsSync(installPath)) {
-      info(`ComfyUI confirmed at ${installPath}`);
-      return installPath;
-    }
-    warn(`${installPath} 경로를 찾을 수 없습니다.`);
+  const submodulePath = path.join(__dirname, "comfyui_submodule");
+
+  // Already installed as submodule?
+  if (fs.existsSync(path.join(submodulePath, "main.py"))) {
+    info("ComfyUI submodule already installed");
+    return true;
   }
 
-  if (!await confirm("ComfyUI를 새로 설치하시겠습니까?", false)) return null;
+  if (await confirm("시스템에 ComfyUI가 이미 설치되어 있나요?")) {
+    info("웹 셋업 마법사에서 ComfyUI 호스트/포트를 설정할 수 있습니다.");
+    return true;
+  }
 
-  const defaultPath = path.resolve(__dirname, "..", "ComfyUI");
-  const installPath = await ask(`Install location (default: ${defaultPath}):`, defaultPath);
+  if (!await confirm("ComfyUI를 설치하시겠습니까?", false)) return false;
 
-  if (fs.existsSync(installPath)) {
-    info(`ComfyUI already exists at ${installPath}`);
+  info("Adding ComfyUI as git submodule...");
+  const cloneResult = run(`git submodule add https://github.com/comfyanonymous/ComfyUI.git comfyui_submodule`);
+  if (cloneResult === null || !fs.existsSync(path.join(submodulePath, "main.py"))) {
+    error("Failed to add ComfyUI submodule");
+    return false;
+  }
+
+  info("Installing ComfyUI dependencies...");
+  const python = findPython();
+  run(`${python} -m venv "${path.join(submodulePath, "venv")}"`);
+  const comfyPip = os.platform() === "win32"
+    ? path.join(submodulePath, "venv", "Scripts", "pip")
+    : path.join(submodulePath, "venv", "bin", "pip");
+  const pipResult = run(`"${comfyPip}" install -r "${path.join(submodulePath, "requirements.txt")}"`);
+  if (pipResult === null) {
+    warn("ComfyUI dependency installation failed. You may need to install them manually.");
   } else {
-    info("Cloning ComfyUI...");
-    const cloneResult = run(`git clone https://github.com/comfyanonymous/ComfyUI.git "${installPath}"`);
-    if (cloneResult === null || !fs.existsSync(installPath)) {
-      error("Failed to clone ComfyUI");
-      if (!await confirm("Continue without ComfyUI?")) process.exit(0);
-      return null;
-    }
-    info("Installing ComfyUI dependencies...");
-    const python = findPython();
-    run(`${python} -m venv "${path.join(installPath, "venv")}"`);
-    const comfyPip = os.platform() === "win32"
-      ? path.join(installPath, "venv", "Scripts", "pip")
-      : path.join(installPath, "venv", "bin", "pip");
-    const pipResult = run(`"${comfyPip}" install -r "${path.join(installPath, "requirements.txt")}"`);
-    if (pipResult === null) {
-      warn("ComfyUI dependency installation failed. You may need to install them manually.");
-    } else {
-      info("ComfyUI installed");
-    }
+    info("ComfyUI installed");
   }
 
   if (await confirm("Download recommended checkpoint model (Illustrious XL)?", false)) {
     const civitaiKey = await ask("CivitAI API key (or press Enter to skip):");
     if (civitaiKey) {
       info("Downloading checkpoint model... (this may take a while)");
-      const modelsDir = path.join(installPath, "models", "checkpoints");
+      const modelsDir = path.join(submodulePath, "models", "checkpoints");
       fs.mkdirSync(modelsDir, { recursive: true });
       const modelUrl = `https://civitai.com/api/download/models/1215564?token=${civitaiKey}`;
       const dlResult = run(`curl -L -o "${path.join(modelsDir, "illustrious-xl.safetensors")}" "${modelUrl}"`, { timeout: 600000 });
@@ -197,11 +193,11 @@ async function stepComfyUI(gpuInfo) {
         info("Checkpoint downloaded");
       }
     } else {
-      warn("No CivitAI key — download models manually to ComfyUI/models/checkpoints/");
+      warn("No CivitAI key — download models manually to comfyui_submodule/models/checkpoints/");
     }
   }
 
-  return installPath;
+  return true;
 }
 
 async function stepClaudeCLI() {
@@ -219,7 +215,7 @@ async function stepPort() {
   return port;
 }
 
-async function stepEnvLocal(port, comfyuiPath) {
+async function stepEnvLocal(port, hasComfyUI) {
   header("Step 10: Environment Configuration");
   const envPath = path.join(__dirname, ".env.local");
   if (fs.existsSync(envPath)) {
@@ -232,7 +228,7 @@ async function stepEnvLocal(port, comfyuiPath) {
     `ADMIN_PASSWORD=`,
     `TTS_ENABLED=true`,
   ];
-  if (comfyuiPath) {
+  if (hasComfyUI) {
     lines.push(`COMFYUI_HOST=127.0.0.1`);
     lines.push(`COMFYUI_PORT=8188`);
   }
@@ -301,10 +297,10 @@ async function main() {
   const pip = await stepVenv(python);
   const gpuInfo = await stepGpuDetect();
   await stepLocalTTS(pip, gpuInfo);
-  const comfyuiPath = await stepComfyUI(gpuInfo);
+  const hasComfyUI = await stepComfyUI(gpuInfo);
   await stepClaudeCLI();
   const port = await stepPort();
-  await stepEnvLocal(port, comfyuiPath);
+  await stepEnvLocal(port, hasComfyUI);
   await stepPortCheck(port);
   await stepDataDir();
 

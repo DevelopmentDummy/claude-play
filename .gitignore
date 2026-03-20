@@ -16,3 +16,7 @@ data/*.db-shm
 .restart-trigger
 gpu-manager/__pycache__/
 gpu-manager/venv/
+comfyui_submodule/venv/
+comfyui_submodule/models/
+comfyui_submodule/output/
+comfyui_submodule/input/
