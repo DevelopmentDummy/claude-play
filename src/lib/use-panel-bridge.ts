@@ -22,14 +22,15 @@ export function usePanelBridge(
 ) {
   useEffect(() => {
     const bridge = {
-      sendMessage(text: string) {
+      sendMessage(text: string, opts?: { silent?: boolean }) {
         const win = window as unknown as Record<string, unknown>;
+        const detail = opts?.silent ? { text, silent: true } : text;
         // If popups are playing/pending, queue the message for later delivery
         if (win.__popupsPlaying) {
-          win.__pendingPanelMsg = text;
+          win.__pendingPanelMsg = detail;
           return;
         }
-        window.dispatchEvent(new CustomEvent("__panel_send_message", { detail: text }));
+        window.dispatchEvent(new CustomEvent("__panel_send_message", { detail }));
       },
       fillInput(text: string) {
         window.dispatchEvent(new CustomEvent("__panel_fill_input", { detail: text }));

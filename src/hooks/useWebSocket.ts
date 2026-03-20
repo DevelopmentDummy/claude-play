@@ -86,8 +86,8 @@ export function useWebSocket({
   }, []);
 
   /** Send a chat message */
-  const sendChat = useCallback((text: string) => {
-    send("chat:send", { text });
+  const sendChat = useCallback((text: string, silent?: boolean) => {
+    send("chat:send", silent ? { text, silent: true } : { text });
   }, [send]);
 
   useEffect(() => {
