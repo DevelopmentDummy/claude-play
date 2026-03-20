@@ -1414,10 +1414,42 @@ export class SessionManager {
     return dir;
   }
 
-  /** Read the builder meta-prompt from the static file bundled with the app */
-  getBuilderPrompt(): string {
+  /** Read the builder meta-prompt, with conditional TTS section based on GPU Manager availability */
+  getBuilderPrompt(localTtsAvailable = false): string {
     const promptPath = path.join(this.appRoot, "builder-prompt.md");
-    return fs.readFileSync(promptPath, "utf-8");
+    let prompt = fs.readFileSync(promptPath, "utf-8");
+
+    if (!localTtsAvailable) {
+      // Replace Local TTS section with Edge-only notice
+      const startMarker = "<!-- LOCAL_TTS_SECTION_START -->";
+      const endMarker = "<!-- LOCAL_TTS_SECTION_END -->";
+      const startIdx = prompt.indexOf(startMarker);
+      const endIdx = prompt.indexOf(endMarker);
+      if (startIdx !== -1 && endIdx !== -1) {
+        const edgeOnlySection = [
+          "### 음성 설정 (`voice.json`) — 캐릭터 TTS 음성",
+          "",
+          "이 환경에는 Local TTS(Qwen3-TTS)가 설치되어 있지 않다. **Edge TTS만 사용 가능하다.**",
+          "",
+          "- Voice Design, Reference Audio, 음성 클로닝 관련 절차는 모두 건너뛴다",
+          "- `.pt` 파일 생성이 불가능하므로 voice design/클로닝 안내를 하지 마라",
+          "- Edge TTS를 사용하려면 `voice.json`에 `enabled: true`, `ttsProvider: \"edge\"` 설정",
+          "- 사용 가능한 Edge TTS 음성: `ko-KR-SunHiNeural` (여성), `ko-KR-InJoonNeural` (남성) 등",
+          "",
+          "```json",
+          "{",
+          "  \"enabled\": true,",
+          "  \"ttsProvider\": \"edge\",",
+          "  \"edgeVoice\": \"ko-KR-SunHiNeural\",",
+          "  \"language\": \"ko\"",
+          "}",
+          "```",
+        ].join("\n");
+        prompt = prompt.slice(0, startIdx) + edgeOnlySection + prompt.slice(endIdx + endMarker.length);
+      }
+    }
+
+    return prompt;
   }
 
   /** Save builder session info for resume */

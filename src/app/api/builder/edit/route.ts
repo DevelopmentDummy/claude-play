@@ -21,8 +21,19 @@ export async function POST(req: Request) {
   const personaDir = svc.sessions.getPersonaDir(name);
   svc.sessions.ensureClaudeRuntimeConfig(personaDir, name, "builder");
 
+  // Check Local TTS availability for conditional builder prompt
+  const gpuManagerPort = parseInt(process.env.GPU_MANAGER_PORT || String((parseInt(process.env.PORT || "3340", 10)) + 2), 10);
+  let localTtsAvailable = false;
+  try {
+    const healthRes = await fetch(`http://127.0.0.1:${gpuManagerPort}/health`, { signal: AbortSignal.timeout(2000) });
+    if (healthRes.ok) {
+      const health = await healthRes.json();
+      localTtsAvailable = health.tts_available === true;
+    }
+  } catch { /* GPU Manager unavailable */ }
+
   // Always overwrite CLAUDE.md and AGENTS.md with builder prompt
-  const builderPrompt = svc.sessions.getBuilderPrompt();
+  const builderPrompt = svc.sessions.getBuilderPrompt(localTtsAvailable);
   fs.writeFileSync(path.join(personaDir, "CLAUDE.md"), builderPrompt, "utf-8");
   fs.writeFileSync(path.join(personaDir, "AGENTS.md"), builderPrompt, "utf-8");
 
