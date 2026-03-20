@@ -174,7 +174,7 @@ export default function ChatPage() {
         };
         audio.onended = onDone;
         audio.onerror = onDone;
-        audio.play().catch(() => { qq.audioPlaying = false; qq.currentAudio = null; });
+        audio.play().catch((err) => { console.error("[playNext] play failed:", err); qq.audioPlaying = false; qq.currentAudio = null; });
         return current;
       });
     }
@@ -202,7 +202,7 @@ export default function ChatPage() {
 
   const enqueueMessage = useCallback((messageId: string, totalChunks: number) => {
     const pq = playQueueRef.current;
-    if (pq.includes(messageId)) return; // already queued
+    if (pq.includes(messageId)) return;
     pq.push(messageId);
     playStateRef.current[messageId] = { nextChunk: 0, totalChunks };
     if (pq.length === 1) {
@@ -378,6 +378,11 @@ export default function ChatPage() {
           tryResume();
         } else {
           // Generation started — register in audioStatus and enqueue for auto-play
+          // Update ref IMMEDIATELY so playNext sees it before React commits the state
+          audioStatusRef.current = {
+            ...audioStatusRef.current,
+            [messageId]: { generating: true, totalChunks, readyCount: audioStatusRef.current[messageId]?.readyCount || 0 },
+          };
           setAudioStatus((prev) => {
             const next = {
               ...prev,
@@ -409,7 +414,12 @@ export default function ChatPage() {
 
   // Send via WebSocket: update local UI state + send through WS
   const sendMessage = useCallback(
-    (text: string) => {
+    (text: string, opts?: { silent?: boolean }) => {
+      if (opts?.silent) {
+        // Silent: send to AI only, skip UI updates and history
+        sendChat(text, true);
+        return;
+      }
       if (text.startsWith("OOC:")) setShowOOC(true);
       if (!text.startsWith("OOC:")) {
         setPopupQueue([]);
@@ -659,9 +669,11 @@ export default function ChatPage() {
   // Listen for panel bridge sendMessage events
   useEffect(() => {
     const handler = (e: Event) => {
-      const text = (e as CustomEvent).detail;
-      if (typeof text === "string" && text.trim()) {
-        sendMessage(text);
+      const detail = (e as CustomEvent).detail;
+      if (typeof detail === "string") {
+        if (detail.trim()) sendMessage(detail);
+      } else if (detail && typeof detail === "object" && typeof detail.text === "string") {
+        if (detail.text.trim()) sendMessage(detail.text, { silent: !!detail.silent });
       }
     };
     window.addEventListener("__panel_send_message", handler);
@@ -681,11 +693,15 @@ export default function ChatPage() {
         body: JSON.stringify({ __popups: [] }),
       });
     }
-    const pending = win.__pendingPanelMsg as string | null;
+    const pending = win.__pendingPanelMsg as string | { text: string; silent?: boolean } | null;
     if (pending) {
       win.__pendingPanelMsg = null;
       // Brief delay to let popup exit animation finish before sending message
-      setTimeout(() => sendMessage(pending), 200);
+      if (typeof pending === "string") {
+        setTimeout(() => sendMessage(pending), 200);
+      } else {
+        setTimeout(() => sendMessage(pending.text, { silent: !!pending.silent }), 200);
+      }
     }
   }, [sendMessage, sessionId]);
 

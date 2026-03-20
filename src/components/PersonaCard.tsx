@@ -70,7 +70,10 @@ export default function PersonaCard({
           </div>
         )}
 
-        <div className="font-medium text-base mb-1 text-text">{displayName}</div>
+        <div className="font-medium text-base mb-0.5 text-text">{displayName}</div>
+        {name !== displayName && (
+          <div className="text-[11px] text-text-dim opacity-50 mb-0.5 font-mono truncate">{name}</div>
+        )}
         <div className="text-xs text-text-dim opacity-70">Start new session</div>
       </div>
 

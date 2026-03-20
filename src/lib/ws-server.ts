@@ -149,6 +149,14 @@ function handleMessage(
       const instance = getSessionInstance(client.sessionId);
       if (!instance) return;
 
+      const silent = !!msg.silent;
+
+      if (silent) {
+        // Silent mode: send to AI only — no history, no broadcast, no event flush
+        instance.claude.send(text);
+        break;
+      }
+
       const isOOC = text.startsWith("OOC:");
       instance.isOOC = isOOC;
       if (!isOOC) {

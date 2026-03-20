@@ -96,10 +96,11 @@ async function handleChatTts(body: Record<string, unknown>): Promise<HandlerResu
     return { status: 400, data: { error: "Missing messageId or text" } };
   }
 
-  const sessionId = body.sessionId as string;
-  if (!sessionId) {
+  const rawSessionId = body.sessionId as string;
+  if (!rawSessionId) {
     return { status: 400, data: { error: "sessionId required" } };
   }
+  const sessionId = decodeURIComponent(rawSessionId);
 
   const sm = getSessionManager();
   const sessionDir = sm.getSessionDir(sessionId);
@@ -121,7 +122,8 @@ async function handleChatTts(body: Record<string, unknown>): Promise<HandlerResu
   const provider = voiceConfig.ttsProvider || "comfyui";
   const isLocalTts = provider === "local" || provider === "comfyui";
 
-  wsBroadcast("audio:status", { status: "generating", messageId, totalChunks });
+  const wsFilter = { sessionId };
+  wsBroadcast("audio:status", { status: "generating", messageId, totalChunks }, wsFilter);
 
   if (provider === "edge") {
     const edgeVoice = voiceConfig.edgeVoice;
@@ -145,14 +147,14 @@ async function handleChatTts(body: Record<string, unknown>): Promise<HandlerResu
           });
           if (result.success) {
             const url = `/api/sessions/${sessionId}/files/audio/${audioFilename}`;
-            wsBroadcast("audio:ready", { url, messageId, chunkIndex: i, totalChunks });
+            wsBroadcast("audio:ready", { url, messageId, chunkIndex: i, totalChunks }, wsFilter);
           } else {
             console.error(`[tts] Edge chunk ${i} failed:`, result.error);
-            wsBroadcast("audio:status", { status: "error", messageId, chunkIndex: i, totalChunks });
+            wsBroadcast("audio:status", { status: "error", messageId, chunkIndex: i, totalChunks }, wsFilter);
           }
         } catch (err) {
           console.error(`[tts] Edge chunk ${i} error:`, err);
-          wsBroadcast("audio:status", { status: "error", messageId, chunkIndex: i, totalChunks });
+          wsBroadcast("audio:status", { status: "error", messageId, chunkIndex: i, totalChunks }, wsFilter);
         }
       }
     })();
@@ -186,12 +188,12 @@ async function handleChatTts(body: Record<string, unknown>): Promise<HandlerResu
             fs.writeFileSync(path.join(audioDir, audioFilename), audioBuffer);
 
             const url = `/api/sessions/${sessionId}/files/audio/${audioFilename}`;
-            wsBroadcast("audio:ready", { url, messageId, chunkIndex: globalIdx, totalChunks });
+            wsBroadcast("audio:ready", { url, messageId, chunkIndex: globalIdx, totalChunks }, wsFilter);
           }
         } catch (err) {
           console.error(`[tts] GPU Manager batch ${batchStart} error:`, err);
           for (let j = 0; j < batch.length; j++) {
-            wsBroadcast("audio:status", { status: "error", messageId, chunkIndex: batchStart + j, totalChunks });
+            wsBroadcast("audio:status", { status: "error", messageId, chunkIndex: batchStart + j, totalChunks }, wsFilter);
           }
         }
       }

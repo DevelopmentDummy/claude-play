@@ -11,23 +11,23 @@ export default function ToolBlock({ name, input }: ToolBlockProps) {
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="my-1.5 border border-border rounded-lg overflow-hidden">
+    <div className="inline-flex flex-col">
       <div
-        className="flex items-center gap-1.5 px-2.5 py-1.5 bg-surface-light cursor-pointer text-xs text-text-dim select-none hover:bg-[rgba(31,47,80,0.9)] transition-colors duration-fast"
+        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-surface-light border border-border/50 cursor-pointer text-[11px] text-text-dim select-none hover:bg-[rgba(31,47,80,0.9)] transition-colors duration-fast"
         onClick={() => setOpen(!open)}
       >
         <span
-          className="transition-transform duration-200"
+          className="text-[9px] transition-transform duration-200"
           style={{ transform: open ? "rotate(90deg)" : "none" }}
         >
           &#9654;
         </span>
-        <span>{name}</span>
+        <span className="truncate max-w-[200px]">{name}</span>
       </div>
       {open && (
-        <div className="p-2.5 text-xs">
+        <div className="mt-1 text-xs w-full min-w-[300px]">
           {input != null && (
-            <pre className="bg-code-bg p-2 rounded-md overflow-x-auto my-1">
+            <pre className="bg-code-bg p-2 rounded-md overflow-x-auto">
               <code className="font-mono text-[13px]">
                 {typeof input === "string"
                   ? input
