@@ -4,7 +4,7 @@
   "private": true,
   "description": "Next.js chat UI bridging to Claude Code CLI via NDJSON pipes",
   "scripts": {
-    "dev": "tsx watch --watch-path .restart-trigger --ignore ./data/** --ignore ./.next/** server.ts",
+    "dev": "tsx watch --include .restart-trigger --exclude ./data/** --exclude ./.next/** server.ts",
     "build": "next build",
     "start": "set NODE_ENV=production&& tsx server.ts"
   },
