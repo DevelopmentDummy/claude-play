@@ -333,13 +333,24 @@ async function main() {
   info("Starting server and opening web setup wizard...");
   rl.close();
 
-  // Open browser after a delay to let server start
-  setTimeout(() => {
-    const openCmd = os.platform() === "win32" ? `start "" "${url}"`
-      : os.platform() === "darwin" ? `open "${url}"`
-      : `xdg-open "${url}"`;
-    run(openCmd, { silent: true });
-  }, 5000);
+  // Poll until server is ready, then open browser
+  const http = require("http");
+  function waitAndOpen() {
+    const req = http.get(`http://127.0.0.1:${port}/api/setup/status`, (res) => {
+      if (res.statusCode === 200) {
+        info(`Server ready — opening ${url}`);
+        const openCmd = os.platform() === "win32" ? `start "" "${url}"`
+          : os.platform() === "darwin" ? `open "${url}"`
+          : `xdg-open "${url}"`;
+        run(openCmd, { silent: true });
+      } else {
+        setTimeout(waitAndOpen, 1000);
+      }
+    });
+    req.on("error", () => setTimeout(waitAndOpen, 1000));
+    req.setTimeout(2000, () => { req.destroy(); setTimeout(waitAndOpen, 1000); });
+  }
+  setTimeout(waitAndOpen, 2000);
 
   // Start server (this blocks — keeps process alive)
   const { spawn: spawnChild } = require("child_process");
