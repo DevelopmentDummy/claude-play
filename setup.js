@@ -151,7 +151,7 @@ async function stepComfyUI(gpuInfo) {
 
   // Already fully installed (main.py + venv)?
   const comfyVenvPip = os.platform() === "win32"
-    ? path.join(submodulePath, "venv", "Scripts", "pip")
+    ? path.join(submodulePath, "venv", "Scripts", "pip.exe")
     : path.join(submodulePath, "venv", "bin", "pip");
   if (fs.existsSync(path.join(submodulePath, "main.py")) && fs.existsSync(comfyVenvPip)) {
     info("ComfyUI submodule already installed");
@@ -189,7 +189,7 @@ async function stepComfyUI(gpuInfo) {
   const venvPath = path.join(submodulePath, "venv");
   run(`${python} -m venv "${venvPath}"`);
   const comfyPip = os.platform() === "win32"
-    ? path.join(venvPath, "Scripts", "pip")
+    ? path.join(venvPath, "Scripts", "pip.exe")
     : path.join(venvPath, "bin", "pip");
   if (!fs.existsSync(comfyPip)) {
     warn("Failed to create ComfyUI venv. Run manually: cd comfyui_submodule && python -m venv venv");
