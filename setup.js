@@ -160,24 +160,32 @@ async function stepComfyUI(gpuInfo) {
   if (!await confirm("ComfyUI를 설치하시겠습니까?", false)) return false;
 
   info("Adding ComfyUI as git submodule...");
-  const cloneResult = run(`git submodule add https://github.com/comfyanonymous/ComfyUI.git comfyui_submodule`);
-  if (cloneResult === null || !fs.existsSync(path.join(submodulePath, "main.py"))) {
+  run(`git submodule add https://github.com/comfyanonymous/ComfyUI.git comfyui_submodule`);
+  // Also try init+update in case submodule entry already exists
+  run(`git submodule update --init comfyui_submodule`);
+  if (!fs.existsSync(path.join(submodulePath, "main.py"))) {
     error("Failed to add ComfyUI submodule");
     return false;
   }
 
-  info("Installing ComfyUI dependencies...");
+  info("Setting up ComfyUI Python environment...");
   const python = findPython();
-  run(`${python} -m venv "${path.join(submodulePath, "venv")}"`);
-  const comfyPip = os.platform() === "win32"
-    ? path.join(submodulePath, "venv", "Scripts", "pip")
-    : path.join(submodulePath, "venv", "bin", "pip");
-  const pipResult = run(`"${comfyPip}" install -r "${path.join(submodulePath, "requirements.txt")}"`);
-  if (pipResult === null) {
-    warn("ComfyUI dependency installation failed. You may need to install them manually.");
-  } else {
-    info("ComfyUI installed");
+  if (!python) {
+    warn("Python not found — cannot set up ComfyUI venv. Install manually.");
+    return true;
   }
+  const venvPath = path.join(submodulePath, "venv");
+  run(`${python} -m venv "${venvPath}"`);
+  const comfyPip = os.platform() === "win32"
+    ? path.join(venvPath, "Scripts", "pip")
+    : path.join(venvPath, "bin", "pip");
+  if (!fs.existsSync(comfyPip)) {
+    warn("Failed to create ComfyUI venv. Run manually: cd comfyui_submodule && python -m venv venv");
+    return true;
+  }
+  info("Installing ComfyUI dependencies (this may take a while)...");
+  run(`"${comfyPip}" install -r "${path.join(submodulePath, "requirements.txt")}"`);
+  info("ComfyUI installed");
 
   if (await confirm("Download recommended checkpoint model (Illustrious XL)?", false)) {
     const civitaiKey = await ask("CivitAI API key (or press Enter to skip):");
