@@ -144,7 +144,17 @@ async function stepComfyUI(gpuInfo) {
   header("Step 7: ComfyUI Setup (Optional)");
   info(`VRAM ${gpuInfo.vram} MB — ComfyUI image generation supported`);
 
-  if (!await confirm("Install ComfyUI?", false)) return null;
+  if (await confirm("시스템에 ComfyUI가 이미 설치되어 있나요?")) {
+    const defaultPath = path.resolve(__dirname, "..", "ComfyUI");
+    const installPath = await ask(`ComfyUI 경로 (default: ${defaultPath}):`, defaultPath);
+    if (fs.existsSync(installPath)) {
+      info(`ComfyUI confirmed at ${installPath}`);
+      return installPath;
+    }
+    warn(`${installPath} 경로를 찾을 수 없습니다.`);
+  }
+
+  if (!await confirm("ComfyUI를 새로 설치하시겠습니까?", false)) return null;
 
   const defaultPath = path.resolve(__dirname, "..", "ComfyUI");
   const installPath = await ask(`Install location (default: ${defaultPath}):`, defaultPath);
@@ -298,17 +308,31 @@ async function main() {
   await stepPortCheck(port);
   await stepDataDir();
 
+  // Build for production
+  header("Building...");
+  run("npm run build");
+  if (fs.existsSync(path.join(__dirname, ".next"))) {
+    info("Build complete");
+  } else {
+    warn("Build may have failed — you can retry with: npm run build");
+  }
+
   header("Setup Complete!");
+  const url = `http://localhost:${port}/setup`;
   console.log(`
-  To start in development mode:
-    npm run dev
+  Opening ${url} in your browser...
 
-  To start in production mode:
-    npm run build && npm run start
-
-  Then open http://localhost:${port} in your browser
-  to complete the web setup wizard.
+  To start the server:
+    start.bat          (production)
+    start-dev.bat      (development)
 `);
+
+  // Open browser
+  const openCmd = os.platform() === "win32" ? `start "" "${url}"`
+    : os.platform() === "darwin" ? `open "${url}"`
+    : `xdg-open "${url}"`;
+  run(openCmd, { silent: true });
+
   rl.close();
 }
 
