@@ -731,7 +731,7 @@ export default function SetupPage() {
               />
             </div>
             <p style={{ ...styles.hint, padding: "4px 14px 0" }}>
-              Qwen3-TTS 모델을 사용한 로컬 음성 합성입니다. GPU가 필요하며, 음성 클로닝 기능을 제공합니다.
+              Qwen3-TTS 모델 기반 로컬 음성 합성 (음성 클로닝 지원). GPU 필수. 첫 사용 시 HuggingFace에서 모델을 자동 다운로드합니다 (~3.5GB).
             </p>
           </div>
         </div>
