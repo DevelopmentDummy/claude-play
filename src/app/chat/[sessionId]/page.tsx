@@ -174,7 +174,7 @@ export default function ChatPage() {
         };
         audio.onended = onDone;
         audio.onerror = onDone;
-        audio.play().catch((err) => { console.error("[playNext] play failed:", err); qq.audioPlaying = false; qq.currentAudio = null; });
+        audio.play().catch(() => { qq.audioPlaying = false; qq.currentAudio = null; setTimeout(playNext, 250); });
         return current;
       });
     }

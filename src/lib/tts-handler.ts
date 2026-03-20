@@ -75,16 +75,32 @@ function sanitizeTtsText(raw: string): string {
     .trim();
 }
 
-function splitTtsChunks(text: string, minLen = 80): string[] {
+function splitTtsChunks(text: string, maxLen = 150): string[] {
+  // Split by newlines first, then break long lines by sentence boundaries
   const lines = text.split(/\n+/).map(s => s.trim()).filter(s => s.length > 1);
+  const sentences: string[] = [];
+  for (const line of lines) {
+    if (line.length <= maxLen) {
+      sentences.push(line);
+    } else {
+      // Split on sentence-ending punctuation followed by space or end
+      const parts = line.split(/(?<=[.!?。！？…~]+)\s*/);
+      for (const p of parts) {
+        if (p.trim()) sentences.push(p.trim());
+      }
+    }
+  }
+  // Merge short sentences up to maxLen
   const chunks: string[] = [];
   let buf = "";
-  for (const line of lines) {
-    if (buf) buf += " ";
-    buf += line;
-    if (buf.length >= minLen) {
+  for (const s of sentences) {
+    if (!buf) {
+      buf = s;
+    } else if ((buf + " " + s).length <= maxLen) {
+      buf += " " + s;
+    } else {
       chunks.push(buf);
-      buf = "";
+      buf = s;
     }
   }
   if (buf) chunks.push(buf);

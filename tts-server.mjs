@@ -64,7 +64,7 @@ const server = createServer(async (req, res) => {
         rate: body.rate || "default",
         pitch: body.pitch || "default",
         outputFormat: body.outputFormat || "audio-24khz-96kbitrate-mono-mp3",
-        timeout: 15000,
+        timeout: 30000,
       });
 
       await tts.ttsPromise(body.text, tmpFile);
