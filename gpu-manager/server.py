@@ -17,6 +17,13 @@ from comfyui_proxy import ComfyUIProxy
 from tts_engine import TTSEngine
 from voice_creator import VoiceCreator
 
+# ── TTS availability check ────────────────────────────────
+try:
+    import qwen_tts  # noqa: F401
+    TTS_AVAILABLE = True
+except ImportError:
+    TTS_AVAILABLE = False
+
 # ── Logging ──────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
@@ -75,7 +82,7 @@ app = FastAPI(title="GPU Resource Manager", lifespan=lifespan)
 # ── Health / Status ──────────────────────────────────────
 @app.get("/health")
 async def health() -> dict:
-    return {"ready": True}
+    return {"ready": True, "tts_available": TTS_AVAILABLE}
 
 
 @app.get("/status")
@@ -109,6 +116,11 @@ async def comfyui_generate(request: Request) -> JSONResponse:
 # ── TTS Synthesize ───────────────────────────────────────
 @app.post("/tts/synthesize")
 async def tts_synthesize(request: Request) -> StreamingResponse:
+    if not TTS_AVAILABLE:
+        return JSONResponse(
+            status_code=503,
+            content={"error": "Local TTS not installed. Install with: pip install -r requirements-tts.txt"},
+        )
     body = await request.json()
     task = Task(type=TaskType.TTS, payload=body)
     try:
@@ -129,6 +141,11 @@ async def tts_synthesize(request: Request) -> StreamingResponse:
 # ── Voice Creation ───────────────────────────────────────
 @app.post("/tts/create-voice")
 async def tts_create_voice(request: Request) -> JSONResponse:
+    if not TTS_AVAILABLE:
+        return JSONResponse(
+            status_code=503,
+            content={"error": "Local TTS not installed. Install with: pip install -r requirements-tts.txt"},
+        )
     body = await request.json()
     task = Task(type=TaskType.CREATE_VOICE, payload=body)
     try:
