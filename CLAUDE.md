@@ -8,9 +8,10 @@ Claude Bridge is a Next.js web app that bridges interactive roleplay (RP) chat s
 
 ## Commands
 
-- `npm run dev` — Start dev server on port 3340 (all interfaces), uses `tsx watch server.ts`
+- `node setup.js` — First-time setup: Node deps, Python venv, PyTorch, ports, data/ init. `--yes` for non-interactive mode.
+- `npm run dev` — Start dev server (all interfaces), uses `tsx watch server.ts`
 - `npm run build` — TypeScript check + Next.js production build
-- `npm run start` — Serve production build on port 3340
+- `npm run start` — Serve production build
 
 No test framework is configured.
 
@@ -155,6 +156,8 @@ data/
 
 ## Key Conventions
 
+- **Setup wizard**: First-time setup via `node setup.js` (CLI) + `/setup` web wizard. `data/.setup-complete` flag controls redirect: when absent, all routes redirect to `/setup` (handled in `server.ts`, not middleware). Setup API endpoints (`/api/setup/*`) self-guard via `requireSetupAuth()` — open during initial setup, require admin auth after completion.
+- **Port auto-calculation**: `TTS_PORT` defaults to `PORT+1`, `GPU_MANAGER_PORT` defaults to `PORT+2`. Explicit env vars override.
 - **`<dialog_response>` tags**: Claude wraps RP dialogue in these. Both backend (`services.ts`) and frontend (`ChatMessages.tsx`) strip them to show only the RP content. Tool calls and meta-commentary are hidden from the user.
 - **`<choice>` tags**: AI-generated player choices. Extracted for button display, preserved in chat history across reloads. Cleared when user sends any new message.
 - **Special tokens**: `$IMAGE:path$` and `$PANEL:name$` tokens are extracted from Claude's output for inline image display and panel references.
@@ -219,8 +222,8 @@ data/
 - `COMFYUI_HOST` — ComfyUI host (default: `127.0.0.1`)
 - `COMFYUI_PORT` — ComfyUI port (default: `8188`)
 - `TTS_ENABLED` — Enable/disable TTS globally (default: `true`)
-- `TTS_PORT` — Edge TTS server port (default: `3341`)
-- `GPU_MANAGER_PORT` — GPU Manager port (default: `3342`)
+- `TTS_PORT` — Edge TTS server port (default: `PORT+1`)
+- `GPU_MANAGER_PORT` — GPU Manager port (default: `PORT+2`)
 - `GPU_MANAGER_PYTHON` — Python executable for GPU Manager (default: `python`)
 - `ADMIN_PASSWORD` — Admin login password. If not set, authentication is disabled (open access).
 
