@@ -51,8 +51,9 @@ async function stepNodeCheck() {
 
 async function stepNpmInstall() {
   header("Step 2: Installing Dependencies");
-  const result = run("npm install");
-  if (result === null) { error("npm install failed"); process.exit(1); }
+  // Check if node_modules exists after install (npm may return non-zero for audit warnings)
+  run("npm install");
+  if (!fs.existsSync(path.join(__dirname, "node_modules"))) { error("npm install failed"); process.exit(1); }
   info("Dependencies installed");
 }
 
