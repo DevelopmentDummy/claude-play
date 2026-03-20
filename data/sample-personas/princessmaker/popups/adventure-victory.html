@@ -1,0 +1,40 @@
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Jua&display=swap');
+  :host { font-family: 'Jua', sans-serif; }
+
+  .victory { text-align: center; padding: 16px 12px; position: relative; overflow: hidden; }
+
+  .swords { font-size: 52px; animation: swordSlash 0.6s ease-out; }
+  @keyframes swordSlash { 0% { transform: scale(0.3) rotate(-30deg); opacity: 0; } 60% { transform: scale(1.2) rotate(5deg); } 100% { transform: scale(1) rotate(0); opacity: 1; } }
+
+  .title {
+    font-size: 26px; font-weight: 800; margin: 8px 0 4px;
+    background: linear-gradient(135deg, #ffd700, #ff8c00, #ffd700);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-size: 200% 100%; animation: goldShift 2s ease infinite;
+    text-shadow: 0 0 20px rgba(255,215,0,0.3);
+    filter: drop-shadow(0 0 8px rgba(255,215,0,0.4));
+  }
+  @keyframes goldShift { 0%,100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+
+  .zone { font-size: 14px; color: #ffeedd; opacity: 0.9; margin-bottom: 6px; }
+  .loot { font-size: 13px; color: #ffd700; opacity: 0.85; }
+
+  .spark {
+    position: absolute; width: 4px; height: 4px; border-radius: 50%;
+    background: #ffd700; animation: sparkRise 1.5s ease-out infinite;
+  }
+  .spark:nth-child(1) { left: 15%; animation-delay: 0s; }
+  .spark:nth-child(2) { left: 40%; animation-delay: 0.4s; }
+  .spark:nth-child(3) { left: 65%; animation-delay: 0.2s; }
+  .spark:nth-child(4) { left: 85%; animation-delay: 0.6s; }
+  @keyframes sparkRise { 0% { bottom: 0; opacity: 1; } 100% { bottom: 100%; opacity: 0; } }
+</style>
+
+<div class="victory">
+  <div class="spark"></div><div class="spark"></div><div class="spark"></div><div class="spark"></div>
+  <div class="swords">⚔️</div>
+  <div class="title">모험 승리!</div>
+  <div class="zone">{{zone_name}}</div>
+  {{#if loot}}<div class="loot">💰 {{loot}}</div>{{/if}}
+</div>

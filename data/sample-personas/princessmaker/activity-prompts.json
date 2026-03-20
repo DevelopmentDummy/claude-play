@@ -1,0 +1,271 @@
+{
+  "_guide": "슬롯 결과 이미지 프롬프트. 핵심: 씬이 가득 차야 하고, 캐릭터는 동적이어야 한다. 정적 포즈 금지.",
+
+  "scene_composition": "dynamic angle, dynamic pose, action shot, detailed background, full scene, centered composition, vibrant, lively atmosphere, depth of field, cinematic composition",
+
+  "result_expressions": {
+    "critical_success": "sparkling eyes, overjoyed, triumphant, fist pump, sparkle effects, dramatic lighting, glowing aura, motion blur, wind blowing hair",
+    "success": "bright smile, happy, enjoying, expressive, warm lighting, soft glow, cheerful atmosphere",
+    "normal": "focused, concentrated, active, engaged, natural lighting",
+    "failure": "surprised, comedic reaction, sweat drop, chibi expression, exaggerated shock, dust cloud, comedic impact lines"
+  },
+
+  "categories": {
+    "study": {
+      "scene": "classroom interior, wooden desks, tall windows with sunlight streaming in, bookshelves lining walls, chalkboard with equations, scattered papers, ink bottles, globe on shelf",
+      "variants": {
+        "private_school": "cozy small classroom, warm afternoon sunlight through window, stacks of books on desk, quill in hand writing eagerly, ink splatter on fingers, leaning forward over notebook, classmates in background",
+        "royal_academy": "grand ornate lecture hall, massive chandeliers, marble columns, golden light, mahogany desks, thick leather-bound textbooks, raising hand excitedly among well-dressed students, stained glass windows",
+        "magic_school": "mystical tower classroom, floating glowing books orbiting around, magic circles on floor, crystal orbs on shelves, pointing wand at swirling spell, rune-covered desk, starry ceiling enchantment, ethereal purple light"
+      },
+      "success_scene": "proudly holding up perfect test paper, surrounded by floating A+ grades, classmates looking impressed",
+      "failure_scene": "face down on desk sleeping, drooling on textbook, ink smudge on cheek, papers scattered everywhere, comedic snot bubble"
+    },
+    "martial": {
+      "scene": "traditional wooden dojo, tatami mats, weapon racks on walls, hanging scrolls, sunlight through paper screens",
+      "variants": {
+        "martial_dojo": "mid-kick action shot, leg extended high, training dummy flying backward from impact, dust rising from tatami, white gi with belt fluttering, intense focused expression, sweat droplets in air, other students watching amazed",
+        "sword_dojo": "mid-sword swing with wooden bokken, dynamic slash motion lines, hair whipping with movement, feet planted in wide stance, wooden splinters flying from struck target, dramatic side lighting, determined eyes",
+        "knight_training": "outdoor training ground, swinging heavy practice sword overhead, metal armor glinting in sunlight, dirt kicking up from boots, training dummies and obstacles around, castle walls in background, banner fluttering in wind, other knights training"
+      },
+      "success_scene": "victorious pose standing over broken training dummy, fist raised, sunburst behind, impact crater in ground",
+      "failure_scene": "tangled in own weapon, fallen on butt, legs up comically, seeing stars, wooden sword flying away, embarrassed blush"
+    },
+    "arts": {
+      "scene": "bright art studio, paint-splattered floor, canvases everywhere, natural light from skylight",
+      "variants": {
+        "art_class": "painting on large easel with bold brush strokes, paint palette in other hand overflowing with colors, paint splattered on cheek and apron, colorful abstract painting taking shape, brushes and tubes scattered on table, afternoon light through tall studio windows, other easels with paintings in background",
+        "music_class": "playing violin passionately with eyes closed, bow mid-stroke across strings, music notes visually floating and swirling around, hair and skirt flowing with movement, spotlight on performer, grand music room with piano and instruments on walls, sheet music scattered on stand",
+        "dance_class": "mid-pirouette with one leg extended, ballet shoes, tutu fluttering, arms gracefully raised, reflected in wall-length mirror, polished hardwood floor, ballet barre, spotlights creating dramatic shadows, rose petals floating in air"
+      },
+      "success_scene": "holding up gorgeous finished painting to viewer, surrounded by floating art supplies, gallery-worthy masterpiece, confetti of paint drops",
+      "failure_scene": "accidentally splashed paint everywhere, covered head to toe in rainbow paint, canvas ruined with handprint, cat walked through wet painting, comedic chaos"
+    },
+    "etiquette": {
+      "scene": "elegant aristocratic parlor, ornate furniture, crystal chandelier, fine china tea set, draped curtains",
+      "variants": {
+        "etiquette_school": "performing perfect curtsy in elegant room, holding teacup with extended pinky, perfectly set table with tiered cake stand, flower arrangements, afternoon tea steam rising, lace tablecloth, well-dressed instructor watching approvingly, sunlight through lace curtains",
+        "royal_protocol": "grand throne room, red carpet leading to golden throne, practicing formal bow before royal audience, magnificent crystal chandeliers above, tapestries on walls, guards in formation, crown princess dress with train, marble pillars and arched ceiling, rose petals on floor"
+      },
+      "success_scene": "perfectly poised curtsy, audience of nobles applauding, showered in rose petals, radiant smile, golden spotlight",
+      "failure_scene": "tripping on long dress hem, teacup flying from hand, cake falling off plate, scandalized noble gasping, tumbling into table comedically"
+    },
+    "faith": {
+      "scene": "grand cathedral interior, stained glass windows casting colorful light, stone arches, candelabras, incense smoke",
+      "variants": {
+        "theology": "kneeling at altar reading thick scripture book, golden candlelight illuminating face, rays of colorful light from massive stained glass window behind, stone pillars, choir benches, incense smoke wisping, peaceful devoted expression, holy book glowing softly",
+        "temple_training": "meditating in serene temple garden, sitting cross-legged on stone, gentle golden aura emanating from body, cherry blossom petals falling around, koi pond reflecting light, bamboo and bonsai trees, incense trail, zen garden patterns in sand, transcendent peaceful expression"
+      },
+      "success_scene": "hands clasped in prayer with brilliant divine light descending, angel feathers falling, holy circles appearing, transcendent joy",
+      "failure_scene": "nodding off during prayer, head bobbing, candle wax dripping on scripture, startled awake by temple bell, comedic guilty expression"
+    },
+    "cooking": {
+      "scene": "warm busy kitchen, copper pots hanging, stone oven fire glowing, ingredients spread across wooden counter",
+      "variants": {
+        "cooking_basic": "energetically stirring large pot with wooden spoon, steam billowing up, apron covered in flour, chef hat slightly tilted, vegetables and ingredients scattered across rustic wooden counter, fire crackling in stone hearth, hanging herbs and garlic, warm orange kitchen lighting, tasting with anticipation",
+        "cooking_advanced": "carefully decorating elaborate multi-tier cake with piping bag, professional kitchen with gleaming steel, beautiful plated dishes on counter, intricate sugar flowers, concentrated tongue sticking out, pastry tools everywhere, flour dust floating in beam of light, masterful precision"
+      },
+      "success_scene": "proudly presenting gorgeous plated dish with steam rising, sparkle effects around food, diners drooling in background, chef kiss pose",
+      "failure_scene": "kitchen disaster, pot boiling over with black smoke, fire extinguisher in hand, charred unrecognizable food, soot on face, fire alarm going off, comedic explosion aftermath"
+    },
+    "magic": {
+      "scene": "mystical wizard tower room, arcane circles, floating crystals, shelves of potions and scrolls",
+      "variants": {
+        "magic_school": "casting spell with both hands outstretched, massive glowing magic circle on floor rotating beneath feet, energy bolts and particles swirling around body, wizard robe billowing from magical wind, floating spell books open around, crystal orbs glowing on shelves, rune-covered stone walls, dramatic upward camera angle, hair floating from magic energy"
+      },
+      "success_scene": "perfect spell creating beautiful light phoenix or dragon, amazed classmates backing away, pure brilliant magical energy, triumphant",
+      "failure_scene": "spell backfire explosion, covered in soot, hair standing straight up and smoking, wild sparks flying everywhere, frog sitting on head, potion bottles shattered, comedic mushroom cloud"
+    },
+    "job": {
+      "scene": "busy work environment, lively atmosphere",
+      "variants": {
+        "job_inn": "rushing through crowded tavern carrying overloaded tray of mugs and plates, dodging between rowdy patrons, apron and waitress outfit, determined expression balancing everything, lantern-lit rustic tavern interior, barrels and fireplace, other servers in background, dynamic running pose",
+        "job_farm": "swinging pitchfork loading hay onto cart, straw hat flying off from effort, overalls rolled up, sun-drenched golden wheat field stretching to horizon, red barn in background, chickens scattering at feet, sweat glistening, blue sky with fluffy clouds, dynamic swinging motion",
+        "job_shop": "enthusiastically showing merchandise to customer across wooden counter, abacus mid-calculation, shelves overflowing with colorful goods behind, coin pouch jangling, market bustle through window, hanging lanterns, goods and fabrics draped everywhere",
+        "job_ranch": "hugging baby lamb, surrounded by fluffy animals, baby chick on head, puppy at feet, pastoral green hills, white picket fence, wooden stable, morning golden hour light, flowers in meadow, heartwarming scene, animals crowding around affectionately",
+        "job_church": "sweeping church courtyard with oversized broom, autumn leaves swirling in wind, stone church with bell tower behind, stained glass glinting, peaceful morning light, birds perching on broom handle, gentle warm atmosphere",
+        "job_gravekeeper": "holding lantern up in misty graveyard at twilight, fog rolling between tombstones, spooky blue moonlight, one hand clutching broom nervously, bat flying past, jack-o-lanterns on graves, gothic iron fence, scared but brave expression, dramatic shadows",
+        "job_palace_maid": "polishing grand hallway floor on hands and knees, magnificent palace corridor with golden frames and red carpet, crystal chandeliers reflecting, professional maid uniform with headpiece, reflection gleaming in marble floor, other maids working in distance",
+        "job_hunter": "crouched behind bush tracking deer in dense forest, holding bow ready to draw, dappled sunlight through canopy, forest floor covered in leaves, mushrooms and ferns, alert focused expression, ranger leather outfit, quiver on back, morning mist between trees",
+        "job_errand_quarter": "running through narrow lantern-lit alley at night, carrying wrapped package, red paper lanterns hanging overhead, entertainment district atmosphere, colorful signs and banners, geisha and courtesans visible in doorways, curious wide-eyed expression, dodging between adults, small messenger bag, cobblestone street, warm glowing windows, mysterious nightlife atmosphere",
+        "job_bathhouse": "scrubbing large wooden bath in steamy bathhouse, towel wrapped around body, wet hair clinging to face, lantern-lit stone interior, steam clouds rising, wooden buckets and soap, hot spring atmosphere, flushed cheeks from heat, other bathers partially visible through steam, bamboo partition, carrying stack of fresh towels",
+        "job_tavern_night": "serving drinks in dimly lit nighttime tavern, revealing barmaid outfit with low neckline, rowdy patrons at wooden tables, candlelight and fireplace glow, tankards of ale, carrying tray above head through crowd, smoky atmosphere, dart board and card games in background, lively dangerous atmosphere",
+        "job_entertainment": "pouring wine for seated patron in ornate entertainment hall, silk dress with high slit, dim red lantern lighting, cushioned floor seating, folding screen with painted art, shamisen and instruments on stand, sake bottles, elegant geisha-inspired interior, coy smile, kneeling gracefully",
+        "job_noble_attendant": "adjusting noble lord's collar while standing close, elegant maid uniform with frills, ornate private chamber, four-poster bed in background, wine glasses on side table, candlelight casting warm shadows, nervous blush, intimate distance, luxurious fabrics and curtains",
+        "job_massage": "kneeling beside massage table pressing hands on client back, thin robe loosely worn, oil bottles on shelf, incense smoke curling, warm amber lighting, bamboo mat floor, relaxation room with curtains, concentrated expression, sleeves rolled up, herbal pouches hanging",
+        "job_dancer": "mid-dance with flowing sheer fabric veil, belly dancer outfit with coin belt, spotlight on stage, audience silhouettes below, hip movement with fabric trailing, jeweled accessories, dramatic theatrical lighting, flower petals thrown from audience, confident seductive expression, bare midriff",
+        "job_pleasure_house": "sweeping entrance hall of ornate pleasure house, simple servant outfit, red silk curtains and paper lanterns, waiting courtesans in background in elaborate kimono, incense burner on reception desk, night scene through open door, forbidden luxurious atmosphere, curious wide eyes looking around",
+        "job_patron_companion": "walking arm-in-arm with well-dressed older nobleman through moonlit garden, elegant evening dress with jewelry, fountain and rose garden, night sky with stars, holding fan, sophisticated atmosphere, grand mansion in background, attendants following at distance, blushing with practiced smile",
+        "job_potion_brewing": "dimly lit alchemy workshop, bubbling cauldrons and glass vials with colorful liquids, dried herbs hanging from ceiling, mortar and pestle grinding ingredients, mysterious recipes on parchment, steam rising from potion, concentrated expression mixing ingredients, stained apron, candlelit atmosphere, shelves of bottles and jars",
+        "job_secret_model": "private artist studio, large canvas on easel, painter working in background, dramatic pose on velvet chaise lounge, flowing sheer fabric draped artistically, warm golden lamplight, scattered paint tubes and brushes, nervous but determined expression, curtained windows for privacy, artistic atmosphere",
+        "rope_art_class": "dimly lit workshop with wooden beams, intricate rope patterns displayed on wall, hemp rope coils on floor, practicing decorative knots on wooden mannequin, traditional Japanese shibari reference art on scroll, warm candlelight, focused expression tying elaborate knot pattern, silk cushions, incense smoke curling, elegant yet forbidden atmosphere",
+        "secret_salon": "luxurious underground parlor with velvet curtains, crystal chandelier, masked aristocrats lounging on divans, wine glasses and exotic fruits, dim golden lighting, sheer curtain partitions, whispered conversations, elegant dress slightly disheveled, wide curious eyes observing decadent scene, rose petals scattered",
+        "underground_arena": "torchlit stone arena below ground, circular fighting pit with sand floor, rowdy crowd behind iron fence cheering, bloodstains on arena wall, fist raised in fighting stance, torn training clothes, sweat flying, dramatic low angle, fierce determined expression, betting slips flying in air",
+        "masquerade_attendant": "grand ballroom with ornate masks everywhere, carrying silver tray among dancing couples, elaborate costume with feathered mask pushed up, mysterious figures in shadows, enormous crystal chandelier, marble pillars draped in dark velvet, couples in suggestive embraces behind pillars, nervous blush beneath mask",
+        "body_art_studio": "bright art studio with nude mannequins, painting intricate floral design on bare skin with fine brush, body paint palette with vivid colors, canvas backdrop with artistic figure studies, concentrated expression painting delicate lines, paint-stained fingers, warm natural light from skylight, artistic nudity reference sketches on wall",
+        "seduction_lessons": "private chamber with silk curtains, elegant older woman demonstrating fan technique, mirror reflecting practiced coy expression, perfume bottles and cosmetics on vanity, practiced graceful hand gesture, sheer fabric flowing, warm intimate lighting, learning to control gaze angle, roses in vase, sensual atmosphere",
+        "fetish_workshop": "hidden basement workshop with leather working tools, mannequin wearing elaborate leather harness, sewing intricate lace and buckle design, chains and rings displayed on pegboard, measuring tape draped around neck, focused craftsmanship expression, candlelit workbench, black and red color scheme, forbidden creative atmosphere",
+        "pleasure_dance": "ornate stage with sheer curtain backdrop, mid-dance with flowing silk scarf barely covering, coin belt jingling at hip, audience of wealthy patrons in shadow, dramatic spotlight, body arched gracefully, one leg extended, seductive confident expression, flower petals falling from above, warm amber stage lighting",
+        "dungeon_guide": "stone corridor with iron doors and torch sconces, holding ring of ornate keys and leather-bound guidebook, wall display of various restraints and implements, explaining safety protocols to hooded client, professional demeanor with slight blush, candlelit dungeon atmosphere, red velvet curtain at end of hall",
+        "night_courtesan": "luxurious private chamber with silk bedding, elaborate courtesan kimono partially open at shoulder, sake set on lacquer tray, moonlight through paper screen, kneeling elegantly before seated nobleman silhouette, practiced alluring smile, hair ornaments with flowers, incense and perfume atmosphere, intimate golden lamplight"
+      },
+      "success_scene": "receiving generous tip from impressed customer, coins showering down, proud salute pose, sparkling clean result",
+      "failure_scene": "spectacular mess, dropped everything, plates shattering, animals escaped, panicking while trying to catch loose chicken, slipping on spilled liquid"
+    },
+    "adventure": {
+      "scene": "dramatic outdoor landscape, adventure gear equipped",
+      "variants": {
+        "adventure_plains": "charging across flower-filled green plains with sword drawn, running toward slime monster, wind blowing through hair and grass, blue sky with dramatic clouds, butterflies scattering, light leather armor, adventurer cape fluttering, dynamic running forward pose, wide open landscape",
+        "adventure_forest": "fighting giant spider in dark enchanted forest, sword clashing against web, bioluminescent mushrooms glowing, twisted ancient trees with hanging moss, shaft of light breaking through canopy, action mid-combat pose, spider silk threads everywhere, dramatic low angle",
+        "adventure_mountain": "standing on cliff edge overlooking vast mountain range, dramatic wind blowing cape and hair, wyvern swooping in background, snow-capped peaks, clouds below, sword planted in rock, epic wide landscape, sunset dramatic lighting, heroic pose",
+        "adventure_desert": "leaping through sandstorm to strike at giant scorpion, sand particles flying everywhere, ancient ruins half-buried in dunes, scorching sun with heat haze, ragged desert cloak, dual wielding, dramatic action pose mid-air, sand explosion on impact",
+        "adventure_ruins": "facing dark knight in crumbling castle throne room, crossed swords creating sparks, broken stained glass, rubble and fallen pillars, ominous red glow from magic circles, tattered banners, dramatic confrontation, intense determined expression, epic boss battle atmosphere"
+      },
+      "success_scene": "standing victorious on defeated monster, treasure chest glowing behind, sword raised to sky, dramatic light rays, heroic wind pose",
+      "failure_scene": "running away full speed from giant monster chasing, comically terrified expression, dropping items while fleeing, dust cloud trail, monster close behind"
+    },
+    "rest": {
+      "scene": "cozy home environment",
+      "variants": {
+        "rest": "sprawled contentedly on fluffy bed, hugging oversized pillow, warm sunlight streaming through window with billowing curtains, cozy bedroom with stuffed animals, cat curled up nearby, blanket half-kicked off, peaceful sleeping face with slight drool, afternoon nap atmosphere",
+        "free_time": "running through bustling town market square, arms spread wide, skirt and hair flowing with movement, colorful market stalls with awnings, street performers, fountain in center, pigeons taking flight, other townspeople shopping, vibrant lively atmosphere, golden hour lighting",
+        "vacation": "splashing into crystal clear lake from wooden dock, white sundress with blue ribbon lifting from water splash, bare feet kicking up sparkling water droplets, lush green hillside resort with wooden cabins in background, rowboat tied to pier, wildflowers along shoreline, dragonflies hovering over water surface, towel and picnic basket on dock, brilliant summer sunlight reflecting off water creating lens flare, arms thrown up in joy, huge open mouth laugh, hair flying upward from jump momentum, water spray rainbow effect, other vacationers on distant shore, fluffy white clouds in vivid blue sky",
+        "dark_lounge": "lounging on silk cushions in ornate courtesan chamber, older courtesan brushing long hair gently from behind, red paper lanterns warm glow, low lacquer table with tea and sweets, silk robes and scattered hair ornaments, incense smoke curling in air, relaxed sleepy expression, bare feet tucked under, other courtesans chatting in background through sheer curtain, warm intimate feminine atmosphere, cosmetics and perfume bottles on vanity, folding screen with painted flowers"
+      },
+      "success_scene": "stretching contentedly with biggest yawn, fully refreshed, sparkle of energy",
+      "failure_scene": ""
+    }
+  },
+
+  "event_scenes": {
+    "exam": "intensely writing on exam paper at desk, sweat drops, pencil moving fast, clock ticking on wall, other students around, nervous energy",
+    "sparring": "face to face with older opponent in dojo, both in fighting stance, dramatic standoff, energy crackling between them, other students watching from sides",
+    "taste_test": "presenting dish to panel of judges, steam rising from plate, judges leaning forward interested, dramatic spotlight on dish",
+    "inspiration": "sudden eureka moment, light bulb visual effect above head, jumping up from seat, paint/music notes/ideas bursting out everywhere",
+    "tip": "customer pressing coins into palm, bowing gratefully, warm restaurant atmosphere, happy customer patting head",
+    "encounter": "bumping into mysterious stranger on cobblestone street, items scattering, surprised face-to-face moment, bustling town background",
+    "birthday": "blowing out candles on beautiful cake, confetti and streamers everywhere, party hat, presents piled up, balloons floating, friends cheering around table, warm candlelight",
+    "seasonal_spring": "dancing under shower of cherry blossom petals at spring festival, festival yukata, paper lanterns, festival stalls, crowds celebrating, pink petals filling the air",
+    "seasonal_harvest": "standing on competition stage at harvest festival, crowd cheering below, autumn maple leaves falling, banner reading 'harvest festival', trophy or medal, festive decorations",
+    "seasonal_winter": "playing in snow at winter market, building snowman, warm winter coat and scarf and mittens, christmas lights twinkling, market stalls with warm glow, snowflakes falling, breath visible in cold air, rosy cheeks",
+    "dark_encounter": "dimly lit back alley at night, mysterious figure approaching, red lantern light spilling from doorway, shadowy atmosphere, cobblestone wet from rain, steam rising from grate, nervous expression, clutching cloak"
+  },
+
+  "standing_portrait": {
+    "_guide": "스탠딩 포트레이트. stance + 의상 + 나이를 반영한 캐릭터 전신 이미지. stance/나이/의상 변경 시 재생성.",
+    "base_scene": "standing, looking at viewer, simple clean background, soft gradient background, full body",
+    "stances": {
+      "default": {
+        "name": "기본",
+        "pose": "standing, hands at sides, curious expression, tilted head, innocent smile",
+        "desc": "아직 뚜렷한 성향이 없는 기본 상태"
+      },
+      "studious": {
+        "name": "학구적",
+        "pose": "holding book, reading glasses, thoughtful expression, neat hair, tidy appearance, intellectual",
+        "desc": "지력이 지배적인 학자 경향"
+      },
+      "warrior": {
+        "name": "활발한",
+        "pose": "confident stance, fist raised, energetic, athletic, strong pose, determined eyes, sporty",
+        "desc": "무술이 지배적인 전사 경향"
+      },
+      "elegant": {
+        "name": "우아한",
+        "pose": "graceful pose, hands clasped, refined posture, gentle smile, poised, ladylike, hair accessory",
+        "desc": "기품+예절이 지배적인 귀족 경향"
+      },
+      "charming": {
+        "name": "사교적",
+        "pose": "cute pose, peace sign, wink, playful, fashionable, bright smile, cheerful",
+        "desc": "매력이 지배적인 아이돌 경향"
+      },
+      "devout": {
+        "name": "경건한",
+        "pose": "praying hands, serene expression, gentle aura, holy light, calm, modest, peaceful smile",
+        "desc": "신앙+도덕이 지배적인 성직자 경향"
+      },
+      "artistic": {
+        "name": "예술적",
+        "pose": "dreamy expression, holding paintbrush, paint on fingers, whimsical, creative, stargazing, ethereal",
+        "desc": "예술+감수성이 지배적인 예술가 경향"
+      },
+      "culinary": {
+        "name": "요리사",
+        "pose": "chef hat, apron, holding ladle, confident cook, flour on cheek, warm smile",
+        "desc": "요리가 지배적인 요리사 경향"
+      },
+      "rebellious": {
+        "name": "반항적",
+        "pose": "arms crossed, annoyed expression, looking away, messy hair, defiant, pout, sulking",
+        "desc": "스트레스가 높은 반항기 상태"
+      },
+      "depressed": {
+        "name": "우울한",
+        "pose": "looking down, sad expression, dark circles, slouching, gloomy, hugging knees",
+        "desc": "스트레스가 극도로 높은 우울 상태"
+      },
+      "magical": {
+        "name": "신비로운",
+        "pose": "holding magic orb, mysterious expression, glowing particles, floating hair, ethereal aura, half-closed eyes",
+        "desc": "마법력이 지배적인 마법사 경향"
+      },
+      "tomboyish": {
+        "name": "말괄량이",
+        "pose": "playful grin, hands behind head, casual stance, messy hair, energetic, carefree, bandaid on cheek",
+        "desc": "전투력+매력이 높은 쾌활한 말괄량이"
+      },
+      "nurturing": {
+        "name": "다정한",
+        "pose": "warm smile, hands clasped at chest, gentle expression, soft eyes, caring aura, head tilt",
+        "desc": "감수성+요리가 높은 다정한 성격"
+      },
+      "alluring": {
+        "name": "요염한",
+        "pose": "slight smile, half-lidded eyes, hand on hip, relaxed pose, knowing expression, subtle confidence, lips slightly parted",
+        "desc": "[다크] 자기 매력을 자각하기 시작한 상태"
+      },
+      "provocative": {
+        "name": "도발적",
+        "pose": "confident smirk, arms crossed under chest, leaning forward, challenging gaze, bold stance, chin up, sharp eyes",
+        "desc": "[다크] 타인의 반응을 즐기는 도발적 성향"
+      },
+      "submissive": {
+        "name": "순종적",
+        "pose": "looking up through lashes, hands behind back, shy smile, slightly flushed, demure, downcast eyes, fidgeting",
+        "desc": "[다크] 복종에서 안도감을 찾는 순종적 성향"
+      },
+      "dominant": {
+        "name": "지배적",
+        "pose": "commanding pose, one hand on hip, sharp eyes, confident expression, powerful stance, looking down at viewer, smirk",
+        "desc": "[다크] 타인을 지배하는 데서 쾌감을 느끼는 성향"
+      },
+      "masochist": {
+        "name": "피학적",
+        "pose": "collar, blushing, slightly parted lips, trembling, hands clasped in front, vulnerable expression, teary eyes, eager",
+        "desc": "[다크] 고통과 수치에서 쾌감을 찾는 피학적 성향"
+      },
+      "sadist": {
+        "name": "가학적",
+        "pose": "cruel smile, narrow eyes, hand reaching forward, dominant aura, dark confidence, knowing smirk, riding crop",
+        "desc": "[다크] 타인의 고통과 복종에서 쾌감을 느끼는 가학적 성향"
+      },
+      "pet": {
+        "name": "애완",
+        "pose": "collar with bell, kneeling, looking up at viewer, eager eyes, hands on knees, devoted expression, blush, panting",
+        "desc": "[다크] 완전한 복종과 헌신, 소유물로서의 정체성"
+      },
+      "queen": {
+        "name": "여왕",
+        "pose": "regal pose, hand extended palm down, imperious gaze, one leg forward, absolute confidence, dark elegance, throne-like posture",
+        "desc": "[다크] 절대적 지배와 통제, 여왕으로서의 정체성"
+      }
+    },
+    "outfits": {
+      "평상복": "white blouse, blue skirt, simple outfit",
+      "원피스": "cute floral dress, one-piece dress",
+      "무도회 드레스": "ball gown, elegant dress, tiara, jewels, formal",
+      "_default": "casual clothes"
+    }
+  }
+}

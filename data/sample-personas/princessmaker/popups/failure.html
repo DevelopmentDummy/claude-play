@@ -1,0 +1,58 @@
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Jua&display=swap');
+:host { font-family: 'Jua', sans-serif; }
+.popup-wrap { text-align: center; padding: 8px 0; position: relative; overflow: hidden; }
+.rain-field { position: absolute; inset: -10px; pointer-events: none; z-index: 0; }
+.drop {
+  position: absolute; top: -10px; width: 2px; height: 12px;
+  background: linear-gradient(to bottom, transparent, rgba(150, 170, 200, 0.5));
+  border-radius: 0 0 2px 2px; opacity: 0; animation: rainDrop 2s linear infinite;
+}
+.drop:nth-child(1) { left: 12%; }
+.drop:nth-child(2) { left: 28%; animation-delay: 0.4s; }
+.drop:nth-child(3) { left: 45%; animation-delay: 0.8s; }
+.drop:nth-child(4) { left: 62%; animation-delay: 0.2s; }
+.drop:nth-child(5) { left: 78%; animation-delay: 0.6s; }
+.drop:nth-child(6) { left: 90%; animation-delay: 1.0s; }
+.drop:nth-child(7) { left: 5%; animation-delay: 1.3s; }
+@keyframes rainDrop {
+  0% { opacity: 0; transform: translateY(0); }
+  10% { opacity: 0.6; }
+  90% { opacity: 0.3; }
+  100% { opacity: 0; transform: translateY(120px); }
+}
+.icon { font-size: 44px; margin-bottom: 4px; position: relative; z-index: 1; animation: iconDroop 0.8s ease-out; }
+@keyframes iconDroop {
+  0% { transform: translateY(-10px); opacity: 0; }
+  60% { transform: translateY(3px); }
+  100% { transform: translateY(0); opacity: 1; }
+}
+.title {
+  font-size: 28px; font-weight: 900; position: relative; z-index: 1;
+  color: #8899bb; text-shadow: 0 1px 6px rgba(100, 120, 160, 0.4); letter-spacing: 2px;
+}
+.dots { display: inline-block; animation: dotFade 1.5s ease-in-out infinite; }
+@keyframes dotFade { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
+.subtitle {
+  font-size: 14px; color: #99aabb; margin-top: 8px; position: relative; z-index: 1;
+  opacity: 0; animation: fadeIn 0.6s 0.4s ease-out forwards;
+}
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 0.8; } }
+.cloud {
+  position: absolute; top: -5px; font-size: 28px; opacity: 0.15; z-index: 0;
+  animation: cloudDrift 8s linear infinite;
+}
+.cloud:nth-child(1) { left: -30px; }
+.cloud:nth-child(2) { left: -30px; animation-delay: 4s; font-size: 22px; top: 8px; }
+@keyframes cloudDrift { from { transform: translateX(0); } to { transform: translateX(calc(100% + 60px)); } }
+</style>
+<div class="popup-wrap">
+  <div class="rain-field">
+    <div class="drop"></div><div class="drop"></div><div class="drop"></div>
+    <div class="drop"></div><div class="drop"></div><div class="drop"></div><div class="drop"></div>
+  </div>
+  <span class="cloud">🌥</span><span class="cloud">🌥</span>
+  <div class="icon">😢</div>
+  <div class="title">실패<span class="dots">...</span></div>
+  <div class="subtitle">{{message}}</div>
+</div>

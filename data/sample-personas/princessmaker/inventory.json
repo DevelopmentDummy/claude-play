@@ -1,0 +1,29 @@
+{
+  "items": {
+    "회복약": 3,
+    "도시락": 2
+  },
+  "equipment": {
+    "weapon": null,
+    "armor": null,
+    "accessory": null
+  },
+  "outfits": [
+    { "id": "casual", "name": "평상복", "description": "흰 블라우스와 파란 스커트", "stats": {} }
+  ],
+  "equipped_outfit": "casual",
+  "shop_catalog": {
+    "회복약": { "price": 30, "effect": { "hp": 20 }, "description": "HP를 20 회복한다" },
+    "좋은 회복약": { "price": 80, "effect": { "hp": 50 }, "description": "HP를 50 회복한다" },
+    "고급 회복약": { "price": 200, "effect": { "hp": 999 }, "description": "HP를 완전 회복한다" },
+    "해독제": { "price": 20, "effect": {}, "description": "독 상태를 치료한다" },
+    "도시락": { "price": 15, "effect": { "stress": -5 }, "description": "스트레스를 5 줄여준다" },
+    "목검": { "price": 50, "type": "weapon", "stats": { "attack": 5 }, "description": "초보자용 목검" },
+    "철검": { "price": 200, "type": "weapon", "stats": { "attack": 15 }, "description": "단단한 철검" },
+    "가죽갑옷": { "price": 80, "type": "armor", "stats": { "defense": 5 }, "description": "가벼운 가죽갑옷" },
+    "철갑옷": { "price": 300, "type": "armor", "stats": { "defense": 15 }, "description": "튼튼한 철갑옷" },
+    "행운의 부적": { "price": 100, "type": "accessory", "stats": { "charm": 10 }, "description": "매력이 올라가는 부적" },
+    "원피스": { "price": 120, "type": "outfit", "outfit_id": "dress", "outfit_name": "원피스", "outfit_desc": "귀여운 꽃무늬 원피스", "stats": { "charm": 5 }, "description": "매력+5. 귀여운 외출복" },
+    "무도회 드레스": { "price": 500, "type": "outfit", "outfit_id": "ball_gown", "outfit_name": "무도회 드레스", "outfit_desc": "화려한 무도회용 드레스", "stats": { "charm": 15, "elegance": 10 }, "requirements": { "elegance": 50 }, "description": "매력+15, 기품+10. 특별한 날을 위한 드레스" }
+  }
+}

@@ -1,0 +1,117 @@
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap');
+  :host { font-family: 'Noto Sans KR', sans-serif; }
+
+  .portrait-frame {
+    position: relative;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid rgba(232,160,191,0.2);
+    background: linear-gradient(135deg, #2a1f3d, #1e1630);
+  }
+  .portrait-frame img {
+    width: 100%;
+    display: block;
+    object-fit: cover;
+  }
+  .placeholder {
+    width: 100%;
+    aspect-ratio: 3/4;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #665577;
+    font-size: 12px;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .placeholder-icon { font-size: 32px; opacity: 0.5; }
+
+  .portrait-overlay {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(transparent, rgba(26,20,37,0.95));
+    padding: 16px 10px 8px;
+  }
+  .portrait-name {
+    font-size: 15px;
+    font-weight: 700;
+    color: #f0e8f5;
+  }
+  .portrait-info {
+    display: flex;
+    gap: 6px;
+    margin-top: 3px;
+    flex-wrap: wrap;
+  }
+  .info-tag {
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(232,160,191,0.15);
+    color: #e8a0bf;
+  }
+  .info-tag.stance {
+    background: rgba(100,200,255,0.12);
+    color: #88ccee;
+  }
+  .update-badge {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: rgba(232,160,191,0.8);
+    color: #1a1425;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+</style>
+
+<div class="portrait-frame" id="frame">
+  <div class="placeholder" id="placeholder">
+    <span class="placeholder-icon">👧</span>
+    <span>포트레이트 생성 대기중</span>
+  </div>
+  <img id="portraitImg" style="display:none" />
+  {{#if portrait_needs_update}}
+  <div class="update-badge">갱신 필요</div>
+  {{/if}}
+  <div class="portrait-overlay">
+    <div class="portrait-name">{{name}}</div>
+    <div class="portrait-info">
+      <span class="info-tag">{{age}}세</span>
+      <span class="info-tag">{{outfit}}</span>
+      <span class="info-tag stance" id="stanceTag"></span>
+    </div>
+  </div>
+</div>
+
+<script>
+  const d = __panelBridge.data;
+  const prompts = d['activity-prompts'] || {};
+  const stances = prompts.standing_portrait?.stances || {};
+  const stanceData = stances[d.stance || 'default'] || stances['default'] || {};
+
+  const tag = shadow.querySelector('#stanceTag');
+  if (tag) tag.textContent = stanceData.name || d.stance || '기본';
+
+  const img = shadow.querySelector('#portraitImg');
+  const placeholder = shadow.querySelector('#placeholder');
+  const imageBase = d.__imageBase || '';
+
+  if (imageBase) {
+    const testImg = new Image();
+    testImg.onload = function() {
+      img.src = imageBase + 'standing_portrait.png';
+      img.style.display = 'block';
+      placeholder.style.display = 'none';
+    };
+    testImg.onerror = function() {};
+    testImg.src = imageBase + 'standing_portrait.png?' + Date.now();
+  }
+</script>

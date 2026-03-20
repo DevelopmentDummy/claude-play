@@ -1,0 +1,314 @@
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap');
+  :host { font-family: 'Noto Sans KR', sans-serif; }
+
+  .inventory {
+    max-width: 480px;
+    margin: 0 auto;
+  }
+  .inv-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: #e8a0bf;
+    text-align: center;
+    margin-bottom: 14px;
+  }
+
+  .tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 12px;
+    justify-content: center;
+  }
+  .tab-btn {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(232,160,191,0.15);
+    border-radius: 6px;
+    padding: 5px 12px;
+    font-size: 11px;
+    color: #9988aa;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s;
+  }
+  .tab-btn:hover { background: rgba(232,160,191,0.1); color: #c8a0d4; }
+  .tab-btn.active { background: rgba(232,160,191,0.15); border-color: #e8a0bf; color: #e8a0bf; font-weight: 600; }
+
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  .item-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 10px;
+    background: rgba(255,255,255,0.03);
+    border-radius: 8px;
+    margin-bottom: 5px;
+    transition: background 0.2s;
+  }
+  .item-row:hover { background: rgba(255,255,255,0.06); }
+
+  .item-info { flex: 1; }
+  .item-name { font-size: 12px; color: #f0e8f5; font-weight: 500; }
+  .item-desc { font-size: 10px; color: #9988aa; margin-top: 2px; }
+  .item-qty {
+    font-size: 11px;
+    color: #c8a0d4;
+    margin: 0 10px;
+    min-width: 30px;
+    text-align: center;
+  }
+
+  .item-btn {
+    background: rgba(232,160,191,0.15);
+    border: 1px solid rgba(232,160,191,0.3);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 10px;
+    color: #e8a0bf;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s;
+  }
+  .item-btn:hover { background: rgba(232,160,191,0.25); }
+  .item-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+  .item-btn.buy { background: rgba(245,215,110,0.12); border-color: rgba(245,215,110,0.3); color: #f5d76e; }
+  .item-btn.buy:hover { background: rgba(245,215,110,0.2); }
+
+  .equip-section { margin-top: 12px; }
+  .equip-slot {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    background: rgba(255,255,255,0.03);
+    border-radius: 8px;
+    margin-bottom: 5px;
+  }
+  .equip-label {
+    font-size: 10px;
+    color: #9988aa;
+    width: 36px;
+    flex-shrink: 0;
+  }
+  .equip-name { font-size: 12px; color: #f0e8f5; flex: 1; }
+  .equip-stats { font-size: 10px; color: #6ee09a; }
+  .equip-empty { font-size: 11px; color: #665577; font-style: italic; }
+
+  .outfit-card {
+    display: flex;
+    align-items: center;
+    padding: 8px 10px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.04);
+    border-radius: 8px;
+    margin-bottom: 5px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .outfit-card:hover { background: rgba(255,255,255,0.06); }
+  .outfit-card.equipped { border-color: rgba(232,160,191,0.3); background: rgba(232,160,191,0.08); }
+  .outfit-info { flex: 1; }
+  .outfit-name { font-size: 12px; color: #f0e8f5; font-weight: 500; }
+  .outfit-desc { font-size: 10px; color: #9988aa; }
+  .outfit-badge {
+    font-size: 9px;
+    background: rgba(232,160,191,0.2);
+    color: #e8a0bf;
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+
+  .shop-price { font-size: 11px; color: #f5d76e; min-width: 45px; text-align: right; }
+
+  .section-label {
+    font-size: 10px;
+    color: #e8a0bf;
+    font-weight: 600;
+    margin: 12px 0 6px;
+    letter-spacing: 0.5px;
+  }
+
+  .gold-bar {
+    text-align: center;
+    font-size: 12px;
+    color: #f5d76e;
+    padding: 6px;
+    background: rgba(245,215,110,0.06);
+    border-radius: 8px;
+    margin-bottom: 12px;
+  }
+
+  .empty-msg { text-align: center; color: #665577; font-size: 11px; padding: 16px; }
+  .msg { font-size: 11px; text-align: center; padding: 6px; margin-top: 6px; border-radius: 6px; }
+  .msg.ok { background: rgba(77,204,122,0.1); color: #6ee09a; }
+  .msg.err { background: rgba(231,76,111,0.1); color: #f08098; }
+</style>
+
+<div class="inventory">
+  <div class="inv-title">🎒 인벤토리</div>
+  <div class="gold-bar">💰 소지금: {{formatNumber gold}}G</div>
+
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="items">소지품</button>
+    <button class="tab-btn" data-tab="equip">장비</button>
+    <button class="tab-btn" data-tab="outfit">의상</button>
+    <button class="tab-btn" data-tab="shop">상점</button>
+  </div>
+
+  <div class="tab-panel active" id="tab-items"></div>
+  <div class="tab-panel" id="tab-equip"></div>
+  <div class="tab-panel" id="tab-outfit"></div>
+  <div class="tab-panel" id="tab-shop"></div>
+  <div class="msg" id="feedback" style="display:none"></div>
+</div>
+
+<script>
+  const d = __panelBridge.data;
+  const inv = d.inventory || {};
+  const items = inv.items || {};
+  const equipment = inv.equipment || {};
+  const outfits = inv.outfits || [];
+  const catalog = inv.shop_catalog || {};
+
+  const feedback = shadow.querySelector('#feedback');
+  function showMsg(text, ok) {
+    feedback.textContent = text;
+    feedback.className = 'msg ' + (ok ? 'ok' : 'err');
+    feedback.style.display = 'block';
+    setTimeout(() => { feedback.style.display = 'none'; }, 2500);
+  }
+
+  // === 소지품 탭 ===
+  const itemsPanel = shadow.querySelector('#tab-items');
+  const itemEntries = Object.entries(items);
+  if (itemEntries.length === 0) {
+    itemsPanel.innerHTML = '<div class="empty-msg">소지품이 없습니다</div>';
+  } else {
+    for (const [name, qty] of itemEntries) {
+      const product = catalog[name];
+      const isEquipable = product && (product.type === 'weapon' || product.type === 'armor' || product.type === 'accessory');
+      const desc = product?.description || '';
+
+      const row = document.createElement('div');
+      row.className = 'item-row';
+      row.innerHTML = `
+        <div class="item-info">
+          <div class="item-name">${name}</div>
+          <div class="item-desc">${desc}</div>
+        </div>
+        <span class="item-qty">×${qty}</span>
+        ${isEquipable ? `<button class="item-btn" data-action="equip" data-item="${name}" data-type="${product.type}">장착</button>` : `<button class="item-btn" data-action="use" data-item="${name}">사용</button>`}
+      `;
+      itemsPanel.appendChild(row);
+    }
+  }
+
+  // === 장비 탭 ===
+  const equipPanel = shadow.querySelector('#tab-equip');
+  const slots = [
+    { key: 'weapon', label: '무기', icon: '⚔️' },
+    { key: 'armor', label: '방어구', icon: '🛡️' },
+    { key: 'accessory', label: '장신구', icon: '💍' }
+  ];
+  for (const slot of slots) {
+    const equipped = equipment[slot.key];
+    const product = equipped ? catalog[equipped] : null;
+    const statsStr = product?.stats ? Object.entries(product.stats).map(([k, v]) => `${k}+${v}`).join(' ') : '';
+    const el = document.createElement('div');
+    el.className = 'equip-slot';
+    el.innerHTML = `
+      <span class="equip-label">${slot.icon} ${slot.label}</span>
+      ${equipped ? `<span class="equip-name">${equipped}</span><span class="equip-stats">${statsStr}</span>` : '<span class="equip-empty">없음</span>'}
+    `;
+    equipPanel.appendChild(el);
+  }
+
+  // === 의상 탭 ===
+  const outfitPanel = shadow.querySelector('#tab-outfit');
+  for (const outfit of outfits) {
+    const isEquipped = inv.equipped_outfit === outfit.id;
+    const card = document.createElement('div');
+    card.className = 'outfit-card' + (isEquipped ? ' equipped' : '');
+    const statsStr = outfit.stats ? Object.entries(outfit.stats).map(([k, v]) => `${k}+${v}`).join(' ') : '';
+    card.innerHTML = `
+      <div class="outfit-info">
+        <div class="outfit-name">${outfit.name} ${statsStr ? `<span style="font-size:10px;color:#6ee09a">${statsStr}</span>` : ''}</div>
+        <div class="outfit-desc">${outfit.description || ''}</div>
+      </div>
+      ${isEquipped ? '<span class="outfit-badge">착용중</span>' : ''}
+    `;
+    if (!isEquipped) {
+      card.addEventListener('click', async () => {
+        const res = await __panelBridge.runTool('engine', { action: 'equip', type: 'outfit', outfit_id: outfit.id });
+        if (res.result?.success) showMsg(`${outfit.name} 착용!`, true);
+      });
+    }
+    outfitPanel.appendChild(card);
+  }
+
+  // === 상점 탭 ===
+  const shopPanel = shadow.querySelector('#tab-shop');
+  for (const [name, product] of Object.entries(catalog)) {
+    const row = document.createElement('div');
+    row.className = 'item-row';
+    row.innerHTML = `
+      <div class="item-info">
+        <div class="item-name">${name}</div>
+        <div class="item-desc">${product.description || ''}</div>
+      </div>
+      <span class="shop-price">${product.price}G</span>
+      <button class="item-btn buy" data-item="${name}">구매</button>
+    `;
+    shopPanel.appendChild(row);
+  }
+
+  // === 이벤트 ===
+  shadow.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      shadow.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      shadow.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      shadow.querySelector('#tab-' + btn.dataset.tab)?.classList.add('active');
+    });
+  });
+
+  shadow.querySelectorAll('[data-action="use"]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      const itemName = btn.dataset.item;
+      const res = await __panelBridge.runTool('engine', { action: 'use_item', item: itemName });
+      if (res.result?.success) {
+        const fx = Object.entries(res.result.effects || {}).map(([k,v]) => `${k}${v>=0?'+':''}${v}`).join(', ');
+        showMsg(`${itemName} 사용! ${fx}`, true);
+        __panelBridge.queueEvent(`[ITEM_USED] ${itemName} 사용됨. 효과: ${fx}`);
+      } else {
+        showMsg(res.result?.message || '실패', false);
+        btn.disabled = false;
+      }
+    });
+  });
+
+  shadow.querySelectorAll('[data-action="equip"]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      const res = await __panelBridge.runTool('engine', { action: 'equip', type: btn.dataset.type, item: btn.dataset.item });
+      if (res.result?.success) showMsg(`${btn.dataset.item} 장착!`, true);
+      else { showMsg(res.result?.message || '실패', false); btn.disabled = false; }
+    });
+  });
+
+  shadow.querySelectorAll('.item-btn.buy').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      const res = await __panelBridge.runTool('engine', { action: 'buy_item', item: btn.dataset.item });
+      if (res.result?.success) {
+        showMsg(`${btn.dataset.item} 구매! 잔액: ${res.result.new_balance}G`, true);
+      } else {
+        showMsg(res.result?.message || '실패', false);
+        btn.disabled = false;
+      }
+    });
+  });
+</script>

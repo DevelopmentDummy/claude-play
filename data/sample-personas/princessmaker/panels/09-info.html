@@ -1,0 +1,150 @@
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap');
+  :host { font-family: 'Noto Sans KR', sans-serif; }
+
+  .status-card {
+    background: linear-gradient(135deg, #2a1f3d 0%, #1e1630 100%);
+    border-radius: 10px;
+    padding: 10px 12px;
+  }
+
+  .date-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+  .date-text { font-size: 12px; font-weight: 700; color: #e8a0bf; }
+  .season-text { font-size: 10px; color: #c8a0d4; }
+  .mood-tag {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: rgba(77,204,122,0.12);
+    color: #4dcc7a;
+  }
+
+  .divider {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(232,160,191,0.2), transparent);
+    margin: 6px 0;
+  }
+
+  .info-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .info-item { display: flex; align-items: center; gap: 5px; font-size: 10px; }
+  .info-icon {
+    width: 20px; height: 20px;
+    border-radius: 5px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; flex-shrink: 0;
+  }
+  .info-icon.gold { background: rgba(255,215,100,0.15); }
+  .info-icon.loc { background: rgba(100,180,255,0.15); }
+  .info-icon.outfit { background: rgba(200,160,230,0.15); }
+  .info-icon.weight { background: rgba(160,220,160,0.15); }
+  .info-label { color: #9988aa; font-size: 9px; }
+  .info-value { color: #f0e8f5; font-weight: 500; font-size: 11px; }
+
+  .bars-section { margin-top: 4px; }
+  .bar-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+  .bar-label { width: 22px; font-size: 10px; color: #9988aa; text-align: center; flex-shrink: 0; }
+  .bar-track { flex: 1; height: 8px; background: rgba(255,255,255,0.06); border-radius: 4px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 4px; transition: width 0.4s ease; }
+  .bar-fill.hp { background: linear-gradient(90deg, #4dcc7a, #2ecc71); }
+  .bar-fill.stress { background: linear-gradient(90deg, #e8a0bf, #e74c6f); }
+  .bar-num { width: 46px; font-size: 9px; color: #c8a0d4; text-align: right; flex-shrink: 0; }
+
+  .quick-btns { display: flex; gap: 4px; margin-top: 10px; }
+  .qbtn {
+    flex: 1;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(232,160,191,0.15);
+    border-radius: 6px;
+    padding: 6px 0;
+    font-size: 10px;
+    color: #c8a0d4;
+    cursor: pointer;
+    font-family: inherit;
+    text-align: center;
+    transition: all 0.2s;
+  }
+  .qbtn:hover { background: rgba(232,160,191,0.1); border-color: rgba(232,160,191,0.3); color: #e8a0bf; }
+</style>
+
+<div class="status-card">
+  <div class="date-row">
+    <div>
+      <div class="date-text">{{current_year}}년차 {{current_month}}월</div>
+      <div class="season-text">{{season}}</div>
+    </div>
+    <span class="mood-tag">{{mood}}</span>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="info-grid">
+    <div class="info-item">
+      <div class="info-icon gold">💰</div>
+      <div>
+        <div class="info-label">소지금</div>
+        <div class="info-value">{{formatNumber gold}}G</div>
+      </div>
+    </div>
+    <div class="info-item">
+      <div class="info-icon weight">⚖️</div>
+      <div>
+        <div class="info-label">체중</div>
+        <div class="info-value">{{weight}}kg</div>
+      </div>
+    </div>
+    <div class="info-item">
+      <div class="info-icon loc">📍</div>
+      <div>
+        <div class="info-label">위치</div>
+        <div class="info-value">{{location}}</div>
+      </div>
+    </div>
+    <div class="info-item">
+      <div class="info-icon outfit">👗</div>
+      <div>
+        <div class="info-label">복장</div>
+        <div class="info-value">{{outfit}}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="bars-section">
+    <div class="bar-row">
+      <div class="bar-label">❤️</div>
+      <div class="bar-track">
+        <div class="bar-fill hp" style="width:{{percentage hp hp_max}}%"></div>
+      </div>
+      <div class="bar-num">{{hp}}/{{hp_max}}</div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label">💢</div>
+      <div class="bar-track">
+        <div class="bar-fill stress" style="width:{{percentage stress stress_max}}%"></div>
+      </div>
+      <div class="bar-num">{{stress}}/{{stress_max}}</div>
+    </div>
+  </div>
+</div>
+
+<div class="quick-btns">
+  <button class="qbtn" id="openSchedule">📅 스케줄</button>
+  <button class="qbtn" id="openCatalog">📖 활동</button>
+  <button class="qbtn" id="openInventory">🎒 인벤</button>
+</div>
+
+<script>
+  shadow.querySelector('#openSchedule')?.addEventListener('click', () => __panelBridge.openModal('schedule', 'dismissible'));
+  shadow.querySelector('#openCatalog')?.addEventListener('click', () => __panelBridge.openModal('catalog', 'dismissible'));
+  shadow.querySelector('#openInventory')?.addEventListener('click', () => __panelBridge.openModal('inventory', 'dismissible'));
+</script>

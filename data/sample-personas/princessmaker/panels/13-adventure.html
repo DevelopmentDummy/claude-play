@@ -1,0 +1,722 @@
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap');
+  :host {
+    font-family: 'Noto Sans KR', sans-serif;
+    display: block;
+    width: 100%;
+    --accent: #e8a0bf;
+    --bg: #1c1528;
+    --surface: #231d33;
+    --border: rgba(232,160,191,0.12);
+    --text: #f0e8f5;
+    --dim: #9988aa;
+    --green: #6ee09a;
+    --red: #f08098;
+    --gold: #f5d76e;
+    --blue: #80ccff;
+    --purple: #c090ff;
+  }
+
+  .adv-modal {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 20px;
+    max-width: 440px;
+    margin: 0 auto;
+  }
+
+  /* Header */
+  .adv-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .adv-zone-icon { font-size: 28px; }
+  .adv-zone-name { font-size: 16px; font-weight: 800; color: var(--text); }
+  .adv-progress {
+    margin-left: auto;
+    font-size: 11px; color: var(--dim); font-weight: 600;
+  }
+  .adv-progress strong { color: var(--text); }
+
+  /* Enemy card */
+  .enemy-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 14px;
+    text-align: center;
+  }
+  .enemy-name {
+    font-size: 18px; font-weight: 900;
+    color: var(--red);
+    margin-bottom: 4px;
+    letter-spacing: 0.5px;
+  }
+  .enemy-stats {
+    font-size: 10px; color: var(--dim);
+    display: flex; gap: 12px; justify-content: center;
+    margin-bottom: 12px;
+  }
+  .enemy-stats span { display: flex; align-items: center; gap: 3px; }
+
+  /* HP Bars */
+  .hp-section { margin-bottom: 14px; }
+  .hp-row {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 6px;
+  }
+  .hp-label {
+    font-size: 10px; font-weight: 700; color: var(--dim);
+    min-width: 50px;
+  }
+  .hp-bar {
+    flex: 1; height: 10px; background: rgba(0,0,0,0.4);
+    border-radius: 5px; overflow: hidden;
+  }
+  .hp-fill {
+    height: 100%; border-radius: 5px;
+    transition: width 0.5s ease;
+  }
+  .hp-fill.player { background: linear-gradient(90deg, #6ee09a, #4dcc7a); }
+  .hp-fill.enemy { background: linear-gradient(90deg, #f08098, #e06080); }
+  .hp-val {
+    font-size: 10px; font-weight: 700; color: var(--dim);
+    min-width: 60px; text-align: right;
+  }
+
+  /* Action buttons */
+  .action-row {
+    display: flex; gap: 8px; margin-bottom: 12px;
+  }
+  .act-btn {
+    flex: 1; border: none; border-radius: 10px;
+    padding: 12px 8px; font-size: 13px; font-weight: 700;
+    font-family: inherit; cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .act-btn:active { transform: scale(0.96); }
+  .act-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+  .act-btn.fight {
+    background: linear-gradient(135deg, #e06080, #cc4060);
+    color: white;
+  }
+  .act-btn.item {
+    background: linear-gradient(135deg, #5a8fcc, #4070aa);
+    color: white;
+  }
+  .act-btn.retreat {
+    background: rgba(255,255,255,0.06);
+    color: var(--dim);
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+
+  /* Item selector */
+  .item-selector {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px;
+    margin-bottom: 12px;
+    display: none;
+  }
+  .item-selector.show { display: block; }
+  .item-selector-title {
+    font-size: 11px; font-weight: 700; color: var(--dim);
+    margin-bottom: 8px;
+  }
+  .item-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 8px; border-radius: 6px; cursor: pointer;
+    transition: background 0.15s;
+    margin-bottom: 2px;
+  }
+  .item-row:hover { background: rgba(232,160,191,0.06); }
+  .item-row .name { flex: 1; font-size: 12px; font-weight: 600; color: var(--text); }
+  .item-row .desc { font-size: 9px; color: var(--dim); }
+  .item-row .count {
+    font-size: 10px; font-weight: 700; color: var(--gold);
+    background: rgba(245,215,110,0.1); padding: 2px 8px; border-radius: 8px;
+  }
+  .no-items { font-size: 11px; color: var(--dim); text-align: center; padding: 8px; }
+
+  /* Battle log */
+  .battle-log {
+    background: rgba(0,0,0,0.2);
+    border-radius: 8px;
+    padding: 8px 10px;
+    max-height: 140px;
+    overflow-y: auto;
+    margin-bottom: 14px;
+    font-size: 10px;
+    line-height: 1.6;
+    color: var(--dim);
+    display: none;
+  }
+  .battle-log.show { display: block; }
+  .battle-log::-webkit-scrollbar { width: 3px; }
+  .battle-log::-webkit-scrollbar-thumb { background: rgba(232,160,191,0.15); border-radius: 2px; }
+  .bl-round { margin-bottom: 2px; }
+  .bl-atk { color: var(--blue); }
+  .bl-crit { color: var(--gold); font-weight: 700; }
+  .bl-magic { color: var(--purple); }
+  .bl-dmg { color: var(--red); }
+  .bl-dodge { color: var(--green); font-style: italic; }
+  .bl-kill { color: var(--gold); font-weight: 700; }
+
+  /* Result screens */
+  .result-screen {
+    text-align: center;
+    padding: 20px 10px;
+    display: none;
+  }
+  .result-screen.show { display: block; }
+  .result-icon { font-size: 48px; margin-bottom: 10px; }
+  .result-title {
+    font-size: 18px; font-weight: 900; margin-bottom: 6px;
+  }
+  .result-title.victory { color: var(--gold); }
+  .result-title.defeat { color: var(--red); }
+  .result-title.retreat { color: var(--dim); }
+  .result-subtitle {
+    font-size: 12px; color: var(--dim); margin-bottom: 16px;
+  }
+  .result-stats {
+    display: flex; gap: 16px; justify-content: center;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .result-stat {
+    text-align: center;
+  }
+  .result-stat .val {
+    font-size: 18px; font-weight: 900; color: var(--text);
+  }
+  .result-stat .label {
+    font-size: 9px; color: var(--dim); font-weight: 600;
+  }
+  .result-stat .val.gold { color: var(--gold); }
+  .result-stat .val.red { color: var(--red); }
+
+  .penalty-list {
+    background: rgba(240,128,152,0.06);
+    border: 1px solid rgba(240,128,152,0.15);
+    border-radius: 8px;
+    padding: 10px;
+    margin-bottom: 14px;
+    text-align: left;
+  }
+  .penalty-title {
+    font-size: 10px; font-weight: 700; color: var(--red);
+    margin-bottom: 6px;
+  }
+  .penalty-item {
+    font-size: 10px; color: var(--dim); margin-bottom: 2px;
+  }
+
+  .treasures-list {
+    background: rgba(245,215,110,0.06);
+    border: 1px solid rgba(245,215,110,0.15);
+    border-radius: 8px;
+    padding: 10px;
+    margin-bottom: 14px;
+  }
+  .treasures-title {
+    font-size: 10px; font-weight: 700; color: var(--gold);
+    margin-bottom: 6px;
+  }
+
+  .complete-btn {
+    width: 100%; border: none; border-radius: 10px;
+    padding: 14px; font-size: 14px; font-weight: 800;
+    font-family: inherit; cursor: pointer;
+    background: linear-gradient(135deg, var(--accent), #d080a8);
+    color: white;
+    transition: all 0.15s;
+  }
+  .complete-btn:active { transform: scale(0.97); }
+
+  /* Encounter transition */
+  .encounter-section {
+    opacity: 1;
+    transition: opacity 0.3s ease;
+  }
+  .encounter-section.fade { opacity: 0; }
+
+  /* Fight result flash */
+  .fight-result-banner {
+    text-align: center;
+    padding: 12px;
+    border-radius: 10px;
+    margin-bottom: 12px;
+    font-size: 14px; font-weight: 800;
+    display: none;
+    animation: bannerIn 0.3s ease;
+  }
+  .fight-result-banner.show { display: block; }
+  .fight-result-banner.win {
+    background: rgba(110,224,154,0.1);
+    color: var(--green);
+    border: 1px solid rgba(110,224,154,0.2);
+  }
+  .fight-result-banner.lose {
+    background: rgba(240,128,152,0.1);
+    color: var(--red);
+    border: 1px solid rgba(240,128,152,0.2);
+  }
+  @keyframes bannerIn {
+    from { opacity: 0; transform: scale(0.9); }
+    to { opacity: 1; transform: scale(1); }
+  }
+</style>
+
+<div class="adv-modal" id="advRoot">
+  <!-- ENCOUNTER VIEW -->
+  <div id="encounterView">
+    <div class="adv-header">
+      <span class="adv-zone-icon">🗺️</span>
+      <span class="adv-zone-name" id="zoneName"></span>
+      <span class="adv-progress"><strong id="encProgress"></strong></span>
+    </div>
+
+    <div class="encounter-section" id="encSection">
+      <div class="enemy-card">
+        <div class="enemy-name" id="enemyName"></div>
+        <div class="enemy-stats">
+          <span>⚔️ ATK <strong id="enemyAtk"></strong></span>
+          <span>🛡️ DEF <strong id="enemyDef"></strong></span>
+          <span>❤️ HP <strong id="enemyHpText"></strong></span>
+        </div>
+        <div class="hp-row">
+          <span class="hp-label">적 HP</span>
+          <div class="hp-bar"><div class="hp-fill enemy" id="enemyHpBar" style="width:100%"></div></div>
+          <span class="hp-val" id="enemyHpVal"></span>
+        </div>
+      </div>
+
+      <div class="hp-section">
+        <div class="hp-row">
+          <span class="hp-label">내 HP</span>
+          <div class="hp-bar"><div class="hp-fill player" id="playerHpBar"></div></div>
+          <span class="hp-val" id="playerHpVal"></span>
+        </div>
+      </div>
+
+      <div class="fight-result-banner" id="fightBanner"></div>
+
+      <div class="battle-log" id="battleLog"></div>
+
+      <div class="item-selector" id="itemSelector">
+        <div class="item-selector-title">🎒 아이템 사용</div>
+        <div id="itemList"></div>
+      </div>
+
+      <div class="action-row" id="actionRow">
+        <button class="act-btn fight" id="btnFight">⚔️ 전투</button>
+        <button class="act-btn item" id="btnItem">🎒 아이템</button>
+        <button class="act-btn retreat" id="btnRetreat">🏃 퇴각</button>
+      </div>
+
+      <div class="action-row" id="nextRow" style="display:none">
+        <button class="act-btn fight" id="btnNext" style="background:linear-gradient(135deg,#5a8fcc,#4070aa)">다음 적 →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- RESULT VIEW -->
+  <div class="result-screen" id="resultView">
+    <div class="result-icon" id="resultIcon"></div>
+    <div class="result-title" id="resultTitle"></div>
+    <div class="result-subtitle" id="resultSubtitle"></div>
+    <div class="result-stats" id="resultStats"></div>
+    <div class="penalty-list" id="penaltyList" style="display:none"></div>
+    <div class="treasures-list" id="treasuresList" style="display:none"></div>
+    <button class="complete-btn" id="btnComplete">완료</button>
+  </div>
+</div>
+
+<script>
+  const $ = (id) => shadow.getElementById(id);
+
+  const STAT_NM = {gold:'골드',stress:'스트레스',combat:'무술',reputation:'명성',morals:'도덕',sensitivity:'감수성'};
+  let _busy = false;
+  let _itemOpen = false;
+  let _lastFightResult = null;
+
+  function getAdv() { return __panelBridge.data?.__adventure; }
+  function getInv() { return __panelBridge.data?.['inventory'] || {}; }
+
+  function init() {
+    const adv = getAdv();
+    if (!adv || !adv.active) return;
+
+    $('zoneName').textContent = adv.zone_name || adv.zone;
+
+    if (adv.status === 'encounter') {
+      showEncounter();
+    } else if (adv.status === 'complete' || adv.status === 'defeated' || adv.status === 'retreated') {
+      showResult(adv.status);
+    }
+  }
+
+  function showEncounter() {
+    const adv = getAdv();
+    if (!adv) return;
+    const enc = adv.encounters[adv.current_index];
+    if (!enc) return;
+
+    $('encounterView').style.display = '';
+    $('resultView').classList.remove('show');
+
+    $('encProgress').textContent = `${adv.current_index + 1} / ${adv.encounters.length}`;
+    $('enemyName').textContent = enc.name;
+    $('enemyAtk').textContent = enc.atk;
+    $('enemyDef').textContent = enc.def;
+    $('enemyHpText').textContent = enc.max_hp;
+
+    updateHpBars(adv.player_hp, adv.player_max_hp, enc.hp, enc.max_hp);
+
+    // Reset UI
+    $('fightBanner').classList.remove('show');
+    $('battleLog').classList.remove('show');
+    $('battleLog').innerHTML = '';
+    $('actionRow').style.display = '';
+    $('nextRow').style.display = 'none';
+    $('itemSelector').classList.remove('show');
+    _itemOpen = false;
+    enableButtons(true);
+  }
+
+  function updateHpBars(pHp, pMax, eHp, eMax) {
+    const pPct = Math.max(0, (pHp / pMax) * 100);
+    const ePct = Math.max(0, (eHp / eMax) * 100);
+    $('playerHpBar').style.width = pPct + '%';
+    $('playerHpVal').textContent = `${pHp} / ${pMax}`;
+    $('enemyHpBar').style.width = ePct + '%';
+    $('enemyHpVal').textContent = `${eHp} / ${eMax}`;
+  }
+
+  function enableButtons(on) {
+    $('btnFight').disabled = !on;
+    $('btnItem').disabled = !on;
+    $('btnRetreat').disabled = !on;
+  }
+
+  async function doFight() {
+    if (_busy) return;
+    _busy = true;
+    enableButtons(false);
+    $('itemSelector').classList.remove('show');
+
+    try {
+      const res = await __panelBridge.runTool('engine', { action: 'adventure_fight' });
+      const r = res?.result;
+      if (!r || !r.success) {
+        _busy = false; enableButtons(true); return;
+      }
+
+      _lastFightResult = r;
+      const fight = r.fight;
+
+      // Show battle log
+      const logEl = $('battleLog');
+      logEl.innerHTML = '';
+      logEl.classList.add('show');
+
+      for (const rd of fight.round_log) {
+        const line = document.createElement('div');
+        line.className = 'bl-round';
+        let html = `<span style="color:#554466;font-weight:700;font-size:8px">R${rd.round}</span> `;
+        if (rd.player_dmg > 0) {
+          html += `<span class="bl-atk">공격 ${rd.player_dmg}</span>`;
+          if (rd.crit) html += ` <span class="bl-crit">크리티컬!</span>`;
+          if (rd.magic) html += ` <span class="bl-magic">+마법</span>`;
+        }
+        if (rd.enemy_hp <= 0) html += ` <span class="bl-kill">처치!</span>`;
+        if (rd.enemy_dmg > 0) html += ` → <span class="bl-dmg">피격 -${rd.enemy_dmg}</span>`;
+        if (rd.dodged) html += ` → <span class="bl-dodge">회피!</span>`;
+        line.innerHTML = html;
+        logEl.appendChild(line);
+      }
+      logEl.scrollTop = logEl.scrollHeight;
+
+      // Update HP bars
+      const adv = getAdv();
+      const enc = fight.won ? null : adv?.encounters[adv?.current_index];
+      const eHp = fight.won ? 0 : (enc?.hp || 0);
+      const eMax = fight.round_log[0]?.enemy_hp || 1;
+      updateHpBars(fight.player_hp_after, adv?.player_max_hp || 40, eHp, eMax);
+
+      // Show result banner
+      const banner = $('fightBanner');
+      if (fight.won) {
+        banner.className = 'fight-result-banner show win';
+        let bannerText = `⚔️ ${fight.enemy_name} 격파!`;
+        if (fight.rewards.gold) bannerText += ` +${fight.rewards.gold}G`;
+        banner.textContent = bannerText;
+      } else {
+        banner.className = 'fight-result-banner show lose';
+        banner.textContent = `💀 ${fight.enemy_name}에게 패배...`;
+      }
+
+      // Determine next action
+      if (r.adventure_status === 'defeated') {
+        setTimeout(() => showResult('defeated', r.defeat_penalties, r.dark_path), 1200);
+      } else if (r.adventure_status === 'complete') {
+        setTimeout(() => showResult('complete'), 1200);
+      } else {
+        // More encounters — show "Next" button
+        $('actionRow').style.display = 'none';
+        $('nextRow').style.display = '';
+      }
+    } catch (e) {
+      console.error('Fight error:', e);
+    }
+    _busy = false;
+  }
+
+  function nextEncounter() {
+    const sec = $('encSection');
+    sec.classList.add('fade');
+    setTimeout(() => {
+      showEncounter();
+      sec.classList.remove('fade');
+    }, 300);
+  }
+
+  function toggleItems() {
+    _itemOpen = !_itemOpen;
+    const sel = $('itemSelector');
+    if (_itemOpen) {
+      renderItems();
+      sel.classList.add('show');
+    } else {
+      sel.classList.remove('show');
+    }
+  }
+
+  function renderItems() {
+    const inv = getInv();
+    const items = inv.items || {};
+    const catalog = inv.shop_catalog || {};
+    const list = $('itemList');
+    list.innerHTML = '';
+
+    const consumables = Object.entries(items).filter(([name, count]) => {
+      const info = catalog[name];
+      return info && !info.type && info.effect && count > 0;
+    });
+
+    if (consumables.length === 0) {
+      list.innerHTML = '<div class="no-items">사용 가능한 아이템이 없습니다</div>';
+      return;
+    }
+
+    for (const [name, count] of consumables) {
+      const info = catalog[name];
+      const row = document.createElement('div');
+      row.className = 'item-row';
+      row.innerHTML = `
+        <div style="flex:1">
+          <div class="name">🧪 ${name}</div>
+          <div class="desc">${info.description || ''}</div>
+        </div>
+        <span class="count">×${count}</span>
+      `;
+      row.addEventListener('click', () => useItem(name));
+      list.appendChild(row);
+    }
+  }
+
+  async function useItem(itemName) {
+    if (_busy) return;
+    _busy = true;
+
+    try {
+      const res = await __panelBridge.runTool('engine', { action: 'adventure_use_item', item: itemName });
+      const r = res?.result;
+      if (!r || !r.success) {
+        _busy = false; return;
+      }
+
+      // Update HP display
+      const adv = getAdv();
+      const enc = adv?.encounters[adv?.current_index];
+      if (enc) {
+        updateHpBars(r.player_hp, r.player_max_hp, enc.hp, enc.max_hp);
+      }
+
+      // Flash banner
+      const banner = $('fightBanner');
+      const effectStr = Object.entries(r.effects_applied)
+        .map(([s,v]) => `${STAT_NM[s]||s} ${v>=0?'+':''}${v}`)
+        .join(', ');
+      banner.className = 'fight-result-banner show win';
+      banner.textContent = `🧪 ${itemName} 사용! ${effectStr}`;
+
+      // Re-render items (count changed)
+      renderItems();
+      if (r.remaining_count <= 0) {
+        const inv = getInv();
+        const remaining = Object.entries(inv.items || {}).filter(([n,c]) => {
+          const info = (inv.shop_catalog||{})[n];
+          return info && !info.type && info.effect && c > 0;
+        });
+        if (remaining.length === 0) {
+          $('itemSelector').classList.remove('show');
+          _itemOpen = false;
+        }
+      }
+    } catch(e) {
+      console.error('Item use error:', e);
+    }
+    _busy = false;
+  }
+
+  async function doRetreat() {
+    if (_busy) return;
+    _busy = true;
+    enableButtons(false);
+
+    try {
+      const res = await __panelBridge.runTool('engine', { action: 'adventure_retreat' });
+      const r = res?.result;
+      if (r && r.success) {
+        showResult('retreated');
+      }
+    } catch(e) {
+      console.error('Retreat error:', e);
+    }
+    _busy = false;
+  }
+
+  function showResult(status, penalties, darkPath) {
+    $('encounterView').style.display = 'none';
+    const rv = $('resultView');
+    rv.classList.add('show');
+
+    const adv = getAdv();
+    const icon = $('resultIcon');
+    const title = $('resultTitle');
+    const subtitle = $('resultSubtitle');
+    const statsEl = $('resultStats');
+
+    if (status === 'complete') {
+      icon.textContent = '🏆';
+      title.textContent = '모험 완료!';
+      title.className = 'result-title victory';
+      subtitle.textContent = `${adv?.zone_name || ''} 모험을 성공적으로 마쳤다!`;
+    } else if (status === 'defeated') {
+      icon.textContent = '💀';
+      title.textContent = '패배...';
+      title.className = 'result-title defeat';
+      subtitle.textContent = darkPath
+        ? `의식을 잃은 채 적에게 발견되었다...`
+        : `체력이 바닥나 쓰러졌다. 모험자 길드에 구조되었다.`;
+    } else if (status === 'retreated') {
+      icon.textContent = '🏃';
+      title.textContent = '퇴각';
+      title.className = 'result-title retreat';
+      const done = adv?.battles_log?.length || 0;
+      const total = adv?.encounters?.length || 0;
+      subtitle.textContent = `${done}/${total} 전투를 마치고 안전하게 퇴각했다.`;
+    }
+
+    // Stats
+    statsEl.innerHTML = '';
+    const addStat = (val, label, cls) => {
+      const d = document.createElement('div');
+      d.className = 'result-stat';
+      d.innerHTML = `<div class="val ${cls||''}">${val}</div><div class="label">${label}</div>`;
+      statsEl.appendChild(d);
+    };
+
+    const wins = (adv?.battles_log || []).filter(b => b.won).length;
+    const totalFights = (adv?.battles_log || []).length;
+    addStat(`${wins}/${totalFights}`, '승리');
+    addStat(`+${adv?.total_gold || 0}G`, '획득 골드', 'gold');
+    addStat(`+${adv?.total_exp || 0}`, '전투 경험치');
+    addStat(`${__panelBridge.data?.hp || 0}/${__panelBridge.data?.hp_max || 40}`, 'HP', status==='defeated'?'red':'');
+
+    // Penalties
+    const penEl = $('penaltyList');
+    if (status === 'defeated' && penalties) {
+      penEl.style.display = '';
+      let penHtml = '<div class="penalty-title">⚠️ 패배 패널티</div>';
+      for (const [stat, delta] of Object.entries(penalties)) {
+        if (delta !== 0) {
+          penHtml += `<div class="penalty-item">${STAT_NM[stat]||stat} ${delta>=0?'+':''}${delta}</div>`;
+        }
+      }
+      penEl.innerHTML = penHtml;
+    } else {
+      penEl.style.display = 'none';
+    }
+
+    // Treasures
+    const trEl = $('treasuresList');
+    const treasures = adv?.pending_treasures || [];
+    if (status === 'complete' && treasures.length > 0) {
+      trEl.style.display = '';
+      trEl.innerHTML = `<div class="treasures-title">✨ 발견한 보물</div>` +
+        treasures.map(t => `<div style="font-size:11px;color:var(--text)">🎁 ${t}</div>`).join('');
+    } else {
+      trEl.style.display = 'none';
+    }
+  }
+
+  async function doComplete() {
+    if (_busy) return;
+    _busy = true;
+
+    try {
+      const adv = getAdv();
+      const res = await __panelBridge.runTool('engine', { action: 'adventure_complete' });
+      const r = res?.result;
+      if (!r || !r.success) { _busy = false; return; }
+
+      const s = r.summary;
+      let msg = `[ADVENTURE_COMPLETE] ${s.zone}\n상태: ${s.status}`;
+      for (const b of (s.battles || [])) {
+        msg += `\n- ${b.enemy}: ${b.won?'승리':'패배'} (${b.rounds}R, 피해${b.damage_taken}${b.rewards?.gold?', +'+b.rewards.gold+'G':''})`;
+      }
+      if (s.treasures?.length) msg += `\n보물: ${s.treasures.join(', ')}`;
+      msg += `\nHP 잔여: ${s.hp_remaining}/${s.hp_max}`;
+      if (s.status === 'defeated') {
+        msg += `\n💀 패배 — 패널티 적용됨`;
+        if (s.dark_path) {
+          msg += `\n[DARK_PATH_DEFEAT] 어둠의 길 활성화 상태에서 전투 패배. 의식을 잃은 올리브가 적에게 무방비 상태로 노출됨. 다크패스 수위에 맞는 패배 씬을 구성하라 — 전투형 게임의 패배 연출 참조. CLAUDE.md "다크패스 서사" 섹션의 나이별 묘사 수위를 따를 것.`;
+        }
+      }
+      if (s.status === 'retreated') msg += `\n🏃 퇴각`;
+
+      // Close adventure modal and open advance dock FIRST
+      await __panelBridge.openModal('advance', true);
+
+      // Then send message after modal is closed
+      await __panelBridge.queueEvent(msg);
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('__panel_send_message', { detail: '[모험 완료]' }));
+      }, 300);
+    } catch(e) {
+      console.error('Complete error:', e);
+    }
+    _busy = false;
+  }
+
+  // Bind event listeners
+  $('btnFight').addEventListener('click', doFight);
+  $('btnItem').addEventListener('click', toggleItems);
+  $('btnRetreat').addEventListener('click', doRetreat);
+  $('btnNext').addEventListener('click', nextEncounter);
+  $('btnComplete').addEventListener('click', doComplete);
+
+  // Initialize
+  init();
+</script>

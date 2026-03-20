@@ -242,6 +242,16 @@ async function stepPortCheck(port) {
   }
 }
 
+function copyDirRecursive(src, dst) {
+  fs.mkdirSync(dst, { recursive: true });
+  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+    const s = path.join(src, entry.name);
+    const d = path.join(dst, entry.name);
+    if (entry.isDirectory()) copyDirRecursive(s, d);
+    else fs.copyFileSync(s, d);
+  }
+}
+
 async function stepDataDir() {
   header("Step 11: Data Directory");
   const dataDir = path.join(__dirname, "data");
@@ -250,6 +260,22 @@ async function stepDataDir() {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   }
   info("data/ directory initialized");
+
+  // Copy sample personas if personas dir is empty
+  const personasDir = path.join(dataDir, "personas");
+  const existing = fs.readdirSync(personasDir).filter(f => !f.startsWith("."));
+  if (existing.length === 0) {
+    const samplesDir = path.join(dataDir, "sample-personas");
+    if (fs.existsSync(samplesDir)) {
+      const samples = fs.readdirSync(samplesDir).filter(f => !f.startsWith("."));
+      for (const name of samples) {
+        copyDirRecursive(path.join(samplesDir, name), path.join(personasDir, name));
+      }
+      if (samples.length > 0) {
+        info(`${samples.length} sample persona(s) installed`);
+      }
+    }
+  }
 }
 
 async function main() {

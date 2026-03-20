@@ -1,0 +1,508 @@
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap');
+  :host { font-family: 'Noto Sans KR', sans-serif; display: block; }
+
+  .sp {
+    background: linear-gradient(135deg, #1c1528 0%, #251a35 100%);
+    border: 1px solid rgba(232,160,191,0.15);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+
+  /* Header */
+  .sp-hdr {
+    text-align: center;
+    padding: 22px 16px 16px;
+    background: linear-gradient(180deg, rgba(232,160,191,0.08) 0%, transparent 100%);
+    border-bottom: 1px solid rgba(232,160,191,0.08);
+  }
+  .sp-title {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 900;
+    color: #e8a0bf;
+    letter-spacing: 3px;
+  }
+  .sp-sub {
+    margin: 6px 0 0;
+    font-size: 11px;
+    color: #9988aa;
+  }
+  .sp-progress {
+    margin-top: 10px;
+    display: flex;
+    justify-content: center;
+    gap: 6px;
+  }
+  .sp-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.08);
+    transition: all 0.3s;
+  }
+  .sp-dot.filled {
+    background: #e8a0bf;
+    box-shadow: 0 0 6px rgba(232,160,191,0.4);
+  }
+
+  /* Section */
+  .sp-sec {
+    padding: 16px 18px 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+  }
+  .sp-lbl {
+    font-size: 12px;
+    font-weight: 700;
+    color: #c8a8d8;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .sp-lbl::before {
+    content: '▸';
+    color: #e8a0bf;
+    font-size: 10px;
+  }
+
+  /* Card Grid */
+  .sp-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .sp-card {
+    position: relative;
+    flex: 0 0 auto;
+    min-width: 70px;
+    padding: 10px 10px 8px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 10px;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.2s;
+    user-select: none;
+  }
+  .sp-card:hover {
+    background: rgba(232,160,191,0.08);
+    border-color: rgba(232,160,191,0.2);
+    transform: translateY(-1px);
+  }
+  .sp-card.active {
+    background: rgba(232,160,191,0.12);
+    border-color: rgba(232,160,191,0.5);
+    box-shadow: 0 0 14px rgba(232,160,191,0.15);
+  }
+  .sp-card.dark {
+    border-color: rgba(200,60,80,0.25);
+  }
+  .sp-card.dark:hover {
+    border-color: rgba(200,60,80,0.4);
+  }
+  .sp-card.dark.active {
+    border-color: rgba(200,60,80,0.6);
+    box-shadow: 0 0 14px rgba(200,60,80,0.2);
+    background: rgba(200,60,80,0.1);
+  }
+  .sp-card.dark::after {
+    content: '🌑';
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    font-size: 10px;
+    filter: drop-shadow(0 0 2px rgba(0,0,0,0.8));
+  }
+  .sp-ico { font-size: 22px; line-height: 1.2; }
+  .sp-nm { font-size: 10px; color: #b8a8c8; margin-top: 4px; white-space: nowrap; }
+  .sp-card.active .sp-nm { color: #e8d0e8; font-weight: 500; }
+
+  /* Info box */
+  .sp-info {
+    margin-top: 10px;
+    padding: 10px 12px;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(232,160,191,0.08);
+    border-radius: 8px;
+    font-size: 11px;
+    color: #b8a8c8;
+    line-height: 1.7;
+    animation: spFade 0.2s ease;
+  }
+  @keyframes spFade { from { opacity:0; transform:translateY(-4px); } to { opacity:1; } }
+  .sp-desc { margin-bottom: 6px; }
+  .sp-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 6px;
+    margin-bottom: 4px;
+  }
+  .sp-bon {
+    font-size: 10px; font-weight: 600;
+    color: #7cd88a;
+    background: rgba(100,200,120,0.08);
+    padding: 1px 6px;
+    border-radius: 4px;
+  }
+  .sp-pen {
+    font-size: 10px; font-weight: 600;
+    color: #e87070;
+    background: rgba(230,100,100,0.08);
+    padding: 1px 6px;
+    border-radius: 4px;
+  }
+  .sp-gld {
+    font-size: 10px; font-weight: 600;
+    color: #f5d76e;
+    background: rgba(240,210,100,0.08);
+    padding: 1px 6px;
+    border-radius: 4px;
+  }
+  .sp-spc {
+    font-size: 10px;
+    color: #e8a0bf;
+    font-style: italic;
+    margin-top: 2px;
+  }
+  .sp-dwarn {
+    font-size: 10px;
+    color: #c84060;
+    margin-top: 4px;
+  }
+
+  /* Month picker */
+  .sp-months {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .sp-mon {
+    width: 46px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 7px;
+    font-size: 11px;
+    color: #b8a8c8;
+    cursor: pointer;
+    transition: all 0.2s;
+    user-select: none;
+  }
+  .sp-mon:hover {
+    background: rgba(232,160,191,0.08);
+    border-color: rgba(232,160,191,0.2);
+  }
+  .sp-mon.active {
+    background: rgba(232,160,191,0.15);
+    border-color: rgba(232,160,191,0.5);
+    color: #e8d0e8;
+    font-weight: 700;
+  }
+
+  /* Footer / Start */
+  .sp-foot {
+    padding: 16px 18px 20px;
+  }
+  .sp-start {
+    display: block;
+    width: 100%;
+    padding: 14px 0;
+    background: linear-gradient(135deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px;
+    color: #665566;
+    font-family: 'Noto Sans KR', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    cursor: not-allowed;
+    transition: all 0.3s;
+  }
+  .sp-start.ready {
+    background: linear-gradient(135deg, rgba(232,160,191,0.2), rgba(180,120,200,0.25));
+    border-color: rgba(232,160,191,0.4);
+    color: #f0e0f0;
+    cursor: pointer;
+    box-shadow: 0 0 24px rgba(232,160,191,0.12);
+  }
+  .sp-start.ready:hover {
+    background: linear-gradient(135deg, rgba(232,160,191,0.3), rgba(180,120,200,0.35));
+    box-shadow: 0 0 32px rgba(232,160,191,0.2);
+    transform: translateY(-1px);
+  }
+  .sp-start.ready:active { transform: translateY(0); }
+  .sp-start.sent {
+    background: rgba(100,200,120,0.12);
+    border-color: rgba(100,200,120,0.3);
+    color: #8dc898;
+    cursor: default;
+    letter-spacing: 2px;
+  }
+
+  /* Dark path toggle */
+  .sp-dark {
+    padding: 14px 18px;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+  }
+  .sp-dark-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    background: rgba(200,50,70,0.04);
+    border: 1px solid rgba(200,50,70,0.12);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+    user-select: none;
+  }
+  .sp-dark-row:hover {
+    background: rgba(200,50,70,0.08);
+    border-color: rgba(200,50,70,0.2);
+  }
+  .sp-dark-row.on {
+    background: rgba(200,50,70,0.1);
+    border-color: rgba(200,50,70,0.35);
+    box-shadow: 0 0 16px rgba(200,50,70,0.1);
+  }
+  .sp-toggle {
+    width: 36px; height: 18px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 9px;
+    position: relative;
+    flex-shrink: 0;
+    transition: all 0.25s;
+  }
+  .sp-toggle::after {
+    content: '';
+    position: absolute;
+    top: 2px; left: 2px;
+    width: 14px; height: 14px;
+    background: #888;
+    border-radius: 50%;
+    transition: all 0.25s;
+  }
+  .sp-dark-row.on .sp-toggle {
+    background: rgba(200,60,80,0.5);
+  }
+  .sp-dark-row.on .sp-toggle::after {
+    left: 20px;
+    background: #e05070;
+    box-shadow: 0 0 6px rgba(220,60,90,0.5);
+  }
+  .sp-dark-ico { font-size: 18px; flex-shrink: 0; }
+  .sp-dark-txt { flex: 1; }
+  .sp-dark-nm {
+    font-size: 11px;
+    font-weight: 700;
+    color: #c08090;
+  }
+  .sp-dark-desc {
+    font-size: 10px;
+    color: #887;
+    margin-top: 2px;
+    line-height: 1.4;
+  }
+  .sp-dark-row.on .sp-dark-nm { color: #e06070; }
+  .sp-dark-row.on .sp-dark-desc { color: #a08080; }
+
+  /* Done state (after setup) */
+  .sp-done {
+    padding: 16px 18px;
+    text-align: center;
+  }
+  .sp-done-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #8dc898;
+    margin-bottom: 8px;
+  }
+  .sp-done-row {
+    display: flex;
+    justify-content: center;
+    gap: 18px;
+    font-size: 11px;
+    color: #9988aa;
+  }
+  .sp-done-row span { color: #d8c8e8; font-weight: 600; }
+</style>
+
+<div class="sp" id="setupPanel"></div>
+
+<script>
+  const panel = shadow.getElementById('setupPanel');
+  const d = __panelBridge.data;
+
+  // Already completed?
+  if (d.guardian_background) {
+    panel.innerHTML = '<div class="sp-done">' +
+      '<div class="sp-done-title">✨ 게임 설정 완료</div>' +
+      '<div class="sp-done-row">' +
+        '<div>전직 <span>' + (d.guardian_background_name || d.guardian_background) + '</span></div>' +
+        '<div>생일 <span>' + (d.birth_month || '?') + '월</span></div>' +
+      '</div></div>';
+    return;
+  }
+
+  const config = d['setup-config'] || {};
+  const guardians = config.guardian_backgrounds || {};
+  const personalities = config.personality_types || {};
+
+  const SK = 'pm_setup_' + (__panelBridge.sessionId || '');
+  const saved = JSON.parse((typeof sessionStorage !== 'undefined' && sessionStorage.getItem(SK)) || '{}');
+  const sel = { guardian: saved.guardian || null, month: saved.month || null, personality: saved.personality || null, darkPath: saved.darkPath || false };
+  let sent = false;
+
+  function save() {
+    if (typeof sessionStorage !== 'undefined') sessionStorage.setItem(SK, JSON.stringify(sel));
+  }
+
+  const SN = {
+    combat:'무술', stamina:'체력', intelligence:'지력', elegance:'기품',
+    charm:'매력', morals:'도덕', sensitivity:'감수성', faith:'신앙',
+    art:'예술', music:'음악', etiquette:'예절', cooking:'요리',
+    magic_power:'마력', attack:'공격', defense:'방어',
+    hp_max:'HP', stress_max:'스트레스 한계'
+  };
+  const GICO = { hero:'\u2694\uFE0F', merchant:'\uD83D\uDCB0', noble:'\uD83D\uDC51', wizard:'\uD83D\uDD2E', scholar:'\uD83D\uDCDA', artist:'\uD83C\uDFA8', knight:'\uD83D\uDEE1\uFE0F', priest:'\u2728', courtesan:'\uD83C\uDF19' };
+  const PICO = { active:'\uD83C\uDFC3', quiet:'\uD83D\uDCD6', cheerful:'\uD83D\uDE0A', stubborn:'\uD83D\uDCAA', gentle:'\uD83C\uDF80', curious:'\uD83D\uDD0D' };
+
+  function tags(bonuses, penalties, goldBonus) {
+    let h = '';
+    for (const [s, v] of Object.entries(bonuses || {})) {
+      h += '<span class="sp-bon">' + (SN[s]||s) + '+' + v + '</span>';
+    }
+    for (const [s, v] of Object.entries(penalties || {})) {
+      h += '<span class="sp-pen">' + (SN[s]||s) + v + '</span>';
+    }
+    if (goldBonus > 0) h += '<span class="sp-gld">골드+' + goldBonus + '</span>';
+    return h;
+  }
+
+  function render() {
+    const filled = (sel.guardian?1:0) + (sel.month?1:0) + (sel.personality?1:0);
+    let h = '';
+
+    // Header
+    h += '<div class="sp-hdr">';
+    h += '<div class="sp-title">\u25C6 게임 설정 \u25C6</div>';
+    h += '<div class="sp-sub">올리브의 새로운 이야기를 시작합니다</div>';
+    h += '<div class="sp-progress">';
+    for (let i = 0; i < 3; i++) h += '<div class="sp-dot' + (i < filled ? ' filled' : '') + '"></div>';
+    h += '</div></div>';
+
+    // === Guardian ===
+    h += '<div class="sp-sec"><div class="sp-lbl">양육자 전직</div><div class="sp-grid">';
+    for (const [id, g] of Object.entries(guardians)) {
+      const ac = sel.guardian === id ? ' active' : '';
+      const dk = g.dark_only ? ' dark' : '';
+      h += '<div class="sp-card' + ac + dk + '" data-t="guardian" data-id="' + id + '">';
+      h += '<div class="sp-ico">' + (GICO[id]||'\u2753') + '</div>';
+      h += '<div class="sp-nm">' + g.name + '</div></div>';
+    }
+    h += '</div>';
+    if (sel.guardian && guardians[sel.guardian]) {
+      const g = guardians[sel.guardian];
+      h += '<div class="sp-info">';
+      h += '<div class="sp-desc">' + g.description + '</div>';
+      h += '<div class="sp-tags">' + tags(g.bonuses, null, g.gold_bonus) + '</div>';
+      if (g.special) h += '<div class="sp-spc">\u2726 ' + g.special + '</div>';
+      if (g.dark_only) h += '<div class="sp-dwarn">\uD83C\uDF11 \uC5B4\uB460\uC758 \uAE38\uC774 \uC790\uB3D9\uC73C\uB85C \uD65C\uC131\uD654\uB429\uB2C8\uB2E4</div>';
+      h += '</div>';
+    }
+    h += '</div>';
+
+    // === Birth Month ===
+    h += '<div class="sp-sec"><div class="sp-lbl">올리브의 생일</div><div class="sp-months">';
+    for (let m = 1; m <= 12; m++) {
+      h += '<div class="sp-mon' + (sel.month === m ? ' active' : '') + '" data-t="month" data-id="' + m + '">' + m + '월</div>';
+    }
+    h += '</div></div>';
+
+    // === Personality ===
+    h += '<div class="sp-sec"><div class="sp-lbl">올리브의 성격</div><div class="sp-grid">';
+    for (const [id, p] of Object.entries(personalities)) {
+      const ac = sel.personality === id ? ' active' : '';
+      h += '<div class="sp-card' + ac + '" data-t="personality" data-id="' + id + '">';
+      h += '<div class="sp-ico">' + (PICO[id]||'\u2753') + '</div>';
+      h += '<div class="sp-nm">' + p.name + '</div></div>';
+    }
+    h += '</div>';
+    if (sel.personality && personalities[sel.personality]) {
+      const p = personalities[sel.personality];
+      h += '<div class="sp-info">';
+      h += '<div class="sp-desc">' + p.description + '</div>';
+      h += '<div class="sp-tags">' + tags(p.bonuses, p.penalties) + '</div>';
+      h += '</div>';
+    }
+    h += '</div>';
+
+    // === Dark Path ===
+    h += '<div class="sp-dark">';
+    h += '<div class="sp-dark-row' + (sel.darkPath ? ' on' : '') + '" id="darkToggle">';
+    h += '<div class="sp-toggle"></div>';
+    h += '<div class="sp-dark-ico">\uD83C\uDF11</div>';
+    h += '<div class="sp-dark-txt">';
+    h += '<div class="sp-dark-nm">\uC5B4\uB460\uC758 \uAE38</div>';
+    h += '<div class="sp-dark-desc">' + (sel.darkPath
+      ? '\uC131\uC778\uD5A5 \uCF58\uD150\uCE20\uAC00 \uD65C\uC131\uD654\uB429\uB2C8\uB2E4. \uC5B4\uB450\uC6B4 \uD65C\uB3D9\uACFC \uC120\uC815\uC801 \uC774\uBCA4\uD2B8\uAC00 \uCD94\uAC00\uB429\uB2C8\uB2E4.'
+      : '\uC911\uC138 \uD310\uD0C0\uC9C0 \uC138\uACC4\uC758 \uC5B4\uB461\uACE0 \uC120\uC815\uC801\uC778 \uBA74\uC744 \uACBD\uD5D8\uD569\uB2C8\uB2E4.') + '</div>';
+    h += '</div></div></div>';
+
+    // === Start Button ===
+    const ready = sel.guardian && sel.month && sel.personality;
+    const cls = sent ? 'sent' : (ready ? 'ready' : '');
+    const dis = (!ready || sent) ? ' disabled' : '';
+    const txt = sent ? '\u2728 \uC124\uC815 \uC644\uB8CC!' : '\uD83C\uDF1F \uBAA8\uD5D8\uC744 \uC2DC\uC791\uD558\uB2E4';
+    h += '<div class="sp-foot"><button class="sp-start ' + cls + '" id="startBtn"' + dis + '>' + txt + '</button></div>';
+
+    panel.innerHTML = h;
+
+    // Bind clicks
+    shadow.querySelectorAll('[data-t]').forEach(function(el) {
+      el.addEventListener('click', function() {
+        if (sent) return;
+        var t = el.dataset.t, id = el.dataset.id;
+        if (t === 'guardian') {
+          sel.guardian = id;
+          // Auto-enable dark path when courtesan is selected
+          if (guardians[id] && guardians[id].dark_only) sel.darkPath = true;
+        }
+        else if (t === 'month') sel.month = parseInt(id);
+        else if (t === 'personality') sel.personality = id;
+        save();
+        render();
+      });
+    });
+
+    var darkBtn = shadow.getElementById('darkToggle');
+    if (darkBtn && !sent) {
+      darkBtn.addEventListener('click', function() {
+        sel.darkPath = !sel.darkPath;
+        save();
+        render();
+      });
+    }
+
+    var btn = shadow.getElementById('startBtn');
+    if (btn && ready && !sent) {
+      btn.addEventListener('click', async function() {
+        sent = true;
+        render();
+        await __panelBridge.queueEvent(
+          '[GAME_SETUP]\nguardian_background: ' + sel.guardian +
+          '\nbirth_month: ' + sel.month +
+          '\npersonality: ' + sel.personality +
+          '\ndark_path: ' + (sel.darkPath ? 'true' : 'false')
+        );
+        __panelBridge.sendMessage('[플레이시작]');
+        if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(SK);
+      });
+    }
+  }
+
+  render();
+</script>

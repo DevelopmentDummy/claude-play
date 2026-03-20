@@ -1,0 +1,8 @@
+{
+  "base": "1girl, solo, child, light brown hair, shoulder-length hair, blue hair ribbon, green eyes, big eyes, small build",
+  "age_variants": {
+    "10-12": "child, flat chest, small build, round face",
+    "13-15": "young teen, developing, slim build",
+    "16-18": "teenage girl, slender, mature face"
+  }
+}

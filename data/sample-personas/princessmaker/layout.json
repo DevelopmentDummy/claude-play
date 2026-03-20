@@ -1,0 +1,46 @@
+{
+  "panels": {
+    "size": 300,
+    "showProfileImage": false,
+    "placement": {
+      "stats": "right",
+      "schedule": "modal",
+      "catalog": "modal",
+      "inventory": "modal",
+      "log": "right",
+      "portrait": "left",
+      "info": "left",
+      "advance": "dock-right",
+      "competition": "modal",
+      "options": "modal",
+      "values": "modal",
+      "adventure": "modal"
+    },
+    "modalGroups": {
+      "gameplay": ["schedule", "advance", "competition", "adventure", "inventory", "catalog"],
+      "overlay": ["portrait", "values"]
+    },
+    "autoRefresh": {
+      "portrait": false,
+      "advance": false,
+      "competition": false,
+      "adventure": false
+    }
+  },
+  "chat": {
+    "maxWidth": null,
+    "align": "stretch"
+  },
+  "theme": {
+    "accent": "#e8a0bf",
+    "bg": "#1a1425",
+    "surface": "#231d33",
+    "surfaceLight": "#2e2640",
+    "userBubble": "#2e2545",
+    "assistantBubble": "#28203d",
+    "border": "#3a2e55",
+    "text": "#f0e8f5",
+    "textDim": "#9988aa"
+  },
+  "customCSS": ""
+}

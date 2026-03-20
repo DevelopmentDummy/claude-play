@@ -1,0 +1,53 @@
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Jua&display=swap');
+:host { font-family: 'Jua', sans-serif; }
+.popup-wrap { text-align: center; padding: 8px 0; position: relative; }
+.trophy-icon { font-size: 48px; margin-bottom: 4px; position: relative; z-index: 1; animation: trophyLift 0.7s ease-out; }
+@keyframes trophyLift {
+  0% { transform: translateY(20px) scale(0.5); opacity: 0; }
+  60% { transform: translateY(-5px) scale(1.1); }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+.comp-name { font-size: 13px; color: rgba(255,255,255,0.7); letter-spacing: 2px; text-transform: uppercase; position: relative; z-index: 1; margin-bottom: 4px; }
+.title { font-size: 26px; font-weight: 900; position: relative; z-index: 1; color: #fff; text-shadow: 0 2px 8px rgba(0,0,0,0.3); }
+.rank-display {
+  margin: 12px auto 8px; position: relative; z-index: 1;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 8px 24px; border-radius: 30px;
+  background: rgba(0,0,0,0.3); border: 2px solid rgba(255,255,255,0.15);
+  opacity: 0; animation: rankReveal 0.5s 0.4s ease-out forwards;
+}
+@keyframes rankReveal { 0% { opacity: 0; transform: scale(0.8); } 100% { opacity: 1; transform: scale(1); } }
+.rank-label { font-size: 14px; color: rgba(255,255,255,0.6); }
+.rank-value { font-size: 36px; font-weight: 900; text-shadow: 0 0 15px currentColor; }
+.rank-gold { color: #ffd700; }
+.rank-silver { color: #c0c0d0; }
+.rank-bronze { color: #cd7f32; }
+.rank-other { color: var(--popup-primary, #e8a0bf); }
+.score-line {
+  font-size: 14px; color: rgba(255,255,255,0.6); margin-top: 4px;
+  position: relative; z-index: 1; opacity: 0; animation: fadeIn 0.4s 0.7s ease-out forwards;
+}
+.score-num { color: #fff; font-weight: 700; font-size: 18px; }
+.medal-shimmer {
+  position: absolute; top: 10px; left: 50%; width: 80px; height: 80px;
+  transform: translateX(-50%); border-radius: 50%; z-index: 0;
+  animation: shimmerPulse 2s ease-in-out infinite;
+}
+.shimmer-gold { background: radial-gradient(circle, rgba(255,215,0,0.25) 0%, transparent 70%); }
+.shimmer-silver { background: radial-gradient(circle, rgba(192,192,210,0.25) 0%, transparent 70%); }
+.shimmer-bronze { background: radial-gradient(circle, rgba(205,127,50,0.25) 0%, transparent 70%); }
+.shimmer-default { background: radial-gradient(circle, var(--popup-glow, rgba(232,160,191,0.25)) 0%, transparent 70%); }
+@keyframes shimmerPulse { 0%, 100% { transform: translateX(-50%) scale(1); opacity: 0.5; } 50% { transform: translateX(-50%) scale(1.5); opacity: 0; } }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+</style>
+<div class="popup-wrap">
+  <div class="medal-shimmer {{#if (eq rank 1)}}shimmer-gold{{else}}{{#if (eq rank 2)}}shimmer-silver{{else}}{{#if (eq rank 3)}}shimmer-bronze{{else}}shimmer-default{{/if}}{{/if}}{{/if}}"></div>
+  <div class="trophy-icon">🏆</div>
+  <div class="comp-name">{{competition_name}}</div>
+  <div class="title">대회 결과</div>
+  <div class="rank-display">
+    <span class="rank-value {{#if (eq rank 1)}}rank-gold{{else}}{{#if (eq rank 2)}}rank-silver{{else}}{{#if (eq rank 3)}}rank-bronze{{else}}rank-other{{/if}}{{/if}}{{/if}}">{{rank_text}}</span>
+  </div>
+  <div class="score-line">점수 <span class="score-num">{{score}}</span>점</div>
+</div>

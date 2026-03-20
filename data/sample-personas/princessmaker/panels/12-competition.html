@@ -1,0 +1,969 @@
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Jua&family=Noto+Sans+KR:wght@400;600;700;900&display=swap');
+
+:host {
+  font-family: 'Noto Sans KR', sans-serif;
+  display: block;
+  --gold: #ffd700;
+  --silver: #c0c0d0;
+  --bronze: #cd7f32;
+  --accent: #e8a0bf;
+  --bg: #1a1425;
+  --surface: #231d33;
+  --text: #f0e8f5;
+  --dim: #9988aa;
+  --red: #f06070;
+  --green: #6ee09a;
+  --blue: #5b9cf5;
+}
+
+.comp-wrap {
+  background: var(--bg);
+  border: 1px solid rgba(232,160,191,0.15);
+  border-radius: 18px;
+  overflow: hidden;
+  min-height: 400px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 80px rgba(0,0,0,0.7), 0 0 40px rgba(232,160,191,0.06);
+  width: 100%;
+}
+
+/* ═══ HEADER ═══ */
+.comp-header {
+  padding: 20px 24px 16px;
+  text-align: center;
+  background: linear-gradient(180deg, rgba(232,160,191,0.08) 0%, transparent 100%);
+  border-bottom: 1px solid rgba(232,160,191,0.08);
+  position: relative;
+  overflow: hidden;
+}
+.comp-header::before {
+  content: '';
+  position: absolute;
+  top: -40px; left: 50%; width: 200px; height: 100px;
+  transform: translateX(-50%);
+  background: radial-gradient(ellipse, rgba(232,160,191,0.12), transparent 70%);
+  pointer-events: none;
+}
+.comp-festival { font-size: 11px; color: var(--dim); letter-spacing: 3px; text-transform: uppercase; position: relative; }
+.comp-title { font-family: 'Jua', sans-serif; font-size: 28px; color: var(--text); margin-top: 4px; position: relative; text-shadow: 0 2px 8px rgba(0,0,0,0.4); }
+.comp-category { font-size: 12px; color: var(--accent); margin-top: 4px; position: relative; }
+
+/* ═══ STAGE ═══ */
+.comp-stage {
+  flex: 1;
+  padding: 16px 20px;
+  overflow-y: auto;
+  min-height: 0;
+}
+.comp-stage::-webkit-scrollbar { width: 3px; }
+.comp-stage::-webkit-scrollbar-thumb { background: rgba(232,160,191,0.1); border-radius: 2px; }
+
+/* ═══ LOADING ═══ */
+.comp-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  gap: 16px;
+}
+.comp-loading-icon {
+  font-size: 48px;
+  animation: bounce 1s ease-in-out infinite;
+}
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+.comp-loading-text { font-size: 14px; color: var(--dim); }
+
+/* ═══ TOURNAMENT (bracket) ═══ */
+.bracket-stage { text-align: center; }
+.bracket-round-label {
+  font-family: 'Jua', sans-serif;
+  font-size: 16px;
+  color: var(--accent);
+  margin-bottom: 12px;
+  opacity: 0;
+  animation: fadeSlideDown 0.4s ease-out forwards;
+}
+@keyframes fadeSlideDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.bracket-match {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin: 0 auto 10px;
+  max-width: 360px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  opacity: 0;
+  animation: fadeSlideDown 0.5s ease-out forwards;
+}
+.bracket-fighter {
+  flex: 1;
+  text-align: center;
+  padding: 6px;
+  border-radius: 8px;
+  transition: all 0.4s;
+}
+.bracket-fighter.player { background: rgba(232,160,191,0.08); border: 1px solid rgba(232,160,191,0.15); }
+.bracket-fighter.npc { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.04); }
+.bracket-fighter.winner { box-shadow: 0 0 16px rgba(255,215,0,0.2); border-color: var(--gold) !important; }
+.bracket-fighter.loser { opacity: 0.35; }
+.fighter-name { font-size: 13px; font-weight: 700; color: var(--text); }
+.fighter-name.is-player { color: var(--accent); }
+.fighter-score { font-size: 11px; color: var(--dim); margin-top: 2px; }
+.bracket-vs {
+  font-family: 'Jua', sans-serif;
+  font-size: 18px;
+  color: var(--red);
+  flex-shrink: 0;
+  text-shadow: 0 0 10px rgba(240,96,112,0.3);
+}
+.bracket-blow {
+  text-align: center;
+  font-size: 12px;
+  color: var(--dim);
+  margin: -4px 0 8px;
+  font-style: italic;
+  opacity: 0;
+  animation: fadeIn 0.3s ease-out forwards;
+}
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* ═══ PERFORMANCE (judge scoring) ═══ */
+.perf-stage { text-align: center; }
+.perf-performer {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin: 0 auto 8px;
+  max-width: 400px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  opacity: 0;
+  animation: fadeSlideDown 0.4s ease-out forwards;
+}
+.perf-performer.is-player {
+  background: rgba(232,160,191,0.06);
+  border-color: rgba(232,160,191,0.15);
+}
+.perf-rank {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Jua', sans-serif;
+  font-size: 14px;
+  font-weight: 900;
+  flex-shrink: 0;
+  background: rgba(255,255,255,0.05);
+  color: var(--dim);
+}
+.perf-rank.r1 { background: rgba(255,215,0,0.15); color: var(--gold); }
+.perf-rank.r2 { background: rgba(192,192,210,0.15); color: var(--silver); }
+.perf-rank.r3 { background: rgba(205,127,50,0.15); color: var(--bronze); }
+.perf-info { flex: 1; text-align: left; }
+.perf-name { font-size: 13px; font-weight: 700; color: var(--text); }
+.perf-name.is-player { color: var(--accent); }
+.perf-desc { font-size: 10px; color: var(--dim); margin-top: 1px; }
+.perf-score-area { text-align: right; flex-shrink: 0; }
+.perf-score-val {
+  font-family: 'Jua', sans-serif;
+  font-size: 22px;
+  font-weight: 900;
+  color: var(--text);
+}
+.perf-score-val.r1 { color: var(--gold); text-shadow: 0 0 10px rgba(255,215,0,0.3); }
+.perf-score-val.r2 { color: var(--silver); }
+.perf-score-val.r3 { color: var(--bronze); }
+.perf-score-label { font-size: 9px; color: var(--dim); }
+
+.perf-judges {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin-bottom: 16px;
+  opacity: 0;
+  animation: fadeSlideDown 0.5s ease-out forwards;
+}
+.perf-judge {
+  text-align: center;
+  padding: 8px 14px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.05);
+  border-radius: 10px;
+  min-width: 70px;
+}
+.perf-judge-icon { font-size: 24px; }
+.perf-judge-name { font-size: 10px; color: var(--dim); margin-top: 2px; }
+.perf-judge-score {
+  font-family: 'Jua', sans-serif;
+  font-size: 20px;
+  color: var(--gold);
+  margin-top: 2px;
+  opacity: 0;
+}
+.perf-judge-score.revealed {
+  opacity: 1;
+  animation: scoreReveal 0.5s ease-out;
+}
+@keyframes scoreReveal {
+  0% { transform: scale(2); opacity: 0; }
+  60% { transform: scale(0.9); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.perf-phase-label {
+  font-family: 'Jua', sans-serif;
+  font-size: 14px;
+  color: var(--accent);
+  margin-bottom: 8px;
+  opacity: 0;
+  animation: fadeSlideDown 0.4s ease-out forwards;
+}
+
+/* ═══ SHOWCASE (race/comparison) ═══ */
+.showcase-stage { }
+.showcase-track {
+  margin-bottom: 6px;
+  opacity: 0;
+  animation: fadeSlideDown 0.3s ease-out forwards;
+}
+.showcase-lane {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.04);
+}
+.showcase-lane.is-player {
+  background: rgba(232,160,191,0.05);
+  border-color: rgba(232,160,191,0.12);
+}
+.showcase-lane-rank {
+  width: 22px;
+  font-family: 'Jua', sans-serif;
+  font-size: 14px;
+  font-weight: 900;
+  color: var(--dim);
+  text-align: center;
+  flex-shrink: 0;
+}
+.showcase-lane-rank.r1 { color: var(--gold); }
+.showcase-lane-rank.r2 { color: var(--silver); }
+.showcase-lane-rank.r3 { color: var(--bronze); }
+.showcase-lane-name {
+  width: 70px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.showcase-lane-name.is-player { color: var(--accent); }
+.showcase-bar-wrap {
+  flex: 1;
+  height: 20px;
+  background: rgba(0,0,0,0.3);
+  border-radius: 10px;
+  overflow: hidden;
+  position: relative;
+}
+.showcase-bar {
+  height: 100%;
+  border-radius: 10px;
+  transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  min-width: 0;
+}
+.showcase-bar.player-bar {
+  background: linear-gradient(90deg, rgba(232,160,191,0.6), rgba(232,160,191,0.9));
+  box-shadow: 0 0 8px rgba(232,160,191,0.3);
+}
+.showcase-bar.npc-bar {
+  background: linear-gradient(90deg, rgba(91,156,245,0.4), rgba(91,156,245,0.7));
+}
+.showcase-bar.r1-bar {
+  background: linear-gradient(90deg, rgba(255,215,0,0.5), rgba(255,215,0,0.85));
+  box-shadow: 0 0 10px rgba(255,215,0,0.2);
+}
+.showcase-bar-score {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 10px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.9);
+  text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+}
+.showcase-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+.showcase-phase {
+  text-align: center;
+  font-family: 'Jua', sans-serif;
+  font-size: 15px;
+  color: var(--accent);
+  margin-bottom: 10px;
+  opacity: 0;
+  animation: fadeSlideDown 0.4s ease-out forwards;
+}
+
+/* ═══ RESULT FLASH ═══ */
+.result-flash {
+  text-align: center;
+  padding: 20px;
+  opacity: 0;
+  animation: resultAppear 0.8s ease-out forwards;
+}
+@keyframes resultAppear {
+  0% { opacity: 0; transform: scale(0.7); }
+  50% { transform: scale(1.05); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.result-emoji { font-size: 48px; margin-bottom: 8px; }
+.result-text {
+  font-family: 'Jua', sans-serif;
+  font-size: 24px;
+  color: var(--text);
+  text-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+.result-rank-gold { color: var(--gold); text-shadow: 0 0 20px rgba(255,215,0,0.4); }
+.result-rank-silver { color: var(--silver); }
+.result-rank-bronze { color: var(--bronze); }
+
+/* ═══ FOOTER ═══ */
+.comp-footer {
+  padding: 12px 20px 16px;
+  border-top: 1px solid rgba(232,160,191,0.08);
+  text-align: center;
+}
+.comp-status {
+  font-size: 12px;
+  color: var(--dim);
+  min-height: 18px;
+}
+.comp-status .highlight { color: var(--accent); font-weight: 700; }
+
+/* ═══ UTILS ═══ */
+.hidden { display: none !important; }
+.shake { animation: shake 0.4s ease-in-out; }
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  75% { transform: translateX(5px); }
+}
+.flash-gold { animation: flashGold 0.6s ease-out; }
+@keyframes flashGold {
+  0% { background: rgba(255,215,0,0.3); }
+  100% { background: transparent; }
+}
+</style>
+
+<div class="comp-wrap" id="compRoot">
+  <div class="comp-header">
+    <div class="comp-festival" id="compFestival"></div>
+    <div class="comp-title" id="compTitle"></div>
+    <div class="comp-category" id="compCategory"></div>
+  </div>
+  <div class="comp-stage" id="compStage">
+    <div class="comp-loading">
+      <div class="comp-loading-icon">⚔️</div>
+      <div class="comp-loading-text">대회 준비 중...</div>
+    </div>
+  </div>
+  <div class="comp-footer">
+    <div class="comp-status" id="compStatus"></div>
+  </div>
+</div>
+
+<script>
+  const d = __panelBridge.data;
+  const pending = d.__competition_pending;
+  if (!pending || !pending.id) {
+    // No valid pending competition — auto-close modal to prevent stuck state
+    const cm = (__panelBridge?.data?.__modals) || {};
+    if (cm.competition) {
+      __panelBridge.closeModal('competition');
+    }
+    return;
+  }
+
+  const $stage = shadow.querySelector('#compStage');
+  const $status = shadow.querySelector('#compStatus');
+  const $title = shadow.querySelector('#compTitle');
+  const $festival = shadow.querySelector('#compFestival');
+  const $category = shadow.querySelector('#compCategory');
+
+  // ═══ CATEGORY → MODE MAPPING ═══
+  const MODE_MAP = {
+    '무술': 'tournament',
+    '체력': 'showcase',
+    '매력': 'showcase',
+    '감수성': 'performance',
+    '예술': 'performance',
+    '요리': 'performance',
+    '기품': 'performance',
+    '음악': 'performance',
+    '지력': 'performance'
+  };
+
+  const CATEGORY_META = {
+    '무술': { icon: '⚔️', verb: '대련', judges: null, phaseNames: ['예선', '준결승', '결승'] },
+    '체력': { icon: '🏃', verb: '경주', judges: null, phaseNames: ['출발!', '중반전!', '막판 스퍼트!', '결승선!'] },
+    '매력': { icon: '✨', verb: '심사', judges: null, phaseNames: ['입장!', '포즈 심사!', '관객 투표!', '최종 결과!'] },
+    '감수성': { icon: '🌸', verb: '표현', judges: ['감성','기술','독창성'], phaseNames: null },
+    '예술': { icon: '🎨', verb: '창작', judges: ['기법','미감','표현력'], phaseNames: null },
+    '요리': { icon: '🍳', verb: '조리', judges: ['맛','외관','창의성'], phaseNames: null },
+    '기품': { icon: '👑', verb: '무도', judges: ['우아함','매력','자세'], phaseNames: null },
+    '음악': { icon: '🎵', verb: '연주', judges: ['음감','기교','감동'], phaseNames: null },
+    '지력': { icon: '📖', verb: '발표', judges: ['논리','창의','설득력'], phaseNames: null }
+  };
+
+  const JUDGE_ICONS = ['👨‍⚖️', '👩‍⚖️', '🧓'];
+
+  // Battle narration fragments
+  const BLOWS = {
+    '무술': [
+      '{a}의 빠른 공격! {b}이(가) 간신히 방어!',
+      '{b}의 반격! {a}이(가) 비틀거린다!',
+      '{a}이(가) 화려한 연속기를 시전한다!',
+      '{b}의 하단 공격! {a}이(가) 뛰어올라 회피!',
+      '양쪽 모두 필사적으로 부딪힌다!',
+      '{a}의 기합! 강력한 일격이 작렬한다!',
+      '{b}이(가) 빈틈을 노린다! 날카로운 찌르기!',
+      '치열한 공방이 이어진다!',
+      '{a}이(가) 상대의 공격을 흘려보낸다!',
+      '{b}의 돌려차기! 바람을 가른다!'
+    ]
+  };
+
+  const PERF_COMMENTS = {
+    high: ['완벽한 연기!', '관객이 넋을 잃었다!', '감탄이 터져 나온다!', '압도적인 실력!', '경탄할 만한 수준!'],
+    mid: ['안정적인 실력 발휘.', '준수한 연기.', '무난하지만 탄탄하다.', '관객의 박수를 받았다.'],
+    low: ['아쉬운 실수가 있었다.', '긴장이 느껴졌다.', '기대에 못 미쳤다.', '관객이 조용하다.']
+  };
+
+  const cat = pending.category || '';
+  const mode = MODE_MAP[cat] || 'performance';
+  const meta = CATEGORY_META[cat] || CATEGORY_META['예술'];
+
+  // Season info
+  const evCfg = d['events-config'] || {};
+  const se = evCfg.seasonal_events || {};
+  const monthEvent = se[String(d.current_month)];
+  const festivalName = monthEvent?.name || '축제';
+
+  $festival.textContent = festivalName;
+  $title.textContent = pending.name;
+  $category.textContent = `${meta.icon} ${cat} 부문`;
+
+  // ═══ UTILITY ═══
+  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+  function rand(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+  function fillTemplate(tpl, a, b) { return tpl.replace(/\{a\}/g, a).replace(/\{b\}/g, b); }
+
+  // ═══ RUN COMPETITION & SIMULATE ═══
+  async function run() {
+    $status.innerHTML = '<span class="highlight">대회 진행 중...</span>';
+
+    // Call engine
+    const res = await __panelBridge.runTool('engine', {
+      action: 'run_competition',
+      competition_id: pending.id
+    });
+
+    if (!res.result?.success) {
+      $stage.innerHTML = '<div class="comp-loading"><div class="comp-loading-icon">❌</div><div class="comp-loading-text">대회 진행 오류</div></div>';
+      $status.textContent = '잠시 후 닫힙니다...';
+      await sleep(2000);
+      closeAndNotify(null);
+      return;
+    }
+
+    const result = res.result;
+    const playerName = d.name || '올리브';
+    const playerScore = result.score;
+    const npcs = result.npc_scores || [];
+    const rankText = result.rank;
+    const rankMap = { '우승': 1, '준우승': 2, '3위': 3 };
+    const rankNum = rankMap[rankText] || 4;
+
+    // Build all participants sorted by score desc
+    const allParticipants = [
+      { name: playerName, score: playerScore, isPlayer: true },
+      ...npcs.map(n => ({ name: n.name, score: n.score, isPlayer: false }))
+    ].sort((a, b) => b.score - a.score);
+
+    // Simulate based on mode
+    if (mode === 'tournament') {
+      await simulateTournament(allParticipants, playerName, rankNum);
+    } else if (mode === 'showcase') {
+      await simulateShowcase(allParticipants, playerName, rankNum, meta);
+    } else {
+      await simulatePerformance(allParticipants, playerName, rankNum, meta);
+    }
+
+    // Show result flash — hold long enough for user to read
+    await showResultFlash(rankNum, rankText, playerName, playerScore);
+    await sleep(rankNum === 1 ? 3500 : 2500);
+
+    // Close modal and trigger popup + message
+    closeAndNotify(result);
+  }
+
+  // ═══ TOURNAMENT MODE ═══
+  async function simulateTournament(participants, playerName, playerRank) {
+    // Build bracket: pair up, simulate rounds
+    let bracket = [...participants];
+    const rounds = [];
+    const roundNames = meta.phaseNames || ['1라운드', '준결승', '결승'];
+
+    // Generate bracket rounds (elimination style)
+    // Ensure player fights appropriate number of rounds based on final rank
+    let roundIdx = 0;
+    while (bracket.length > 1 && roundIdx < 3) {
+      const roundName = roundNames[Math.min(roundIdx, roundNames.length - 1)] || `${roundIdx + 1}라운드`;
+      const matches = [];
+
+      for (let i = 0; i < bracket.length; i += 2) {
+        if (i + 1 < bracket.length) {
+          const a = bracket[i], b = bracket[i + 1];
+          // Winner is the one with higher score (already sorted)
+          matches.push({ a, b, winner: a.score >= b.score ? a : b, loser: a.score >= b.score ? b : a });
+        } else {
+          matches.push({ a: bracket[i], b: null, winner: bracket[i], loser: null, bye: true });
+        }
+      }
+      rounds.push({ name: roundName, matches });
+      bracket = matches.map(m => m.winner);
+      roundIdx++;
+    }
+
+    // Animate each round
+    for (let ri = 0; ri < rounds.length; ri++) {
+      const round = rounds[ri];
+      $stage.innerHTML = '';
+
+      const label = document.createElement('div');
+      label.className = 'bracket-round-label';
+      label.textContent = `🏟️ ${round.name}`;
+      $stage.appendChild(label);
+
+      for (let mi = 0; mi < round.matches.length; mi++) {
+        const m = round.matches[mi];
+        if (m.bye) continue;
+
+        // Show match setup
+        const matchEl = document.createElement('div');
+        matchEl.className = 'bracket-match';
+        matchEl.style.animationDelay = `${mi * 0.2}s`;
+
+        const fighterA = createFighterEl(m.a, false);
+        const vs = document.createElement('div');
+        vs.className = 'bracket-vs';
+        vs.textContent = 'VS';
+        const fighterB = createFighterEl(m.b, false);
+
+        matchEl.appendChild(fighterA);
+        matchEl.appendChild(vs);
+        matchEl.appendChild(fighterB);
+        $stage.appendChild(matchEl);
+
+        await sleep(600 + mi * 200);
+
+        // Show blow-by-blow for player matches or finals
+        const isPlayerMatch = m.a.isPlayer || m.b.isPlayer;
+        const isFinal = ri === rounds.length - 1;
+
+        if (isPlayerMatch || isFinal) {
+          const blowCount = isFinal ? 3 : 2;
+          for (let bi = 0; bi < blowCount; bi++) {
+            const blowEl = document.createElement('div');
+            blowEl.className = 'bracket-blow';
+            blowEl.style.animationDelay = '0s';
+            const blowPool = BLOWS['무술'] || BLOWS['무술'];
+            const swapNames = Math.random() > 0.5;
+            const nameA = swapNames ? m.b.name : m.a.name;
+            const nameB = swapNames ? m.a.name : m.b.name;
+            blowEl.textContent = fillTemplate(rand(blowPool), nameA, nameB);
+            $stage.appendChild(blowEl);
+            matchEl.classList.add('shake');
+            await sleep(800);
+            matchEl.classList.remove('shake');
+          }
+        }
+
+        // Reveal winner
+        await sleep(400);
+        if (m.winner === m.a) {
+          fighterA.classList.add('winner');
+          fighterB.classList.add('loser');
+        } else {
+          fighterB.classList.add('winner');
+          fighterA.classList.add('loser');
+        }
+
+        const scoreA = document.createElement('div');
+        scoreA.className = 'fighter-score';
+        scoreA.textContent = String(m.a.score);
+        fighterA.appendChild(scoreA);
+        const scoreB = document.createElement('div');
+        scoreB.className = 'fighter-score';
+        scoreB.textContent = String(m.b.score);
+        fighterB.appendChild(scoreB);
+
+        $status.innerHTML = `<span class="highlight">${m.winner.name}</span> 승리!`;
+        await sleep(1000);
+      }
+
+      if (ri < rounds.length - 1) {
+        $status.innerHTML = '다음 라운드 준비 중...';
+        await sleep(800);
+      }
+    }
+  }
+
+  function createFighterEl(p, showScore) {
+    const el = document.createElement('div');
+    el.className = 'bracket-fighter ' + (p.isPlayer ? 'player' : 'npc');
+    const name = document.createElement('div');
+    name.className = 'fighter-name' + (p.isPlayer ? ' is-player' : '');
+    name.textContent = p.isPlayer ? `⭐ ${p.name}` : p.name;
+    el.appendChild(name);
+    if (showScore) {
+      const sc = document.createElement('div');
+      sc.className = 'fighter-score';
+      sc.textContent = String(p.score);
+      el.appendChild(sc);
+    }
+    return el;
+  }
+
+  // ═══ PERFORMANCE MODE ═══
+  async function simulatePerformance(participants, playerName, playerRank, meta) {
+    const judgeNames = meta.judges || ['심사위원1','심사위원2','심사위원3'];
+
+    // Phase 1: Show judges
+    $stage.innerHTML = '';
+    const phaseLabel = document.createElement('div');
+    phaseLabel.className = 'perf-phase-label';
+    phaseLabel.textContent = '🎭 심사위원 소개';
+    $stage.appendChild(phaseLabel);
+
+    const judgesWrap = document.createElement('div');
+    judgesWrap.className = 'perf-judges';
+    const judgeEls = [];
+    for (let i = 0; i < judgeNames.length; i++) {
+      const j = document.createElement('div');
+      j.className = 'perf-judge';
+      j.style.animationDelay = `${i * 0.15}s`;
+      j.innerHTML = `
+        <div class="perf-judge-icon">${JUDGE_ICONS[i] || '👤'}</div>
+        <div class="perf-judge-name">${judgeNames[i]}</div>
+        <div class="perf-judge-score" id="js${i}">—</div>
+      `;
+      judgesWrap.appendChild(j);
+      judgeEls.push(j);
+    }
+    $stage.appendChild(judgesWrap);
+    await sleep(1200);
+
+    // Phase 2: Each performer performs (sorted lowest→highest for dramatic buildup)
+    const sorted = [...participants].sort((a, b) => a.score - b.score);
+
+    for (let pi = 0; pi < sorted.length; pi++) {
+      const p = sorted[pi];
+      const isPlayer = p.isPlayer;
+      const rankInAll = participants.indexOf(p) + 1;
+
+      // Update phase label
+      phaseLabel.textContent = `🎭 ${pi + 1}/${sorted.length}번째 ${meta.verb} — ${p.name}`;
+      phaseLabel.style.animation = 'none';
+      phaseLabel.offsetHeight; // reflow
+      phaseLabel.style.animation = 'fadeSlideDown 0.4s ease-out forwards';
+
+      $status.innerHTML = isPlayer ? `<span class="highlight">올리브의 차례!</span>` : `${p.name}의 ${meta.verb}...`;
+
+      // Judge scoring animation
+      const totalScore = p.score;
+      const judgeScores = distributeScore(totalScore, judgeNames.length);
+
+      // Reset judge scores
+      for (let ji = 0; ji < judgeNames.length; ji++) {
+        const scoreEl = judgesWrap.querySelector(`#js${ji}`);
+        if (scoreEl) {
+          scoreEl.textContent = '...';
+          scoreEl.className = 'perf-judge-score';
+        }
+      }
+
+      await sleep(isPlayer ? 1200 : 600);
+
+      // Reveal each judge score
+      for (let ji = 0; ji < judgeNames.length; ji++) {
+        const scoreEl = judgesWrap.querySelector(`#js${ji}`);
+        if (scoreEl) {
+          scoreEl.textContent = String(judgeScores[ji]);
+          scoreEl.className = 'perf-judge-score revealed';
+        }
+        await sleep(isPlayer ? 600 : 300);
+      }
+
+      // Comment
+      const commentLevel = totalScore >= 120 ? 'high' : totalScore >= 60 ? 'mid' : 'low';
+      const comment = rand(PERF_COMMENTS[commentLevel]);
+      $status.innerHTML = `${p.name}: <span class="highlight">${totalScore}점</span> — ${comment}`;
+
+      await sleep(isPlayer ? 1000 : 500);
+    }
+
+    // Phase 3: Final ranking reveal
+    await sleep(600);
+    phaseLabel.textContent = '🏆 최종 순위 발표!';
+    phaseLabel.style.animation = 'none';
+    phaseLabel.offsetHeight;
+    phaseLabel.style.animation = 'fadeSlideDown 0.4s ease-out forwards';
+
+    // Remove judges
+    judgesWrap.style.display = 'none';
+
+    // Show ranking from bottom to top
+    const finalSorted = [...participants].sort((a, b) => b.score - a.score);
+    const revealOrder = [...finalSorted].reverse();
+
+    for (let i = 0; i < revealOrder.length; i++) {
+      const p = revealOrder[i];
+      const actualRank = finalSorted.indexOf(p) + 1;
+      const row = document.createElement('div');
+      row.className = 'perf-performer' + (p.isPlayer ? ' is-player' : '');
+      row.style.animationDelay = `${i * 0.15}s`;
+
+      const rankCls = actualRank <= 3 ? ` r${actualRank}` : '';
+      row.innerHTML = `
+        <div class="perf-rank${rankCls}">${actualRank}</div>
+        <div class="perf-info">
+          <div class="perf-name${p.isPlayer ? ' is-player' : ''}">${p.isPlayer ? '⭐ ' + p.name : p.name}</div>
+        </div>
+        <div class="perf-score-area">
+          <div class="perf-score-val${rankCls}">${p.score}</div>
+          <div class="perf-score-label">점</div>
+        </div>
+      `;
+      $stage.appendChild(row);
+      await sleep(400);
+    }
+    await sleep(500);
+  }
+
+  function distributeScore(total, n) {
+    // Split total into n judge scores with slight variance
+    const base = Math.floor(total / n);
+    const scores = [];
+    let remaining = total;
+    for (let i = 0; i < n - 1; i++) {
+      const variance = Math.floor(Math.random() * 6) - 3;
+      const s = Math.max(1, base + variance);
+      scores.push(s);
+      remaining -= s;
+    }
+    scores.push(Math.max(1, remaining));
+    return scores;
+  }
+
+  // ═══ SHOWCASE MODE ═══
+  async function simulateShowcase(participants, playerName, playerRank, meta) {
+    const phaseNames = meta.phaseNames || ['시작!', '중반!', '후반!', '결과!'];
+    const sorted = [...participants].sort((a, b) => b.score - a.score);
+    const maxScore = sorted[0].score;
+
+    $stage.innerHTML = '';
+
+    // Create lanes
+    const lanes = [];
+    for (let i = 0; i < sorted.length; i++) {
+      const p = sorted[i];
+      const track = document.createElement('div');
+      track.className = 'showcase-track';
+      track.style.animationDelay = `${i * 0.1}s`;
+
+      const lane = document.createElement('div');
+      lane.className = 'showcase-lane' + (p.isPlayer ? ' is-player' : '');
+
+      const rankEl = document.createElement('div');
+      rankEl.className = 'showcase-lane-rank';
+      rankEl.textContent = '-';
+
+      const nameEl = document.createElement('div');
+      nameEl.className = 'showcase-lane-name' + (p.isPlayer ? ' is-player' : '');
+      nameEl.textContent = p.isPlayer ? `⭐${p.name}` : p.name;
+
+      const iconEl = document.createElement('div');
+      iconEl.className = 'showcase-icon';
+      iconEl.textContent = p.isPlayer ? '🌟' : '👤';
+
+      const barWrap = document.createElement('div');
+      barWrap.className = 'showcase-bar-wrap';
+
+      const bar = document.createElement('div');
+      bar.className = 'showcase-bar ' + (p.isPlayer ? 'player-bar' : 'npc-bar');
+      bar.style.width = '0%';
+
+      const barScore = document.createElement('div');
+      barScore.className = 'showcase-bar-score';
+      barScore.textContent = '';
+
+      bar.appendChild(barScore);
+      barWrap.appendChild(bar);
+      lane.appendChild(rankEl);
+      lane.appendChild(nameEl);
+      lane.appendChild(barWrap);
+      lane.appendChild(iconEl);
+      track.appendChild(lane);
+      $stage.appendChild(track);
+
+      lanes.push({ el: track, lane, bar, barScore, rankEl, p, currentWidth: 0 });
+    }
+
+    await sleep(800);
+
+    // Animate through phases
+    const steps = phaseNames.length;
+    for (let si = 0; si < steps; si++) {
+      const progress = (si + 1) / steps;
+      const isLast = si === steps - 1;
+
+      // Phase label
+      const phaseEl = shadow.querySelector('.showcase-phase');
+      if (phaseEl) phaseEl.remove();
+      const newPhase = document.createElement('div');
+      newPhase.className = 'showcase-phase';
+      newPhase.textContent = phaseNames[si];
+      $stage.insertBefore(newPhase, $stage.firstChild);
+
+      // Update bars with some randomness (not final until last step)
+      for (const l of lanes) {
+        let targetPct;
+        if (isLast) {
+          targetPct = (l.p.score / maxScore) * 100;
+        } else {
+          // Add randomness to intermediate steps
+          const jitter = (Math.random() - 0.5) * 20;
+          targetPct = Math.min(95, Math.max(5, (l.p.score / maxScore) * 100 * progress + jitter));
+        }
+        l.bar.style.width = targetPct + '%';
+
+        if (isLast) {
+          l.barScore.textContent = String(l.p.score);
+        }
+      }
+
+      // Sort lanes by current visual progress for intermediate steps
+      if (!isLast) {
+        $status.innerHTML = phaseNames[si];
+      }
+
+      await sleep(isLast ? 1000 : 1200);
+
+      if (!isLast) {
+        // Shuffle positions mid-race for drama
+        const shuffled = [...lanes].sort(() => Math.random() - 0.5);
+        for (const l of shuffled) {
+          $stage.appendChild(l.el);
+        }
+        await sleep(400);
+      }
+    }
+
+    // Final sort by actual score
+    const finalOrder = [...lanes].sort((a, b) => b.p.score - a.p.score);
+    for (let i = 0; i < finalOrder.length; i++) {
+      const l = finalOrder[i];
+      $stage.appendChild(l.el);
+      const rank = i + 1;
+      l.rankEl.textContent = rank;
+      l.rankEl.className = 'showcase-lane-rank' + (rank <= 3 ? ` r${rank}` : '');
+      if (rank === 1) {
+        l.bar.className = 'showcase-bar r1-bar';
+        l.lane.classList.add('flash-gold');
+      }
+    }
+    $status.innerHTML = '🏆 <span class="highlight">최종 결과!</span>';
+    await sleep(800);
+  }
+
+  // ═══ RESULT FLASH ═══
+  async function showResultFlash(rankNum, rankText, playerName, score) {
+    const emojis = { 1: '🥇', 2: '🥈', 3: '🥉' };
+    const rankClass = { 1: 'result-rank-gold', 2: 'result-rank-silver', 3: 'result-rank-bronze' };
+
+    const flash = document.createElement('div');
+    flash.className = 'result-flash';
+    flash.innerHTML = `
+      <div class="result-emoji">${emojis[rankNum] || '🏅'}</div>
+      <div class="result-text ${rankClass[rankNum] || ''}">${playerName} — ${rankText}!</div>
+    `;
+
+    $stage.innerHTML = '';
+    $stage.appendChild(flash);
+    $status.innerHTML = `점수: <span class="highlight">${score}</span>점`;
+  }
+
+  // ═══ CLOSE & NOTIFY ═══
+  async function closeAndNotify(result) {
+    await __panelBridge.updateVariables({ __competition_pending: null });
+    await __panelBridge.closeModal('competition');
+
+    if (!result) return;
+
+    const rankMap = { '우승': 1, '준우승': 2, '3위': 3 };
+    const rankNum = rankMap[result.rank] || 4;
+
+    // Show popup effect
+    await __panelBridge.showPopup('competition', {
+      duration: rankNum === 1 ? 4500 : 3500,
+      vars: {
+        competition_name: result.competition_name,
+        rank: rankNum,
+        rank_text: result.rank,
+        score: result.score
+      }
+    });
+
+    // Queue event for AI
+    await __panelBridge.queueEvent(
+      `[COMPETITION] ${result.competition_name}: ${result.rank} (점수: ${result.score})\n` +
+      `참가자: ${result.npc_scores.map(n => n.name + ':' + n.score).join(', ')}\n` +
+      `보상: ${Object.entries(result.rewards).map(([k, v]) => k + (v >= 0 ? '+' : '') + v).join(', ')}`
+    );
+
+    // Send chat message directly (bypass sendMessage auto-dismiss to avoid closing other modals)
+    window.dispatchEvent(new CustomEvent("__panel_send_message", { detail: `${pending.name}에 참가합니다!` }));
+  }
+
+  // ═══ START ═══
+  run().catch(async (e) => {
+    console.error('Competition error:', e);
+    $stage.innerHTML = '<div class="comp-loading"><div class="comp-loading-icon">❌</div><div class="comp-loading-text">오류 발생</div></div>';
+    // Safety cleanup — close modal even on error
+    await sleep(1500);
+    await __panelBridge.updateVariables({ __competition_pending: null });
+    await __panelBridge.closeModal('competition');
+  });
+</script>

@@ -1,0 +1,258 @@
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap');
+
+  :host {
+    font-family: 'Noto Sans KR', sans-serif;
+    display: block;
+    width: 100%;
+  }
+
+  .val {
+    background: linear-gradient(160deg, #1e1833 0%, #16112a 100%);
+    border: 1px solid rgba(232,160,191,0.12);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+
+  /* ═══ HEADER ═══ */
+  .val-hdr {
+    padding: 16px 20px 14px;
+    position: relative;
+    overflow: hidden;
+    border-bottom: 1px solid rgba(232,160,191,0.06);
+  }
+  .val-hdr::before {
+    content: '';
+    position: absolute;
+    top: -30px; left: 30%;
+    width: 40%; height: 80px;
+    background: radial-gradient(ellipse, rgba(232,160,191,0.08) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .val-top {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .val-badge {
+    font-size: 8px;
+    font-weight: 900;
+    letter-spacing: 3px;
+    color: #e8a0bf;
+    background: rgba(232,160,191,0.06);
+    border: 1px solid rgba(232,160,191,0.12);
+    border-radius: 20px;
+    padding: 3px 12px;
+    white-space: nowrap;
+  }
+  .val-context {
+    font-size: 10px;
+    color: #776688;
+    line-height: 1.4;
+    font-style: italic;
+  }
+  .val-question {
+    font-size: 14px;
+    font-weight: 700;
+    color: #f0e8f5;
+    line-height: 1.5;
+    word-break: keep-all;
+  }
+
+  /* ═══ CHOICES — vertical roguelike cards ═══ */
+  .val-choices {
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .val-card {
+    background: rgba(255,255,255,0.015);
+    border: 1.5px solid rgba(255,255,255,0.04);
+    border-radius: 12px;
+    padding: 14px 16px;
+    cursor: pointer;
+    transition: all 0.18s ease-out;
+    position: relative;
+    overflow: hidden;
+  }
+  .val-card::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: rgba(232,160,191,0.0);
+    transition: background 0.18s;
+    border-radius: 3px 0 0 3px;
+  }
+  .val-card:hover {
+    background: rgba(232,160,191,0.04);
+    border-color: rgba(232,160,191,0.2);
+    transform: translateX(4px);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+  }
+  .val-card:hover::before {
+    background: #e8a0bf;
+  }
+  .val-card:active {
+    transform: translateX(2px) scale(0.99);
+    transition-duration: 0.06s;
+  }
+
+  .val-card-text {
+    font-size: 13px;
+    color: #e8e0f0;
+    line-height: 1.5;
+    font-weight: 500;
+  }
+  .val-card-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 6px;
+  }
+  .val-card-hint {
+    font-size: 10px;
+    color: #9080aa;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+  }
+  .val-card-effects {
+    font-size: 9px;
+    color: #665577;
+    margin-left: auto;
+  }
+  .val-card-effects .up { color: #6ee09a; }
+  .val-card-effects .dn { color: #f08098; }
+
+  /* ═══ Selected state ═══ */
+  .val-card.selected {
+    border-color: rgba(232,160,191,0.4);
+    background: rgba(232,160,191,0.06);
+    box-shadow: 0 0 20px rgba(232,160,191,0.1);
+  }
+  .val-card.selected::before {
+    background: #e8a0bf;
+  }
+  .val-card.dimmed {
+    opacity: 0.25;
+    pointer-events: none;
+    transform: none;
+  }
+</style>
+
+<!-- {{__values_prompt.question}} -->
+<div class="val" id="valPanel"></div>
+
+<script>
+  const d = __panelBridge.data;
+  const el = shadow.querySelector('#valPanel');
+  const vp = d.__values_prompt;
+
+  if (!vp || !vp.choices || !vp.choices.length) {
+    el.innerHTML = '';
+    return;
+  }
+
+  const STAT_NM = {
+    stamina:'체력', intelligence:'지력', elegance:'기품', charm:'매력',
+    morals:'도덕', sensitivity:'감수성', faith:'신앙', combat:'무술',
+    etiquette:'예절', cooking:'요리', art:'예술', music:'음악',
+    stress:'스트레스', hp:'HP', reputation:'명성'
+  };
+
+  let h = '';
+
+  // Header
+  h += '<div class="val-hdr">';
+  h += '<div class="val-top">';
+  h += '<span class="val-badge">가치관 선택</span>';
+  if (vp.context) h += `<span class="val-context">${vp.context}</span>`;
+  h += '</div>';
+  h += `<div class="val-question">${vp.question}</div>`;
+  h += '</div>';
+
+  // Choice cards
+  h += '<div class="val-choices">';
+  for (let i = 0; i < vp.choices.length; i++) {
+    const c = vp.choices[i];
+    // Build effect preview
+    let effHtml = '';
+    if (c.effects) {
+      const parts = [];
+      for (const [k, v] of Object.entries(c.effects)) {
+        const nm = STAT_NM[k] || k;
+        const cls = (k === 'stress' ? (v > 0 ? 'dn' : 'up') : (v > 0 ? 'up' : 'dn'));
+        parts.push(`<span class="${cls}">${nm}${v > 0 ? '+' : ''}${v}</span>`);
+      }
+      effHtml = parts.join(' ');
+    }
+
+    h += `<div class="val-card" data-idx="${i}">
+      <div class="val-card-text">${c.label}</div>
+      <div class="val-card-meta">
+        ${c.hint ? `<span class="val-card-hint">${c.hint}</span>` : ''}
+        ${effHtml ? `<span class="val-card-effects">${effHtml}</span>` : ''}
+      </div>
+    </div>`;
+  }
+  h += '</div>';
+
+  el.innerHTML = h;
+
+  // Click handlers
+  shadow.querySelectorAll('.val-card').forEach(card => {
+    card.addEventListener('click', () => {
+      const idx = parseInt(card.dataset.idx);
+      const chosen = vp.choices[idx];
+      if (!chosen) return;
+
+      // Visual feedback
+      shadow.querySelectorAll('.val-card').forEach(c => c.classList.add('dimmed'));
+      card.classList.remove('dimmed');
+      card.classList.add('selected');
+
+      setTimeout(async () => {
+        // Compute absolute values from effect deltas
+        const varPatch = { __values_prompt: null };
+        if (chosen.effects) {
+          for (const [k, v] of Object.entries(chosen.effects)) {
+            varPatch[k] = (d[k] || 0) + v;
+          }
+        }
+        // Close modal manually (no sendMessage auto-close)
+        await __panelBridge.updateVariables(varPatch);
+        await __panelBridge.closeModal('values');
+
+        // Apply flags to game-state
+        if (chosen.flags && Object.keys(chosen.flags).length > 0) {
+          const gs = d['game-state'] || {};
+          const merged = { ...gs.flags, ...chosen.flags };
+          await __panelBridge.updateData('game-state', {
+            flags: merged,
+            values_this_slot: true
+          });
+        } else {
+          await __panelBridge.updateData('game-state', { values_this_slot: true });
+        }
+
+        // Build effect summary for event header
+        let effSummary = '';
+        if (chosen.effects) {
+          effSummary = '\neffects: ' + Object.entries(chosen.effects)
+            .map(([k, v]) => `${STAT_NM[k]||k}${v>0?'+':''}${v}`).join(', ');
+        }
+        if (chosen.flags) {
+          effSummary += '\nflags: ' + Object.keys(chosen.flags).join(', ');
+        }
+
+        // Queue event header only — user can chat freely, header prepends to next message
+        const header = `[VALUES_CHOICE]\ncontext: ${vp.context || vp.question}\nchosen: ${chosen.label}${effSummary}`;
+        await __panelBridge.queueEvent(header);
+        window.dispatchEvent(new CustomEvent('values-chosen'));
+      }, 500);
+    });
+  });
+</script>

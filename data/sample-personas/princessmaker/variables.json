@@ -1,0 +1,87 @@
+{
+  "name": "올리브",
+  "age": 10,
+  "birth_month": 6,
+  "guardian_background": "",
+  "guardian_background_name": "",
+  "personality": "",
+  "personality_name": "",
+
+  "current_year": 1,
+  "current_month": 1,
+  "current_day": 1,
+  "season": "봄",
+  "day_number": 1,
+
+  "gold": 500,
+
+  "stamina": 50,
+  "stamina_max": 999,
+  "intelligence": 20,
+  "intelligence_max": 999,
+  "elegance": 15,
+  "elegance_max": 999,
+  "charm": 30,
+  "charm_max": 999,
+  "morals": 20,
+  "morals_max": 999,
+  "sensitivity": 20,
+  "sensitivity_max": 999,
+  "faith": 10,
+  "faith_max": 999,
+
+  "combat": 10,
+  "combat_max": 999,
+  "etiquette": 10,
+  "etiquette_max": 999,
+  "cooking": 10,
+  "cooking_max": 999,
+  "art": 10,
+  "art_max": 999,
+  "music": 10,
+  "music_max": 999,
+
+  "hp": 30,
+  "hp_max": 30,
+  "attack": 5,
+  "defense": 5,
+  "magic_power": 5,
+
+  "stress": 0,
+  "stress_max": 100,
+  "reputation": 50,
+  "reputation_max": 999,
+  "weight": 30,
+
+  "mood": "보통",
+  "location": "집",
+  "outfit": "평상복",
+
+  "schedule_1": "none",
+  "schedule_2": "none",
+  "schedule_3": "none",
+
+  "turn_phase": "setup",
+  "current_slot": 0,
+
+  "stance": "default",
+  "portrait_needs_update": true,
+
+  "wish_activity": "",
+  "wish_text": "",
+
+  "__modals": {
+    "schedule": false,
+    "advance": false,
+    "portrait": "dismissible",
+    "values": false,
+    "competition": false,
+    "adventure": false,
+    "inventory": false
+  },
+
+  "__adventure": null,
+  "__values_prompt": null,
+  "__popups": [],
+  "__competition_pending": null
+}

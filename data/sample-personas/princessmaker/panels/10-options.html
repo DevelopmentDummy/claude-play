@@ -1,0 +1,226 @@
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap');
+  :host {
+    font-family: 'Noto Sans KR', sans-serif;
+    display: block;
+    width: 100%;
+  }
+
+  .opt {
+    background: linear-gradient(135deg, #0d0a12 0%, #1a0f18 100%);
+    border: 1px solid rgba(180,60,80,0.15);
+    border-radius: 16px;
+    padding: 28px 32px;
+    max-width: 440px;
+    margin: 0 auto;
+    box-shadow: 0 16px 56px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.02);
+  }
+
+  .opt-hdr {
+    text-align: center;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid rgba(180,60,80,0.08);
+  }
+  .opt-title {
+    font-size: 15px;
+    font-weight: 900;
+    color: #c8b0c0;
+    letter-spacing: 3px;
+  }
+  .opt-sub {
+    font-size: 10px;
+    color: #554455;
+    margin-top: 4px;
+  }
+
+  /* ═══ SECTION ═══ */
+  .opt-section {
+    margin-bottom: 20px;
+  }
+  .opt-section-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: #885060;
+    letter-spacing: 1px;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .opt-section-title::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, rgba(180,60,80,0.15), transparent);
+  }
+
+  /* ═══ TOGGLE ROW ═══ */
+  .opt-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    background: rgba(180,60,80,0.03);
+    border: 1px solid rgba(180,60,80,0.08);
+    border-radius: 10px;
+    margin-bottom: 8px;
+    transition: all 0.3s;
+  }
+  .opt-toggle.active {
+    background: rgba(180,60,80,0.06);
+    border-color: rgba(180,60,80,0.18);
+    box-shadow: 0 0 20px rgba(180,60,80,0.05);
+  }
+  .opt-toggle-info {
+    flex: 1;
+    min-width: 0;
+  }
+  .opt-toggle-label {
+    font-size: 13px;
+    font-weight: 700;
+    color: #d88090;
+  }
+  .opt-toggle-hint {
+    font-size: 10px;
+    color: #664455;
+    margin-top: 3px;
+    line-height: 1.4;
+  }
+
+  /* Toggle switch */
+  .sw {
+    position: relative;
+    width: 44px;
+    height: 24px;
+    flex-shrink: 0;
+    margin-left: 14px;
+  }
+  .sw input { opacity: 0; width: 0; height: 0; position: absolute; }
+  .sw-track {
+    position: absolute;
+    inset: 0;
+    background: rgba(255,255,255,0.06);
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.08);
+    cursor: pointer;
+    transition: all 0.3s;
+  }
+  .sw-track::before {
+    content: '';
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    left: 2px;
+    top: 2px;
+    background: #443355;
+    border-radius: 50%;
+    transition: all 0.3s;
+  }
+  .sw input:checked + .sw-track {
+    background: rgba(180,60,80,0.3);
+    border-color: rgba(180,60,80,0.5);
+  }
+  .sw input:checked + .sw-track::before {
+    transform: translateX(20px);
+    background: #c04050;
+    box-shadow: 0 0 8px rgba(180,60,80,0.5);
+  }
+
+  /* ═══ DETAIL BOX ═══ */
+  .opt-detail {
+    background: rgba(0,0,0,0.25);
+    border: 1px solid rgba(180,60,80,0.06);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-top: 10px;
+    overflow: hidden;
+    max-height: 0;
+    opacity: 0;
+    transition: all 0.4s ease;
+  }
+  .opt-detail.show {
+    max-height: 300px;
+    opacity: 1;
+    padding: 12px 14px;
+  }
+  .opt-detail-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-size: 10px;
+    color: #886677;
+    line-height: 1.5;
+  }
+  .opt-detail-item:last-child { margin-bottom: 0; }
+  .opt-detail-ico { flex-shrink: 0; font-size: 12px; }
+  .opt-detail-item strong { color: #aa7788; }
+
+  /* ═══ WARNING ═══ */
+  .opt-warn {
+    background: rgba(180,60,80,0.04);
+    border: 1px solid rgba(180,60,80,0.08);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 10px;
+    color: #775566;
+    line-height: 1.6;
+    text-align: center;
+  }
+  .opt-warn strong { color: #c04050; }
+</style>
+
+<div class="opt" id="optPanel"></div>
+
+<script>
+  const d = __panelBridge.data;
+  const el = shadow.querySelector('#optPanel');
+  const gs = d['game-state'] || {};
+  const darkOn = gs.dark_path || false;
+
+  let h = '';
+  h += '<div class="opt-hdr">';
+  h += '<div class="opt-title">⚙ 설정</div>';
+  h += '<div class="opt-sub">플레이 경험을 조정합니다</div>';
+  h += '</div>';
+
+  // ── Dark Path Toggle ──
+  h += '<div class="opt-section">';
+  h += '<div class="opt-section-title">🌑 어둠의 길</div>';
+  h += `<div class="opt-toggle ${darkOn?'active':''}" id="darkRow">`;
+  h += '<div class="opt-toggle-info">';
+  h += '<div class="opt-toggle-label">다크 패스 활성화</div>';
+  h += '<div class="opt-toggle-hint">중세 판타지 세계의 어두운 이면을 해방합니다</div>';
+  h += '</div>';
+  h += `<label class="sw"><input type="checkbox" id="darkToggle" ${darkOn?'checked':''}><span class="sw-track"></span></label>`;
+  h += '</div>';
+
+  h += `<div class="opt-detail ${darkOn?'show':''}" id="darkDetail">`;
+  h += '<div class="opt-detail-item"><span class="opt-detail-ico">⚔️</span><span><strong>위험한 만남</strong> — 여관의 취객, 골목의 추적자, 수상한 제안이 발생합니다</span></div>';
+  h += '<div class="opt-detail-item"><span class="opt-detail-ico">🔗</span><span><strong>냉혹한 현실</strong> — 인신매매, 빈민가의 참상, 권력의 횡포를 목격합니다</span></div>';
+  h += '<div class="opt-detail-item"><span class="opt-detail-ico">🌹</span><span><strong>선정적 상황</strong> — 성적 위협, 유혹, 착취의 가능성이 열립니다</span></div>';
+  h += '<div class="opt-detail-item"><span class="opt-detail-ico">🎭</span><span><strong>어두운 선택지</strong> — 도덕적으로 모호한 결정을 내려야 할 순간들</span></div>';
+  h += '</div>';
+  h += '</div>';
+
+  // ── Warning ──
+  h += '<div class="opt-warn">';
+  h += '<strong>⚠</strong> 이 옵션은 성인 전용입니다. 활성화 시 불쾌하거나 자극적인 상황이 ';
+  h += '서사에 포함될 수 있습니다. 원치 않는 전개는 언제든 OOC로 조정하세요.';
+  h += '</div>';
+
+  el.innerHTML = h;
+
+  // ── Events ──
+  const toggle = shadow.querySelector('#darkToggle');
+  const row = shadow.querySelector('#darkRow');
+  const detail = shadow.querySelector('#darkDetail');
+
+  toggle?.addEventListener('change', function() {
+    const on = this.checked;
+    row?.classList.toggle('active', on);
+    detail?.classList.toggle('show', on);
+    __panelBridge.updateData('game-state.json', { dark_path: on });
+  });
+</script>
