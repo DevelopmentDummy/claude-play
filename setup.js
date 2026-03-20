@@ -34,7 +34,10 @@ function confirm(question, defaultYes = true) {
 }
 function run(cmd, opts = {}) {
   try { return execSync(cmd, { encoding: "utf-8", stdio: opts.silent ? "pipe" : "inherit", ...opts }); }
-  catch { return null; }
+  catch (e) {
+    if (!opts.silent && e.stderr) console.error(e.stderr.toString());
+    return null;
+  }
 }
 function header(text) { console.log(`\n${"=".repeat(50)}\n  ${text}\n${"=".repeat(50)}`); }
 function info(text) { console.log(`  ✓ ${text}`); }
@@ -146,26 +149,35 @@ async function stepComfyUI(gpuInfo) {
 
   const submodulePath = path.join(__dirname, "comfyui_submodule");
 
-  // Already installed as submodule?
-  if (fs.existsSync(path.join(submodulePath, "main.py"))) {
+  // Already fully installed (main.py + venv)?
+  const comfyVenvPip = os.platform() === "win32"
+    ? path.join(submodulePath, "venv", "Scripts", "pip")
+    : path.join(submodulePath, "venv", "bin", "pip");
+  if (fs.existsSync(path.join(submodulePath, "main.py")) && fs.existsSync(comfyVenvPip)) {
     info("ComfyUI submodule already installed");
     return true;
   }
 
-  if (await confirm("시스템에 ComfyUI가 이미 설치되어 있나요?")) {
-    info("웹 셋업 마법사에서 ComfyUI 호스트/포트를 설정할 수 있습니다.");
-    return true;
-  }
+  // Source exists but no venv — skip clone, go to venv setup
+  const hasSource = fs.existsSync(path.join(submodulePath, "main.py"));
 
-  if (!await confirm("ComfyUI를 설치하시겠습니까?", false)) return false;
+  if (!hasSource) {
+    if (await confirm("시스템에 ComfyUI가 이미 설치되어 있나요?")) {
+      info("웹 셋업 마법사에서 ComfyUI 호스트/포트를 설정할 수 있습니다.");
+      return true;
+    }
 
-  info("Adding ComfyUI as git submodule...");
-  run(`git submodule add https://github.com/comfyanonymous/ComfyUI.git comfyui_submodule`);
-  // Also try init+update in case submodule entry already exists
-  run(`git submodule update --init comfyui_submodule`);
-  if (!fs.existsSync(path.join(submodulePath, "main.py"))) {
-    error("Failed to add ComfyUI submodule");
-    return false;
+    if (!await confirm("ComfyUI를 설치하시겠습니까?", false)) return false;
+
+    info("Adding ComfyUI as git submodule...");
+    run(`git submodule add https://github.com/comfyanonymous/ComfyUI.git comfyui_submodule`);
+    run(`git submodule update --init comfyui_submodule`);
+    if (!fs.existsSync(path.join(submodulePath, "main.py"))) {
+      error("Failed to add ComfyUI submodule");
+      return false;
+    }
+  } else {
+    info("ComfyUI source found — setting up Python environment...");
   }
 
   info("Setting up ComfyUI Python environment...");
