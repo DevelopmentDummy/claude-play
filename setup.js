@@ -206,6 +206,31 @@ async function stepComfyUI(gpuInfo) {
   }
   info("ComfyUI installed");
 
+  // Install required custom nodes
+  const customNodesDir = path.join(submodulePath, "custom_nodes");
+  fs.mkdirSync(customNodesDir, { recursive: true });
+  const CUSTOM_NODES = [
+    { name: "ComfyUI-Impact-Pack", repo: "https://github.com/ltdrdata/ComfyUI-Impact-Pack.git" },
+  ];
+  for (const node of CUSTOM_NODES) {
+    const nodeDir = path.join(customNodesDir, node.name);
+    if (fs.existsSync(nodeDir)) {
+      info(`${node.name} already installed`);
+    } else {
+      info(`Installing custom node: ${node.name}...`);
+      run(`git clone "${node.repo}" "${nodeDir}"`);
+      const nodeReq = path.join(nodeDir, "requirements.txt");
+      if (fs.existsSync(nodeReq)) {
+        run(`"${comfyPip}" install -r "${nodeReq}"`);
+      }
+      if (fs.existsSync(nodeDir)) {
+        info(`${node.name} installed`);
+      } else {
+        warn(`Failed to install ${node.name}`);
+      }
+    }
+  }
+
   if (await confirm("Download recommended checkpoint model (Illustrious XL)?", false)) {
     const civitaiKey = await ask("CivitAI API key (or press Enter to skip):");
     if (civitaiKey) {
