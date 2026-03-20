@@ -48,8 +48,10 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Setup API routes have their own auth guard (requireSetupAuth)
-  if (pathname.startsWith("/api/setup")) {
+  // Setup page and API routes — bypass auth during initial setup
+  // (cannot check fs for .setup-complete in Edge Runtime, so always bypass;
+  // API routes self-guard via requireSetupAuth, page checks in client)
+  if (pathname.startsWith("/api/setup") || pathname.startsWith("/setup")) {
     return NextResponse.next();
   }
 
