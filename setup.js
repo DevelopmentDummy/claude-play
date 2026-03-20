@@ -333,11 +333,16 @@ async function main() {
   info("Starting server and opening web setup wizard...");
   rl.close();
 
-  // Poll until server is ready, then open browser
+  // Poll until server is ready, then open browser (once)
   const http = require("http");
+  let opened = false;
   function waitAndOpen() {
+    if (opened) return;
     const req = http.get(`http://127.0.0.1:${port}/api/setup/status`, (res) => {
+      res.resume(); // drain response body
+      if (opened) return;
       if (res.statusCode === 200) {
+        opened = true;
         info(`Server ready — opening ${url}`);
         const openCmd = os.platform() === "win32" ? `start "" "${url}"`
           : os.platform() === "darwin" ? `open "${url}"`
@@ -347,8 +352,8 @@ async function main() {
         setTimeout(waitAndOpen, 1000);
       }
     });
-    req.on("error", () => setTimeout(waitAndOpen, 1000));
-    req.setTimeout(2000, () => { req.destroy(); setTimeout(waitAndOpen, 1000); });
+    req.on("error", () => { if (!opened) setTimeout(waitAndOpen, 1000); });
+    req.setTimeout(2000, () => { req.destroy(); });
   }
   setTimeout(waitAndOpen, 2000);
 
