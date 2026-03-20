@@ -46,7 +46,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const model = process.env.GEMINI_IMAGE_MODEL || "gemini-2.0-flash-exp";
+  const model = process.env.GEMINI_IMAGE_MODEL || "gemini-3.1-flash-image-preview";
   const client = new GeminiImageClient({ apiKey, model });
 
   const resultPath = `images/${filename}`;
