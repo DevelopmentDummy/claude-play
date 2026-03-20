@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { writeEnvFile, readEnvFile } from "@/lib/env-file";
 import { markSetupComplete } from "@/lib/setup-guard";
 import { requireSetupAuth } from "@/lib/setup-auth";
-import fs from "fs";
-import path from "path";
 
 export async function POST(req: NextRequest) {
   const authError = requireSetupAuth(req);
@@ -37,14 +35,19 @@ export async function POST(req: NextRequest) {
   // Mark setup complete
   markSetupComplete();
 
-  // Trigger restart: touch .restart-trigger for dev mode (tsx watch),
-  // or schedule process exit for production
-  const triggerPath = path.join(process.cwd(), ".restart-trigger");
-  fs.writeFileSync(triggerPath, Date.now().toString(), "utf-8");
-
-  if (process.env.NODE_ENV === "production") {
-    setTimeout(() => process.exit(0), 500);
-  }
+  // Trigger restart after response is sent
+  setTimeout(() => {
+    const { spawn } = require("child_process");
+    // Spawn a new server process, then exit current one
+    const child = spawn(process.argv[0], process.argv.slice(1), {
+      cwd: process.cwd(),
+      detached: true,
+      stdio: "ignore",
+      env: { ...process.env, ...updates },
+    });
+    child.unref();
+    process.exit(0);
+  }, 500);
 
   return NextResponse.json({ ok: true, restart: true });
 }
