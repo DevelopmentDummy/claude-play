@@ -98,48 +98,50 @@ async function stepVenv(python) {
   return pip;
 }
 
-async function stepPyTorch(pip) {
-  if (!pip) return { hasGpu: false, vram: 0 };
-  header("Step 5: PyTorch GPU Setup");
-
+async function stepGpuDetect() {
+  header("Step 5: GPU Detection");
   const nvidiaSmi = run("nvidia-smi --query-gpu=driver_version,memory.total --format=csv,noheader", { silent: true });
   if (!nvidiaSmi) {
-    warn("No NVIDIA GPU detected — installing CPU-only PyTorch");
-    run(`"${pip}" install torch --index-url https://download.pytorch.org/whl/cpu`);
-    info("PyTorch (CPU) installed");
-    return { hasGpu: false, vram: 0 };
+    warn("No NVIDIA GPU detected");
+    return { hasGpu: false, vram: 0, cudaTag: "cpu" };
   }
-
   const vramMatch = nvidiaSmi.match(/(\d+)\s*MiB/);
   const vramMB = vramMatch ? parseInt(vramMatch[1], 10) : 0;
-  info(`GPU detected — VRAM: ${vramMB} MB`);
-
   const cudaOut = run("nvidia-smi", { silent: true });
   const cudaMatch = cudaOut ? cudaOut.match(/CUDA Version:\s*([\d.]+)/) : null;
   const cudaVer = cudaMatch ? parseFloat(cudaMatch[1]) : 0;
-
   let cudaTag = "cpu";
   if (cudaVer >= 12.4) cudaTag = "cu124";
   else if (cudaVer >= 12.1) cudaTag = "cu121";
   else if (cudaVer >= 11.8) cudaTag = "cu118";
+  info(`GPU: ${vramMB} MB VRAM, CUDA ${cudaVer} → ${cudaTag}`);
+  return { hasGpu: true, vram: vramMB, cudaTag };
+}
 
-  if (cudaTag !== "cpu") {
-    info(`CUDA ${cudaVer} detected → PyTorch ${cudaTag}`);
-    if (await confirm(`Install PyTorch with ${cudaTag} support?`)) {
-      run(`"${pip}" install torch --index-url https://download.pytorch.org/whl/${cudaTag}`);
-      info(`PyTorch (${cudaTag}) installed`);
-    }
+async function stepLocalTTS(pip, gpuInfo) {
+  if (!pip || !gpuInfo.hasGpu) return;
+  header("Step 6: Local TTS (Optional)");
+  info("Qwen3-TTS — 음성 클로닝, GPU 음성 합성");
+  warn("설치 시 약 1.5GB의 디스크 공간이 필요합니다 (PyTorch + Qwen3-TTS)");
+  if (!await confirm("Local TTS를 설치하시겠습니까?", false)) return;
+
+  info("Installing PyTorch...");
+  if (gpuInfo.cudaTag !== "cpu") {
+    run(`"${pip}" install torch --index-url https://download.pytorch.org/whl/${gpuInfo.cudaTag}`);
+    info(`PyTorch (${gpuInfo.cudaTag}) installed`);
   } else {
-    warn(`CUDA ${cudaVer} — no matching PyTorch build. Installing CPU version.`);
     run(`"${pip}" install torch --index-url https://download.pytorch.org/whl/cpu`);
+    info("PyTorch (CPU) installed");
   }
 
-  return { hasGpu: true, vram: vramMB };
+  info("Installing TTS dependencies...");
+  run(`"${pip}" install -r "${path.join(__dirname, "gpu-manager", "requirements-tts.txt")}"`);
+  info("Local TTS installed");
 }
 
 async function stepComfyUI(gpuInfo) {
   if (!gpuInfo || !gpuInfo.hasGpu || gpuInfo.vram < 8000) return null;
-  header("Step 6: ComfyUI Setup (Optional)");
+  header("Step 7: ComfyUI Setup (Optional)");
   info(`VRAM ${gpuInfo.vram} MB — ComfyUI image generation supported`);
 
   if (!await confirm("Install ComfyUI?", false)) return null;
@@ -193,14 +195,14 @@ async function stepComfyUI(gpuInfo) {
 }
 
 async function stepClaudeCLI() {
-  header("Step 7: Claude Code CLI Check");
+  header("Step 8: Claude Code CLI Check");
   const out = run("claude --version", { silent: true });
   if (out) { info(`Claude Code CLI ${out.trim()}`); }
   else { warn("Claude Code CLI not found. Install from https://claude.ai/code"); }
 }
 
 async function stepPort() {
-  header("Step 8: Port Configuration");
+  header("Step 9: Port Configuration");
   const portStr = await ask("Main server port (default: 3340):", "3340");
   const port = parseInt(portStr, 10) || 3340;
   info(`Main: ${port}, TTS: ${port + 1}, GPU Manager: ${port + 2}`);
@@ -208,7 +210,7 @@ async function stepPort() {
 }
 
 async function stepEnvLocal(port, comfyuiPath) {
-  header("Step 9: Environment Configuration");
+  header("Step 10: Environment Configuration");
   const envPath = path.join(__dirname, ".env.local");
   if (fs.existsSync(envPath)) {
     info(".env.local already exists — skipping");
@@ -229,7 +231,7 @@ async function stepEnvLocal(port, comfyuiPath) {
 }
 
 async function stepPortCheck(port) {
-  header("Step 10: Port Conflict Check");
+  header("Step 11: Port Conflict Check");
   for (const [name, p] of [["Main", port], ["TTS", port + 1], ["GPU Manager", port + 2]]) {
     const check = os.platform() === "win32"
       ? run(`netstat -ano | findstr ":${p} " | findstr "LISTENING"`, { silent: true })
@@ -255,7 +257,7 @@ function copyDirRecursive(src, dst) {
 }
 
 async function stepDataDir() {
-  header("Step 11: Data Directory");
+  header("Step 12: Data Directory");
   const dataDir = path.join(__dirname, "data");
   for (const sub of ["personas", "sessions", "profiles", "tools"]) {
     const dir = path.join(dataDir, sub);
@@ -287,7 +289,8 @@ async function main() {
   await stepNpmInstall();
   const python = await stepPython();
   const pip = await stepVenv(python);
-  const gpuInfo = await stepPyTorch(pip);
+  const gpuInfo = await stepGpuDetect();
+  await stepLocalTTS(pip, gpuInfo);
   const comfyuiPath = await stepComfyUI(gpuInfo);
   await stepClaudeCLI();
   const port = await stepPort();
