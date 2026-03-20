@@ -35,5 +35,8 @@ export async function POST(req: NextRequest) {
   // Mark setup complete
   markSetupComplete();
 
+  // Exit server after 3s so user can restart with new config
+  setTimeout(() => process.exit(0), 3000);
+
   return NextResponse.json({ ok: true });
 }
