@@ -492,8 +492,13 @@ export class ComfyUIClient {
       }
     }
 
+    // No checkpoints available at all
+    if (availableCheckpoints.length === 0) {
+      throw new Error("No checkpoint models found. Download a checkpoint model to ComfyUI/models/checkpoints/ (e.g. Illustrious XL from CivitAI).");
+    }
+
     // If configured checkpoint is available, use it
-    if (availableCheckpoints.length === 0 || availableCheckpoints.includes(configured)) {
+    if (availableCheckpoints.includes(configured)) {
       return configured;
     }
 
