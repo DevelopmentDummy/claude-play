@@ -14,6 +14,7 @@ export async function GET(req: NextRequest) {
     comfyui: !!(env.COMFYUI_HOST || env.COMFYUI_PORT),
     comfyuiHost: env.COMFYUI_HOST || "127.0.0.1",
     comfyuiPort: env.COMFYUI_PORT || "8188",
+    comfyuiDir: env.COMFYUI_DIR || "",
     geminiKey: !!env.GEMINI_API_KEY,
     civitaiKey: !!env.CIVITAI_API_KEY,
     ttsEnabled: env.TTS_ENABLED !== "false",

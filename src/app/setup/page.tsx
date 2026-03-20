@@ -9,6 +9,7 @@ interface FormData {
   comfyuiEnabled: boolean;
   comfyuiHost: string;
   comfyuiPort: string;
+  comfyuiDir: string;
   comfyuiTested: boolean;
   geminiEnabled: boolean;
   geminiKey: string;
@@ -25,6 +26,7 @@ interface StatusResponse {
   comfyui?: boolean;
   comfyuiHost?: string;
   comfyuiPort?: number;
+  comfyuiDir?: string;
   geminiKey?: boolean;
   civitaiKey?: boolean;
   ttsEnabled?: boolean;
@@ -258,6 +260,7 @@ export default function SetupPage() {
     comfyuiEnabled: false,
     comfyuiHost: "127.0.0.1",
     comfyuiPort: "8188",
+    comfyuiDir: "",
     comfyuiTested: false,
     geminiEnabled: false,
     geminiKey: "",
@@ -287,6 +290,7 @@ export default function SetupPage() {
             comfyuiEnabled: !!data.comfyui,
             comfyuiHost: data.comfyuiHost || "127.0.0.1",
             comfyuiPort: String(data.comfyuiPort || 8188),
+            comfyuiDir: data.comfyuiDir || "",
             geminiEnabled: !!data.geminiKey,
             civitaiEnabled: !!data.civitaiKey,
             ttsEdgeEnabled: data.ttsEnabled !== false,
@@ -393,6 +397,7 @@ export default function SetupPage() {
       if (form.comfyuiEnabled) {
         payload.comfyuiHost = form.comfyuiHost;
         payload.comfyuiPort = form.comfyuiPort;
+        if (form.comfyuiDir) payload.comfyuiDir = form.comfyuiDir;
       }
       if (form.geminiEnabled && form.geminiKey) {
         payload.geminiKey = form.geminiKey;
@@ -534,6 +539,19 @@ export default function SetupPage() {
                   style={styles.input}
                 />
               </div>
+            </div>
+
+            <div>
+              <label style={styles.label}>ComfyUI 설치 경로 (모델 다운로드용)</label>
+              <input
+                value={form.comfyuiDir}
+                onChange={(e) => updateForm({ comfyuiDir: e.target.value })}
+                placeholder="예: C:\ComfyUI 또는 comfyui_submodule"
+                style={styles.input}
+              />
+              <p style={{ fontSize: "12px", color: "var(--text-dim)", marginTop: "4px" }}>
+                체크포인트, LoRA 등 모델 다운로드에 사용됩니다. 서브모듈 설치 시 자동 감지됩니다.
+              </p>
             </div>
 
             <p style={{ fontSize: "13px", color: "var(--text-dim)" }}>
@@ -729,7 +747,7 @@ export default function SetupPage() {
             <span style={styles.summaryLabel}>ComfyUI</span>
             <span style={styles.summaryValue}>
               {form.comfyuiEnabled
-                ? `${form.comfyuiHost}:${form.comfyuiPort}${form.comfyuiTested ? " (테스트 완료)" : ""}`
+                ? `${form.comfyuiHost}:${form.comfyuiPort}${form.comfyuiDir ? ` (${form.comfyuiDir})` : ""}${form.comfyuiTested ? " ✓" : ""}`
                 : "사용 안 함"}
             </span>
           </div>

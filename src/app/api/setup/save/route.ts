@@ -17,6 +17,7 @@ export async function POST(req: NextRequest) {
   } else {
     if (body.comfyuiHost) updates.COMFYUI_HOST = String(body.comfyuiHost);
     if (body.comfyuiPort) updates.COMFYUI_PORT = String(body.comfyuiPort);
+    if (body.comfyuiDir) updates.COMFYUI_DIR = String(body.comfyuiDir);
   }
   if (body.geminiKey) updates.GEMINI_API_KEY = String(body.geminiKey);
   if (body.civitaiKey) updates.CIVITAI_API_KEY = String(body.civitaiKey);
