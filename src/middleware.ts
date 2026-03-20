@@ -48,6 +48,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Setup API routes have their own auth guard (requireSetupAuth)
+  if (pathname.startsWith("/api/setup")) {
+    return NextResponse.next();
+  }
+
   // MCP server requests — validate internal token (not just presence)
   // Cannot call validateInternalToken() in Edge Runtime (globalThis state not shared).
   // MCP server is local-only and token is random 64-char hex — presence check is acceptable.

@@ -7,12 +7,13 @@ import * as fs from "fs";
 import { setupWebSocket } from "./src/lib/ws-server";
 import { handleTtsRequest } from "./src/lib/tts-handler";
 import { isAuthEnabled, verifyAuthToken, parseCookieToken } from "./src/lib/auth";
+import { shouldRedirectToSetup } from "./src/lib/setup-guard";
 
 const dev = process.env.NODE_ENV !== "production";
 const hostname = "0.0.0.0";
 const port = parseInt(process.env.PORT || "3340", 10);
-const ttsPort = parseInt(process.env.TTS_PORT || "3341", 10);
-const GPU_MANAGER_PORT = parseInt(process.env.GPU_MANAGER_PORT || "3342", 10);
+const ttsPort = parseInt(process.env.TTS_PORT || String(port + 1), 10);
+const GPU_MANAGER_PORT = parseInt(process.env.GPU_MANAGER_PORT || String(port + 2), 10);
 const GPU_MANAGER_PYTHON = process.env.GPU_MANAGER_PYTHON || "python";
 
 /** Spawn standalone TTS server as a child process (killed when parent exits) */
@@ -223,6 +224,13 @@ app.prepare().then(async () => {
   const server = createServer(async (req, res) => {
     const parsedUrl = parse(req.url!, true);
     const pathname = parsedUrl.pathname || "";
+
+    // Redirect to /setup if setup is not complete
+    if (shouldRedirectToSetup(pathname)) {
+      res.writeHead(302, { Location: "/setup" });
+      res.end();
+      return;
+    }
 
     // Auth check for intercepted routes
     if (isAuthEnabled()) {
