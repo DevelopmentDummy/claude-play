@@ -338,6 +338,19 @@ async function stepDataDir() {
       }
     }
   }
+
+  // Copy example files to real files if they don't exist
+  const exampleFiles = [
+    ["data/tools/comfyui/lora-triggers.example.json", "data/tools/comfyui/lora-triggers.json"],
+    ["data/tools/comfyui/skills/generate-image/lora-cheatsheet.example.md", "data/tools/comfyui/skills/generate-image/lora-cheatsheet.md"],
+  ];
+  for (const [src, dst] of exampleFiles) {
+    const srcPath = path.join(__dirname, src);
+    const dstPath = path.join(__dirname, dst);
+    if (fs.existsSync(srcPath) && !fs.existsSync(dstPath)) {
+      fs.copyFileSync(srcPath, dstPath);
+    }
+  }
 }
 
 async function main() {

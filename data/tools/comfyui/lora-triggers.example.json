@@ -1,0 +1,6 @@
+{
+  "_comment": "LoRA filename → trigger tags mapping. Copy this to lora-triggers.json and add your LoRAs. Server auto-injects active LoRA triggers into prompt.",
+
+  "example_lora.safetensors": "trigger_tag1, trigger_tag2",
+  "another_lora.safetensors": ""
+}
