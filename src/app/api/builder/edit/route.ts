@@ -33,7 +33,7 @@ export async function POST(req: Request) {
   } catch { /* GPU Manager unavailable */ }
 
   // Always overwrite CLAUDE.md and AGENTS.md with builder prompt
-  const builderPrompt = svc.sessions.getBuilderPrompt(localTtsAvailable);
+  const builderPrompt = svc.sessions.getBuilderPrompt({ localTtsAvailable });
   fs.writeFileSync(path.join(personaDir, "CLAUDE.md"), builderPrompt, "utf-8");
   fs.writeFileSync(path.join(personaDir, "AGENTS.md"), builderPrompt, "utf-8");
 

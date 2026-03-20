@@ -630,9 +630,9 @@ curl -s -X POST "http://localhost:{{PORT}}/api/tools/gemini/generate" \
 
 Gemini로 생성한 이미지도 응답에 `$IMAGE:images/파일명$` 토큰을 포함하면 빌더 채팅에서 인라인으로 표시된다.
 
-<!-- LOCAL_TTS_SECTION_START -->
 ### 음성 설정 (`voice.json`) — 캐릭터 TTS 음성
 
+{{#if localTtsAvailable}}
 대화 세션에서 캐릭터의 대사를 음성으로 재생하는 TTS(Text-to-Speech) 기능을 설정한다. Qwen3-TTS 모델을 통해 음성을 생성한다.
 
 **음성 설정 방식은 세 가지:**
@@ -713,8 +713,23 @@ yt-dlp "ytsearch5:{검색어}" --flat-playlist --dump-json --no-download 2>/dev/
 **참고:**
 - `.pt` 파일이 없으면 세션에서 TTS가 동작하지 않는다
 - `.pt` 생성에는 30초~2분 정도 소요된다 (첫 생성 시 모델 로딩으로 더 걸릴 수 있음)
-- Local TTS가 설치되지 않은 환경에서는 이 단계를 건너뛴다
-<!-- LOCAL_TTS_SECTION_END -->
+{{else}}
+이 환경에는 Local TTS(Qwen3-TTS)가 설치되어 있지 않다. **Edge TTS만 사용 가능하다.**
+
+- Voice Design, Reference Audio, 음성 클로닝 관련 절차는 모두 건너뛴다
+- `.pt` 파일 생성이 불가능하므로 voice design/클로닝 안내를 하지 마라
+- Edge TTS를 사용하려면 `voice.json`에 `enabled: true`, `ttsProvider: "edge"` 설정
+- 사용 가능한 Edge TTS 음성: `ko-KR-SunHiNeural` (여성), `ko-KR-InJoonNeural` (남성) 등
+
+```json
+{
+  "enabled": true,
+  "ttsProvider": "edge",
+  "edgeVoice": "ko-KR-SunHiNeural",
+  "language": "ko"
+}
+```
+{{/if}}
 
 ---
 
