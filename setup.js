@@ -183,6 +183,14 @@ async function stepComfyUI(gpuInfo) {
     warn("Failed to create ComfyUI venv. Run manually: cd comfyui_submodule && python -m venv venv");
     return true;
   }
+  // Install CUDA PyTorch first (ComfyUI requires GPU), then other deps
+  info("Installing PyTorch (CUDA) for ComfyUI...");
+  if (gpuInfo.cudaTag !== "cpu") {
+    run(`"${comfyPip}" install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/${gpuInfo.cudaTag}`);
+  } else {
+    warn("No CUDA detected — ComfyUI may not work without GPU PyTorch");
+    run(`"${comfyPip}" install torch torchvision torchaudio`);
+  }
   info("Installing ComfyUI dependencies (this may take a while)...");
   run(`"${comfyPip}" install -r "${path.join(submodulePath, "requirements.txt")}"`);
   info("ComfyUI installed");
