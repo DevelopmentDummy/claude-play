@@ -416,34 +416,7 @@ export default function SetupPage() {
       }
 
       setServerRestarting(true);
-
-      // Wait for server to go down, then come back up
-      let attempts = 0;
-      let wentDown = false;
-      const poll = setInterval(async () => {
-        attempts++;
-        try {
-          const r = await fetch("/api/setup/status");
-          if (r.ok && wentDown) {
-            // Server is back up after restart
-            clearInterval(poll);
-            setServerRestarting(false);
-            if (form.adminPassword) {
-              router.replace("/login");
-            } else {
-              router.replace("/");
-            }
-          }
-        } catch {
-          // Server went down — restart in progress
-          wentDown = true;
-        }
-        if (attempts >= 30) {
-          clearInterval(poll);
-          setServerRestarting(false);
-          router.replace("/");
-        }
-      }, 1000);
+      setSaving(false);
     } catch {
       setErrors({ save: "저장 요청에 실패했습니다." });
       setSaving(false);
@@ -465,22 +438,17 @@ export default function SetupPage() {
       <div style={styles.page}>
         <div style={{ ...styles.container, alignItems: "center", gap: "16px" }}>
           <h1 style={styles.title}>Claude Bridge</h1>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-            <div
-              style={{
-                width: "20px",
-                height: "20px",
-                border: "2px solid var(--accent)",
-                borderTopColor: "transparent",
-                borderRadius: "50%",
-                animation: "spin 0.8s linear infinite",
-              }}
-            />
-            <p style={{ color: "var(--text)", fontSize: "14px" }}>
-              서버를 재시작하고 있습니다...
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "12px" }}>
+            <div style={{ fontSize: "32px", color: "var(--accent)" }}>&#10003;</div>
+            <p style={{ color: "var(--text)", fontSize: "16px", fontWeight: 600 }}>
+              설정이 저장되었습니다!
+            </p>
+            <p style={{ color: "var(--text-dim)", fontSize: "14px", textAlign: "center", lineHeight: "1.6" }}>
+              서버를 재시작해야 설정이 적용됩니다.<br />
+              터미널을 닫고 <strong>start.bat</strong> 또는 <strong>start-dev.bat</strong>으로<br />
+              서버를 다시 시작해주세요.
             </p>
           </div>
-          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
         </div>
       </div>
     );

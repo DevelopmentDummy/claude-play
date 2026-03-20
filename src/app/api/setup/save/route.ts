@@ -35,19 +35,5 @@ export async function POST(req: NextRequest) {
   // Mark setup complete
   markSetupComplete();
 
-  // Trigger restart after response is sent
-  setTimeout(() => {
-    const { spawn } = require("child_process");
-    // Spawn a new server process, then exit current one
-    const child = spawn(process.argv[0], process.argv.slice(1), {
-      cwd: process.cwd(),
-      detached: true,
-      stdio: "ignore",
-      env: { ...process.env, ...updates },
-    });
-    child.unref();
-    process.exit(0);
-  }, 500);
-
-  return NextResponse.json({ ok: true, restart: true });
+  return NextResponse.json({ ok: true });
 }
