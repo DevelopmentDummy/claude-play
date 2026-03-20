@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readEnvFile } from "@/lib/env-file";
-import { isSetupComplete, requireSetupAuth } from "@/lib/setup-guard";
+import { isSetupComplete } from "@/lib/setup-guard";
+import { requireSetupAuth } from "@/lib/setup-auth";
 
 export async function GET(req: NextRequest) {
   const authError = requireSetupAuth(req);

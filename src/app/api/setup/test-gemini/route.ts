@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireSetupAuth } from "@/lib/setup-guard";
+import { requireSetupAuth } from "@/lib/setup-auth";
 
 export async function POST(req: NextRequest) {
   const authError = requireSetupAuth(req);

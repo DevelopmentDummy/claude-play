@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { writeEnvFile, readEnvFile } from "@/lib/env-file";
-import { markSetupComplete, requireSetupAuth } from "@/lib/setup-guard";
+import { markSetupComplete } from "@/lib/setup-guard";
+import { requireSetupAuth } from "@/lib/setup-auth";
 import fs from "fs";
 import path from "path";
 
