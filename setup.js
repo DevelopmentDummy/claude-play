@@ -315,21 +315,25 @@ async function main() {
 
   header("Setup Complete!");
   const url = `http://localhost:${port}/setup`;
-  console.log(`
-  Opening ${url} in your browser...
-
-  To start the server:
-    start.bat          (production)
-    start-dev.bat      (development)
-`);
-
-  // Open browser
-  const openCmd = os.platform() === "win32" ? `start "" "${url}"`
-    : os.platform() === "darwin" ? `open "${url}"`
-    : `xdg-open "${url}"`;
-  run(openCmd, { silent: true });
-
+  info("Starting server and opening web setup wizard...");
   rl.close();
+
+  // Open browser after a delay to let server start
+  setTimeout(() => {
+    const openCmd = os.platform() === "win32" ? `start "" "${url}"`
+      : os.platform() === "darwin" ? `open "${url}"`
+      : `xdg-open "${url}"`;
+    run(openCmd, { silent: true });
+  }, 5000);
+
+  // Start server (this blocks — keeps process alive)
+  const { spawn: spawnChild } = require("child_process");
+  const server = spawnChild("npm", ["run", "start"], {
+    cwd: __dirname,
+    stdio: "inherit",
+    shell: true,
+  });
+  server.on("exit", (code) => process.exit(code || 0));
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });
