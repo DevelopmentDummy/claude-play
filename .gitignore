@@ -9,6 +9,7 @@ data/personas/
 data/sessions/
 data/profiles/
 data/users/
+data/.setup-complete
 data/*.db
 data/*.db-wal
 data/*.db-shm
