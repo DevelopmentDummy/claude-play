@@ -1,302 +1,616 @@
 {
-  "_meta": {
-    "description": "캐릭터 프로필 (832x1216 세로) — portrait + 얼굴 크롭 아이콘 동시 생성",
-    "outputs": {
-      "profile": { "node": "7", "description": "전신/상반신 프로필 이미지" },
-      "icon": { "node": "41", "description": "YOLO 얼굴 크롭 아이콘 (256x256)" }
-    },
-    "params": {
-      "prompt": { "node": "2", "field": "text", "required": true },
-      "negative_prompt": { "node": "3", "field": "text", "default": "bad quality, worst quality, worst detail, sketch, censored, watermark, signature, extra fingers, mutated hands, bad anatomy" },
-      "width": { "node": "4", "field": "width", "default": 832 },
-      "height": { "node": "4", "field": "height", "default": 1216 },
-      "steps": { "node": "5", "field": "steps", "default": 24 },
-      "cfg": { "node": "5", "field": "cfg", "default": 6.5 },
-      "seed": { "node": "5", "field": "seed", "default": -1 }
-    }
-  },
   "1": {
     "class_type": "CheckpointLoaderSimple",
-    "inputs": { "ckpt_name": "model.safetensors" },
-    "_meta": { "title": "ckpt" }
-  },
-  "100": {
-    "class_type": "LoraLoader",
     "inputs": {
-      "lora_name": "illustrious_masterpieces_v3.safetensors",
-      "strength_model": 0.4, "strength_clip": 0.4,
-      "model": ["1", 0], "clip": ["1", 1]
+      "ckpt_name": "model.safetensors"
     },
-    "_meta": { "title": "lora-masterpieces" }
-  },
-  "101": {
-    "class_type": "LoraLoader",
-    "inputs": {
-      "lora_name": "AddMicroDetails_Illustrious_v5.safetensors",
-      "strength_model": 0.5, "strength_clip": 0.5,
-      "model": ["100", 0], "clip": ["100", 1]
-    },
-    "_meta": { "title": "lora-microDetails" }
-  },
-  "102": {
-    "class_type": "LoraLoader",
-    "inputs": {
-      "lora_name": "Smooth_Booster_v4.safetensors",
-      "strength_model": 0.4, "strength_clip": 0.4,
-      "model": ["101", 0], "clip": ["101", 1]
-    },
-    "_meta": { "title": "lora-smoothBooster" }
-  },
-  "103": {
-    "class_type": "LoraLoader",
-    "inputs": {
-      "lora_name": "anime_screencap-IllustriousV2.safetensors",
-      "strength_model": 0.5, "strength_clip": 0.5,
-      "model": ["102", 0], "clip": ["102", 1]
-    },
-    "_meta": { "title": "lora-screencap (trigger: anime screencap, anime coloring)" }
-  },
-  "104": {
-    "class_type": "LoraLoader",
-    "inputs": {
-      "lora_name": "sexy_details_v4.safetensors",
-      "strength_model": 0.4, "strength_clip": 0.4,
-      "model": ["103", 0], "clip": ["103", 1]
-    },
-    "_meta": { "title": "lora-sexyDetails (trigger: sexydet)" }
-  },
-  "105": {
-    "class_type": "LoraLoader",
-    "inputs": {
-      "lora_name": "Age_V2.5.safetensors",
-      "strength_model": -3, "strength_clip": -3,
-      "model": ["104", 0], "clip": ["104", 1]
-    },
-    "_meta": { "title": "lora-age (-3)" }
-  },
-  "106": {
-    "class_type": "LoraLoader",
-    "inputs": {
-      "lora_name": "S1 Dramatic Lighting Illustrious_V2.safetensors",
-      "strength_model": 0.5, "strength_clip": 0.5,
-      "model": ["105", 0], "clip": ["105", 1]
-    },
-    "_meta": { "title": "lora-S1-dramatic-lighting (trigger: s1_dram)" }
-  },
-  "107": {
-    "class_type": "LoraLoader",
-    "inputs": {
-      "lora_name": "QAQv5p2_IL-40.safetensors",
-      "strength_model": 0.4, "strength_clip": 0.4,
-      "model": ["106", 0], "clip": ["106", 1]
-    },
-    "_meta": { "title": "lora-QAQ-style" }
+    "_meta": {
+      "title": "ckpt"
+    }
   },
   "2": {
     "class_type": "CLIPTextEncode",
-    "inputs": { "text": "", "clip": ["107", 1] },
-    "_meta": { "title": "pos" }
+    "inputs": {
+      "text": "",
+      "clip": [
+        "1",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "pos"
+    }
   },
   "3": {
     "class_type": "CLIPTextEncode",
-    "inputs": { "text": "", "clip": ["107", 1] },
-    "_meta": { "title": "neg" }
+    "inputs": {
+      "text": "",
+      "clip": [
+        "1",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "neg"
+    }
   },
   "4": {
     "class_type": "EmptyLatentImage",
-    "inputs": { "width": 832, "height": 1216, "batch_size": 1 },
-    "_meta": { "title": "latent" }
+    "inputs": {
+      "width": 832,
+      "height": 1216,
+      "batch_size": 1
+    },
+    "_meta": {
+      "title": "latent"
+    }
   },
   "5": {
     "class_type": "KSampler",
     "inputs": {
-      "seed": 0, "steps": 24, "cfg": 6.5,
-      "sampler_name": "euler_ancestral", "scheduler": "karras",
+      "seed": 0,
+      "steps": 24,
+      "cfg": 6.5,
+      "sampler_name": "euler_ancestral",
+      "scheduler": "karras",
       "denoise": 1,
-      "model": ["107", 0], "positive": ["2", 0], "negative": ["3", 0], "latent_image": ["4", 0]
+      "model": [
+        "1",
+        0
+      ],
+      "positive": [
+        "2",
+        0
+      ],
+      "negative": [
+        "3",
+        0
+      ],
+      "latent_image": [
+        "4",
+        0
+      ]
     },
-    "_meta": { "title": "sampler" }
+    "_meta": {
+      "title": "sampler"
+    }
   },
   "6": {
     "class_type": "VAEDecode",
-    "inputs": { "samples": ["5", 0], "vae": ["1", 2] },
-    "_meta": { "title": "decode" }
+    "inputs": {
+      "samples": [
+        "5",
+        0
+      ],
+      "vae": [
+        "1",
+        2
+      ]
+    },
+    "_meta": {
+      "title": "decode"
+    }
+  },
+  "7": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "profile",
+      "images": [
+        "32",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "save-profile"
+    }
   },
   "20": {
     "class_type": "UltralyticsDetectorProvider",
-    "inputs": { "model_name": "bbox/face_yolov8m.pt" },
-    "_meta": { "title": "face-detector" }
+    "inputs": {
+      "model_name": "bbox/face_yolov8m.pt"
+    },
+    "_meta": {
+      "title": "face-detector"
+    }
   },
   "21": {
     "class_type": "FaceDetailer",
     "inputs": {
-      "image": ["6", 0], "model": ["107", 0], "clip": ["107", 1], "vae": ["1", 2],
-      "positive": ["2", 0], "negative": ["3", 0], "bbox_detector": ["20", 0],
-      "seed": 0, "steps": 20, "cfg": 6.0,
-      "sampler_name": "euler_ancestral", "scheduler": "karras",
-      "denoise": 0.4, "guide_size": 512, "guide_size_for": true, "max_size": 1024,
-      "feather": 5, "noise_mask": true, "force_inpaint": true,
-      "bbox_threshold": 0.5, "bbox_dilation": 10, "bbox_crop_factor": 3.0,
-      "sam_detection_hint": "center-1", "sam_dilation": 0, "sam_threshold": 0.93,
-      "sam_bbox_expansion": 0, "sam_mask_hint_threshold": 0.7,
-      "sam_mask_hint_use_negative": "False", "drop_size": 10, "wildcard": "", "cycle": 1
+      "image": [
+        "6",
+        0
+      ],
+      "model": [
+        "1",
+        0
+      ],
+      "clip": [
+        "1",
+        1
+      ],
+      "vae": [
+        "1",
+        2
+      ],
+      "positive": [
+        "2",
+        0
+      ],
+      "negative": [
+        "3",
+        0
+      ],
+      "bbox_detector": [
+        "20",
+        0
+      ],
+      "seed": 0,
+      "steps": 20,
+      "cfg": 6,
+      "sampler_name": "euler_ancestral",
+      "scheduler": "karras",
+      "denoise": 0.4,
+      "guide_size": 512,
+      "guide_size_for": true,
+      "max_size": 1024,
+      "feather": 5,
+      "noise_mask": true,
+      "force_inpaint": true,
+      "bbox_threshold": 0.5,
+      "bbox_dilation": 10,
+      "bbox_crop_factor": 3,
+      "sam_detection_hint": "center-1",
+      "sam_dilation": 0,
+      "sam_threshold": 0.93,
+      "sam_bbox_expansion": 0,
+      "sam_mask_hint_threshold": 0.7,
+      "sam_mask_hint_use_negative": "False",
+      "drop_size": 10,
+      "wildcard": "",
+      "cycle": 1
     },
-    "_meta": { "title": "face-detailer" }
-  },
-  "24": {
-    "class_type": "CLIPTextEncode",
-    "inputs": { "text": "detailed hands, perfect fingers, natural hand, fingernails", "clip": ["107", 1] },
-    "_meta": { "title": "hand-pos" }
-  },
-  "25": {
-    "class_type": "CLIPTextEncode",
-    "inputs": { "text": "eyes, face, mouth, nose, extra fingers, mutated hands, bad hands, fused fingers, too many fingers, missing fingers, deformed fingers", "clip": ["107", 1] },
-    "_meta": { "title": "hand-neg" }
+    "_meta": {
+      "title": "face-detailer"
+    }
   },
   "22": {
     "class_type": "UltralyticsDetectorProvider",
-    "inputs": { "model_name": "bbox/hand_yolov8s.pt" },
-    "_meta": { "title": "hand-detector" }
+    "inputs": {
+      "model_name": "bbox/hand_yolov8s.pt"
+    },
+    "_meta": {
+      "title": "hand-detector"
+    }
   },
   "23": {
     "class_type": "FaceDetailer",
     "inputs": {
-      "image": ["21", 0], "model": ["107", 0], "clip": ["107", 1], "vae": ["1", 2],
-      "positive": ["24", 0], "negative": ["25", 0], "bbox_detector": ["22", 0],
-      "seed": 0, "steps": 20, "cfg": 6.0,
-      "sampler_name": "euler_ancestral", "scheduler": "karras",
-      "denoise": 0.35, "guide_size": 384, "guide_size_for": true, "max_size": 768,
-      "feather": 5, "noise_mask": true, "force_inpaint": true,
-      "bbox_threshold": 0.3, "bbox_dilation": 15, "bbox_crop_factor": 2.5,
-      "sam_detection_hint": "center-1", "sam_dilation": 0, "sam_threshold": 0.93,
-      "sam_bbox_expansion": 0, "sam_mask_hint_threshold": 0.7,
-      "sam_mask_hint_use_negative": "False", "drop_size": 10, "wildcard": "", "cycle": 1
+      "image": [
+        "21",
+        0
+      ],
+      "model": [
+        "1",
+        0
+      ],
+      "clip": [
+        "1",
+        1
+      ],
+      "vae": [
+        "1",
+        2
+      ],
+      "positive": [
+        "24",
+        0
+      ],
+      "negative": [
+        "25",
+        0
+      ],
+      "bbox_detector": [
+        "22",
+        0
+      ],
+      "seed": 0,
+      "steps": 20,
+      "cfg": 6,
+      "sampler_name": "euler_ancestral",
+      "scheduler": "karras",
+      "denoise": 0.35,
+      "guide_size": 384,
+      "guide_size_for": true,
+      "max_size": 768,
+      "feather": 5,
+      "noise_mask": true,
+      "force_inpaint": true,
+      "bbox_threshold": 0.3,
+      "bbox_dilation": 15,
+      "bbox_crop_factor": 2.5,
+      "sam_detection_hint": "center-1",
+      "sam_dilation": 0,
+      "sam_threshold": 0.93,
+      "sam_bbox_expansion": 0,
+      "sam_mask_hint_threshold": 0.7,
+      "sam_mask_hint_use_negative": "False",
+      "drop_size": 10,
+      "wildcard": "",
+      "cycle": 1
     },
-    "_meta": { "title": "hand-detailer" }
+    "_meta": {
+      "title": "hand-detailer"
+    }
+  },
+  "24": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "detailed hands, perfect fingers, natural hand, fingernails",
+      "clip": [
+        "1",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "hand-pos"
+    }
+  },
+  "25": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "eyes, face, mouth, nose, extra fingers, mutated hands, bad hands, fused fingers, too many fingers, missing fingers, deformed fingers",
+      "clip": [
+        "1",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "hand-neg"
+    }
   },
   "26": {
     "class_type": "CLIPTextEncode",
-    "inputs": { "text": "detailed pussy, detailed vulva, labia, clitoris, anatomically correct", "clip": ["107", 1] },
-    "_meta": { "title": "pussy-pos" }
+    "inputs": {
+      "text": "detailed pussy, detailed vulva, labia, clitoris, anatomically correct",
+      "clip": [
+        "1",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "pussy-pos"
+    }
   },
   "27": {
     "class_type": "CLIPTextEncode",
-    "inputs": { "text": "eyes, face, fingers, bad anatomy, censored, mosaic censoring, bar censor", "clip": ["107", 1] },
-    "_meta": { "title": "pussy-neg" }
+    "inputs": {
+      "text": "eyes, face, fingers, bad anatomy, censored, mosaic censoring, bar censor",
+      "clip": [
+        "1",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "pussy-neg"
+    }
   },
   "28": {
     "class_type": "UltralyticsDetectorProvider",
-    "inputs": { "model_name": "bbox/vagina-v2.6.pt" },
-    "_meta": { "title": "pussy-detector" }
+    "inputs": {
+      "model_name": "bbox/vagina-v2.6.pt"
+    },
+    "_meta": {
+      "title": "pussy-detector"
+    }
   },
   "29": {
     "class_type": "FaceDetailer",
     "inputs": {
-      "image": ["23", 0], "model": ["107", 0], "clip": ["107", 1], "vae": ["1", 2],
-      "positive": ["26", 0], "negative": ["27", 0], "bbox_detector": ["28", 0],
-      "seed": 0, "steps": 25, "cfg": 6.0,
-      "sampler_name": "euler_ancestral", "scheduler": "karras",
-      "denoise": 0.5, "guide_size": 512, "guide_size_for": true, "max_size": 1024,
-      "feather": 5, "noise_mask": true, "force_inpaint": true,
-      "bbox_threshold": 0.45, "bbox_dilation": 20, "bbox_crop_factor": 3.0,
-      "sam_detection_hint": "center-1", "sam_dilation": 0, "sam_threshold": 0.93,
-      "sam_bbox_expansion": 0, "sam_mask_hint_threshold": 0.7,
-      "sam_mask_hint_use_negative": "False", "drop_size": 5, "wildcard": "", "cycle": 1
+      "image": [
+        "23",
+        0
+      ],
+      "model": [
+        "1",
+        0
+      ],
+      "clip": [
+        "1",
+        1
+      ],
+      "vae": [
+        "1",
+        2
+      ],
+      "positive": [
+        "26",
+        0
+      ],
+      "negative": [
+        "27",
+        0
+      ],
+      "bbox_detector": [
+        "28",
+        0
+      ],
+      "seed": 0,
+      "steps": 25,
+      "cfg": 6,
+      "sampler_name": "euler_ancestral",
+      "scheduler": "karras",
+      "denoise": 0.5,
+      "guide_size": 512,
+      "guide_size_for": true,
+      "max_size": 1024,
+      "feather": 5,
+      "noise_mask": true,
+      "force_inpaint": true,
+      "bbox_threshold": 0.45,
+      "bbox_dilation": 20,
+      "bbox_crop_factor": 3,
+      "sam_detection_hint": "center-1",
+      "sam_dilation": 0,
+      "sam_threshold": 0.93,
+      "sam_bbox_expansion": 0,
+      "sam_mask_hint_threshold": 0.7,
+      "sam_mask_hint_use_negative": "False",
+      "drop_size": 5,
+      "wildcard": "",
+      "cycle": 1
     },
-    "_meta": { "title": "pussy-detailer" }
-  },
-  "44": {
-    "class_type": "CLIPTextEncode",
-    "inputs": { "text": "detailed anus, anatomically correct, skin texture, consistent color tone, soft shading", "clip": ["107", 1] },
-    "_meta": { "title": "anus-pos" }
-  },
-  "45": {
-    "class_type": "CLIPTextEncode",
-    "inputs": { "text": "eyes, face, fingers, bad anatomy, censored, mosaic censoring, dark spot, black spot, discoloration", "clip": ["107", 1] },
-    "_meta": { "title": "anus-neg" }
-  },
-  "46": {
-    "class_type": "UltralyticsDetectorProvider",
-    "inputs": { "model_name": "bbox/anus_v4.pt" },
-    "_meta": { "title": "anus-detector" }
-  },
-  "47": {
-    "class_type": "FaceDetailer",
-    "inputs": {
-      "image": ["29", 0], "model": ["107", 0], "clip": ["107", 1], "vae": ["1", 2],
-      "positive": ["44", 0], "negative": ["45", 0], "bbox_detector": ["46", 0],
-      "seed": 0, "steps": 20, "cfg": 6.0,
-      "sampler_name": "euler_ancestral", "scheduler": "karras",
-      "denoise": 0.25, "guide_size": 768, "guide_size_for": true, "max_size": 1024,
-      "feather": 20, "noise_mask": true, "force_inpaint": false,
-      "bbox_threshold": 0.3, "bbox_dilation": 80, "bbox_crop_factor": 8.0,
-      "sam_detection_hint": "center-1", "sam_dilation": 0, "sam_threshold": 0.93,
-      "sam_bbox_expansion": 0, "sam_mask_hint_threshold": 0.7,
-      "sam_mask_hint_use_negative": "False", "drop_size": 5, "wildcard": "", "cycle": 1
-    },
-    "_meta": { "title": "anus-detailer" }
+    "_meta": {
+      "title": "pussy-detailer"
+    }
   },
   "30": {
     "class_type": "ImageUpscaleWithModel",
     "inputs": {
-      "upscale_model": ["31", 0],
-      "image": ["47", 0]
+      "upscale_model": [
+        "31",
+        0
+      ],
+      "image": [
+        "47",
+        0
+      ]
     },
-    "_meta": { "title": "upscale-4x" }
+    "_meta": {
+      "title": "upscale-4x"
+    }
   },
   "31": {
     "class_type": "UpscaleModelLoader",
-    "inputs": { "model_name": "4x-AnimeSharp.pth" },
-    "_meta": { "title": "upscale-model" }
+    "inputs": {
+      "model_name": "4x-AnimeSharp.pth"
+    },
+    "_meta": {
+      "title": "upscale-model"
+    }
   },
   "32": {
     "class_type": "ImageScaleBy",
     "inputs": {
-      "image": ["30", 0],
+      "image": [
+        "30",
+        0
+      ],
       "upscale_method": "lanczos",
       "scale_by": 0.5
     },
-    "_meta": { "title": "downscale-0.5x (net 2x)" }
+    "_meta": {
+      "title": "downscale-0.5x (net 2x)"
+    }
   },
-  "7": {
+  "40": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": [
+        "43",
+        0
+      ],
+      "width": 256,
+      "height": 256,
+      "upscale_method": "lanczos",
+      "crop": "center"
+    },
+    "_meta": {
+      "title": "face-crop-resize (256x256)"
+    }
+  },
+  "41": {
     "class_type": "SaveImage",
-    "inputs": { "filename_prefix": "profile", "images": ["32", 0] },
-    "_meta": { "title": "save-profile" }
+    "inputs": {
+      "filename_prefix": "icon",
+      "images": [
+        "40",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "save-icon"
+    }
   },
   "42": {
     "class_type": "BboxDetectorSEGS",
     "inputs": {
-      "bbox_detector": ["20", 0],
-      "image": ["32", 0],
+      "bbox_detector": [
+        "20",
+        0
+      ],
+      "image": [
+        "32",
+        0
+      ],
       "threshold": 0.5,
       "dilation": 0,
       "crop_factor": 1.3,
       "drop_size": 10,
       "labels": "all"
     },
-    "_meta": { "title": "face-detect-for-icon" }
+    "_meta": {
+      "title": "face-detect-for-icon"
+    }
   },
   "43": {
     "class_type": "SEGSToImageList",
     "inputs": {
-      "segs": ["42", 0],
-      "fallback_image_opt": ["32", 0]
+      "segs": [
+        "42",
+        0
+      ],
+      "fallback_image_opt": [
+        "32",
+        0
+      ]
     },
-    "_meta": { "title": "face-crop-extract" }
+    "_meta": {
+      "title": "face-crop-extract"
+    }
   },
-  "40": {
-    "class_type": "ImageScale",
+  "44": {
+    "class_type": "CLIPTextEncode",
     "inputs": {
-      "image": ["43", 0],
-      "width": 256, "height": 256,
-      "upscale_method": "lanczos",
-      "crop": "center"
+      "text": "detailed anus, anatomically correct, skin texture, consistent color tone, soft shading",
+      "clip": [
+        "1",
+        1
+      ]
     },
-    "_meta": { "title": "face-crop-resize (256x256)" }
+    "_meta": {
+      "title": "anus-pos"
+    }
   },
-  "41": {
-    "class_type": "SaveImage",
-    "inputs": { "filename_prefix": "icon", "images": ["40", 0] },
-    "_meta": { "title": "save-icon" }
+  "45": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "eyes, face, fingers, bad anatomy, censored, mosaic censoring, dark spot, black spot, discoloration",
+      "clip": [
+        "1",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "anus-neg"
+    }
+  },
+  "46": {
+    "class_type": "UltralyticsDetectorProvider",
+    "inputs": {
+      "model_name": "bbox/anus_v4.pt"
+    },
+    "_meta": {
+      "title": "anus-detector"
+    }
+  },
+  "47": {
+    "class_type": "FaceDetailer",
+    "inputs": {
+      "image": [
+        "29",
+        0
+      ],
+      "model": [
+        "1",
+        0
+      ],
+      "clip": [
+        "1",
+        1
+      ],
+      "vae": [
+        "1",
+        2
+      ],
+      "positive": [
+        "44",
+        0
+      ],
+      "negative": [
+        "45",
+        0
+      ],
+      "bbox_detector": [
+        "46",
+        0
+      ],
+      "seed": 0,
+      "steps": 20,
+      "cfg": 6,
+      "sampler_name": "euler_ancestral",
+      "scheduler": "karras",
+      "denoise": 0.25,
+      "guide_size": 768,
+      "guide_size_for": true,
+      "max_size": 1024,
+      "feather": 20,
+      "noise_mask": true,
+      "force_inpaint": false,
+      "bbox_threshold": 0.3,
+      "bbox_dilation": 80,
+      "bbox_crop_factor": 8,
+      "sam_detection_hint": "center-1",
+      "sam_dilation": 0,
+      "sam_threshold": 0.93,
+      "sam_bbox_expansion": 0,
+      "sam_mask_hint_threshold": 0.7,
+      "sam_mask_hint_use_negative": "False",
+      "drop_size": 5,
+      "wildcard": "",
+      "cycle": 1
+    },
+    "_meta": {
+      "title": "anus-detailer"
+    }
+  },
+  "_meta": {
+    "description": "캐릭터 프로필 (832x1216 세로) — portrait + 얼굴 크롭 아이콘 동시 생성",
+    "outputs": {
+      "profile": {
+        "node": "7",
+        "description": "전신/상반신 프로필 이미지"
+      },
+      "icon": {
+        "node": "41",
+        "description": "YOLO 얼굴 크롭 아이콘 (256x256)"
+      }
+    },
+    "params": {
+      "prompt": {
+        "node": "2",
+        "field": "text",
+        "required": true
+      },
+      "negative_prompt": {
+        "node": "3",
+        "field": "text",
+        "default": "bad quality, worst quality, worst detail, sketch, censored, watermark, signature, extra fingers, mutated hands, bad anatomy"
+      },
+      "width": {
+        "node": "4",
+        "field": "width",
+        "default": 832
+      },
+      "height": {
+        "node": "4",
+        "field": "height",
+        "default": 1216
+      },
+      "steps": {
+        "node": "5",
+        "field": "steps",
+        "default": 24
+      },
+      "cfg": {
+        "node": "5",
+        "field": "cfg",
+        "default": 6.5
+      },
+      "seed": {
+        "node": "5",
+        "field": "seed",
+        "default": -1
+      }
+    }
   }
 }

@@ -391,16 +391,20 @@ export class ComfyUIClient {
   }
 
   /** Read comfyui-config.json from session/persona dir if it exists */
-  private readDirConfig(dir: string): { checkpoint?: string } {
+  private readDirConfig(dir: string): { checkpoint?: string; baseLoras?: Array<{ name: string; strength: number }> } {
     const configPath = path.join(dir, "comfyui-config.json");
     if (fs.existsSync(configPath)) {
       try {
         const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+        const result: { checkpoint?: string; baseLoras?: Array<{ name: string; strength: number }> } = {};
         // Support preset structure
-        if (config.active_preset && config.presets?.[config.active_preset]?.checkpoint) {
-          return { checkpoint: config.presets[config.active_preset].checkpoint };
-        }
-        if (config.checkpoint) return { checkpoint: config.checkpoint };
+        const preset = config.active_preset && config.presets?.[config.active_preset];
+        if (preset?.checkpoint) result.checkpoint = preset.checkpoint;
+        else if (config.checkpoint) result.checkpoint = config.checkpoint;
+        // Base LoRAs from preset or top-level
+        const loras = preset?.baseLoras || config.baseLoras;
+        if (Array.isArray(loras)) result.baseLoras = loras;
+        return result;
       } catch { /* ignore */ }
     }
     return {};
@@ -550,6 +554,51 @@ export class ComfyUIClient {
       if (n.class_type === "CheckpointLoaderSimple") {
         const inputs = n.inputs as Record<string, unknown>;
         if (inputs) inputs.ckpt_name = resolvedCkpt;
+      }
+    }
+
+    // Inject base LoRAs from comfyui-config.json (if any)
+    if (sessionDir) {
+      const dirConfig = this.readDirConfig(sessionDir);
+      if (dirConfig.baseLoras && dirConfig.baseLoras.length > 0) {
+        // Find anchor: CheckpointLoaderSimple node
+        const ckptId = Object.entries(prompt)
+          .find(([, n]) => (n as Record<string, unknown>).class_type === "CheckpointLoaderSimple")
+          ?.[0];
+        if (ckptId) {
+          let prevId = ckptId;
+          const baseStartId = 100;
+          for (let i = 0; i < dirConfig.baseLoras.length; i++) {
+            const bl = dirConfig.baseLoras[i];
+            const nodeId = String(baseStartId + i);
+            prompt[nodeId] = {
+              class_type: "LoraLoader",
+              inputs: {
+                lora_name: bl.name,
+                strength_model: bl.strength,
+                strength_clip: bl.strength,
+                model: [prevId, 0],
+                clip: [prevId, 1],
+              },
+              _meta: { title: `base-lora-${i}` },
+            };
+            prevId = nodeId;
+          }
+          // Rewire downstream nodes that reference the checkpoint
+          const lastBaseId = String(baseStartId + dirConfig.baseLoras.length - 1);
+          for (const [id, node] of Object.entries(prompt)) {
+            if (id === ckptId || id.startsWith(String(baseStartId))) continue;
+            const n = node as Record<string, unknown>;
+            const inputs = n.inputs as Record<string, unknown> | undefined;
+            if (!inputs) continue;
+            for (const [field, val] of Object.entries(inputs)) {
+              if (Array.isArray(val) && val[0] === ckptId && (val[1] === 0 || val[1] === 1)) {
+                inputs[field] = [lastBaseId, val[1]];
+              }
+            }
+          }
+          console.log(`[comfyui] Injected ${dirConfig.baseLoras.length} base LoRAs from config`);
+        }
       }
     }
 
