@@ -183,16 +183,15 @@ async function stepComfyUI(gpuInfo) {
     warn("Failed to create ComfyUI venv. Run manually: cd comfyui_submodule && python -m venv venv");
     return true;
   }
-  // Install CUDA PyTorch first (ComfyUI requires GPU), then other deps
-  info("Installing PyTorch (CUDA) for ComfyUI...");
-  if (gpuInfo.cudaTag !== "cpu") {
-    run(`"${comfyPip}" install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/${gpuInfo.cudaTag}`);
-  } else {
-    warn("No CUDA detected — ComfyUI may not work without GPU PyTorch");
-    run(`"${comfyPip}" install torch torchvision torchaudio`);
-  }
+  // Install ComfyUI deps first, then override with CUDA PyTorch
   info("Installing ComfyUI dependencies (this may take a while)...");
   run(`"${comfyPip}" install -r "${path.join(submodulePath, "requirements.txt")}"`);
+  if (gpuInfo.cudaTag !== "cpu") {
+    info(`Installing PyTorch (CUDA ${gpuInfo.cudaTag}) — overriding CPU version...`);
+    run(`"${comfyPip}" install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/${gpuInfo.cudaTag} --force-reinstall --no-deps`);
+  } else {
+    warn("No CUDA detected — ComfyUI may not work without GPU PyTorch");
+  }
   info("ComfyUI installed");
 
   if (await confirm("Download recommended checkpoint model (Illustrious XL)?", false)) {
