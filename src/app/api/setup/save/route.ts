@@ -11,13 +11,18 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const updates: Record<string, string> = {};
 
-  if (body.adminPassword) updates.ADMIN_PASSWORD = body.adminPassword;
-  if (body.comfyuiHost) updates.COMFYUI_HOST = body.comfyuiHost;
-  if (body.comfyuiPort) updates.COMFYUI_PORT = body.comfyuiPort;
-  if (body.geminiKey) updates.GEMINI_API_KEY = body.geminiKey;
-  if (body.civitaiKey) updates.CIVITAI_API_KEY = body.civitaiKey;
+  if (body.adminPassword) updates.ADMIN_PASSWORD = String(body.adminPassword);
+  if (body.comfyuiEnabled === false) {
+    updates.COMFYUI_HOST = "";
+    updates.COMFYUI_PORT = "";
+  } else {
+    if (body.comfyuiHost) updates.COMFYUI_HOST = String(body.comfyuiHost);
+    if (body.comfyuiPort) updates.COMFYUI_PORT = String(body.comfyuiPort);
+  }
+  if (body.geminiKey) updates.GEMINI_API_KEY = String(body.geminiKey);
+  if (body.civitaiKey) updates.CIVITAI_API_KEY = String(body.civitaiKey);
   if (body.ttsEnabled !== undefined) updates.TTS_ENABLED = String(body.ttsEnabled);
-  if (body.port) updates.PORT = body.port;
+  if (body.port) updates.PORT = String(body.port);
 
   // Merge with existing
   const existing = readEnvFile();

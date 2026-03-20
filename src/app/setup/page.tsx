@@ -389,9 +389,10 @@ export default function SetupPage() {
       if (form.adminPassword) {
         payload.adminPassword = form.adminPassword;
       }
+      payload.comfyuiEnabled = form.comfyuiEnabled;
       if (form.comfyuiEnabled) {
         payload.comfyuiHost = form.comfyuiHost;
-        payload.comfyuiPort = parseInt(form.comfyuiPort);
+        payload.comfyuiPort = form.comfyuiPort;
       }
       if (form.geminiEnabled && form.geminiKey) {
         payload.geminiKey = form.geminiKey;
@@ -400,7 +401,6 @@ export default function SetupPage() {
         payload.civitaiKey = form.civitaiKey;
       }
       payload.ttsEnabled = form.ttsEdgeEnabled;
-      payload.localTtsEnabled = form.ttsLocalEnabled;
 
       const res = await fetch("/api/setup/save", {
         method: "POST",
@@ -417,13 +417,15 @@ export default function SetupPage() {
 
       setServerRestarting(true);
 
-      // Poll for server ready
+      // Wait for server to go down, then come back up
       let attempts = 0;
+      let wentDown = false;
       const poll = setInterval(async () => {
         attempts++;
         try {
           const r = await fetch("/api/setup/status");
-          if (r.ok) {
+          if (r.ok && wentDown) {
+            // Server is back up after restart
             clearInterval(poll);
             setServerRestarting(false);
             if (form.adminPassword) {
@@ -433,7 +435,8 @@ export default function SetupPage() {
             }
           }
         } catch {
-          // Server not ready yet
+          // Server went down — restart in progress
+          wentDown = true;
         }
         if (attempts >= 30) {
           clearInterval(poll);
