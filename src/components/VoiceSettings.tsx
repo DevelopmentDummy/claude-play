@@ -38,6 +38,7 @@ export default function VoiceSettings({ personaName, accentColor = "var(--accent
     chunkDelay: 500,
     modelSize: "1.7B",
   });
+  const [localTtsAvailable, setLocalTtsAvailable] = useState<boolean | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -55,6 +56,13 @@ export default function VoiceSettings({ personaName, accentColor = "var(--accent
   const [ytEnd, setYtEnd] = useState("30");
   const [ytLoading, setYtLoading] = useState(false);
   const [ytError, setYtError] = useState("");
+
+  useEffect(() => {
+    fetch("/api/setup/tts-status")
+      .then((r) => r.json())
+      .then((data) => setLocalTtsAvailable(data.ttsAvailable === true))
+      .catch(() => setLocalTtsAvailable(false));
+  }, []);
 
   useEffect(() => {
     function loadVoice() {
@@ -271,14 +279,16 @@ export default function VoiceSettings({ personaName, accentColor = "var(--accent
               ⚡ Edge TTS
             </button>
             <button
-              onClick={() => saveConfig({ ...config, ttsProvider: "comfyui" })}
-              className="flex-1 px-2 py-1.5 text-[10px] transition-all"
+              onClick={() => localTtsAvailable === true && saveConfig({ ...config, ttsProvider: "comfyui" })}
+              disabled={localTtsAvailable !== true}
+              className="flex-1 px-2 py-1.5 text-[10px] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               style={{
                 background: !isEdge ? `${accentColor}20` : "transparent",
                 color: !isEdge ? accentColor : "var(--text-dim)",
               }}
+              title={localTtsAvailable === false ? "Local TTS 미설치" : localTtsAvailable === null ? "확인 중..." : undefined}
             >
-              🎛 ComfyUI
+              🎛 {localTtsAvailable === null ? "확인 중..." : localTtsAvailable === false ? "Local TTS 미설치" : "ComfyUI"}
             </button>
           </div>
           <p className="text-[9px] text-text-dim/40 mt-0.5">
@@ -476,13 +486,17 @@ export default function VoiceSettings({ personaName, accentColor = "var(--accent
               </div>
               <button
                 onClick={handleGenerateVoice}
-                disabled={generating || (!config.referenceAudio && !config.design)}
+                disabled={generating || (!config.referenceAudio && !config.design) || localTtsAvailable === false}
                 className="w-full px-3 py-1.5 text-[11px] rounded-lg border transition-all disabled:opacity-40
                   border-accent/40 text-accent/80 hover:bg-accent/10 hover:text-accent"
+                title={localTtsAvailable === false ? "Local TTS 미설치" : undefined}
               >
                 {generating ? "Generating..." : config.voiceFile ? "Regenerate Voice" : "Generate Voice (.pt)"}
               </button>
-              {!config.referenceAudio && !config.design && (
+              {localTtsAvailable === false && (
+                <p className="text-[9px] text-error/60 mt-1">Local TTS 미설치</p>
+              )}
+              {localTtsAvailable !== false && !config.referenceAudio && !config.design && (
                 <p className="text-[9px] text-text-dim/40 mt-1">Reference audio 또는 voice design 필요</p>
               )}
             </div>
@@ -523,9 +537,10 @@ export default function VoiceSettings({ personaName, accentColor = "var(--accent
             />
             <button
               onClick={handleTestTts}
-              disabled={testStatus === "generating" || !testText.trim() || !hasVoiceSource}
+              disabled={testStatus === "generating" || !testText.trim() || !hasVoiceSource || (!isEdge && localTtsAvailable === false)}
               className="px-3 py-1.5 text-[11px] rounded-lg border transition-all shrink-0 disabled:opacity-40
                 border-accent/40 text-accent/80 hover:bg-accent/10 hover:text-accent"
+              title={!isEdge && localTtsAvailable === false ? "Local TTS 미설치" : undefined}
             >
               {testStatus === "generating" ? "..." : "Play"}
             </button>

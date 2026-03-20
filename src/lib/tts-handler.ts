@@ -42,6 +42,11 @@ async function synthesizeViaGpuManager(
 
   if (!res.ok) {
     const err = await res.text();
+    if (res.status === 503) {
+      let msg = err;
+      try { msg = JSON.parse(err)?.detail || err; } catch { /* ignore */ }
+      throw new Error(`503:${msg}`);
+    }
     throw new Error(`GPU Manager TTS error: ${err}`);
   }
 
@@ -207,10 +212,14 @@ async function handleChatTts(body: Record<string, unknown>): Promise<HandlerResu
             wsBroadcast("audio:ready", { url, messageId, chunkIndex: globalIdx, totalChunks }, wsFilter);
           }
         } catch (err) {
-          console.error(`[tts] GPU Manager batch ${batchStart} error:`, err);
+          const errMsg = String(err);
+          console.error(`[tts] GPU Manager batch ${batchStart} error:`, errMsg);
+          const is503 = errMsg.startsWith("Error: 503:");
+          const errorDetail = is503 ? errMsg.replace("Error: 503:", "").trim() : undefined;
           for (let j = 0; j < batch.length; j++) {
-            wsBroadcast("audio:status", { status: "error", messageId, chunkIndex: batchStart + j, totalChunks }, wsFilter);
+            wsBroadcast("audio:status", { status: "error", messageId, chunkIndex: batchStart + j, totalChunks, ...(errorDetail ? { errorDetail } : {}) }, wsFilter);
           }
+          if (is503) break;
         }
       }
     })();
@@ -271,6 +280,11 @@ async function handleVoiceGeneratePost(body: Record<string, unknown>, personaNam
 
     if (!res.ok) {
       const err = await res.text();
+      if (res.status === 503) {
+        let msg = err;
+        try { msg = JSON.parse(err)?.detail || err; } catch { /* ignore */ }
+        return { status: 503, data: { error: msg } };
+      }
       return { status: 500, data: { error: `Voice creation failed: ${err}` } };
     }
 
