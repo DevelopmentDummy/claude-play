@@ -1,0 +1,972 @@
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :host {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+
+  .cv {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    background: #1c1814;
+    color: #e8e0d4;
+    font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    position: relative;
+  }
+
+  /* ── HEADER ── */
+  .hdr {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 7px 10px;
+    border-bottom: 1px solid #302a22;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+    min-height: 38px;
+    position: relative;
+  }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 7px;
+    border-radius: 10px;
+    font-size: 10.5px;
+    font-weight: 500;
+    line-height: 1.4;
+  }
+
+  .pill-c {
+    background: rgba(212,165,116,0.15);
+    color: #d4a574;
+    border: 1px solid rgba(212,165,116,0.25);
+  }
+
+  .pill-s {
+    background: rgba(120,180,120,0.12);
+    color: #88c488;
+    font-size: 10px;
+  }
+
+  .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #e8a040;
+    flex-shrink: 0;
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%,100% { opacity: 1; }
+    50% { opacity: 0.35; }
+  }
+
+  .sp { flex: 1; }
+
+  .meta {
+    font-size: 10.5px;
+    color: #6a6050;
+    white-space: nowrap;
+  }
+
+  .acts {
+    display: flex;
+    gap: 2px;
+    flex-wrap: wrap;
+  }
+
+  .ab {
+    width: 26px; height: 26px;
+    display: flex; align-items: center; justify-content: center;
+    background: transparent;
+    border: 1px solid #302a22;
+    border-radius: 5px;
+    color: #8a7e6c;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+    padding: 0;
+  }
+
+  .ab:hover {
+    background: #2a2318;
+    color: #e8e0d4;
+    border-color: #d4a574;
+  }
+
+  .ab.ok {
+    background: rgba(212,165,116,0.2);
+    color: #d4a574;
+    border-color: #d4a574;
+  }
+
+  .ab.ed-on {
+    background: rgba(212,165,116,0.25);
+    color: #d4a574;
+    border-color: #d4a574;
+  }
+
+  .ab:disabled { opacity: 0.3; cursor: not-allowed; }
+
+  /* ── TITLE ── */
+  .ttl-w {
+    padding: 10px 12px 6px;
+    border-bottom: 1px solid rgba(48,42,34,0.5);
+    flex-shrink: 0;
+  }
+
+  .ttl {
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 1.4;
+    color: #e8e0d4;
+    word-break: break-word;
+    cursor: text;
+  }
+
+  .ttl.ph {
+    color: #3e3628;
+    font-style: italic;
+    font-weight: 400;
+  }
+
+  .ttl-input {
+    width: 100%;
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 1.4;
+    color: #e8e0d4;
+    background: #231f1a;
+    border: 1px solid rgba(212,165,116,0.4);
+    border-radius: 4px;
+    padding: 4px 6px;
+    outline: none;
+    display: none;
+    font-family: inherit;
+  }
+
+  .ttl-input:focus { border-color: #d4a574; }
+
+  /* ── BODY ── */
+  .bd-w {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 12px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .bd {
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 13px;
+    line-height: 1.85;
+    color: #d8d0c4;
+    min-height: 60px;
+    user-select: text;
+    -webkit-user-select: text;
+  }
+
+  .bd .ph {
+    color: #3e3628;
+    font-style: italic;
+    user-select: none;
+  }
+
+  .bd img {
+    max-width: 100%;
+    border-radius: 6px;
+    margin: 8px 0;
+    display: block;
+  }
+
+  .bd-edit-w {
+    display: none;
+  }
+
+  .bd-edit {
+    width: 100%;
+    height: calc(80vh - 250px);
+    background: #231f1a;
+    color: #d8d0c4;
+    border: 1px solid rgba(212,165,116,0.3);
+    border-radius: 4px;
+    padding: 8px;
+    font-size: 13px;
+    line-height: 1.85;
+    font-family: inherit;
+    resize: none;
+    outline: none;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .bd-edit:focus { border-color: #d4a574; }
+
+  .bd-w::-webkit-scrollbar { width: 5px; }
+  .bd-w::-webkit-scrollbar-track { background: transparent; }
+  .bd-w::-webkit-scrollbar-thumb { background: #302a22; border-radius: 3px; }
+
+  /* ── TAGS ── */
+  .tgs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 6px 12px;
+    border-top: 1px solid rgba(48,42,34,0.5);
+    flex-shrink: 0;
+  }
+
+  .tg {
+    padding: 2px 7px;
+    background: rgba(212,165,116,0.08);
+    border-radius: 10px;
+    font-size: 10.5px;
+    color: #8a7e6c;
+  }
+
+  /* ── NOTES ── */
+  .nt {
+    padding: 6px 12px;
+    border-top: 1px solid rgba(48,42,34,0.5);
+    flex-shrink: 0;
+  }
+
+  .nt-lb {
+    font-size: 10.5px;
+    color: #d4a574;
+    font-weight: 600;
+    margin-bottom: 2px;
+    display: block;
+  }
+
+  .nt-tx {
+    font-size: 11.5px;
+    color: #7a6e5c;
+    white-space: pre-wrap;
+    line-height: 1.5;
+  }
+
+  .ab.sav { color: #d4a574; border-color: rgba(212,165,116,0.35); }
+
+  .exp {
+    display: none;
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 4px;
+    background: #2a2318;
+    border: 1px solid rgba(212,165,116,0.4);
+    border-radius: 6px;
+    padding: 3px;
+    z-index: 60;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+    min-width: 130px;
+  }
+
+  .exp.on { display: flex; flex-direction: column; }
+
+  .exp-item {
+    padding: 6px 10px;
+    border-radius: 4px;
+    border: none;
+    background: transparent;
+    color: #d8d0c4;
+    font-size: 11.5px;
+    cursor: pointer;
+    text-align: left;
+    white-space: nowrap;
+    transition: background 0.12s;
+  }
+
+  .exp-item:hover { background: rgba(212,165,116,0.15); color: #e8e0d4; }
+
+
+  /* ── SELECTION TOOLBAR ── */
+  .stb {
+    position: fixed;
+    display: none;
+    background: #2a2318;
+    border: 1px solid rgba(212,165,116,0.5);
+    border-radius: 8px;
+    padding: 3px;
+    gap: 2px;
+    z-index: 100000;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.55);
+    flex-wrap: wrap;
+    max-width: 360px;
+  }
+
+  .stb.on { display: flex; }
+
+  .sb {
+    padding: 4px 9px;
+    border-radius: 5px;
+    border: none;
+    background: transparent;
+    color: #d8d0c4;
+    font-size: 11px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.12s;
+  }
+
+  .sb:hover { background: rgba(212,165,116,0.18); }
+  .sb.hi { color: #d4a574; font-weight: 600; }
+
+  /* ── DOC LIST OVERLAY ── */
+  .dl {
+    display: none;
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: #1c1814;
+    z-index: 50;
+    flex-direction: column;
+  }
+
+  .dl.on { display: flex; }
+
+  .dl-hdr {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    border-bottom: 1px solid #302a22;
+    flex-shrink: 0;
+  }
+
+  .dl-hdr span {
+    font-size: 13px;
+    font-weight: 600;
+    color: #d4a574;
+  }
+
+  .dl-close {
+    background: transparent;
+    border: 1px solid #302a22;
+    color: #8a7e6c;
+    width: 24px; height: 24px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 13px;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  .dl-close:hover { color: #e8e0d4; border-color: #d4a574; }
+
+  .dl-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+  }
+
+  .dl-empty {
+    text-align: center;
+    padding: 30px 12px;
+    color: #4a4030;
+    font-size: 12px;
+    font-style: italic;
+  }
+
+  .dl-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.12s;
+    border: 1px solid transparent;
+  }
+
+  .dl-item:hover {
+    background: #2a2318;
+    border-color: rgba(212,165,116,0.2);
+  }
+
+  .dl-info { flex: 1; min-width: 0; }
+
+  .dl-title {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #e8e0d4;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .dl-meta {
+    font-size: 10.5px;
+    color: #6a6050;
+    margin-top: 1px;
+  }
+
+  .dl-thumb {
+    width: 96px;
+    height: 96px;
+    object-fit: cover;
+    border-radius: 6px;
+    flex-shrink: 0;
+    background: #231f1a;
+    cursor: pointer;
+  }
+
+  .dl-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+    gap: 8px;
+    padding: 8px;
+  }
+
+  .dl-grid .dl-item {
+    flex-direction: column;
+    padding: 4px;
+    text-align: center;
+  }
+
+  .dl-grid .dl-info {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .dl-grid .dl-title {
+    font-size: 10px;
+    margin-top: 4px;
+  }
+
+  .dl-grid .dl-meta {
+    font-size: 9px;
+  }
+
+  .dl-body::-webkit-scrollbar { width: 5px; }
+  .dl-body::-webkit-scrollbar-track { background: transparent; }
+  .dl-body::-webkit-scrollbar-thumb { background: #302a22; border-radius: 3px; }
+</style>
+
+<div class="cv">
+  <!-- Header -->
+  <div class="hdr">
+    {{#if article.community}}
+    <span class="pill pill-c">{{article.community}}</span>
+    {{/if}}
+    {{#if (ne article.stage "대기")}}
+    <span class="pill pill-s">{{article.stage}}</span>
+    {{/if}}
+    {{#if article.dirty}}
+    <span class="dot" title="수정됨 (미저장)"></span>
+    {{/if}}
+    <span class="sp"></span>
+    <span class="meta" id="wc"></span>
+    <div class="acts">
+      <button class="ab" id="a-sz" title="크기 전환">↗</button>
+      <button class="ab" id="a-new" title="새 글">📄</button>
+      <button class="ab" id="a-load" title="불러오기">📂</button>
+      <button class="ab" id="a-copy" title="복사">📋</button>
+      <button class="ab" id="a-edit" title="편집 모드">✏️</button>
+      <button class="ab" id="a-img" title="이미지 삽입">🖼️</button>
+      <button class="ab" id="a-upload" title="이미지 업로드">📎</button>
+      <button class="ab sav" id="a-save" title="보관">💾</button>
+      <button class="ab" id="a-fill" title="입력창으로">💬</button>
+      <button class="ab" id="a-exp" title="내보내기">📤</button>
+    </div>
+    <div class="exp" id="exp">
+      <button class="exp-item" id="exp-rich">📋 서식 복사</button>
+      <button class="exp-item" id="exp-html">📥 HTML 저장</button>
+    </div>
+    <input type="file" accept="image/*" id="f-upload" style="display:none" />
+  </div>
+
+  <!-- Title -->
+  <div class="ttl-w">
+    {{#if article.title}}
+    <div class="ttl" id="ttl">{{article.title}}</div>
+    {{else}}
+    <div class="ttl ph" id="ttl">제목 없음</div>
+    {{/if}}
+    <input class="ttl-input" id="ttl-input" type="text" placeholder="제목을 입력하세요" />
+  </div>
+
+  <!-- Body -->
+  <div class="bd-w" id="bd-w">
+    <div class="bd" id="bd">{{#if article.body}}{{article.body}}{{else}}<span class="ph">서하에게 말을 걸면 여기에 글이 작성됩니다</span>{{/if}}</div>
+    <div class="bd-edit-w" id="bd-edit-w"><textarea class="bd-edit" id="bd-edit" placeholder="여기에 직접 작성하세요..."></textarea></div>
+  </div>
+
+  <!-- Tags -->
+  {{#each article.tags}}
+  {{#if @first}}<div class="tgs">{{/if}}
+  <span class="tg">#{{this}}</span>
+  {{#if @last}}</div>{{/if}}
+  {{/each}}
+
+  <!-- Notes -->
+  {{#if article.notes}}
+  <div class="nt">
+    <span class="nt-lb">📝 편집 노트</span>
+    <div class="nt-tx">{{article.notes}}</div>
+  </div>
+  {{/if}}
+
+  <!-- Doc List Overlay -->
+  <div class="dl" id="dl">
+    <div class="dl-hdr">
+      <span id="dl-title">📂 저장된 글</span>
+      <button class="dl-close" id="dl-close">✕</button>
+    </div>
+    <div class="dl-body" id="dl-body"></div>
+  </div>
+</div>
+
+<!-- Selection Toolbar -->
+<div class="stb" id="stb">
+  <button class="sb hi" data-a="rewrite">✍ 다시 쓰기</button>
+  <button class="sb" data-a="stronger">🔥 강하게</button>
+  <button class="sb" data-a="softer">🌊 부드럽게</button>
+  <button class="sb" data-a="expand">📖 자세히</button>
+  <button class="sb" data-a="shorten">✂ 줄이기</button>
+  <button class="sb" data-a="ask">💬 직접 질문</button>
+</div>
+
+<script>
+  var d = __panelBridge.data;
+  var art = d.article || {};
+  var imgBase = d.__imageBase || '';
+  var bodyEl = shadow.querySelector('#bd');
+  var bar = shadow.querySelector('#stb');
+  var selText = '';
+
+  // ── Word count ──
+  var wcEl = shadow.querySelector('#wc');
+  if (wcEl && art.body) {
+    var c = art.body.length;
+    var w = art.body.trim().split(/\s+/).filter(function(x){return x;}).length;
+    wcEl.textContent = c.toLocaleString() + '자 · ' + w.toLocaleString() + '어절';
+  }
+
+  // ── Inline images: ![alt](src) and $IMAGE:path$ → <img> ──
+  if (bodyEl && art.body) {
+    var h = bodyEl.innerHTML;
+    h = h.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, function(_, alt, src) {
+      var u = /^https?:/.test(src) ? src : imgBase + src;
+      return '<img src="' + u + '" alt="' + alt + '" loading="lazy" />';
+    });
+    h = h.replace(/\$IMAGE:([^$]+)\$/g, function(_, src) {
+      var u = /^https?:/.test(src) ? src : imgBase + src;
+      return '<img src="' + u + '" alt="" loading="lazy" />';
+    });
+    bodyEl.innerHTML = h;
+  }
+
+  // ── Selection toolbar ──
+  var ACTS = {
+    rewrite: '이 부분을 다시 써줘',
+    stronger: '이 부분의 톤을 더 강하게 올려줘',
+    softer: '이 부분을 더 부드럽게 다듬어줘',
+    expand: '이 부분을 더 자세히 풀어줘',
+    shorten: '이 부분을 더 간결하게 줄여줘',
+    ask: null
+  };
+
+  function hideBar() { bar.classList.remove('on'); selText = ''; }
+
+  shadow.addEventListener('mouseup', function(e) {
+    setTimeout(function() {
+      var sel = window.getSelection();
+      var txt = sel ? sel.toString().trim() : '';
+      if (txt.length > 0 && bodyEl && bodyEl.contains(sel.anchorNode)) {
+        selText = txt;
+        try {
+          var rng = sel.getRangeAt(0);
+          var rect = rng.getBoundingClientRect();
+          var left = Math.max(4, Math.min(rect.left, window.innerWidth - 370));
+          var top = rect.top - 40;
+          if (top < 4) top = rect.bottom + 6;
+          bar.style.left = left + 'px';
+          bar.style.top = top + 'px';
+          bar.classList.add('on');
+        } catch(ex) {}
+      } else if (!bar.contains(e.target)) {
+        hideBar();
+      }
+    }, 10);
+  });
+
+  shadow.querySelector('#bd-w').addEventListener('scroll', hideBar);
+
+  shadow.querySelectorAll('.sb').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var act = btn.dataset.a;
+      var quoted = selText.split('\n').map(function(l) { return '> ' + l; }).join('\n');
+      if (act === 'ask') {
+        __panelBridge.fillInput(quoted + '\n\n');
+      } else {
+        __panelBridge.sendMessage(quoted + '\n\n' + ACTS[act]);
+      }
+      hideBar();
+      try { window.getSelection().removeAllRanges(); } catch(ex) {}
+    });
+  });
+
+  // ── Expand / Collapse (dock-right ↔ modal) ──
+  var szBtn = shadow.querySelector('#a-sz');
+  var layout = __panelBridge.data.__layout || {};
+  var curPlacement = (layout.panels && layout.panels.placement && layout.panels.placement.canvas) || 'dock-right';
+  var isExpanded = curPlacement === 'modal';
+  szBtn.textContent = isExpanded ? '↙' : '↗';
+  szBtn.title = isExpanded ? '독 모드로 축소' : '전체 화면으로 확장';
+
+  szBtn.addEventListener('click', function() {
+    var next = isExpanded ? 'dock-right' : 'modal';
+    __panelBridge.updateLayout({ panels: { placement: { canvas: next } } });
+    var m = Object.assign({}, __panelBridge.data.__modals || {});
+    m.canvas = 'dismissible';
+    __panelBridge.updateVariables({ __modals: m });
+  });
+
+  // ── New article (via tool) ──
+  shadow.querySelector('#a-new').addEventListener('click', async function() {
+    var btn = shadow.querySelector('#a-new');
+    btn.disabled = true;
+    var res = await __panelBridge.runTool('new-article', {});
+    if (!res.result.ok && res.result.needSave) {
+      if (confirm('현재 글이 수정됐습니다. 저장 없이 새 글을 시작할까요?')) {
+        await __panelBridge.runTool('new-article', { force: true });
+      }
+    }
+    btn.disabled = false;
+  });
+
+  // ── File overlay (shared: docs & images) ──
+  var dlPanel = shadow.querySelector('#dl');
+  var dlBody = shadow.querySelector('#dl-body');
+  var dlTitleEl = shadow.querySelector('#dl-title');
+
+  function fmtSize(b) {
+    if (b < 1024) return b + 'B';
+    if (b < 1048576) return (b / 1024).toFixed(0) + 'KB';
+    return (b / 1048576).toFixed(1) + 'MB';
+  }
+
+  function insertImageTag(tag) {
+    if (editing && bdEdit) {
+      var s = bdEdit.selectionStart;
+      var end = bdEdit.selectionEnd;
+      var v = bdEdit.value;
+      bdEdit.value = v.substring(0, s) + tag + v.substring(end);
+      bdEdit.selectionStart = bdEdit.selectionEnd = s + tag.length;
+      bdEdit.focus();
+    } else {
+      var nb = (art.body || '') + (art.body ? '\n' : '') + tag;
+      __panelBridge.updateData('article.json', { body: nb, dirty: true });
+    }
+  }
+
+  async function openDocs() {
+    dlBody.classList.remove('dl-grid');
+    dlTitleEl.textContent = '📂 저장된 글';
+    var btn = shadow.querySelector('#a-load');
+    btn.disabled = true;
+    var res = await __panelBridge.runTool('list-docs', {});
+    btn.disabled = false;
+
+    var docs = (res.result && res.result.docs) || [];
+    if (docs.length === 0) {
+      dlBody.innerHTML = '<div class="dl-empty">저장된 글이 없습니다</div>';
+    } else {
+      dlBody.innerHTML = docs.map(function(doc) {
+        return '<div class="dl-item" data-f="' + doc.filename + '">'
+          + '<div class="dl-info">'
+          + '<div class="dl-title">' + doc.title + '</div>'
+          + '<div class="dl-meta">' + (doc.community || '') + (doc.community && doc.stage ? ' · ' : '') + (doc.stage || '') + '</div>'
+          + '</div></div>';
+      }).join('');
+
+      dlBody.querySelectorAll('.dl-item').forEach(function(item) {
+        item.addEventListener('click', async function() {
+          if (art.dirty && !confirm('현재 글이 수정됐습니다. 저장 없이 불러올까요?')) return;
+          item.style.opacity = '0.5';
+          await __panelBridge.runTool('load-article', { filename: item.dataset.f });
+        });
+      });
+    }
+
+    dlPanel.classList.add('on');
+  }
+
+  async function openImages() {
+    dlTitleEl.textContent = '🖼️ 이미지 선택';
+    dlBody.classList.add('dl-grid');
+    var btn = shadow.querySelector('#a-img');
+    btn.disabled = true;
+    var res = await __panelBridge.runTool('list-images', {});
+    btn.disabled = false;
+
+    var imgs = (res.result && res.result.images) || [];
+    if (imgs.length === 0) {
+      dlBody.innerHTML = '<div class="dl-empty">세션에 이미지가 없습니다</div>';
+    } else {
+      dlBody.innerHTML = imgs.map(function(img) {
+        var thumb = imgBase + 'images/' + img.filename;
+        return '<div class="dl-item" data-f="' + img.filename + '">'
+          + '<img class="dl-thumb" src="' + thumb + '" loading="lazy" />'
+          + '<div class="dl-info">'
+          + '<div class="dl-title">' + img.filename + '</div>'
+          + '<div class="dl-meta">' + fmtSize(img.size) + '</div>'
+          + '</div></div>';
+      }).join('');
+
+      dlBody.querySelectorAll('.dl-item').forEach(function(item) {
+        item.addEventListener('click', function() {
+          var tag = '$IMAGE:images/' + item.dataset.f + '$';
+          insertImageTag(tag);
+          dlPanel.classList.remove('on');
+        });
+      });
+    }
+
+    dlPanel.classList.add('on');
+  }
+
+  shadow.querySelector('#a-load').addEventListener('click', openDocs);
+  shadow.querySelector('#a-img').addEventListener('click', openImages);
+  shadow.querySelector('#dl-close').addEventListener('click', function() {
+    dlPanel.classList.remove('on');
+  });
+
+  // ── Copy (clipboard) ──
+  shadow.querySelector('#a-copy').addEventListener('click', function() {
+    var t = '';
+    if (art.title) t += art.title + '\n\n';
+    if (art.body) t += art.body;
+    if (art.tags && art.tags.length) {
+      t += '\n\n' + art.tags.map(function(x) { return '#' + x; }).join(' ');
+    }
+    navigator.clipboard.writeText(t).then(function() {
+      var b = shadow.querySelector('#a-copy');
+      b.textContent = '✓';
+      b.classList.add('ok');
+      setTimeout(function() { b.textContent = '📋'; b.classList.remove('ok'); }, 1500);
+    });
+  });
+
+  // ── Save (via tool) ──
+  shadow.querySelector('#a-save').addEventListener('click', async function() {
+    var btn = shadow.querySelector('#a-save');
+    btn.disabled = true;
+    var res = await __panelBridge.runTool('save-article', {});
+    btn.disabled = false;
+    if (res.result && res.result.ok) {
+      btn.textContent = '✓'; btn.classList.add('ok');
+      setTimeout(function() { btn.textContent = '💾'; btn.classList.remove('ok'); }, 1500);
+    } else {
+      btn.textContent = '✗';
+      setTimeout(function() { btn.textContent = '💾'; }, 2000);
+    }
+  });
+
+  // ── Fill input ──
+  shadow.querySelector('#a-fill').addEventListener('click', function() {
+    var t = '';
+    if (art.title) t += art.title + '\n\n';
+    if (art.body) t += art.body;
+    __panelBridge.fillInput(t);
+  });
+
+  // ── Image upload ──
+  var uploadInput = shadow.querySelector('#f-upload');
+  shadow.querySelector('#a-upload').addEventListener('click', function() {
+    uploadInput.click();
+  });
+  uploadInput.addEventListener('change', function() {
+    var file = uploadInput.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = async function() {
+      var base64 = reader.result.split(',')[1];
+      var btn = shadow.querySelector('#a-upload');
+      btn.disabled = true;
+      var res = await __panelBridge.runTool('upload-image', { filename: file.name, data: base64 });
+      btn.disabled = false;
+      if (res.result && res.result.ok) {
+        var tag = '$IMAGE:images/' + res.result.filename + '$';
+        insertImageTag(tag);
+        btn.textContent = '✓'; btn.classList.add('ok');
+        setTimeout(function() { btn.textContent = '📎'; btn.classList.remove('ok'); }, 1500);
+      } else {
+        var err = (res.result && res.result.error) || '업로드 실패';
+        alert(err);
+      }
+      uploadInput.value = '';
+    };
+    reader.readAsDataURL(file);
+  });
+
+  // ── Export ──
+  var expPopup = shadow.querySelector('#exp');
+
+  function escHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function buildExportHTML() {
+    var origin = window.location.origin;
+    var body = escHtml(art.body || '');
+    body = body.replace(/\$IMAGE:([^$]+)\$/g, function(_, src) {
+      var u = /^https?:/.test(src) ? src : origin + imgBase + src;
+      return '<img src="' + u + '" style="max-width:100%;border-radius:4px;margin:8px 0;display:block;" />';
+    });
+    body = body.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, function(_, alt, src) {
+      var u = /^https?:/.test(src) ? src : origin + imgBase + src;
+      return '<img src="' + u + '" alt="' + alt + '" style="max-width:100%;border-radius:4px;margin:8px 0;display:block;" />';
+    });
+    body = body.replace(/\n/g, '<br>\n');
+
+    var h = '';
+    if (art.title) h += '<h2 style="margin:0 0 12px;font-size:20px;">' + escHtml(art.title) + '</h2>\n';
+    h += body;
+    if (art.tags && art.tags.length) {
+      h += '\n<p style="margin-top:16px;color:#888;font-size:13px;">' + art.tags.map(function(t) { return '#' + t; }).join(' ') + '</p>';
+    }
+    return h;
+  }
+
+  shadow.querySelector('#a-exp').addEventListener('click', function(e) {
+    e.stopPropagation();
+    expPopup.classList.toggle('on');
+  });
+
+  shadow.addEventListener('click', function(e) {
+    if (!expPopup.contains(e.target) && e.target.id !== 'a-exp') {
+      expPopup.classList.remove('on');
+    }
+  });
+
+  shadow.querySelector('#exp-rich').addEventListener('click', function() {
+    var html = buildExportHTML();
+    var plain = (art.title ? art.title + '\n\n' : '') + (art.body || '');
+    try {
+      navigator.clipboard.write([
+        new ClipboardItem({
+          'text/html': new Blob([html], { type: 'text/html' }),
+          'text/plain': new Blob([plain], { type: 'text/plain' })
+        })
+      ]).then(function() {
+        expPopup.classList.remove('on');
+        var b = shadow.querySelector('#a-exp');
+        b.textContent = '✓'; b.classList.add('ok');
+        setTimeout(function() { b.textContent = '📤'; b.classList.remove('ok'); }, 1500);
+      });
+    } catch(ex) {
+      alert('클립보드 복사 실패');
+    }
+  });
+
+  shadow.querySelector('#exp-html').addEventListener('click', function() {
+    var inner = buildExportHTML();
+    var doc = '<!DOCTYPE html>\n<html lang="ko">\n<head>\n<meta charset="utf-8">\n'
+      + '<title>' + escHtml(art.title || '글') + '</title>\n'
+      + '<style>body{max-width:720px;margin:40px auto;padding:0 20px;font-family:-apple-system,BlinkMacSystemFont,sans-serif;line-height:1.8;color:#333;}img{max-width:100%;height:auto;}h2{margin-bottom:16px;}</style>\n'
+      + '</head>\n<body>\n' + inner + '\n</body>\n</html>';
+    var blob = new Blob([doc], { type: 'text/html;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = (art.title || 'article') + '.html';
+    a.click();
+    URL.revokeObjectURL(a.href);
+    expPopup.classList.remove('on');
+  });
+
+  // ── Title click-to-edit ──
+  var ttlEl = shadow.querySelector('#ttl');
+  var ttlInput = shadow.querySelector('#ttl-input');
+
+  if (ttlEl && ttlInput) {
+    ttlEl.addEventListener('click', function() {
+      ttlInput.value = art.title || '';
+      ttlEl.style.display = 'none';
+      ttlInput.style.display = 'block';
+      ttlInput.focus();
+      ttlInput.select();
+    });
+
+    function saveTtl() {
+      var nv = ttlInput.value.trim();
+      if (nv !== (art.title || '')) {
+        __panelBridge.updateData('article.json', { title: nv, dirty: true });
+      } else {
+        ttlInput.style.display = 'none';
+        ttlEl.style.display = 'block';
+      }
+    }
+
+    ttlInput.addEventListener('blur', saveTtl);
+    ttlInput.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') { e.preventDefault(); ttlInput.blur(); }
+      if (e.key === 'Escape') {
+        ttlInput.style.display = 'none';
+        ttlEl.style.display = 'block';
+      }
+    });
+  }
+
+  // ── Body edit toggle ──
+  var editBtn = shadow.querySelector('#a-edit');
+  var bdEl = shadow.querySelector('#bd');
+  var bdEdit = shadow.querySelector('#bd-edit');
+  var editing = false;
+
+  if (editBtn && bdEl && bdEdit) {
+    var bdEditW = shadow.querySelector('#bd-edit-w');
+
+    editBtn.addEventListener('click', function() {
+      if (!editing) {
+        // Enter edit mode
+        editing = true;
+        bdEdit.value = art.body || '';
+        bdEl.style.display = 'none';
+        bdEditW.style.display = 'block';
+        bdEdit.focus();
+        editBtn.classList.add('ed-on');
+        hideBar();
+      } else {
+        // Exit edit mode → save if changed
+        editing = false;
+        var nv = bdEdit.value;
+        if (nv !== (art.body || '')) {
+          __panelBridge.updateData('article.json', { body: nv, dirty: true });
+        } else {
+          bdEditW.style.display = 'none';
+          bdEl.style.display = '';
+          editBtn.classList.remove('ed-on');
+        }
+      }
+    });
+
+    // Ctrl+S → save and exit edit mode
+    bdEdit.addEventListener('keydown', function(e) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        editBtn.click();
+      }
+      if (e.key === 'Escape') {
+        editing = false;
+        bdEditW.style.display = 'none';
+        bdEl.style.display = '';
+        editBtn.classList.remove('ed-on');
+      }
+      // Tab → insert tab character
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        var s = bdEdit.selectionStart;
+        var end = bdEdit.selectionEnd;
+        bdEdit.value = bdEdit.value.substring(0, s) + '\t' + bdEdit.value.substring(end);
+        bdEdit.selectionStart = bdEdit.selectionEnd = s + 1;
+      }
+    });
+  }
+</script>

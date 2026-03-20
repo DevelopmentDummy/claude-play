@@ -1,0 +1,14 @@
+{
+  "enabled": true,
+  "ttsProvider": "edge",
+  "edgeVoice": "ko-KR-SunHiNeural",
+  "edgeRate": "",
+  "edgePitch": "",
+  "referenceAudio": "voice-ref.mp3",
+  "referenceText": "박사, 앉아. 그냥 평범한 회진이니까 너무 긴장하지 말고. 만약 몸에 뭔가 이상한 점이 느껴지면 있는 그대로 말해줘.",
+  "design": "",
+  "language": "ko",
+  "voiceFile": "voice/______.pt",
+  "chunkDelay": 500,
+  "modelSize": "0.6B"
+}

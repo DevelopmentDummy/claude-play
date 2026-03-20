@@ -242,9 +242,11 @@ async function stepPortCheck(port) {
   }
 }
 
+const COPY_SKIP = new Set([".git", ".claude", ".codex", ".mcp.json"]);
 function copyDirRecursive(src, dst) {
   fs.mkdirSync(dst, { recursive: true });
   for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+    if (COPY_SKIP.has(entry.name)) continue;
     const s = path.join(src, entry.name);
     const d = path.join(dst, entry.name);
     if (entry.isDirectory()) copyDirRecursive(s, d);
