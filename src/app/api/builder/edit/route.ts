@@ -66,7 +66,7 @@ export async function POST(req: Request) {
   // Provider switch = always fresh session (no resume across providers)
   const resumeId = providerChanged ? undefined : svc.sessions.getBuilderSessionId(name, provider);
   // If no model specified and provider is codex, use default codex model
-  const effectiveModel = model || (provider === "codex" ? "gpt-5.4" : provider === "gemini" ? "gemini-2.5-flash" : undefined);
+  const effectiveModel = model || (provider === "codex" ? "gpt-5.4" : provider === "gemini" ? "gemini-3.1-pro-preview" : undefined);
   // Builder default effort: highest for each provider
   const effectiveEffort = effort || (provider === "codex" ? "xhigh" : provider === "gemini" ? undefined : "high");
 
