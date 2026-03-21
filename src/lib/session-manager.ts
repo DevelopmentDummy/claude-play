@@ -1817,9 +1817,39 @@ export class SessionManager {
     );
   }
 
-  writeGeminiInstructions(projectDir: string, content: string): void {
-    fs.writeFileSync(path.join(projectDir, "GEMINI.md"), content, "utf-8");
-    console.log(`[gemini] Wrote GEMINI.md: ${projectDir} (${content.length} chars)`);
+  /**
+   * Write GEMINI.md with session instructions + runtime system prompt combined.
+   * Unlike Claude (which has separate CLAUDE.md + --system-prompt flag),
+   * Gemini CLI only reads GEMINI.md — so both must be merged into one file.
+   */
+  writeGeminiInstructions(projectDir: string, runtimePrompt: string): void {
+    const geminiMdPath = path.join(projectDir, "GEMINI.md");
+    // Read existing GEMINI.md (contains session-instructions + style + profile + opening)
+    let sessionInstructions = "";
+    try {
+      if (fs.existsSync(geminiMdPath)) {
+        sessionInstructions = fs.readFileSync(geminiMdPath, "utf-8").trim();
+      }
+    } catch { /* ignore */ }
+
+    // If GEMINI.md already contains the runtime prompt (re-open), rebuild from scratch
+    // by reading the original session-instructions.md content from CLAUDE.md
+    // (CLAUDE.md is authoritative since Claude uses --system-prompt separately)
+    if (!sessionInstructions || sessionInstructions.includes("<instruction>")) {
+      const claudeMdPath = path.join(projectDir, "CLAUDE.md");
+      try {
+        if (fs.existsSync(claudeMdPath)) {
+          sessionInstructions = fs.readFileSync(claudeMdPath, "utf-8").trim();
+        }
+      } catch { /* ignore */ }
+    }
+
+    const combined = sessionInstructions
+      ? `${sessionInstructions}\n\n---\n\n${runtimePrompt}`
+      : runtimePrompt;
+
+    fs.writeFileSync(geminiMdPath, combined, "utf-8");
+    console.log(`[gemini] Wrote GEMINI.md: ${projectDir} (${combined.length} chars, instructions: ${sessionInstructions.length})`);
   }
 
   private ensurePolicyContext(projectDir: string): void {
