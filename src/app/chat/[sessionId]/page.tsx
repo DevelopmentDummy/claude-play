@@ -73,6 +73,7 @@ export default function ChatPage() {
   }, []);
   // Chunked audio: per-message arrays of chunk URLs
   const [audioMap, setAudioMap] = useState<Record<string, string[]>>({});
+  const audioMapRef = useRef<Record<string, string[]>>({});
   const [audioStatus, setAudioStatus] = useState<Record<string, { generating: boolean; totalChunks: number; readyCount: number }>>({});
   const audioStatusRef = useRef<Record<string, { generating: boolean; totalChunks: number; readyCount: number }>>({});
   const audioQueueRef = useRef<{
@@ -148,55 +149,53 @@ export default function ChatPage() {
       const state = playStateRef.current[messageId];
       if (!state) { advanceQueue(); return; }
 
-      setAudioMap((current) => {
-        const urls = current[messageId];
-        if (!urls || state.nextChunk >= urls.length) {
-          if (state.totalChunks > 0 && state.nextChunk >= state.totalChunks) {
-            setTimeout(advanceQueue, 250);
-          } else if (!audioStatusRef.current[messageId]) {
-            // Not generating, no more URLs — done
-            setTimeout(advanceQueue, 250);
-          }
-          // else: still generating, urls array might grow — wait for audio:ready
-          return current;
+      // Read audioMap snapshot from ref (avoid setState updater side-effects)
+      const urls = audioMapRef.current[messageId];
+      if (!urls || state.nextChunk >= urls.length) {
+        if (state.totalChunks > 0 && state.nextChunk >= state.totalChunks) {
+          setTimeout(advanceQueue, 250);
+        } else if (!audioStatusRef.current[messageId]) {
+          // Not generating, no more URLs — done
+          setTimeout(advanceQueue, 250);
         }
-        if (!urls[state.nextChunk]) {
-          const isGenerating = !!audioStatusRef.current[messageId];
-          if (isGenerating) {
-            // Wait for audio:ready → tryResume
-            return current;
-          }
-          // Skip null (failed) chunks
-          const nextValid = urls.findIndex((u, i) => i > state.nextChunk && u != null);
-          if (nextValid === -1) {
-            setTimeout(advanceQueue, 250);
-            return current;
-          }
-          state.nextChunk = nextValid;
-          setTimeout(playNext, 50);
-          return current;
+        // else: still generating, urls array might grow — wait for audio:ready
+        return;
+      }
+      if (!urls[state.nextChunk]) {
+        const isGenerating = !!audioStatusRef.current[messageId];
+        if (isGenerating) {
+          // Wait for audio:ready → tryResume
+          return;
         }
-        const url = urls[state.nextChunk];
-        const playingIndex = state.nextChunk;
-        state.nextChunk++;
-        qq.audioPlaying = true;
-        const audio = new Audio(url);
-        qq.currentAudio = audio;
-        // Dispatch early autoplay hint when playback is near the end
-        const remaining = state.totalChunks - state.nextChunk;
-        if (playingIndex >= 1 && remaining <= 3) {
-          window.dispatchEvent(new CustomEvent("__autoplay_tts_near_end"));
+        // Skip null (failed) chunks
+        const nextValid = urls.findIndex((u, i) => i > state.nextChunk && u != null);
+        if (nextValid === -1) {
+          setTimeout(advanceQueue, 250);
+          return;
         }
-        const onDone = () => {
-          qq.audioPlaying = false;
-          qq.currentAudio = null;
-          setTimeout(playNext, 250);
-        };
-        audio.onended = onDone;
-        audio.onerror = onDone;
-        audio.play().catch(() => { qq.audioPlaying = false; qq.currentAudio = null; setTimeout(playNext, 250); });
-        return current;
-      });
+        state.nextChunk = nextValid;
+        setTimeout(playNext, 50);
+        return;
+      }
+      const url = urls[state.nextChunk];
+      const playingIndex = state.nextChunk;
+      state.nextChunk++;
+      qq.audioPlaying = true;
+      const audio = new Audio(url);
+      qq.currentAudio = audio;
+      // Dispatch early autoplay hint when playback is near the end
+      const remaining = state.totalChunks - state.nextChunk;
+      if (playingIndex >= 1 && remaining <= 3) {
+        window.dispatchEvent(new CustomEvent("__autoplay_tts_near_end"));
+      }
+      const onDone = () => {
+        qq.audioPlaying = false;
+        qq.currentAudio = null;
+        setTimeout(playNext, 250);
+      };
+      audio.onended = onDone;
+      audio.onerror = onDone;
+      audio.play().catch(() => { qq.audioPlaying = false; qq.currentAudio = null; setTimeout(playNext, 250); });
     }
 
     playNextRef.current = playNext;
@@ -354,11 +353,13 @@ export default function ChatPage() {
         const { url, messageId, chunkIndex = 0, totalChunks = 1 } = d as {
           url: string; messageId: string; chunkIndex?: number; totalChunks?: number;
         };
-        // Store chunk URL in the array
+        // Store chunk URL in the array (update both state and ref)
         setAudioMap((prev) => {
           const arr = prev[messageId] ? [...prev[messageId]] : new Array(totalChunks).fill(null);
           arr[chunkIndex] = url;
-          return { ...prev, [messageId]: arr };
+          const next = { ...prev, [messageId]: arr };
+          audioMapRef.current = next;
+          return next;
         });
         // Update status: increment ready count, clear generating when all done
         setAudioStatus((prev) => {
@@ -873,6 +874,7 @@ export default function ChatPage() {
               setAudioMap((prev) => {
                 const next = { ...prev };
                 delete next[messageId];
+                audioMapRef.current = next;
                 return next;
               });
               fetch("/api/chat/tts", {
