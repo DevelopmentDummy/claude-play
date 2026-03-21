@@ -14,6 +14,7 @@ import { extractChoices } from "@/components/ChatMessages";
 import PanelArea from "@/components/PanelArea";
 import PanelDrawer from "@/components/PanelDrawer";
 import ModalPanel from "@/components/ModalPanel";
+import MinimizedModals from "@/components/MinimizedModals";
 import DockPanel from "@/components/DockPanel";
 import SyncModal from "@/components/SyncModal";
 import ChatOptionsModal from "@/components/ChatOptionsModal";
@@ -635,7 +636,17 @@ export default function ChatPage() {
   const effectiveModalPanels = isMobile
     ? [...modalPanels, ...dockBottomPanels, ...dockLeftPanels, ...dockRightPanels]
     : modalPanels;
-  const activeModalPanels = effectiveModalPanels.filter((p) => !!modalsState?.[p.name]);
+  const [minimizedModals, setMinimizedModals] = useState<Set<string>>(new Set());
+  const activeModalPanels = effectiveModalPanels.filter(
+    (p) => !!modalsState?.[p.name] && !minimizedModals.has(p.name)
+  );
+  const minimizedModalItems = effectiveModalPanels.filter(
+    (p) => !!modalsState?.[p.name] && minimizedModals.has(p.name)
+  );
+  // Required (non-dismissible) modals block chat input — even when minimized
+  const hasRequiredModal = effectiveModalPanels.some(
+    (p) => modalsState?.[p.name] === true
+  );
   const toDockEntries = (arr: Panel[]) =>
     arr
       .filter((p) => !!modalsState?.[p.name])
@@ -649,12 +660,21 @@ export default function ChatPage() {
   const activeDockRight = isMobile ? [] : toDockEntries(dockRightPanels);
 
   const handleModalClose = useCallback((name: string) => {
+    setMinimizedModals((prev) => { const next = new Set(prev); next.delete(name); return next; });
     fetch(`/api/sessions/${sessionId}/modals`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "close", name }),
     });
   }, [sessionId]);
+
+  const handleModalMinimize = useCallback((name: string) => {
+    setMinimizedModals((prev) => new Set(prev).add(name));
+  }, []);
+
+  const handleModalRestore = useCallback((name: string) => {
+    setMinimizedModals((prev) => { const next = new Set(prev); next.delete(name); return next; });
+  }, []);
 
   // Filter OOC messages unless toggle is on
   const visibleMessages = showOOC ? messages : messages.filter((m) => !m.ooc);
@@ -896,21 +916,30 @@ export default function ChatPage() {
             onClose={handleModalClose}
             open={activeDockBottom.length > 0}
           />
-          <ChatInput
-            disabled={isStreaming}
-            onSend={sendMessage}
-            showOOC={showOOC}
-            onOOCToggle={handleOOCToggle}
-            choices={currentChoices}
-            pendingEvents={pendingEvents}
-            voiceChat={voiceChat}
-            ttsPlaying={ttsPlaying}
-            autoSendDelay={typeof chatOptions.autoSendDelay === "number" ? chatOptions.autoSendDelay : undefined}
-            autoplayActive={autoplayOn}
-            onAutoplayToggle={handleAutoplayToggle}
-            steeringPresetName={steeringPreset?.name}
-            onSteeringEdit={() => setSteeringModalOpen(true)}
-          />
+          <div
+            style={{
+              overflow: "hidden",
+              maxHeight: hasRequiredModal ? 0 : 200,
+              opacity: hasRequiredModal ? 0 : 1,
+              transition: "max-height 0.25s ease, opacity 0.2s ease",
+            }}
+          >
+            <ChatInput
+              disabled={isStreaming}
+              onSend={sendMessage}
+              showOOC={showOOC}
+              onOOCToggle={handleOOCToggle}
+              choices={currentChoices}
+              pendingEvents={pendingEvents}
+              voiceChat={voiceChat}
+              ttsPlaying={ttsPlaying}
+              autoSendDelay={typeof chatOptions.autoSendDelay === "number" ? chatOptions.autoSendDelay : undefined}
+              autoplayActive={autoplayOn}
+              onAutoplayToggle={handleAutoplayToggle}
+              steeringPresetName={steeringPreset?.name}
+              onSteeringEdit={() => setSteeringModalOpen(true)}
+            />
+          </div>
         </div>
         {/* Desktop: left sidebar (profile + left panels) */}
         {showInlinePanel && hasLeftSidebar && (
@@ -961,22 +990,30 @@ export default function ChatPage() {
         />
       )}
       {/* Modal panels — centered overlay, driven by __modals in variables.json */}
-      {activeModalPanels.map((p, i) => (
-        <ModalPanel
-          key={p.name}
-          name={p.name}
-          html={p.html}
-          dismissible={modalsState?.[p.name] === "dismissible"}
-          zIndex={i}
-          isTopmost={i === activeModalPanels.length - 1}
-          maxWidth={modalSize[p.name]?.maxWidth}
-          maxHeight={modalSize[p.name]?.maxHeight}
-          sessionId={sessionId}
-          panelData={panelData}
-          onClose={() => handleModalClose(p.name)}
-          onSendMessage={sendMessage}
-        />
-      ))}
+      {activeModalPanels.map((p, i) => {
+        const isDismissible = modalsState?.[p.name] === "dismissible";
+        return (
+          <ModalPanel
+            key={p.name}
+            name={p.name}
+            html={p.html}
+            dismissible={isDismissible}
+            zIndex={i}
+            isTopmost={i === activeModalPanels.length - 1}
+            maxWidth={modalSize[p.name]?.maxWidth}
+            maxHeight={modalSize[p.name]?.maxHeight}
+            sessionId={sessionId}
+            panelData={panelData}
+            onClose={() => handleModalClose(p.name)}
+            onMinimize={!isDismissible ? () => handleModalMinimize(p.name) : undefined}
+            onSendMessage={sendMessage}
+          />
+        );
+      })}
+      <MinimizedModals
+        items={minimizedModalItems.map((p) => ({ name: p.name }))}
+        onRestore={handleModalRestore}
+      />
       {popupQueue.length > 0 && (
         <PopupEffect
           popups={popupQueue}

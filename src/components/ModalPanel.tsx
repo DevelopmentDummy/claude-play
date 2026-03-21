@@ -17,6 +17,7 @@ interface ModalPanelProps {
   sessionId?: string;
   panelData?: Record<string, unknown>;
   onClose: () => void;
+  onMinimize?: () => void;
   onSendMessage?: (text: string) => void;
 }
 
@@ -31,6 +32,7 @@ export default function ModalPanel({
   sessionId,
   panelData,
   onClose,
+  onMinimize,
   onSendMessage,
 }: ModalPanelProps) {
   const backdropZ = 9998 + zIndex * 2;
@@ -40,6 +42,7 @@ export default function ModalPanel({
   const [modalSrc, setModalSrc] = useState<string | null>(null);
   const [visible, setVisible] = useState(false);
   const [closed, setClosed] = useState(false);
+  const [minimizing, setMinimizing] = useState(false);
 
   // Animate in on mount
   useEffect(() => {
@@ -62,6 +65,12 @@ export default function ModalPanel({
     setVisible(false);
     setTimeout(() => { setClosed(true); onClose(); }, 200);
   }, [dismissible, onClose]);
+
+  const handleMinimize = useCallback(() => {
+    if (!onMinimize) return;
+    setMinimizing(true);
+    setTimeout(() => { onMinimize(); }, 280);
+  }, [onMinimize]);
 
   // Force close (for sendMessage auto-dismiss — bypasses dismissible check)
   const forceClose = useCallback(() => {
@@ -178,17 +187,27 @@ export default function ModalPanel({
       {/* Modal container */}
       <div
         className="fixed inset-0 flex items-center justify-center p-4 pointer-events-none"
-        style={{ zIndex: contentZ }}
+        style={{
+          zIndex: contentZ,
+          opacity: minimizing ? 0 : undefined,
+          transition: minimizing ? "opacity 0.25s ease-in" : undefined,
+        }}
       >
         <div
-          className="relative pointer-events-auto w-full transition-all duration-200"
+          className="relative pointer-events-auto w-full"
           style={{
             maxWidth,
             maxHeight,
-            opacity: visible ? 1 : 0,
-            transform: visible
-              ? "scale(1) translateY(0)"
-              : "scale(0.95) translateY(10px)",
+            opacity: (visible && !minimizing) ? 1 : 0,
+            transform: minimizing
+              ? "scale(0.2) translate(60%, 60%)"
+              : visible
+                ? "scale(1) translateY(0)"
+                : "scale(0.95) translateY(10px)",
+            transformOrigin: "bottom right",
+            transition: minimizing
+              ? "transform 0.28s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s ease-in"
+              : "all 0.2s ease",
           }}
         >
           {/* Panel card */}
@@ -206,26 +225,48 @@ export default function ModalPanel({
               >
                 {name}
               </span>
-              {dismissible && (
-                <button
-                  onClick={handleClose}
-                  className="text-white/40 hover:text-white/80 transition-colors p-1"
-                  aria-label="Close"
-                >
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 16 16"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
+              <div className="flex items-center gap-1">
+                {onMinimize && !dismissible && (
+                  <button
+                    onClick={handleMinimize}
+                    className="text-white/40 hover:text-white/80 transition-colors p-1"
+                    aria-label="Minimize"
                   >
-                    <line x1="4" y1="4" x2="12" y2="12" />
-                    <line x1="12" y1="4" x2="4" y2="12" />
-                  </svg>
-                </button>
-              )}
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <polyline points="4,6 8,10 12,6" />
+                    </svg>
+                  </button>
+                )}
+                {dismissible && (
+                  <button
+                    onClick={handleClose}
+                    className="text-white/40 hover:text-white/80 transition-colors p-1"
+                    aria-label="Close"
+                  >
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                    >
+                      <line x1="4" y1="4" x2="12" y2="12" />
+                      <line x1="12" y1="4" x2="4" y2="12" />
+                    </svg>
+                  </button>
+                )}
+              </div>
             </div>
             {/* Content */}
             <div
