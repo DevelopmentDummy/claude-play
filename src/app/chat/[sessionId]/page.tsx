@@ -17,8 +17,10 @@ import ModalPanel from "@/components/ModalPanel";
 import DockPanel from "@/components/DockPanel";
 import SyncModal from "@/components/SyncModal";
 import ChatOptionsModal from "@/components/ChatOptionsModal";
+import SteeringPresetsModal from "@/components/SteeringPresetsModal";
 import PopupEffect from "@/components/PopupEffect";
 import { dispatchBridgeEvent } from "@/lib/use-panel-bridge";
+import { buildAutoplayMessage, calculateAutoplayDelay, getSelectedPreset, type SteeringPreset } from "@/lib/autoplay";
 
 interface Panel {
   name: string;
@@ -32,6 +34,7 @@ export default function ChatPage() {
   const {
     messages,
     isStreaming,
+    setStreamingManually,
     status,
     error,
     setStatus,
@@ -84,8 +87,19 @@ export default function ChatPage() {
   const [chatOptionsSchema, setChatOptionsSchema] = useState<Record<string, unknown>[]>([]);
   const [optionsModalOpen, setOptionsModalOpen] = useState(false);
   const [popupQueue, setPopupQueue] = useState<Array<{ template: string; html: string; duration: number }>>([]);
+  const [autoplayOn, setAutoplayOn] = useState(false);
+  const autoplayOnRef = useRef(false);
+  const [steeringPreset, setSteeringPreset] = useState<SteeringPreset | null>(null);
+  const [steeringModalOpen, setSteeringModalOpen] = useState(false);
+  const autoplayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastAssistantTextRef = useRef("");
   const isMobile = useIsMobile();
   const initRef = useRef(false);
+
+  // Load steering preset from localStorage on mount
+  useEffect(() => {
+    setSteeringPreset(getSelectedPreset());
+  }, []);
 
   /**
    * Audio playback system.
@@ -163,10 +177,16 @@ export default function ChatPage() {
           return current;
         }
         const url = urls[state.nextChunk];
+        const playingIndex = state.nextChunk;
         state.nextChunk++;
         qq.audioPlaying = true;
         const audio = new Audio(url);
         qq.currentAudio = audio;
+        // Dispatch early autoplay hint when playback is near the end
+        const remaining = state.totalChunks - state.nextChunk;
+        if (playingIndex >= 1 && remaining <= 3) {
+          window.dispatchEvent(new CustomEvent("__autoplay_tts_near_end"));
+        }
         const onDone = () => {
           qq.audioPlaying = false;
           qq.currentAudio = null;
@@ -416,7 +436,9 @@ export default function ChatPage() {
   const sendMessage = useCallback(
     (text: string, opts?: { silent?: boolean }) => {
       if (opts?.silent) {
-        // Silent: send to AI only, skip UI updates and history
+        // Silent: send to AI only, skip history/user message
+        // But still mark streaming so input gets disabled
+        setStreamingManually(true);
         sendChat(text, true);
         return;
       }
@@ -431,7 +453,7 @@ export default function ChatPage() {
       prepareSend(text);
       sendChat(text);
     },
-    [prepareSend, sendChat]
+    [prepareSend, sendChat, setStreamingManually]
   );
 
   const handleOOCToggle = useCallback((on: boolean) => setShowOOC(on), []);
@@ -652,8 +674,53 @@ export default function ChatPage() {
 
   const themeColor = layout?.theme?.accent;
 
-  // Expose streaming state to panels via global flag + bridge events
+  // --- Autoplay logic ---
+  const cancelAutoplayTimer = useCallback(() => {
+    if (autoplayTimerRef.current) {
+      clearTimeout(autoplayTimerRef.current);
+      autoplayTimerRef.current = null;
+    }
+  }, []);
+
+  const steeringPresetRef = useRef(steeringPreset);
+  useEffect(() => { steeringPresetRef.current = steeringPreset; }, [steeringPreset]);
+  const sendMessageRef = useRef(sendMessage);
+  useEffect(() => { sendMessageRef.current = sendMessage; }, [sendMessage]);
+
+  const sendAutoplayMessage = useCallback(() => {
+    if (!autoplayOnRef.current) return;
+    const msg = buildAutoplayMessage(steeringPresetRef.current);
+    sendMessageRef.current(msg, { silent: true });
+  }, []);
+
+  const handleAutoplayToggle = useCallback(() => {
+    setAutoplayOn((prev) => {
+      const next = !prev;
+      autoplayOnRef.current = next;
+      if (!next) {
+        cancelAutoplayTimer();
+      } else if (!isStreaming) {
+        // Start immediately if not streaming
+        sendAutoplayMessage();
+      }
+      return next;
+    });
+  }, [isStreaming, cancelAutoplayTimer, sendAutoplayMessage]);
+
+  // Track last assistant message text for delay calculation
+  useEffect(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === "assistant" && !messages[i].ooc) {
+        lastAssistantTextRef.current = messages[i].content || "";
+        break;
+      }
+    }
+  }, [messages]);
+
+  // Autoplay trigger: when streaming ends and TTS is not playing (or no TTS)
   const prevStreamingRef = useRef(false);
+  const prevTtsPlayingForAutoRef = useRef(false);
+
   useEffect(() => {
     (window as unknown as Record<string, unknown>).__bridgeIsStreaming = isStreaming;
     window.dispatchEvent(new CustomEvent("__bridge_streaming_change", { detail: isStreaming }));
@@ -662,9 +729,58 @@ export default function ChatPage() {
       dispatchBridgeEvent("turnStart");
     } else if (!isStreaming && prevStreamingRef.current) {
       dispatchBridgeEvent("turnEnd");
+
+      // Autoplay: streaming just ended
+      if (autoplayOnRef.current) {
+        const ttsAutoplay = localStorage.getItem("tts-autoplay") !== "false";
+        if (ttsAutoplay) {
+          // TTS is on — wait for TTS to finish (handled in ttsPlaying effect below)
+        } else {
+          // No TTS — delay based on response length then send
+          const delay = calculateAutoplayDelay(lastAssistantTextRef.current.length);
+          cancelAutoplayTimer();
+          autoplayTimerRef.current = setTimeout(sendAutoplayMessage, delay);
+        }
+      }
     }
     prevStreamingRef.current = isStreaming;
-  }, [isStreaming]);
+  }, [isStreaming, cancelAutoplayTimer, sendAutoplayMessage]);
+
+  // Autoplay: TTS near end → trigger next turn early to reduce wait time
+  // Fires when playback index >= 1 AND remaining chunks <= 3
+  // Uses a simple flag to prevent duplicate sends per TTS cycle
+  const autoplayFiredRef = useRef(false);
+
+  // Reset flag when TTS starts playing a new message (ttsPlaying goes true)
+  useEffect(() => {
+    if (ttsPlaying) {
+      autoplayFiredRef.current = false;
+    }
+  }, [ttsPlaying]);
+
+  useEffect(() => {
+    const handler = () => {
+      if (!autoplayOnRef.current || autoplayFiredRef.current) return;
+      autoplayFiredRef.current = true;
+      cancelAutoplayTimer();
+      sendAutoplayMessage();
+    };
+    window.addEventListener("__autoplay_tts_near_end", handler);
+    return () => window.removeEventListener("__autoplay_tts_near_end", handler);
+  }, [cancelAutoplayTimer, sendAutoplayMessage]);
+
+  // Fallback: if TTS finishes without the early trigger firing (e.g. very short audio with <=1 chunk)
+  useEffect(() => {
+    if (prevTtsPlayingForAutoRef.current && !ttsPlaying && !isStreaming && autoplayOnRef.current && !autoplayFiredRef.current) {
+      autoplayFiredRef.current = true;
+      cancelAutoplayTimer();
+      autoplayTimerRef.current = setTimeout(sendAutoplayMessage, 300);
+    }
+    prevTtsPlayingForAutoRef.current = ttsPlaying;
+  }, [ttsPlaying, isStreaming, cancelAutoplayTimer, sendAutoplayMessage]);
+
+  // Cleanup autoplay timer on unmount
+  useEffect(() => () => cancelAutoplayTimer(), [cancelAutoplayTimer]);
 
   // Listen for panel bridge sendMessage events
   useEffect(() => {
@@ -788,6 +904,10 @@ export default function ChatPage() {
             voiceChat={voiceChat}
             ttsPlaying={ttsPlaying}
             autoSendDelay={typeof chatOptions.autoSendDelay === "number" ? chatOptions.autoSendDelay : undefined}
+            autoplayActive={autoplayOn}
+            onAutoplayToggle={handleAutoplayToggle}
+            steeringPresetName={steeringPreset?.name}
+            onSteeringEdit={() => setSteeringModalOpen(true)}
           />
         </div>
         {/* Desktop: left sidebar (profile + left panels) */}
@@ -879,6 +999,11 @@ export default function ChatPage() {
           onClose={() => setOptionsModalOpen(false)}
         />
       )}
+      <SteeringPresetsModal
+        open={steeringModalOpen}
+        onClose={() => setSteeringModalOpen(false)}
+        onPresetChange={setSteeringPreset}
+      />
     </div>
   );
 }

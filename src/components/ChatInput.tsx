@@ -55,9 +55,17 @@ interface ChatInputProps {
   ttsPlaying?: boolean;
   /** Auto-send delay in ms (default 3000) */
   autoSendDelay?: number;
+  /** Autoplay mode active */
+  autoplayActive?: boolean;
+  /** Toggle autoplay on/off */
+  onAutoplayToggle?: () => void;
+  /** Currently selected steering preset name */
+  steeringPresetName?: string | null;
+  /** Open steering preset editor */
+  onSteeringEdit?: () => void;
 }
 
-function ChatInput({ disabled, onSend, choices, pendingEvents, showOOC, onOOCToggle, voiceChat, ttsPlaying, autoSendDelay = 3000 }: ChatInputProps) {
+function ChatInput({ disabled, onSend, choices, pendingEvents, showOOC, onOOCToggle, voiceChat, ttsPlaying, autoSendDelay = 3000, autoplayActive, onAutoplayToggle, steeringPresetName, onSteeringEdit }: ChatInputProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [oocMode, setOocMode] = useState(false);
   const oocModeRef = useRef(oocMode);
@@ -540,6 +548,41 @@ function ChatInput({ disabled, onSend, choices, pendingEvents, showOOC, onOOCTog
           className="px-5 py-2.5 border-none rounded-xl bg-accent text-white cursor-pointer text-sm font-medium shrink-0 shadow-[0_2px_12px_var(--accent-glow)] transition-all duration-fast hover:bg-accent-hover hover:-translate-y-px hover:shadow-[0_4px_20px_var(--accent-glow)] disabled:opacity-50 disabled:cursor-not-allowed disabled:translate-y-0 disabled:shadow-none"
         >
           Send
+        </button>
+        {/* Autoplay toggle */}
+        <button
+          onClick={onAutoplayToggle}
+          className={`${btnBase} relative ${
+            autoplayActive
+              ? "border-blue-500/60 text-blue-400 bg-blue-500/15 shadow-[0_0_8px_rgba(59,130,246,0.3)]"
+              : "border-border/40 text-text-dim/50 bg-transparent hover:border-border/60 hover:text-text-dim/80"
+          }`}
+          title={autoplayActive ? "오토플레이 중지" : "오토플레이 시작"}
+        >
+          {autoplayActive ? (
+            <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+              <rect x="6" y="4" width="4" height="16" rx="1" />
+              <rect x="14" y="4" width="4" height="16" rx="1" />
+            </svg>
+          ) : (
+            <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+              <path d="M8 5v14l11-7z" />
+            </svg>
+          )}
+        </button>
+      </div>
+      {/* Steering preset indicator — always visible so user can set direction before starting autoplay */}
+      <div className="flex items-center gap-2 px-4 pb-2 -mt-1">
+        <span className="text-[11px] text-text-dim/50">스티어링:</span>
+        <button
+          onClick={onSteeringEdit}
+          className={`text-[11px] truncate max-w-[200px] transition-colors ${
+            steeringPresetName
+              ? "text-blue-400/70 hover:text-blue-300"
+              : "text-text-dim/50 hover:text-text-dim/80"
+          }`}
+        >
+          {steeringPresetName || "없음"}
         </button>
       </div>
     </footer>

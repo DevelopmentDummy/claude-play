@@ -5,6 +5,20 @@ import { getDataDir } from "./data-dir";
 import { getInternalToken } from "./auth";
 import { providerFromModel } from "./ai-provider";
 
+/** Read the selected writing style content for a persona, if any */
+function readPersonaStyleContent(personaDir: string): string | null {
+  const stylePath = path.join(personaDir, "style.json");
+  if (!fs.existsSync(stylePath)) return null;
+  try {
+    const parsed = JSON.parse(fs.readFileSync(stylePath, "utf-8"));
+    const styleName = parsed.style;
+    if (!styleName) return null;
+    const styleFile = path.join(getDataDir(), "styles", `${styleName}.md`);
+    if (!fs.existsSync(styleFile)) return null;
+    return fs.readFileSync(styleFile, "utf-8").trim() || null;
+  } catch { return null; }
+}
+
 /** Compile opening.md as a Handlebars template with variables.json + profile context */
 function resolveOpeningPlaceholders(text: string, sessionDir: string, profile?: Profile): string {
   let context: Record<string, unknown> = {};
@@ -40,7 +54,7 @@ const SYSTEM_JSON = new Set([
   "comfyui-config.json", "layout.json", "chat-history.json",
   "package.json", "tsconfig.json", "character-tags.json",
   "voice.json", ".mcp.json", "chat-options.json",
-  "pending-events.json",
+  "pending-events.json", "style.json",
 ]);
 
 export interface PersonaInfo {
@@ -509,6 +523,19 @@ export class SessionManager {
     const memoryPath = path.join(sessionDir, "memory.md");
     if (!fs.existsSync(memoryPath)) {
       fs.writeFileSync(memoryPath, "", "utf-8");
+    }
+
+    // If writing style is selected, inject into both instruction files
+    const styleContent = readPersonaStyleContent(personaDir);
+    if (styleContent) {
+      const styleSection = `\n\n## __문체 (Writing Style)__\n${styleContent}\n`;
+      for (const file of ["CLAUDE.md", "AGENTS.md"]) {
+        const mdPath = path.join(sessionDir, file);
+        if (fs.existsSync(mdPath)) {
+          const existing = fs.readFileSync(mdPath, "utf-8");
+          fs.writeFileSync(mdPath, existing + styleSection, "utf-8");
+        }
+      }
     }
 
     // If profile is provided, inject user info into both instruction files
@@ -1352,7 +1379,18 @@ export class SessionManager {
       fs.copyFileSync(instructionsSrc, path.join(sessionDir, file));
     }
 
-    // 2. Re-inject profile info if session had one
+    // 2. Re-inject writing style if selected
+    const styleContent = readPersonaStyleContent(personaDir);
+    if (styleContent) {
+      const styleSection = `\n\n## __문체 (Writing Style)__\n${styleContent}\n`;
+      for (const file of targets) {
+        const mdPath = path.join(sessionDir, file);
+        const existing = fs.readFileSync(mdPath, "utf-8");
+        fs.writeFileSync(mdPath, existing + styleSection, "utf-8");
+      }
+    }
+
+    // 3. Re-inject profile info if session had one
     if (meta.profileSlug) {
       const profile = this.getProfile(meta.profileSlug);
       if (profile) {
@@ -1365,7 +1403,7 @@ export class SessionManager {
       }
     }
 
-    // 3. Re-append opening context (with placeholder resolution)
+    // 4. Re-append opening context (with placeholder resolution)
     const openingPath = path.join(sessionDir, "opening.md");
     if (fs.existsSync(openingPath)) {
       const rawOpening = fs.readFileSync(openingPath, "utf-8").trim();
@@ -1381,7 +1419,7 @@ export class SessionManager {
       }
     }
 
-    // 4. Ensure runtime configs exist for legacy sessions
+    // 5. Ensure runtime configs exist for legacy sessions
     this.ensureClaudeRuntimeConfig(sessionDir, meta.persona, "session");
   }
 

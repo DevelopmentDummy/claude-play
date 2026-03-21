@@ -32,6 +32,11 @@ interface OverviewData {
   hasIcon?: boolean;
 }
 
+interface WritingStyle {
+  name: string;
+  content: string;
+}
+
 /** Inline Shadow DOM renderer for panel preview */
 function PanelPreviewSlot({ name, html }: PanelPreview) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -136,6 +141,45 @@ export default function BuilderOverview({
   const [modal, setModal] = useState<{ title: string; content: string } | null>(null);
   const [loadingFile, setLoadingFile] = useState<string | null>(null);
 
+  // Writing style state
+  const [allStyles, setAllStyles] = useState<WritingStyle[]>([]);
+  const [selectedStyle, setSelectedStyle] = useState<string | null>(null);
+  const [styleEditorOpen, setStyleEditorOpen] = useState(false);
+  const [editingStyleName, setEditingStyleName] = useState("");
+  const [editingStyleContent, setEditingStyleContent] = useState("");
+  const [editingStyleOrigName, setEditingStyleOrigName] = useState<string | null>(null);
+
+  const loadStyles = useCallback(async () => {
+    try {
+      const res = await fetch("/api/styles");
+      if (res.ok) setAllStyles(await res.json());
+    } catch { /* ignore */ }
+  }, []);
+
+  const loadSelectedStyle = useCallback(async () => {
+    if (!personaName) return;
+    try {
+      const res = await fetch(`/api/personas/${encodeURIComponent(personaName)}/file?file=style.json`);
+      if (res.ok) {
+        const { content } = await res.json();
+        if (content) {
+          const parsed = typeof content === "string" ? JSON.parse(content) : content;
+          setSelectedStyle(parsed.style || null);
+        }
+      }
+    } catch { setSelectedStyle(null); }
+  }, [personaName]);
+
+  const saveSelectedStyle = useCallback(async (styleName: string | null) => {
+    if (!personaName) return;
+    setSelectedStyle(styleName);
+    await fetch(`/api/personas/${encodeURIComponent(personaName)}/file?file=style.json`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: JSON.stringify({ style: styleName }) }),
+    });
+  }, [personaName]);
+
   const refresh = useCallback(async () => {
     if (!personaName) return;
     try {
@@ -150,7 +194,9 @@ export default function BuilderOverview({
 
   useEffect(() => {
     refresh();
-  }, [refresh, refreshTrigger]);
+    loadStyles();
+    loadSelectedStyle();
+  }, [refresh, refreshTrigger, loadStyles, loadSelectedStyle]);
 
   const openFile = useCallback(async (filename: string) => {
     if (!personaName || loadingFile) return;
@@ -307,6 +353,150 @@ export default function BuilderOverview({
             ))}
           </div>
         </div>
+      )}
+
+      {/* Writing Style */}
+      <div className="mb-2.5">
+        <div className="flex items-center justify-between mb-1.5">
+          <h4 className="text-[11px] font-semibold text-text-dim uppercase tracking-wider">
+            Writing Style
+          </h4>
+          <button
+            onClick={() => {
+              setEditingStyleOrigName(null);
+              setEditingStyleName("");
+              setEditingStyleContent("");
+              setStyleEditorOpen(true);
+            }}
+            className="text-[10px] text-accent/70 hover:text-accent transition-colors"
+          >
+            + 새 문체
+          </button>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          {/* No style option */}
+          <button
+            onClick={() => saveSelectedStyle(null)}
+            className={`w-full text-left px-3 py-2 rounded-lg border text-xs transition-all ${
+              selectedStyle === null
+                ? "border-accent/50 bg-[rgba(var(--accent-rgb),0.08)] text-text"
+                : "border-border/40 bg-transparent text-text-dim hover:border-border/60"
+            }`}
+          >
+            없음
+          </button>
+          {allStyles.map((s) => (
+            <div key={s.name} className="flex gap-1">
+              <button
+                onClick={() => saveSelectedStyle(s.name)}
+                className={`flex-1 text-left px-3 py-2 rounded-lg border text-xs transition-all truncate ${
+                  selectedStyle === s.name
+                    ? "border-accent/50 bg-[rgba(var(--accent-rgb),0.08)] text-text"
+                    : "border-border/40 bg-transparent text-text-dim hover:border-border/60"
+                }`}
+                title={s.content.slice(0, 100)}
+              >
+                {s.name}
+              </button>
+              <button
+                onClick={() => {
+                  setEditingStyleOrigName(s.name);
+                  setEditingStyleName(s.name);
+                  setEditingStyleContent(s.content);
+                  setStyleEditorOpen(true);
+                }}
+                className="shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-text-dim/40 hover:text-text hover:bg-white/5 transition-all text-xs self-center"
+                title="편집"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                </svg>
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Style Editor Modal */}
+      {styleEditorOpen && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center" onClick={() => setStyleEditorOpen(false)}>
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+          <div
+            className="relative bg-surface border border-border rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+              <h2 className="text-base font-semibold text-text">
+                {editingStyleOrigName ? "문체 편집" : "새 문체"}
+              </h2>
+              <button onClick={() => setStyleEditorOpen(false)} className="text-text-dim hover:text-text transition-colors text-lg leading-none">&times;</button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-5 space-y-3">
+              <input
+                type="text"
+                value={editingStyleName}
+                onChange={(e) => setEditingStyleName(e.target.value)}
+                placeholder="문체 이름"
+                className="w-full px-3 py-2 rounded-lg border border-border bg-[rgba(15,15,26,0.6)] text-text text-sm outline-none focus:border-accent"
+                autoFocus
+              />
+              <textarea
+                value={editingStyleContent}
+                onChange={(e) => setEditingStyleContent(e.target.value)}
+                placeholder="문체 지시문을 작성하세요...&#10;예: 서정적이고 감성적인 문장을 사용하며, 비유와 은유를 자주 활용합니다..."
+                rows={10}
+                className="w-full px-3 py-2 rounded-lg border border-border bg-[rgba(15,15,26,0.6)] text-text text-sm outline-none resize-none focus:border-accent"
+              />
+            </div>
+            <div className="flex justify-between items-center px-5 py-3 border-t border-border">
+              {editingStyleOrigName && (
+                <button
+                  onClick={async () => {
+                    await fetch(`/api/styles?name=${encodeURIComponent(editingStyleOrigName)}`, { method: "DELETE" });
+                    if (selectedStyle === editingStyleOrigName) await saveSelectedStyle(null);
+                    await loadStyles();
+                    setStyleEditorOpen(false);
+                  }}
+                  className="px-3 py-1.5 rounded-lg text-sm text-red-400 hover:text-red-300 border border-red-500/30 hover:border-red-500/50 transition-all"
+                >
+                  삭제
+                </button>
+              )}
+              <div className="flex-1" />
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setStyleEditorOpen(false)}
+                  className="px-3 py-1.5 rounded-lg text-sm text-text-dim hover:text-text border border-border/50 hover:border-border transition-all"
+                >
+                  취소
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!editingStyleName.trim()) return;
+                    // If renaming, delete old
+                    if (editingStyleOrigName && editingStyleOrigName !== editingStyleName.trim()) {
+                      await fetch(`/api/styles?name=${encodeURIComponent(editingStyleOrigName)}`, { method: "DELETE" });
+                      if (selectedStyle === editingStyleOrigName) await saveSelectedStyle(editingStyleName.trim());
+                    }
+                    await fetch("/api/styles", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ name: editingStyleName.trim(), content: editingStyleContent }),
+                    });
+                    await loadStyles();
+                    setStyleEditorOpen(false);
+                  }}
+                  disabled={!editingStyleName.trim()}
+                  className="px-3 py-1.5 rounded-lg text-sm text-white bg-accent hover:bg-accent-hover transition-all disabled:opacity-50"
+                >
+                  저장
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
 
       {/* Voice Settings */}

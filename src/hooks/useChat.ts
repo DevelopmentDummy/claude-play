@@ -345,6 +345,7 @@ export function useChat(rawSessionId?: string) {
   return {
     messages,
     isStreaming,
+    setStreamingManually: setIsStreaming,
     status,
     error,
     hasMore,
