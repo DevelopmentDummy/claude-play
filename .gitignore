@@ -8,6 +8,7 @@ node_modules/
 data/personas/
 data/sessions/
 data/profiles/
+data/styles/
 data/users/
 data/.setup-complete
 data/*.db
