@@ -1821,33 +1821,26 @@ export class SessionManager {
    * Write GEMINI.md with session instructions + runtime system prompt combined.
    * Unlike Claude (which has separate CLAUDE.md + --system-prompt flag),
    * Gemini CLI only reads GEMINI.md — so both must be merged into one file.
+   * Always reads CLAUDE.md as the authoritative source for session instructions,
+   * since Claude never overwrites it with runtime prompts.
    */
   writeGeminiInstructions(projectDir: string, runtimePrompt: string): void {
-    const geminiMdPath = path.join(projectDir, "GEMINI.md");
-    // Read existing GEMINI.md (contains session-instructions + style + profile + opening)
+    // CLAUDE.md is always authoritative — it contains the original instructions
+    // (session-instructions + style + profile + opening for sessions, or builder-prompt for builder)
+    // and is never overwritten by runtime prompts (Claude uses --system-prompt flag separately).
     let sessionInstructions = "";
+    const claudeMdPath = path.join(projectDir, "CLAUDE.md");
     try {
-      if (fs.existsSync(geminiMdPath)) {
-        sessionInstructions = fs.readFileSync(geminiMdPath, "utf-8").trim();
+      if (fs.existsSync(claudeMdPath)) {
+        sessionInstructions = fs.readFileSync(claudeMdPath, "utf-8").trim();
       }
     } catch { /* ignore */ }
-
-    // If GEMINI.md already contains the runtime prompt (re-open), rebuild from scratch
-    // by reading the original session-instructions.md content from CLAUDE.md
-    // (CLAUDE.md is authoritative since Claude uses --system-prompt separately)
-    if (!sessionInstructions || sessionInstructions.includes("<instruction>")) {
-      const claudeMdPath = path.join(projectDir, "CLAUDE.md");
-      try {
-        if (fs.existsSync(claudeMdPath)) {
-          sessionInstructions = fs.readFileSync(claudeMdPath, "utf-8").trim();
-        }
-      } catch { /* ignore */ }
-    }
 
     const combined = sessionInstructions
       ? `${sessionInstructions}\n\n---\n\n${runtimePrompt}`
       : runtimePrompt;
 
+    const geminiMdPath = path.join(projectDir, "GEMINI.md");
     fs.writeFileSync(geminiMdPath, combined, "utf-8");
     console.log(`[gemini] Wrote GEMINI.md: ${projectDir} (${combined.length} chars, instructions: ${sessionInstructions.length})`);
   }
