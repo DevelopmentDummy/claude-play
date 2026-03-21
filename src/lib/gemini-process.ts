@@ -109,11 +109,13 @@ export class GeminiProcess extends EventEmitter<GeminiProcessEvents> {
   private spawnProcess(prompt: string, resumeId: string | undefined): void {
     const cmd = process.platform === "win32" ? "gemini.cmd" : "gemini";
 
-    const args: string[] = [
-      "-p", prompt,
-      "--output-format", "stream-json",
-      "--yolo",
-    ];
+    // Resume mode: -p and --resume cannot be combined.
+    // Use stdin to send the prompt when resuming.
+    const args: string[] = [];
+    if (!resumeId) {
+      args.push("-p", prompt);
+    }
+    args.push("--output-format", "stream-json", "--yolo");
 
     if (this.spawnModel) {
       args.push("--model", this.spawnModel);
@@ -133,19 +135,28 @@ export class GeminiProcess extends EventEmitter<GeminiProcessEvents> {
 
     if (this.logStream) {
       this.logStream.write(
-        `[spawn] ${cmd} ${args.map((a) => (a.includes(" ") ? `"${a}"` : a)).join(" ")}\n`,
+        `[spawn] ${cmd} ${args.map((a) => (a.includes(" ") ? `"${a}"` : a)).join(" ")}${resumeId ? ` (stdin: ${prompt.substring(0, 80)})` : ""}\n`,
       );
     }
 
     this.buffer = "";
     this.seenDeltaInTurn = false;
 
+    // When resuming, stdin must be "pipe" to send the prompt
+    const stdinMode = resumeId ? "pipe" as const : "ignore" as const;
+
     this.proc = spawn(cmd, args, {
       env,
       cwd: this.spawnCwd,
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: [stdinMode, "pipe", "pipe"],
       shell: process.platform === "win32",
     });
+
+    // For resume mode, pipe the prompt via stdin then close
+    if (resumeId && this.proc.stdin) {
+      this.proc.stdin.write(prompt);
+      this.proc.stdin.end();
+    }
 
     this.proc.stdout!.on("data", (chunk: Buffer) => {
       this.handleStdout(chunk.toString("utf-8"));
