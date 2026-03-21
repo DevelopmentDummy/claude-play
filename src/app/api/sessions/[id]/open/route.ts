@@ -56,6 +56,8 @@ export async function POST(
   // Resume previous session based on provider
   const resumeId = provider === "codex"
     ? svc.sessions.getCodexThreadId(id)
+    : provider === "gemini"
+    ? svc.sessions.getGeminiSessionId(id)
     : svc.sessions.getClaudeSessionId(id);
   const isResume = !!resumeId;
   instance.loadHistory(); // Load from chat-history.json (empty if new)
@@ -78,6 +80,8 @@ export async function POST(
     // For Codex: write instructions file (file-based prompt delivery via model_instructions_file)
     if (provider === "codex") {
       svc.sessions.writeCodexInstructions(sessionDir, runtimeSystemPrompt);
+    } else if (provider === "gemini") {
+      svc.sessions.writeGeminiInstructions(sessionDir, runtimeSystemPrompt);
     }
     const skipPerms = resolvedOptions.skipPermissions !== false;
     instance.claude.spawn(sessionDir, resumeId, effectiveModel || undefined, runtimeSystemPrompt, finalEffort, skipPerms);

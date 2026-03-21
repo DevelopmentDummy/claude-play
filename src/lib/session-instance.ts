@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { ClaudeProcess } from "./claude-process";
 import { CodexProcess } from "./codex-process";
+import { GeminiProcess } from "./gemini-process";
 import { SessionManager } from "./session-manager";
 import { PanelEngine } from "./panel-engine";
 import { AIProvider } from "./ai-provider";
@@ -41,6 +42,11 @@ function detectImageToken(toolName: string, input: unknown): string | null {
     "mcp__claude_bridge__generate_image_gemini",
     "mcp__claude_bridge__comfyui_generate",
     "mcp__claude_bridge__gemini_generate",
+    // Gemini MCP prefix (hyphen in server name)
+    "mcp_claude-bridge_generate_image",
+    "mcp_claude-bridge_generate_image_gemini",
+    "mcp_claude-bridge_comfyui_generate",
+    "mcp_claude-bridge_gemini_generate",
   ]);
   if (!imageToolNames.has(toolName)) return null;
   if (!input || typeof input !== "object") return null;
@@ -116,7 +122,7 @@ export interface HistoryMessage {
   ooc?: boolean;
 }
 
-export type AIProcess = ClaudeProcess | CodexProcess;
+export type AIProcess = ClaudeProcess | CodexProcess | GeminiProcess;
 
 export type BroadcastFn = (
   event: string,
@@ -125,7 +131,9 @@ export type BroadcastFn = (
 ) => void;
 
 function createProcess(provider: AIProvider): AIProcess {
-  return provider === "codex" ? new CodexProcess() : new ClaudeProcess();
+  if (provider === "codex") return new CodexProcess();
+  if (provider === "gemini") return new GeminiProcess();
+  return new ClaudeProcess();
 }
 
 // --- TTS helpers ---
@@ -705,6 +713,8 @@ export class SessionInstance {
         } else {
           if (this._provider === "codex") {
             this.sessions.saveCodexThreadId(this.id, sessionId);
+          } else if (this._provider === "gemini") {
+            this.sessions.saveGeminiSessionId(this.id, sessionId);
           } else {
             this.sessions.saveClaudeSessionId(this.id, sessionId);
           }

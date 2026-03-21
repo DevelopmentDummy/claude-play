@@ -6,7 +6,7 @@ import { getAppRoot } from "@/lib/data-dir";
 import { providerFromModel, parseModelEffort } from "@/lib/ai-provider";
 
 export async function POST(req: Request) {
-  const body = (await req.json()) as { name: string; model?: string; service?: "claude" | "codex" };
+  const body = (await req.json()) as { name: string; model?: string; service?: "claude" | "codex" | "gemini" };
   const { name } = body;
   const { model, effort } = parseModelEffort(body.model || "");
   const svc = getServices();
@@ -36,6 +36,7 @@ export async function POST(req: Request) {
   const builderPrompt = svc.sessions.getBuilderPrompt({ localTtsAvailable });
   fs.writeFileSync(path.join(personaDir, "CLAUDE.md"), builderPrompt, "utf-8");
   fs.writeFileSync(path.join(personaDir, "AGENTS.md"), builderPrompt, "utf-8");
+  fs.writeFileSync(path.join(personaDir, "GEMINI.md"), builderPrompt, "utf-8");
 
   // Copy panel-spec.md
   const panelSpecSrc = path.join(getAppRoot(), "panel-spec.md");
@@ -65,9 +66,9 @@ export async function POST(req: Request) {
   // Provider switch = always fresh session (no resume across providers)
   const resumeId = providerChanged ? undefined : svc.sessions.getBuilderSessionId(name, provider);
   // If no model specified and provider is codex, use default codex model
-  const effectiveModel = model || (provider === "codex" ? "gpt-5.4" : undefined);
+  const effectiveModel = model || (provider === "codex" ? "gpt-5.4" : provider === "gemini" ? "gemini-2.5-flash" : undefined);
   // Builder default effort: highest for each provider
-  const effectiveEffort = effort || (provider === "codex" ? "xhigh" : "high");
+  const effectiveEffort = effort || (provider === "codex" ? "xhigh" : provider === "gemini" ? undefined : "high");
 
   // Only spawn if process is not running or provider changed
   if (!instance.claude.isRunning() || providerChanged) {
@@ -75,6 +76,8 @@ export async function POST(req: Request) {
     // For Codex: write instructions file (file-based prompt delivery via model_instructions_file)
     if (provider === "codex") {
       svc.sessions.writeCodexInstructions(personaDir, runtimeSystemPrompt);
+    } else if (provider === "gemini") {
+      svc.sessions.writeGeminiInstructions(personaDir, runtimeSystemPrompt);
     }
     instance.claude.spawn(personaDir, resumeId, effectiveModel, runtimeSystemPrompt, effectiveEffort);
   }

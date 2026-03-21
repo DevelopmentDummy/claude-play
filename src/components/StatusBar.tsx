@@ -12,11 +12,11 @@ interface StatusBarProps {
   showPanelButton?: boolean;
   /** Chat mode: model within the locked provider */
   model?: string;
-  provider?: "claude" | "codex";
+  provider?: "claude" | "codex" | "gemini";
   onModelChange?: (model: string) => void;
   /** Builder mode: service (provider) selector */
-  service?: "claude" | "codex";
-  onServiceChange?: (service: "claude" | "codex") => void;
+  service?: "claude" | "codex" | "gemini";
+  onServiceChange?: (service: "claude" | "codex" | "gemini") => void;
   /** Persona sync */
   onSync?: () => void;
   /** TTS auto-play */
@@ -159,12 +159,13 @@ export default function StatusBar({
         {isBuilderMode && onServiceChange && (
           <select
             value={service || "claude"}
-            onChange={(e) => onServiceChange(e.target.value as "claude" | "codex")}
+            onChange={(e) => onServiceChange(e.target.value as "claude" | "codex" | "gemini")}
             className={selectClass}
             style={selectStyle}
           >
             <option value="claude" className={optClass}>Claude</option>
             <option value="codex" className={optClass}>Codex</option>
+            <option value="gemini" className={optClass}>Gemini</option>
           </select>
         )}
 

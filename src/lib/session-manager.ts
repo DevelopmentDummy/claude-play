@@ -149,6 +149,7 @@ interface SessionMeta {
   createdAt: string;
   claudeSessionId?: string;
   codexThreadId?: string;
+  geminiSessionId?: string;
   profileSlug?: string;
   model?: string;
 }
@@ -156,7 +157,8 @@ interface SessionMeta {
 interface BuilderMeta {
   claudeSessionId?: string;
   codexThreadId?: string;
-  provider?: "claude" | "codex";
+  geminiSessionId?: string;
+  provider?: "claude" | "codex" | "gemini";
 }
 
 const CLAUDE_SETTINGS = {
@@ -178,6 +180,7 @@ const CLAUDE_SETTINGS = {
 };
 const SERVICE_SESSION_GUIDE_FILES_CLAUDE = ["session-primer.yaml", "session-shared.md"] as const;
 const SERVICE_SESSION_GUIDE_FILES_CODEX = ["session-primer-codex.yaml", "session-shared.md"] as const;
+const SERVICE_SESSION_GUIDE_FILES_GEMINI = ["session-primer-gemini.yaml", "session-shared.md"] as const;
 const BUILDER_GUIDE_FILES = ["builder-primer.yaml"] as const;
 const MCP_CONFIG_FILE = ".mcp.json";
 const CLAUDE_MCP_SERVER_NAME = "claude_bridge";
@@ -491,7 +494,7 @@ export class SessionManager {
 
     // Copy persona files to session (excluding builder-only files and CLAUDE.md which is the builder prompt)
     const personaDir = this.getPersonaDir(personaName);
-    const SKIP_FILES = new Set(["builder-session.json", "panel-spec.md", "skills", ".claude", "CLAUDE.md", "session-instructions.md", "chat-history.json"]);
+    const SKIP_FILES = new Set(["builder-session.json", "panel-spec.md", "skills", ".claude", "CLAUDE.md", "GEMINI.md", "session-instructions.md", "chat-history.json"]);
     this.copyDirRecursive(personaDir, sessionDir, SKIP_FILES);
 
     // Copy session-instructions.md as both CLAUDE.md and AGENTS.md for the session
@@ -500,6 +503,7 @@ export class SessionManager {
     if (fs.existsSync(sessionInstructionsSrc)) {
       fs.copyFileSync(sessionInstructionsSrc, path.join(sessionDir, "CLAUDE.md"));
       fs.copyFileSync(sessionInstructionsSrc, path.join(sessionDir, "AGENTS.md"));
+      fs.copyFileSync(sessionInstructionsSrc, path.join(sessionDir, "GEMINI.md"));
       fs.copyFileSync(sessionInstructionsSrc, path.join(sessionDir, "session-instructions.md"));
     }
 
@@ -529,7 +533,7 @@ export class SessionManager {
     const styleContent = readPersonaStyleContent(personaDir);
     if (styleContent) {
       const styleSection = `\n\n## __문체 (Writing Style)__\n${styleContent}\n`;
-      for (const file of ["CLAUDE.md", "AGENTS.md"]) {
+      for (const file of ["CLAUDE.md", "AGENTS.md", "GEMINI.md"]) {
         const mdPath = path.join(sessionDir, file);
         if (fs.existsSync(mdPath)) {
           const existing = fs.readFileSync(mdPath, "utf-8");
@@ -541,7 +545,7 @@ export class SessionManager {
     // If profile is provided, inject user info into both instruction files
     if (profile) {
       const userSection = `\n\n## __사용자 정보__\n사용자의 이름: ${profile.name}\n${profile.description}\n`;
-      for (const file of ["CLAUDE.md", "AGENTS.md"]) {
+      for (const file of ["CLAUDE.md", "AGENTS.md", "GEMINI.md"]) {
         const mdPath = path.join(sessionDir, file);
         if (fs.existsSync(mdPath)) {
           const existing = fs.readFileSync(mdPath, "utf-8");
@@ -557,7 +561,7 @@ export class SessionManager {
       if (rawOpening) {
         const openingContent = resolveOpeningPlaceholders(rawOpening, sessionDir, profile);
         const appendix = `\n\n## __오프닝 메시지__\n아래 메시지는 세션 시작 시 사용자에게 이미 표시되었다. 이 메시지를 반복하지 마라.\n\n${openingContent}\n`;
-        for (const file of ["CLAUDE.md", "AGENTS.md"]) {
+        for (const file of ["CLAUDE.md", "AGENTS.md", "GEMINI.md"]) {
           const mdPath = path.join(sessionDir, file);
           const existing = fs.existsSync(mdPath) ? fs.readFileSync(mdPath, "utf-8") : "";
           fs.writeFileSync(mdPath, existing + appendix, "utf-8");
@@ -725,6 +729,29 @@ export class SessionManager {
     try {
       const meta: SessionMeta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
       return meta.codexThreadId;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** Save Gemini session ID for resume */
+  saveGeminiSessionId(id: string, geminiSessionId: string): void {
+    const metaPath = path.join(this.getSessionDir(id), "session.json");
+    if (!fs.existsSync(metaPath)) return;
+    try {
+      const meta: SessionMeta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
+      meta.geminiSessionId = geminiSessionId;
+      fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), "utf-8");
+    } catch { /* ignore */ }
+  }
+
+  /** Get saved Gemini session ID for resume */
+  getGeminiSessionId(id: string): string | undefined {
+    const metaPath = path.join(this.getSessionDir(id), "session.json");
+    if (!fs.existsSync(metaPath)) return undefined;
+    try {
+      const meta: SessionMeta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
+      return meta.geminiSessionId;
     } catch {
       return undefined;
     }
@@ -984,7 +1011,7 @@ export class SessionManager {
     // Check instructions — compare persona's raw file vs session's live CLAUDE.md/AGENTS.md (stripped)
     {
       const provider = meta.model ? providerFromModel(meta.model) : "claude";
-      const liveFile = provider === "codex" ? "AGENTS.md" : "CLAUDE.md";
+      const liveFile = provider === "codex" ? "AGENTS.md" : provider === "gemini" ? "GEMINI.md" : "CLAUDE.md";
       const liveInstrPath = path.join(sessionDir, liveFile);
       const instrSrc = path.join(personaDir, "session-instructions.md");
       // Reverse args: compare live (session) against raw (persona)
@@ -1069,7 +1096,7 @@ export class SessionManager {
     // Check instructions — compare live CLAUDE.md/AGENTS.md (stripped of assembled sections) vs persona's raw file
     const instrDst = path.join(personaDir, "session-instructions.md");
     const provider = meta.model ? providerFromModel(meta.model) : "claude";
-    const liveFile = provider === "codex" ? "AGENTS.md" : "CLAUDE.md";
+    const liveFile = provider === "codex" ? "AGENTS.md" : provider === "gemini" ? "GEMINI.md" : "CLAUDE.md";
     const liveInstrPath = path.join(sessionDir, liveFile);
     const instrChanged = this.liveInstructionsDiffer(liveInstrPath, instrDst);
     result.push({ key: "instructions", label: `인스트럭션 (${liveFile} → session-instructions.md)`, hasChanges: instrChanged });
@@ -1242,7 +1269,7 @@ export class SessionManager {
     // Strip auto-assembled sections (profile, opening) before saving
     if (elements.instructions) {
       const provider = meta.model ? providerFromModel(meta.model) : "claude";
-      const liveFile = provider === "codex" ? "AGENTS.md" : "CLAUDE.md";
+      const liveFile = provider === "codex" ? "AGENTS.md" : provider === "gemini" ? "GEMINI.md" : "CLAUDE.md";
       const src = path.join(sessionDir, liveFile);
       const dst = path.join(personaDir, "session-instructions.md");
       if (fs.existsSync(src)) {
@@ -1374,7 +1401,7 @@ export class SessionManager {
     const instructionsSrc = path.join(personaDir, "session-instructions.md");
     if (!fs.existsSync(instructionsSrc)) return;
 
-    const targets = ["CLAUDE.md", "AGENTS.md"];
+    const targets = ["CLAUDE.md", "AGENTS.md", "GEMINI.md"];
     for (const file of targets) {
       fs.copyFileSync(instructionsSrc, path.join(sessionDir, file));
     }
@@ -1461,7 +1488,7 @@ export class SessionManager {
   }
 
   /** Save builder session info for resume */
-  saveBuilderSession(name: string, provider: "claude" | "codex", sessionId: string): void {
+  saveBuilderSession(name: string, provider: "claude" | "codex" | "gemini", sessionId: string): void {
     const metaPath = path.join(this.getPersonaDir(name), "builder-session.json");
     let meta: BuilderMeta = {};
     if (fs.existsSync(metaPath)) {
@@ -1470,6 +1497,8 @@ export class SessionManager {
     meta.provider = provider;
     if (provider === "codex") {
       meta.codexThreadId = sessionId;
+    } else if (provider === "gemini") {
+      meta.geminiSessionId = sessionId;
     } else {
       meta.claudeSessionId = sessionId;
     }
@@ -1477,20 +1506,20 @@ export class SessionManager {
   }
 
   /** Get saved builder session ID for resume (provider-aware) */
-  getBuilderSessionId(name: string, provider?: "claude" | "codex"): string | undefined {
+  getBuilderSessionId(name: string, provider?: "claude" | "codex" | "gemini"): string | undefined {
     const metaPath = path.join(this.getPersonaDir(name), "builder-session.json");
     if (!fs.existsSync(metaPath)) return undefined;
     try {
       const meta: BuilderMeta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
       const p = provider || meta.provider || "claude";
-      return p === "codex" ? meta.codexThreadId : meta.claudeSessionId;
+      return p === "codex" ? meta.codexThreadId : p === "gemini" ? meta.geminiSessionId : meta.claudeSessionId;
     } catch {
       return undefined;
     }
   }
 
   /** Get saved builder provider */
-  getBuilderProvider(name: string): "claude" | "codex" | undefined {
+  getBuilderProvider(name: string): "claude" | "codex" | "gemini" | undefined {
     const metaPath = path.join(this.getPersonaDir(name), "builder-session.json");
     if (!fs.existsSync(metaPath)) return undefined;
     try {
@@ -1655,6 +1684,7 @@ export class SessionManager {
     this.writeClaudeSettings(projectDir);
     this.writeMcpConfig(projectDir, personaName, mode);
     this.writeCodexConfig(projectDir, personaName, mode);
+    this.writeGeminiConfig(projectDir, personaName, mode);
     this.ensurePolicyContext(projectDir);
   }
 
@@ -1752,6 +1782,46 @@ export class SessionManager {
     console.log(`[codex] Wrote model instructions: ${instructionsPath} (${content.length} chars)`);
   }
 
+  private writeGeminiConfig(
+    projectDir: string,
+    personaName?: string,
+    mode: "builder" | "session" = "session"
+  ): void {
+    const geminiDir = path.join(projectDir, ".gemini");
+    fs.mkdirSync(geminiDir, { recursive: true });
+
+    const serverScript = path.join(this.appRoot, "src", "mcp", "claude-bridge-mcp-server.mjs");
+    const apiBase = (process.env.CLAUDE_BRIDGE_API_BASE || `http://127.0.0.1:${process.env.PORT || "3340"}`)
+      .replace(/\/+$/, "");
+
+    const settings = {
+      mcpServers: {
+        "claude-bridge": {
+          command: "node",
+          args: [serverScript],
+          env: {
+            CLAUDE_BRIDGE_API_BASE: apiBase,
+            CLAUDE_BRIDGE_SESSION_DIR: projectDir,
+            CLAUDE_BRIDGE_MODE: mode,
+            CLAUDE_BRIDGE_AUTH_TOKEN: getInternalToken(),
+            ...(personaName ? { CLAUDE_BRIDGE_PERSONA: personaName } : {}),
+          },
+        },
+      },
+    };
+
+    fs.writeFileSync(
+      path.join(geminiDir, "settings.json"),
+      JSON.stringify(settings, null, 2),
+      "utf-8"
+    );
+  }
+
+  writeGeminiInstructions(projectDir: string, content: string): void {
+    fs.writeFileSync(path.join(projectDir, "GEMINI.md"), content, "utf-8");
+    console.log(`[gemini] Wrote GEMINI.md: ${projectDir} (${content.length} chars)`);
+  }
+
   private ensurePolicyContext(projectDir: string): void {
     const policyPath = path.join(projectDir, POLICY_CONTEXT_FILE);
     if (!fs.existsSync(policyPath)) {
@@ -1786,8 +1856,12 @@ export class SessionManager {
     }
   }
 
-  buildServiceSystemPrompt(personaName?: string, provider?: "claude" | "codex", options?: Record<string, unknown>): string {
-    const files = provider === "codex" ? SERVICE_SESSION_GUIDE_FILES_CODEX : SERVICE_SESSION_GUIDE_FILES_CLAUDE;
+  buildServiceSystemPrompt(personaName?: string, provider?: "claude" | "codex" | "gemini", options?: Record<string, unknown>): string {
+    const files = provider === "codex"
+      ? SERVICE_SESSION_GUIDE_FILES_CODEX
+      : provider === "gemini"
+      ? SERVICE_SESSION_GUIDE_FILES_GEMINI
+      : SERVICE_SESSION_GUIDE_FILES_CLAUDE;
     return this.buildPromptFromGuideFiles(files, personaName, options);
   }
 

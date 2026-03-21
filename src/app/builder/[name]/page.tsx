@@ -37,7 +37,7 @@ export default function BuilderPage() {
 
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [wsEnabled, setWsEnabled] = useState(false);
-  const [builderService, setBuilderService] = useState<"claude" | "codex">("claude");
+  const [builderService, setBuilderService] = useState<"claude" | "codex" | "gemini">("claude");
   const [displayName, setDisplayName] = useState(decodedName);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [voiceChat, setVoiceChat] = useState(false);
@@ -145,7 +145,7 @@ export default function BuilderPage() {
   }, [mode, decodedName, builderService, setStatus, setError]);
 
   // Service switch: fresh session with cleared history
-  const handleServiceChange = useCallback(async (newService: "claude" | "codex") => {
+  const handleServiceChange = useCallback(async (newService: "claude" | "codex" | "gemini") => {
     setBuilderService(newService);
     setStatus("disconnected");
 

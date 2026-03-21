@@ -63,7 +63,7 @@ export default function ChatPage() {
   const [wsEnabled, setWsEnabled] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [currentModel, setCurrentModel] = useState(searchParams.get("model") || "");
-  const [currentProvider, setCurrentProvider] = useState<"claude" | "codex">("claude");
+  const [currentProvider, setCurrentProvider] = useState<"claude" | "codex" | "gemini">("claude");
   const [showOOC, setShowOOC] = useState(false);
   const [syncModalOpen, setSyncModalOpen] = useState(false);
   const [autoPlay, setAutoPlay] = useState(true);

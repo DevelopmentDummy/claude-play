@@ -36,6 +36,7 @@ export async function POST(req: Request) {
   const builderPrompt = svc.sessions.getBuilderPrompt({ localTtsAvailable });
   fs.writeFileSync(path.join(personaDir, "CLAUDE.md"), builderPrompt, "utf-8");
   fs.writeFileSync(path.join(personaDir, "AGENTS.md"), builderPrompt, "utf-8");
+  fs.writeFileSync(path.join(personaDir, "GEMINI.md"), builderPrompt, "utf-8");
 
   // Copy panel-spec.md
   const panelSpecSrc = path.join(getAppRoot(), "panel-spec.md");
@@ -49,9 +50,11 @@ export async function POST(req: Request) {
   // For Codex: write instructions file (file-based prompt delivery via model_instructions_file)
   if (provider === "codex") {
     svc.sessions.writeCodexInstructions(personaDir, runtimeSystemPrompt);
+  } else if (provider === "gemini") {
+    svc.sessions.writeGeminiInstructions(personaDir, runtimeSystemPrompt);
   }
   // Builder default effort: highest for each provider
-  const effectiveEffort = effort || (provider === "codex" ? "xhigh" : "high");
+  const effectiveEffort = effort || (provider === "codex" ? "xhigh" : provider === "gemini" ? undefined : "high");
   instance.claude.spawn(personaDir, undefined, model || undefined, runtimeSystemPrompt, effectiveEffort);
 
   const displayName = svc.sessions.getPersonaDisplayName(name);

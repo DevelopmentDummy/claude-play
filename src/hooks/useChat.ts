@@ -31,6 +31,11 @@ function detectImageToken(toolName: string, input: unknown): string | null {
     "mcp__claude_bridge__generate_image_gemini",
     "mcp__claude_bridge__comfyui_generate",
     "mcp__claude_bridge__gemini_generate",
+    // Gemini MCP prefix (hyphen in server name)
+    "mcp_claude-bridge_generate_image",
+    "mcp_claude-bridge_generate_image_gemini",
+    "mcp_claude-bridge_comfyui_generate",
+    "mcp_claude-bridge_gemini_generate",
   ]);
   if (!imageToolNames.has(toolName)) return null;
 

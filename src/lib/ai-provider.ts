@@ -1,7 +1,10 @@
-export type AIProvider = "claude" | "codex";
+export type AIProvider = "claude" | "codex" | "gemini";
 
 const CODEX_MODEL_PREFIXES = ["gpt-5", "codex-mini"];
 const CODEX_MODEL_EXACT = new Set(["codex-mini-latest", "o3", "o4-mini"]);
+
+const GEMINI_MODEL_PREFIXES = ["gemini-"];
+const GEMINI_MODEL_EXACT = new Set(["gemini-pro", "gemini-flash"]);
 
 export function providerFromModel(model: string): AIProvider {
   if (!model) return "claude";
@@ -10,6 +13,10 @@ export function providerFromModel(model: string): AIProvider {
   if (CODEX_MODEL_EXACT.has(base)) return "codex";
   for (const prefix of CODEX_MODEL_PREFIXES) {
     if (base.startsWith(prefix)) return "codex";
+  }
+  if (GEMINI_MODEL_EXACT.has(base)) return "gemini";
+  for (const prefix of GEMINI_MODEL_PREFIXES) {
+    if (base.startsWith(prefix)) return "gemini";
   }
   return "claude";
 }
@@ -61,6 +68,15 @@ export const MODEL_GROUPS: ModelGroup[] = [
       { value: "gpt-5.4:medium", label: "GPT-5.4 Medium" },
       { value: "gpt-5.4:high", label: "GPT-5.4 High" },
       { value: "gpt-5.4:xhigh", label: "GPT-5.4 XHigh" },
+    ],
+  },
+  {
+    label: "Gemini",
+    provider: "gemini" as AIProvider,
+    options: [
+      { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
+      { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
+      { value: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash Lite" },
     ],
   },
 ];
