@@ -33,6 +33,38 @@ export interface PanelUpdate {
 }
 
 
+let helpersRegistered = false;
+
+/** Register Handlebars helpers globally (idempotent) */
+export function ensureHandlebarsHelpers(): void {
+  if (helpersRegistered) return;
+  helpersRegistered = true;
+  Handlebars.registerHelper("eq", (a, b) => a === b);
+  Handlebars.registerHelper("ne", (a, b) => a !== b);
+  Handlebars.registerHelper("lt", (a, b) => a < b);
+  Handlebars.registerHelper("lte", (a, b) => a <= b);
+  Handlebars.registerHelper("gt", (a, b) => a > b);
+  Handlebars.registerHelper("gte", (a, b) => a >= b);
+  Handlebars.registerHelper("and", (a, b) => a && b);
+  Handlebars.registerHelper("or", (a, b) => a || b);
+  Handlebars.registerHelper("not", (a) => !a);
+  Handlebars.registerHelper("add", (a, b) => Number(a) + Number(b));
+  Handlebars.registerHelper("subtract", (a, b) => Number(a) - Number(b));
+  Handlebars.registerHelper("multiply", (a, b) => Number(a) * Number(b));
+  Handlebars.registerHelper("divide", (a, b) =>
+    Number(b) !== 0 ? Number(a) / Number(b) : 0
+  );
+  Handlebars.registerHelper("percentage", (val, max) =>
+    Number(max) !== 0 ? Math.round((Number(val) / Number(max)) * 100) : 0
+  );
+  Handlebars.registerHelper("formatNumber", (n) =>
+    Number(n).toLocaleString()
+  );
+  Handlebars.registerHelper("json", (val) =>
+    new Handlebars.SafeString(JSON.stringify(val ?? null))
+  );
+}
+
 /** Watches a session directory and emits rendered panel HTML when files change */
 export class PanelEngine {
   private sessionDir: string | null = null;
@@ -61,30 +93,7 @@ export class PanelEngine {
   }
 
   private registerHelpers(): void {
-    Handlebars.registerHelper("eq", (a, b) => a === b);
-    Handlebars.registerHelper("ne", (a, b) => a !== b);
-    Handlebars.registerHelper("lt", (a, b) => a < b);
-    Handlebars.registerHelper("lte", (a, b) => a <= b);
-    Handlebars.registerHelper("gt", (a, b) => a > b);
-    Handlebars.registerHelper("gte", (a, b) => a >= b);
-    Handlebars.registerHelper("and", (a, b) => a && b);
-    Handlebars.registerHelper("or", (a, b) => a || b);
-    Handlebars.registerHelper("not", (a) => !a);
-    Handlebars.registerHelper("add", (a, b) => Number(a) + Number(b));
-    Handlebars.registerHelper("subtract", (a, b) => Number(a) - Number(b));
-    Handlebars.registerHelper("multiply", (a, b) => Number(a) * Number(b));
-    Handlebars.registerHelper("divide", (a, b) =>
-      Number(b) !== 0 ? Number(a) / Number(b) : 0
-    );
-    Handlebars.registerHelper("percentage", (val, max) =>
-      Number(max) !== 0 ? Math.round((Number(val) / Number(max)) * 100) : 0
-    );
-    Handlebars.registerHelper("formatNumber", (n) =>
-      Number(n).toLocaleString()
-    );
-    Handlebars.registerHelper("json", (val) =>
-      new Handlebars.SafeString(JSON.stringify(val ?? null))
-    );
+    ensureHandlebarsHelpers();
   }
 
   /** Build the merged template context: variables at root + data files as named keys + system vars */

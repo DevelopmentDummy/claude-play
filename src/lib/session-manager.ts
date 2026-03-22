@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import Handlebars from "handlebars";
 import { getDataDir } from "./data-dir";
+import { ensureHandlebarsHelpers } from "./panel-engine";
 import { getInternalToken } from "./auth";
 import { providerFromModel } from "./ai-provider";
 
@@ -1481,6 +1482,7 @@ export class SessionManager {
 
   /** Read the builder meta-prompt, compiled with Handlebars for conditional sections */
   getBuilderPrompt(context: { localTtsAvailable?: boolean } = {}): string {
+    ensureHandlebarsHelpers();
     const promptPath = path.join(this.appRoot, "builder-prompt.md");
     const source = fs.readFileSync(promptPath, "utf-8");
     const template = Handlebars.compile(source, { noEscape: true });
