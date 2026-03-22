@@ -314,11 +314,9 @@
 
   // Cancel
   btnCancel.addEventListener("click", function() {
-    // Close modal via variables
-    if (bridge && bridge.updateVariables) {
-      var modals = (bridge.data && bridge.data.__modals) || {};
-      modals["profile-crop"] = false;
-      bridge.updateVariables({ __modals: modals, __cropSource: "" });
+    if (bridge) {
+      bridge.closeModal("profile-crop");
+      bridge.updateVariables({ __cropSource: "" });
     }
   });
 
@@ -349,10 +347,9 @@
     }).then(function(res) {
       if (res.ok) {
         // Close modal
-        if (bridge && bridge.updateVariables) {
-          var modals = (bridge.data && bridge.data.__modals) || {};
-          modals["profile-crop"] = false;
-          bridge.updateVariables({ __modals: modals, __cropSource: "" });
+        if (bridge) {
+          bridge.closeModal("profile-crop");
+          bridge.updateVariables({ __cropSource: "" });
         }
       } else {
         btnConfirm.disabled = false;

@@ -179,7 +179,8 @@ export default function ModalPanel({
         className="fixed inset-0 transition-opacity duration-200"
         style={{
           zIndex: backdropZ,
-          backgroundColor: "rgba(0, 0, 0, 0.25)",
+          backgroundColor: "rgba(0, 0, 0, 0.5)",
+          backdropFilter: "blur(4px)",
           opacity: visible ? 1 : 0,
         }}
         onClick={dismissible ? handleClose : undefined}
