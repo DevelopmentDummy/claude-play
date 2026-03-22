@@ -476,11 +476,19 @@ server.registerTool(
       prompt: z.string().min(1),
       filename: z.string().optional(),
       persona: z.string().optional(),
+      reference_image: z.string().optional().describe("Relative path to a reference image in the session directory (e.g. images/portrait.png)"),
+      aspect_ratio: z.string().optional().describe("Aspect ratio: 1:1, 16:9, 4:3, 3:2, 2:3, 9:16"),
+      image_size: z.string().optional().describe("Resolution: 512, 1K, 2K, 4K"),
     },
   },
   async (input) => {
     try {
-      const payload = withPersona(input);
+      const payload = withPersona({
+        ...input,
+        referenceImage: pickString(input.reference_image),
+        aspectRatio: pickString(input.aspect_ratio),
+        imageSize: pickString(input.image_size),
+      });
       const data = await requestJson("POST", "/api/tools/gemini/generate", payload);
       const imagePath =
         data && typeof data === "object" && data.path && typeof data.path === "string"
@@ -639,6 +647,9 @@ server.registerTool(
       prompt: z.string().min(1),
       filename: z.string().optional(),
       persona: z.string().optional(),
+      reference_image: z.string().optional().describe("Relative path to a reference image in the session directory (e.g. images/portrait.png)"),
+      aspect_ratio: z.string().optional().describe("Aspect ratio: 1:1, 16:9, 4:3, 3:2, 2:3, 9:16"),
+      image_size: z.string().optional().describe("Resolution: 512, 1K, 2K, 4K"),
     },
   },
   async (input) => {
@@ -647,6 +658,9 @@ server.registerTool(
         prompt: input.prompt,
         filename: pickString(input.filename) || `gemini_${Date.now()}.png`,
         ...(input.persona ? { persona: input.persona } : {}),
+        referenceImage: pickString(input.reference_image),
+        aspectRatio: pickString(input.aspect_ratio),
+        imageSize: pickString(input.image_size),
       });
       const data = await requestJson("POST", "/api/tools/gemini/generate", payload);
       const imagePath =

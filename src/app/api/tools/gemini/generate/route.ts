@@ -18,6 +18,9 @@ export async function POST(req: Request) {
     filename?: string;
     persona?: string;
     sessionId?: string;
+    referenceImage?: string;
+    aspectRatio?: string;
+    imageSize?: string;
   };
 
   if (!body.prompt) {
@@ -57,6 +60,9 @@ export async function POST(req: Request) {
       prompt: body.prompt,
       filename,
       sessionDir: targetDir,
+      referenceImage: body.referenceImage,
+      aspectRatio: body.aspectRatio,
+      imageSize: body.imageSize,
     })
     .then((result) => {
       if (result.success) {

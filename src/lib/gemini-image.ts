@@ -10,6 +10,9 @@ interface GenerateRequest {
   prompt: string;
   filename: string;
   sessionDir: string;
+  referenceImage?: string;
+  aspectRatio?: string;
+  imageSize?: string;
 }
 
 interface GenerateResult {
@@ -38,13 +41,35 @@ export class GeminiImageClient {
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`;
 
+      const inputParts: Array<Record<string, unknown>> = [{ text: req.prompt }];
+
+      if (req.referenceImage) {
+        const refPath = path.resolve(req.sessionDir, req.referenceImage);
+        if (refPath.startsWith(req.sessionDir) && fs.existsSync(refPath)) {
+          const ext = path.extname(refPath).toLowerCase();
+          const mimeMap: Record<string, string> = {
+            ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+            ".webp": "image/webp", ".gif": "image/gif",
+          };
+          const mimeType = mimeMap[ext] || "image/png";
+          const base64 = fs.readFileSync(refPath).toString("base64");
+          inputParts.push({ inlineData: { mimeType, data: base64 } });
+        }
+      }
+
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: req.prompt }] }],
+          contents: [{ parts: inputParts }],
           generationConfig: {
             responseModalities: ["IMAGE"],
+            ...(req.aspectRatio || req.imageSize ? {
+              imageConfig: {
+                ...(req.aspectRatio ? { aspectRatio: req.aspectRatio } : {}),
+                ...(req.imageSize ? { imageSize: req.imageSize } : {}),
+              },
+            } : {}),
           },
         }),
       });
