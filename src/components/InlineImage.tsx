@@ -21,7 +21,8 @@ function buildFileUrl(imgPath: string, sessionId?: string, personaName?: string,
     const file = imgPath.startsWith("images/") ? imgPath.slice(7) : imgPath;
     return `/api/personas/${encodeURIComponent(personaName)}/images?file=${encodeURIComponent(file)}&v=${cacheBuster}`;
   }
-  return `/api/sessions/${sessionId}/files/${encodeURIComponent(imgPath)}?v=${cacheBuster}`;
+  const encodedPath = imgPath.split('/').map(encodeURIComponent).join('/');
+  return `/api/sessions/${sessionId}/files/${encodedPath}?v=${cacheBuster}`;
 }
 
 export default function InlineImage({ sessionId, personaName, path: imgPath, onReady }: InlineImageProps) {

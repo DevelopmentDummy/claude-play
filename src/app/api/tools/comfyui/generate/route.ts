@@ -64,7 +64,9 @@ export async function POST(req: Request) {
     );
   }
 
-  const safeName = path.basename(body.filename);
+  // Sanitize path: preserve subdirectories but prevent traversal
+  const normalized = path.posix.normalize(body.filename.replace(/\\/g, "/"));
+  const safeName = normalized.split("/").filter((s: string) => s && s !== ".." && s !== ".").join("/") || path.basename(body.filename);
 
   const host = process.env.COMFYUI_HOST || "127.0.0.1";
   const port = parseInt(process.env.COMFYUI_PORT || "8188", 10);

@@ -24,7 +24,14 @@ export class GeminiImageClient {
 
   constructor(config: GeminiImageConfig) {
     this.apiKey = config.apiKey;
-    this.model = config.model || "gemini-2.0-flash-exp";
+    this.model = config.model || "gemini-3.1-flash-image-preview";
+  }
+
+  /** Sanitize a relative file path: preserve subdirectories but prevent traversal */
+  private safePath(filePath: string): string {
+    const normalized = path.posix.normalize(filePath.replace(/\\/g, "/"));
+    const segments = normalized.split("/").filter(s => s && s !== ".." && s !== ".");
+    return segments.join("/") || path.basename(filePath);
   }
 
   async generate(req: GenerateRequest): Promise<GenerateResult> {
@@ -73,8 +80,9 @@ export class GeminiImageClient {
       const imagesDir = path.join(req.sessionDir, "images");
       fs.mkdirSync(imagesDir, { recursive: true });
 
-      const safeName = path.basename(req.filename);
+      const safeName = this.safePath(req.filename);
       const filepath = path.join(imagesDir, safeName);
+      fs.mkdirSync(path.dirname(filepath), { recursive: true });
       fs.writeFileSync(filepath, imageBuffer);
 
       return { success: true, filepath: `images/${safeName}` };

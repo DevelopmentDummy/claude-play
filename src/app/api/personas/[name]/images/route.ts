@@ -24,8 +24,17 @@ export async function GET(
 
   const { sessions } = getServices();
   const personaDir = sessions.getPersonaDir(name);
-  const safeName = path.basename(file);
+  // Preserve subdirectory structure, block traversal
+  const normalized = path.posix.normalize(file.replace(/\\/g, "/"));
+  const safeName = normalized.split("/").filter(s => s && s !== ".." && s !== ".").join("/") || path.basename(file);
   const filePath = path.join(personaDir, "images", safeName);
+
+  // Verify resolved path stays within images dir
+  const imagesDir = path.join(personaDir, "images");
+  const resolved = path.resolve(filePath);
+  if (!resolved.startsWith(imagesDir + path.sep) && resolved !== imagesDir) {
+    return NextResponse.json({ error: "Invalid path" }, { status: 403 });
+  }
 
   if (!fs.existsSync(filePath)) {
     return new NextResponse(null, { status: 404 });

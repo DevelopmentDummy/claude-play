@@ -1,6 +1,13 @@
 import * as fs from "fs";
 import * as path from "path";
 
+/** Sanitize a relative file path: preserve subdirectories but prevent traversal */
+function safePath(filePath: string): string {
+  const normalized = path.posix.normalize(filePath.replace(/\\/g, "/"));
+  const segments = normalized.split("/").filter(s => s && s !== ".." && s !== ".");
+  return segments.join("/") || path.basename(filePath);
+}
+
 interface ComfyUIConfig {
   host: string;
   port: number;
@@ -1035,8 +1042,10 @@ export class ComfyUIClient {
       return { success: false, error: "Failed to download image from ComfyUI" };
     }
 
-    const safeName = path.basename(filename);
-    fs.writeFileSync(path.join(imagesDir, safeName), mainBuffer);
+    const safeName = safePath(filename);
+    const mainDest = path.join(imagesDir, safeName);
+    fs.mkdirSync(path.dirname(mainDest), { recursive: true });
+    fs.writeFileSync(mainDest, mainBuffer);
 
     const extraPaths: Record<string, string> = {};
     if (extraFiles) {
@@ -1045,8 +1054,10 @@ export class ComfyUIClient {
         if (match) {
           const buffer = await this.downloadImage(match.filename);
           if (buffer) {
-            const safeExtra = path.basename(extraFilename);
-            fs.writeFileSync(path.join(imagesDir, safeExtra), buffer);
+            const safeExtra = safePath(extraFilename);
+            const extraDest = path.join(imagesDir, safeExtra);
+            fs.mkdirSync(path.dirname(extraDest), { recursive: true });
+            fs.writeFileSync(extraDest, buffer);
             extraPaths[prefix] = `images/${safeExtra}`;
             console.log(`[comfyui] Extra output saved: ${safeExtra} (prefix: ${prefix})`);
           }
