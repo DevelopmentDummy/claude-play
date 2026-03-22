@@ -172,6 +172,21 @@ export default function LobbyPage() {
     router.push(`/builder/${encodeURIComponent(name)}?mode=edit`);
   };
 
+  const deletePersona = async (name: string) => {
+    // Delete all sessions belonging to this persona first
+    const related = sessions.filter((s) => s.persona === name);
+    await Promise.all(
+      related.map((s) =>
+        fetch(`/api/sessions/${encodeURIComponent(s.id)}`, { method: "DELETE" })
+      )
+    );
+    await fetch(`/api/personas/${encodeURIComponent(name)}`, { method: "DELETE" });
+    loadLobby();
+  };
+
+  const sessionCountByPersona = (name: string) =>
+    sessions.filter((s) => s.persona === name).length;
+
   return (
     <div className="flex h-screen relative">
       {/* ── Mobile sidebar backdrop ── */}
@@ -298,8 +313,10 @@ export default function LobbyPage() {
                   displayName={p.displayName}
                   hasIcon={p.hasIcon}
                   index={i}
+                  sessionCount={sessionCountByPersona(p.name)}
                   onSelect={() => handlePersonaClick(p.name, p.displayName, i)}
                   onEdit={() => editPersona(p.name)}
+                  onDelete={() => deletePersona(p.name)}
                 />
               ))}
 
