@@ -18,6 +18,7 @@ export async function POST(req: Request) {
     filename?: string;
     persona?: string;
     sessionId?: string;
+    referenceImage?: string;
     size?: string;
     quality?: string;
   };
@@ -59,6 +60,7 @@ export async function POST(req: Request) {
       prompt: body.prompt,
       filename,
       sessionDir: targetDir,
+      referenceImage: body.referenceImage,
       size: body.size,
       quality: body.quality,
     })

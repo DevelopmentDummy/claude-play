@@ -680,11 +680,12 @@ server.registerTool(
 server.registerTool(
   "generate_image_openai",
   {
-    description: "Generate an image using OpenAI GPT image model (gpt-image-1.5).",
+    description: "Generate an image using OpenAI GPT image model (gpt-image-1.5). Supports reference image via /v1/images/edits endpoint.",
     inputSchema: {
       prompt: z.string().min(1),
       filename: z.string().optional(),
       persona: z.string().optional(),
+      reference_image: z.string().optional().describe("Relative path to a reference image in the session directory (e.g. images/portrait.png). Uses edits endpoint when provided."),
       size: z.string().optional().describe("Image size: 1024x1024, 1536x1024, 1024x1536, auto (default: auto)"),
       quality: z.string().optional().describe("Quality: low, medium, high (default: auto)"),
     },
@@ -695,6 +696,7 @@ server.registerTool(
         prompt: input.prompt,
         filename: pickString(input.filename) || `openai_${Date.now()}.png`,
         ...(input.persona ? { persona: input.persona } : {}),
+        referenceImage: pickString(input.reference_image),
         size: pickString(input.size),
         quality: pickString(input.quality),
       });

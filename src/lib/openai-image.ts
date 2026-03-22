@@ -10,6 +10,7 @@ interface GenerateRequest {
   prompt: string;
   filename: string;
   sessionDir: string;
+  referenceImage?: string;
   size?: string;
   quality?: string;
 }
@@ -36,23 +37,61 @@ export class OpenAIImageClient {
     return segments.join("/") || path.basename(filePath);
   }
 
+  /** Resolve and validate reference image, return file buffer or null */
+  private resolveReferenceImage(sessionDir: string, refPath: string): { buffer: Buffer; mimeType: string } | null {
+    const resolved = path.resolve(sessionDir, refPath);
+    if (!resolved.startsWith(sessionDir) || !fs.existsSync(resolved)) return null;
+    const ext = path.extname(resolved).toLowerCase();
+    const mimeMap: Record<string, string> = {
+      ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+      ".webp": "image/webp", ".gif": "image/gif",
+    };
+    return { buffer: fs.readFileSync(resolved), mimeType: mimeMap[ext] || "image/png" };
+  }
+
   async generate(req: GenerateRequest): Promise<GenerateResult> {
     try {
-      const res = await fetch("https://api.openai.com/v1/images/generations", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${this.apiKey}`,
-        },
-        body: JSON.stringify({
-          model: this.model,
-          prompt: req.prompt,
-          n: 1,
-          response_format: "b64_json",
-          ...(req.size ? { size: req.size } : {}),
-          ...(req.quality ? { quality: req.quality } : {}),
-        }),
-      });
+      const refImage = req.referenceImage
+        ? this.resolveReferenceImage(req.sessionDir, req.referenceImage)
+        : null;
+
+      let res: Response;
+
+      if (refImage) {
+        // Use /v1/images/edits with multipart form data for reference image
+        const formData = new FormData();
+        const blob = new Blob([new Uint8Array(refImage.buffer)], { type: refImage.mimeType });
+        formData.append("image", blob, path.basename(req.referenceImage!));
+        formData.append("model", this.model);
+        formData.append("prompt", req.prompt);
+        formData.append("n", "1");
+        formData.append("response_format", "b64_json");
+        if (req.size) formData.append("size", req.size);
+        if (req.quality) formData.append("quality", req.quality);
+
+        res = await fetch("https://api.openai.com/v1/images/edits", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${this.apiKey}` },
+          body: formData,
+        });
+      } else {
+        // Use /v1/images/generations for text-only
+        res = await fetch("https://api.openai.com/v1/images/generations", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${this.apiKey}`,
+          },
+          body: JSON.stringify({
+            model: this.model,
+            prompt: req.prompt,
+            n: 1,
+            response_format: "b64_json",
+            ...(req.size ? { size: req.size } : {}),
+            ...(req.quality ? { quality: req.quality } : {}),
+          }),
+        });
+      }
 
       if (!res.ok) {
         const errText = await res.text();
