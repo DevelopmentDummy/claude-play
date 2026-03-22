@@ -455,6 +455,7 @@ AI가 받게 되는 메시지:
 | `__panelBridge.queueEvent(header)` | 다음 사용자 메시지에 이벤트 헤더를 첨부한다. 큐에 쌓이며, 사용자가 다음 메시지를 보낼 때 AI에게 전달되는 텍스트 앞에 자동 prepend된다. OOC 메시지에는 첨부되지 않는다. |
 | `__panelBridge.runTool(name, args)` | 서버사이드 커스텀 툴을 실행한다. `name`은 `tools/` 폴더 내 `.js` 파일명 (확장자 제외). `args`는 툴에 전달할 인자 객체. 반환값은 `{ ok, result }`. |
 | `__panelBridge.showPopup(template, opts?)` | 팝업 이펙트를 큐에 추가한다. `template`은 `popups/` 폴더 내 `.html` 파일명 (확장자 제외). `opts`는 `{ duration?: number, vars?: object }`. 현재 큐에 append되어 순차 재생된다. |
+| `__panelBridge.showToast(text, opts?)` | 토스트 알림을 표시한다. 화면 우측 하단에 비차단형으로 나타나며, 여러 개가 스택으로 쌓인다. 클릭하면 즉시 닫힌다. `opts`는 `{ duration?: number }` (기본 3000ms). CSS 변수 `--toast-bg`, `--toast-color`, `--toast-border`, `--toast-shadow`로 스타일 커스터마이즈 가능. |
 | `__panelBridge.on(event, handler)` | 브릿지 이벤트를 구독한다. 반환값은 구독 해제 함수. 이벤트 목록은 아래 "브릿지 이벤트" 섹션 참조. |
 | `__panelBridge.data` | 전체 템플릿 컨텍스트 객체 (읽기 전용). `variables.json` 값 + 커스텀 데이터 파일이 합쳐져 있다. |
 | `__panelBridge.sessionId` | 현재 세션 ID (읽기 전용) |
@@ -1055,6 +1056,45 @@ return {
 - 여러 팝업이 동시에 트리거되면 큐잉되어 순차 재생된다
 - 존재하지 않는 템플릿을 참조하면 해당 항목은 무시(skip)된다
 - 팝업은 모달 패널(z-index 9998+)보다 위에 표시된다 (z-index 10100+)
+
+---
+
+## 토스트 알림
+
+팝업 이펙트의 경량 버전. 화면 우측 하단에 비차단형 알림을 표시한다. 여러 개가 동시에 스택으로 쌓이며, 클릭하면 즉시 닫힌다.
+
+### 사용법
+
+**패널 스크립트에서:**
+```javascript
+__panelBridge.showToast("골드 100을 획득했습니다!");
+__panelBridge.showToast("레벨 업!", { duration: 5000 });
+```
+
+### 팝업과의 차이
+
+| | 팝업 (`showPopup`) | 토스트 (`showToast`) |
+|---|---|---|
+| 위치 | 화면 중앙, 딤 오버레이 | 우측 하단, 오버레이 없음 |
+| 동시 표시 | 1개씩 순차 재생 | 여러 개 스택 |
+| 상호작용 차단 | O | X |
+| 콘텐츠 | Handlebars HTML 템플릿 | 텍스트 |
+| 기본 duration | 4000ms | 3000ms |
+
+### 스타일 커스터마이즈
+
+CSS 변수로 토스트 디자인을 오버라이드할 수 있다:
+
+```css
+:root {
+  --toast-bg: rgba(0, 0, 0, 0.85);
+  --toast-color: #fff;
+  --toast-border: 1px solid rgba(255, 255, 255, 0.1);
+  --toast-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+```
+
+기본값은 세션 테마 컬러 기반으로 자동 생성된다.
 
 ---
 

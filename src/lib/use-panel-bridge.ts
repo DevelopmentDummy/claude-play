@@ -126,6 +126,12 @@ export function usePanelBridge(
         });
         return res.json();
       },
+      /** Show a toast notification (non-blocking, stacks in bottom-right corner). */
+      showToast(text: string, opts?: { duration?: number }) {
+        window.dispatchEvent(new CustomEvent("bridge:toast", {
+          detail: { text, duration: opts?.duration || 3000 },
+        }));
+      },
       /** Subscribe to a bridge event. Returns an unsubscribe function. */
       on(event: string, handler: (detail?: unknown) => void): () => void {
         const wrapped = (e: Event) => handler((e as CustomEvent).detail);

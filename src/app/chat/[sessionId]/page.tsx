@@ -20,6 +20,7 @@ import SyncModal from "@/components/SyncModal";
 import ChatOptionsModal from "@/components/ChatOptionsModal";
 import SteeringPresetsModal from "@/components/SteeringPresetsModal";
 import PopupEffect from "@/components/PopupEffect";
+import ToastEffect from "@/components/ToastEffect";
 import { dispatchBridgeEvent } from "@/lib/use-panel-bridge";
 import { buildAutoplayMessage, calculateAutoplayDelay, getSelectedPreset, type SteeringPreset } from "@/lib/autoplay";
 
@@ -1021,6 +1022,7 @@ export default function ChatPage() {
           onQueueComplete={handlePopupQueueComplete}
         />
       )}
+      <ToastEffect themeColor={themeColor} />
       <SyncModal
         open={syncModalOpen}
         sessionId={sessionId}
