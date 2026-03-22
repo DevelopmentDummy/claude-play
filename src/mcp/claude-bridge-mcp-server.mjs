@@ -476,7 +476,7 @@ server.registerTool(
       prompt: z.string().min(1),
       filename: z.string().optional(),
       persona: z.string().optional(),
-      reference_image: z.string().optional().describe("Relative path to a reference image in the session directory (e.g. images/portrait.png)"),
+      reference_image: z.union([z.string(), z.array(z.string())]).optional().describe("Relative path(s) to reference image(s) in the session directory. Single string or array of strings."),
       aspect_ratio: z.string().optional().describe("Aspect ratio: 1:1, 16:9, 4:3, 3:2, 2:3, 9:16"),
       image_size: z.string().optional().describe("Resolution: 512, 1K, 2K, 4K"),
     },
@@ -485,7 +485,7 @@ server.registerTool(
     try {
       const payload = withPersona({
         ...input,
-        referenceImage: pickString(input.reference_image),
+        referenceImage: input.reference_image,
         aspectRatio: pickString(input.aspect_ratio),
         imageSize: pickString(input.image_size),
       });
@@ -647,7 +647,7 @@ server.registerTool(
       prompt: z.string().min(1),
       filename: z.string().optional(),
       persona: z.string().optional(),
-      reference_image: z.string().optional().describe("Relative path to a reference image in the session directory (e.g. images/portrait.png)"),
+      reference_image: z.union([z.string(), z.array(z.string())]).optional().describe("Relative path(s) to reference image(s) in the session directory. Single string or array of strings."),
       aspect_ratio: z.string().optional().describe("Aspect ratio: 1:1, 16:9, 4:3, 3:2, 2:3, 9:16"),
       image_size: z.string().optional().describe("Resolution: 512, 1K, 2K, 4K"),
     },
@@ -658,7 +658,7 @@ server.registerTool(
         prompt: input.prompt,
         filename: pickString(input.filename) || `gemini_${Date.now()}.png`,
         ...(input.persona ? { persona: input.persona } : {}),
-        referenceImage: pickString(input.reference_image),
+        referenceImage: input.reference_image,
         aspectRatio: pickString(input.aspect_ratio),
         imageSize: pickString(input.image_size),
       });

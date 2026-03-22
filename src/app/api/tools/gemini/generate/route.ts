@@ -18,7 +18,7 @@ export async function POST(req: Request) {
     filename?: string;
     persona?: string;
     sessionId?: string;
-    referenceImage?: string;
+    referenceImage?: string | string[];
     aspectRatio?: string;
     imageSize?: string;
   };

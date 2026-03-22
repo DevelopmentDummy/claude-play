@@ -10,7 +10,7 @@ interface GenerateRequest {
   prompt: string;
   filename: string;
   sessionDir: string;
-  referenceImage?: string;
+  referenceImage?: string | string[];
   aspectRatio?: string;
   imageSize?: string;
 }
@@ -43,8 +43,12 @@ export class GeminiImageClient {
 
       const inputParts: Array<Record<string, unknown>> = [{ text: req.prompt }];
 
-      if (req.referenceImage) {
-        const refPath = path.resolve(req.sessionDir, req.referenceImage);
+      const refImages = req.referenceImage
+        ? Array.isArray(req.referenceImage) ? req.referenceImage : [req.referenceImage]
+        : [];
+
+      for (const ref of refImages) {
+        const refPath = path.resolve(req.sessionDir, ref);
         if (refPath.startsWith(req.sessionDir) && fs.existsSync(refPath)) {
           const ext = path.extname(refPath).toLowerCase();
           const mimeMap: Record<string, string> = {
