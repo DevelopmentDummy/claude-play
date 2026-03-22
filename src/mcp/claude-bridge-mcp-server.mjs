@@ -678,6 +678,42 @@ server.registerTool(
 );
 
 server.registerTool(
+  "generate_image_openai",
+  {
+    description: "Generate an image using OpenAI GPT image model (gpt-image-1.5).",
+    inputSchema: {
+      prompt: z.string().min(1),
+      filename: z.string().optional(),
+      persona: z.string().optional(),
+      size: z.string().optional().describe("Image size: 1024x1024, 1536x1024, 1024x1536, auto (default: auto)"),
+      quality: z.string().optional().describe("Quality: low, medium, high (default: auto)"),
+    },
+  },
+  async (input) => {
+    try {
+      const payload = withPersona({
+        prompt: input.prompt,
+        filename: pickString(input.filename) || `openai_${Date.now()}.png`,
+        ...(input.persona ? { persona: input.persona } : {}),
+        size: pickString(input.size),
+        quality: pickString(input.quality),
+      });
+      const data = await requestJson("POST", "/api/tools/openai/generate", payload);
+      const imagePath =
+        data && typeof data === "object" && data.path && typeof data.path === "string"
+          ? data.path
+          : null;
+      return ok({
+        ...data,
+        output_token: imagePath ? `$IMAGE:${imagePath}$` : null,
+      });
+    } catch (error) {
+      return fail(error);
+    }
+  }
+);
+
+server.registerTool(
   "update_profile",
   {
     description:

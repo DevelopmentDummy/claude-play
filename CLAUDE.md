@@ -88,6 +88,7 @@ Optional admin password auth via `ADMIN_PASSWORD` env var. MCP server requests i
 | `/api/tools/comfyui/generate` | POST | Trigger ComfyUI image generation |
 | `/api/tools/comfyui/models` | GET | List ComfyUI models |
 | `/api/tools/gemini/generate` | POST | Trigger Gemini image generation |
+| `/api/tools/openai/generate` | POST | Trigger OpenAI image generation |
 | `/api/sessions/[id]/tools/[name]` | POST | Execute custom panel tool script |
 | `/api/auth/login` | POST | Admin login (rate-limited: 5/min per IP) |
 | `/api/auth/logout` | POST | Admin logout (clear cookie) |
@@ -218,6 +219,8 @@ data/
 - `PORT` — Server port (default: 3340)
 - `COMFYUI_URL`, `COMFYUI_WORKFLOW_PATH` — Optional ComfyUI integration
 - `GEMINI_API_KEY` — Optional Gemini image generation API key
+- `OPENAI_API_KEY` — Optional OpenAI image generation API key
+- `OPENAI_IMAGE_MODEL` — OpenAI image model (default: `gpt-image-1.5`)
 - `CLAUDE_BRIDGE_API_BASE` — Override API base URL for MCP server (default: `http://127.0.0.1:{PORT}`)
 - `COMFYUI_HOST` — ComfyUI host (default: `127.0.0.1`)
 - `COMFYUI_PORT` — ComfyUI port (default: `8188`)
