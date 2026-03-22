@@ -578,7 +578,7 @@ curl -s http://localhost:3340/api/tools/comfyui/models
 세션 화면의 패널 영역 상단에 표시되는 캐릭터 대표 이미지와, 세션 목록에서 사용되는 얼굴 아이콘.
 
 **생성 절차:**
-1. 모든 파일 생성이 완료된 후, `character-tags.json`을 생성한다 (persona.md의 외형을 Danbooru 태그로 변환)
+1. 모든 파일 생성이 완료된 후, `character-tags.json`을 생성한다 (persona.md의 외형을 Danbooru 태그로 변환). **구조와 태그 작성 규칙은 `generate-image` 스킬의 "캐릭터 일관성 시스템" 섹션을 반드시 따르라** — 특히 `identity` / `accessories` / `outfit_*` 3단계 분리, 모든 의상·장신구·금속에 색상 명시, 머리/눈 색상 톤 구체화가 필수다.
 2. `profile` 워크플로로 프로필 이미지를 생성한다. 이 워크플로는 **자동으로 YOLO 얼굴 감지 → 256x256 크롭 아이콘**도 함께 생성한다
 
 ```bash
@@ -587,7 +587,7 @@ curl -s -X POST "http://localhost:{{PORT}}/api/tools/comfyui/generate" \
   -d '{
     "workflow": "profile",
     "params": {
-      "prompt": "<quality+trigger tags>, <character base tags>, <expression>, looking at viewer, upper body"
+      "prompt": "<identity tags>, <accessories tags>, <outfit_default tags>, <expression>, looking at viewer, upper body"
     },
     "filename": "profile.png",
     "extraFiles": { "icon": "icon.png" },
