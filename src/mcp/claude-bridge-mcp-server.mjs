@@ -375,7 +375,7 @@ server.registerTool(
       "Queue image generation via ComfyUI. Backward-compatible: prompt-only mode is supported (defaults to portrait workflow + legacy quality/trigger tags).",
     inputSchema: {
       workflow: z.string().optional(),
-      template: z.enum(["portrait", "scene", "scene-real", "profile"]).optional(),
+      template: z.enum(["portrait", "scene", "scene-real", "scene-couple", "profile"]).optional(),
       prompt: z.string().optional(),
       negative_prompt: z.string().optional(),
       seed: z.number().int().optional(),
@@ -385,6 +385,14 @@ server.registerTool(
       filename: z.string().min(1).optional(),
       extraFiles: z.record(z.string(), z.string()).optional(),
       loras: z.array(z.object({
+        name: z.string(),
+        strength: z.number().min(-5).max(5),
+      })).optional(),
+      loras_left: z.array(z.object({
+        name: z.string(),
+        strength: z.number().min(-5).max(5),
+      })).optional(),
+      loras_right: z.array(z.object({
         name: z.string(),
         strength: z.number().min(-5).max(5),
       })).optional(),
@@ -440,6 +448,8 @@ server.registerTool(
               filename,
               extraFiles: input.extraFiles,
               loras: input.loras,
+              loras_left: input.loras_left,
+              loras_right: input.loras_right,
               ...(input.persona ? { persona: input.persona } : {}),
             }
       );
@@ -492,13 +502,24 @@ server.registerTool(
     description:
       "High-level image generation compatible with legacy service behavior. Uses ComfyUI template mode with default quality/trigger tags.",
     inputSchema: {
-      template: z.enum(["portrait", "scene", "scene-real", "profile"]).optional(),
-      prompt: z.string().min(1),
+      template: z.enum(["portrait", "scene", "scene-real", "scene-couple", "profile"]).optional(),
+      prompt: z.string().optional(),
+      prompt_left: z.string().optional(),
+      prompt_right: z.string().optional(),
+      position: z.enum(["half", "left-heavy", "right-heavy", "left-third", "center-third", "right-third", "half-overlap", "left-heavy-overlap", "right-heavy-overlap", "top-bottom", "top-heavy", "bottom-heavy"]).optional(),
       filename: z.string().optional(),
       seed: z.number().int().optional(),
       negative_prompt: z.string().optional(),
       use_defaults: z.boolean().optional(),
       loras: z.array(z.object({
+        name: z.string(),
+        strength: z.number().min(-5).max(5),
+      })).optional(),
+      loras_left: z.array(z.object({
+        name: z.string(),
+        strength: z.number().min(-5).max(5),
+      })).optional(),
+      loras_right: z.array(z.object({
         name: z.string(),
         strength: z.number().min(-5).max(5),
       })).optional(),
@@ -511,15 +532,88 @@ server.registerTool(
       const preset = getActivePreset(config);
       const defaultTemplate = preset?.default_template || COMFY_DEFAULT_TEMPLATE;
 
+      const isCouple = input.template === "scene-couple" || (input.prompt_left && input.prompt_right);
+      const workflow = isCouple ? "scene-couple" : (input.template || defaultTemplate);
+      const params = {};
+
+      if (isCouple) {
+        if (!input.prompt_left || !input.prompt_right) {
+          throw new Error("scene-couple requires both prompt_left and prompt_right.");
+        }
+        params.prompt_left = buildComfyPrompt(input.prompt_left, input.use_defaults !== false);
+        params.prompt_right = buildComfyPrompt(input.prompt_right, input.use_defaults !== false);
+
+        // Position presets: compute mask geometry for 1216x832
+        const w = 1216;
+        const h = 832;
+        const position = input.position || "half";
+
+        // Presets: { rw: region width, rh: region height, rx: right x, ry_l: left y, ry_r: right y }
+        // Overlap variants use wider regions so masks overlap in the center (soft blend via Attention Couple normalization)
+        const presets = {
+          // Horizontal splits
+          "half":                { rw: Math.round(w * 0.5),  rh: h, rx: Math.round(w * 0.5),  ry_l: 0, ry_r: 0 },
+          "left-heavy":          { rw: Math.round(w * 0.6),  rh: h, rx: Math.round(w * 0.4),  ry_l: 0, ry_r: 0 },
+          "right-heavy":         { rw: Math.round(w * 0.6),  rh: h, rx: Math.round(w * 0.6),  ry_l: 0, ry_r: 0 },
+          "left-third":          { rw: Math.round(w * 0.33), rh: h, rx: Math.round(w * 0.67), ry_l: 0, ry_r: 0 },
+          "center-third":        { rw: Math.round(w * 0.33), rh: h, rx: Math.round(w * 0.33), ry_l: 0, ry_r: 0 },
+          "right-third":         { rw: Math.round(w * 0.33), rh: h, rx: Math.round(w * 0.33), ry_l: 0, ry_r: 0 },
+          // Overlap variants (regions ~65% each, ~30% center overlap for soft blend)
+          "half-overlap":        { rw: Math.round(w * 0.65), rh: h, rx: Math.round(w * 0.35), ry_l: 0, ry_r: 0 },
+          "left-heavy-overlap":  { rw: Math.round(w * 0.7),  rh: h, rx: Math.round(w * 0.35), ry_l: 0, ry_r: 0 },
+          "right-heavy-overlap": { rw: Math.round(w * 0.7),  rh: h, rx: Math.round(w * 0.65), ry_l: 0, ry_r: 0 },
+          // Vertical splits (top = "left" prompt, bottom = "right" prompt)
+          "top-bottom":          { rw: w, rh: Math.round(h * 0.5),  rx: 0, ry_l: 0, ry_r: Math.round(h * 0.5) },
+          "top-heavy":           { rw: w, rh: Math.round(h * 0.6),  rx: 0, ry_l: 0, ry_r: Math.round(h * 0.4) },
+          "bottom-heavy":        { rw: w, rh: Math.round(h * 0.6),  rx: 0, ry_l: Math.round(h * 0.4), ry_r: 0 },
+        };
+        const p = presets[position];
+        params.mask_base_width = w;
+        params.mask_base_height = h;
+        params.mask_region_width = p.rw;
+        params.mask_region_height = p.rh;
+        params.mask_right_x = p.rx;
+        params.mask_left_y = p.ry_l;
+        params.mask_right_y = p.ry_r;
+
+        // Auto-inject positioning tags based on position preset
+        const positionTags = {
+          // Horizontal: left/right placement
+          "half":                { left: "on the left",  right: "on the right" },
+          "left-heavy":          { left: "on the left",  right: "on the right" },
+          "right-heavy":         { left: "on the left",  right: "on the right" },
+          "left-third":          { left: "on the left",  right: "on the right, center" },
+          "center-third":        { left: "on the left, center", right: "on the right, center" },
+          "right-third":         { left: "on the left, center", right: "on the right" },
+          // Overlap: same as horizontal but with facing cues
+          "half-overlap":        { left: "on the left, facing right",  right: "on the right, facing left" },
+          "left-heavy-overlap":  { left: "on the left, leaning right", right: "on the right, facing left" },
+          "right-heavy-overlap": { left: "on the left, facing right",  right: "on the right, leaning left" },
+          // Vertical: top/bottom placement
+          "top-bottom":          { left: "upper body, top of frame",  right: "lower body, bottom of frame" },
+          "top-heavy":           { left: "upper body, top of frame",  right: "lower body, bottom of frame" },
+          "bottom-heavy":        { left: "upper body, top of frame",  right: "lower body, bottom of frame" },
+        };
+        const tags = positionTags[position];
+        if (tags) {
+          params.prompt_left = params.prompt_left + ", " + tags.left;
+          params.prompt_right = params.prompt_right + ", " + tags.right;
+        }
+      } else {
+        if (!input.prompt) throw new Error("prompt is required for non-couple templates.");
+        params.prompt = buildComfyPrompt(input.prompt, input.use_defaults !== false);
+      }
+
+      params.negative_prompt = getComfyNegative(input.negative_prompt);
+      if (typeof input.seed === "number") params.seed = input.seed;
+
       const payload = withPersona({
-        workflow: input.template || defaultTemplate,
-        params: {
-          prompt: buildComfyPrompt(input.prompt, input.use_defaults !== false),
-          negative_prompt: getComfyNegative(input.negative_prompt),
-          ...(typeof input.seed === "number" ? { seed: input.seed } : {}),
-        },
+        workflow,
+        params,
         filename: deduplicateImageFilename(pickString(input.filename) || `comfyui_${Date.now()}.png`),
         loras: input.loras,
+        loras_left: input.loras_left,
+        loras_right: input.loras_right,
         ...(input.persona ? { persona: input.persona } : {}),
       });
       const data = await requestJson("POST", "/api/tools/comfyui/generate", payload);

@@ -14,6 +14,8 @@ export async function POST(req: Request) {
     filename?: string;
     extraFiles?: Record<string, string>;
     loras?: Array<{ name: string; strength: number }>;
+    loras_left?: Array<{ name: string; strength: number }>;
+    loras_right?: Array<{ name: string; strength: number }>;
     persona?: string; // For builder: generate directly into persona directory
     sessionId?: string;
   };
@@ -99,7 +101,9 @@ export async function POST(req: Request) {
         body.workflow!,
         body.params || {},
         targetDir,
-        body.loras
+        body.loras,
+        body.loras_left,
+        body.loras_right
       ) as Record<string, unknown>;
     }
   } catch (err) {
@@ -116,7 +120,7 @@ export async function POST(req: Request) {
       try {
         const result = body.raw
           ? await client.generateRaw({ prompt: body.raw, filename: safeName, sessionDir: targetDir, extraFiles: body.extraFiles })
-          : await client.generate({ workflow: body.workflow!, params: body.params || {}, filename: safeName, sessionDir: targetDir, extraFiles: body.extraFiles, loras: body.loras });
+          : await client.generate({ workflow: body.workflow!, params: body.params || {}, filename: safeName, sessionDir: targetDir, extraFiles: body.extraFiles, loras: body.loras, loras_left: body.loras_left, loras_right: body.loras_right });
         if (result.success) {
           console.log(`[comfyui] Generated (gpu-manager): ${result.filepath}`);
         } else {
