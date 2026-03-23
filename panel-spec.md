@@ -456,6 +456,9 @@ AI가 받게 되는 메시지:
 | `__panelBridge.runTool(name, args)` | 서버사이드 커스텀 툴을 실행한다. `name`은 `tools/` 폴더 내 `.js` 파일명 (확장자 제외). `args`는 툴에 전달할 인자 객체. 반환값은 `{ ok, result }`. |
 | `__panelBridge.showPopup(template, opts?)` | 팝업 이펙트를 큐에 추가한다. `template`은 `popups/` 폴더 내 `.html` 파일명 (확장자 제외). `opts`는 `{ duration?: number, vars?: object }`. 현재 큐에 append되어 순차 재생된다. |
 | `__panelBridge.showToast(text, opts?)` | 토스트 알림을 표시한다. 화면 우측 하단에 비차단형으로 나타나며, 여러 개가 스택으로 쌓인다. 클릭하면 즉시 닫힌다. `opts`는 `{ duration?: number }` (기본 3000ms). CSS 변수 `--toast-bg`, `--toast-color`, `--toast-border`, `--toast-shadow`로 스타일 커스터마이즈 가능. |
+| `__panelBridge.openModal(name, mode?)` | 모달/독 패널을 연다. `name`은 패널 이름 (숫자 프리픽스 제외, 예: `"schedule"`). `mode`는 `"dismissible"` (기본) 또는 `true` (필수, 닫기 불가). 모달 그룹이 설정된 경우 같은 그룹의 다른 모달은 자동으로 닫힌다. |
+| `__panelBridge.closeModal(name)` | 모달/독 패널을 닫는다. |
+| `__panelBridge.closeAllModals(except?)` | 모든 모달을 닫는다. `except`는 닫지 않을 패널 이름 (문자열 또는 배열). |
 | `__panelBridge.on(event, handler)` | 브릿지 이벤트를 구독한다. 반환값은 구독 해제 함수. 이벤트 목록은 아래 "브릿지 이벤트" 섹션 참조. |
 | `__panelBridge.data` | 전체 템플릿 컨텍스트 객체 (읽기 전용). `variables.json` 값 + 커스텀 데이터 파일이 합쳐져 있다. |
 | `__panelBridge.sessionId` | 현재 세션 ID (읽기 전용) |
@@ -488,6 +491,26 @@ AI가 받게 되는 메시지:
 ```
 
 `on()`의 반환값은 구독 해제 함수다. 패널이 재렌더링되면 스크립트도 다시 실행되므로, `autoRefresh: false`가 아닌 패널에서는 이벤트가 중복 등록될 수 있다. 필요하면 반환된 함수로 이전 구독을 해제하라.
+
+### 이미지 클릭 동작
+
+패널 내 `<img>` 요소를 클릭하면 기본적으로 풀스크린 이미지 뷰어(ImageModal)가 열린다. 커스텀 클릭 핸들링이 필요한 이미지에는 `data-no-zoom` 속성을 추가하면 기본 zoom 핸들러를 건너뛴다. 이미지 자체 또는 부모 요소에 설정할 수 있다.
+
+```html
+<!-- 기본: 클릭 시 풀스크린 뷰어 -->
+<img src="scene.png" />
+
+<!-- 커스텀 핸들링: zoom 비활성화 -->
+<img src="icon.png" data-no-zoom onclick="selectItem()" />
+
+<!-- 컨테이너 단위 -->
+<div data-no-zoom>
+  <img src="a.png" onclick="handle1()" />
+  <img src="b.png" onclick="handle2()" />
+</div>
+```
+
+이미지 링크(`<a>` 태그)에도 동일하게 적용된다.
 
 ### 세션 이미지 리소스 사용
 
@@ -1135,10 +1158,33 @@ $PANEL:거래$
 
 - `"left"` — 좌측 사이드바에 표시된다.
 - `"right"` — 우측 사이드바에 표시된다.
-- `"modal"` — 화면 중앙 오버레이로 표시된다. `__modals`로 on/off 제어. `true`이면 필수(닫기 불가), `"dismissible"`이면 자유롭게 닫을 수 있다. 여러 모달이 활성화되면 z-index가 증가하며 겹쳐 표시된다.
+- `"modal"` — 화면 중앙 오버레이로 표시된다. `__modals`로 on/off 제어. `true`이면 필수(닫기 불가), `"dismissible"`이면 자유롭게 닫을 수 있다. 여러 모달이 활성화되면 z-index가 증가하며 겹쳐 표시된다. ESC 키는 최상위 dismissible 모달만 닫는다. `__panelBridge.sendMessage()`는 모달 모드와 무관하게 항상 모달을 자동으로 닫는다.
 - `"dock"` / `"dock-bottom"` — 채팅 영역과 입력창 사이에 전체 너비로 표시된다. `__modals`로 on/off 제어 (modal과 동일). 같은 방향의 여러 dock 패널이 활성화되면 탭으로 전환된다.
 - `"dock-left"` / `"dock-right"` — 채팅 스크롤 영역 안에서 좌/우 하단에 float 형태로 표시된다. 문서에서 이미지 옆으로 텍스트가 밀리듯, 패널과 수직으로 겹치는 메시지들은 자동으로 너비가 줄어들어 패널 옆으로 배치된다. 패널 위쪽 메시지는 전체 너비를 사용한다. `position: sticky`로 스크롤 위치와 무관하게 항상 하단에 고정된다.
 - **지정 없음** — 인라인. 채팅 본문 내 `$PANEL:이름$` 태그로 삽입된다.
+
+### 모달 그룹 (`layout.json`의 `panels.modalGroups`)
+
+동시에 열리면 안 되는 모달들을 그룹으로 묶을 수 있다. 한 그룹 내에서 `openModal()`로 모달을 열면 같은 그룹의 다른 모달은 자동으로 닫힌다.
+
+```json
+{
+  "panels": {
+    "modalGroups": {
+      "gameplay": ["schedule", "advance", "competition"],
+      "inventory": ["shop", "storage"]
+    }
+  }
+}
+```
+
+- 그룹에 속하지 않는 모달은 독립적으로 동작한다
+- `__panelBridge.openModal()` 및 `/api/sessions/[id]/modals` 엔드포인트 모두 그룹 로직을 적용한다
+- `updateVariables({ __modals })` 직접 호출 시에는 그룹 로직이 적용되지 않으므로, `openModal()` / `closeModal()`을 사용하는 것을 권장한다
+
+### 레이아웃 실시간 업데이트
+
+`layout.json` 파일은 `panel-engine.ts`의 `fs.watch`로 감시된다. 파일이 변경되면 `layout:update` WebSocket 이벤트가 브로드캐스트되어, 프론트엔드에서 세션 재진입 없이 즉시 반영된다. `__panelBridge.updateLayout(patch)` 호출 시에도 동일한 경로로 전파된다.
 
 ### dock 크기 설정 (`layout.json`의 `panels`)
 

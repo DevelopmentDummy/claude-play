@@ -30,12 +30,14 @@ export default function PanelSlot({ name, html, sessionId, panelData, onSendMess
       shadowRef.current.addEventListener("click", (e: Event) => {
         const target = e.target as HTMLElement;
         if (target.tagName === "IMG") {
+          if (target.hasAttribute("data-no-zoom") || target.closest("[data-no-zoom]")) return;
           const src = (target as HTMLImageElement).src;
           if (src) { e.preventDefault(); setModalSrc(src); }
           return;
         }
         const anchor = target.closest("a");
         if (anchor) {
+          if (anchor.hasAttribute("data-no-zoom")) return;
           const href = anchor.getAttribute("href") || "";
           if (/\.(png|jpe?g|webp|gif|bmp|svg)(\?|$)/i.test(href)) {
             e.preventDefault();

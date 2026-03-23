@@ -55,7 +55,7 @@ Python FastAPI child process (port 3342) for serial GPU task queueing. Prevents 
 
 ### MCP Server
 
-`src/mcp/claude-bridge-mcp-server.mjs` — Per-session MCP server spawned as a child process by Claude/Codex. Configured via `.mcp.json` (Claude) or `.codex/config.toml` (Codex) in the session directory. Provides `claude_bridge` tools for AI to interact with the bridge (image generation, panel updates, policy review, custom tool execution, etc.). Authenticates to Bridge API via internal `x-bridge-token` header. Key tool: `run_tool` — executes custom tool scripts (`tools/*.js`) from the session directory via `/api/sessions/{id}/tools/{name}`, enriches response with a state snapshot formatted by `hint-rules.json` (when present).
+`src/mcp/claude-bridge-mcp-server.mjs` — Per-session MCP server spawned as a child process by Claude/Codex. Configured via `.mcp.json` (Claude) or `.codex/config.toml` (Codex) in the session directory. Provides `claude_bridge` tools for AI to interact with the bridge (image generation, panel updates, policy review, custom tool execution, etc.). Authenticates to Bridge API via internal `x-bridge-token` header.
 
 ### API Routes (`src/app/api/`)
 
@@ -103,20 +103,18 @@ Optional admin password auth via `ADMIN_PASSWORD` env var. MCP server requests i
 | `/builder/[name]` | `builder/[name]/page.tsx` | Persona builder UI |
 | `/chat/[sessionId]` | `chat/[sessionId]/page.tsx` | Main session chat UI with panels |
 
-ChatPage manages WebSocket subscription, layout state, OOC visibility, and renders ChatMessages + ChatInput + PanelArea + SyncModal. Layout (panel position, size, theme colors) is driven by `layout.json` and updated in real-time via `layout:update` WebSocket events.
-
 ### Key Frontend Components
 
 | Component | Role |
 |-----------|------|
-| `ChatMessages.tsx` | Message rendering with `<dialog_response>` extraction, inline images/panels, infinite scroll (loads until 10 non-OOC messages), per-message OOC toggle on hover. |
-| `ChatInput.tsx` | Message input with OOC mode toggle (also controls OOC view visibility), `*` insert button. OOC mode auto-prepends `OOC:` to messages. |
-| `StatusBar.tsx` | Navigation bar with model selector, Sync button, status indicator (connected/streaming/compacting/disconnected). Responsive with `flex-wrap` for mobile. |
-| `SyncModal.tsx` | Bidirectional sync modal with direction toggle (persona→session / session→persona), per-element selection, diff badges, and variables 3-mode (merge/overwrite/skip) for reverse sync. |
-| `ImageModal.tsx` | Fullscreen image viewer via `createPortal` (escapes `backdrop-blur` containment). |
-| `PanelArea.tsx` / `PanelSlot.tsx` | Side panel rendering with Shadow DOM CSS isolation. |
-| `ModalPanel.tsx` | Modal overlay panel via `createPortal`. Controlled by `__modals` in `variables.json`. Supports required (no dismiss) and dismissible modes. Stacks with incremental z-index. |
-| `VoiceSettings.tsx` | Per-persona voice configuration — TTS enable/disable, reference audio upload/preview, voice design prompt, language/speed settings. |
+| `ChatMessages.tsx` | Message rendering with `<dialog_response>` extraction, inline images/panels, infinite scroll. |
+| `ChatInput.tsx` | Message input with OOC mode toggle, `*` insert button. |
+| `StatusBar.tsx` | Navigation bar with model selector, Sync button, status indicator. |
+| `SyncModal.tsx` | Bidirectional sync modal with direction toggle, per-element selection, diff badges. |
+| `ImageModal.tsx` | Fullscreen image viewer via `createPortal`. |
+| `PanelSlot.tsx` | Side panel rendering with Shadow DOM CSS isolation. |
+| `ModalPanel.tsx` | Modal overlay panel via `createPortal`. |
+| `VoiceSettings.tsx` | Per-persona voice configuration UI. |
 
 ## Data Model
 
@@ -125,6 +123,7 @@ ChatPage manages WebSocket subscription, layout state, OOC visibility, and rende
 ```
 data/
 ├── tools/{name}/skills/             # Global tool skills auto-copied to all sessions
+├── styles/                          # Writing style presets
 ├── personas/{name}/                 # Persistent persona templates
 │   ├── persona.md                   # Character definition (first line = display name)
 │   ├── worldview.md                 # World/setting description
@@ -144,8 +143,9 @@ data/
 │   ├── (cloned persona files)
 │   ├── CLAUDE.md                    # Assembled from session-instructions + profile + opening
 │   ├── AGENTS.md                    # Same content as CLAUDE.md (for Codex CLI)
-│   ├── session.json                 # Metadata (persona, title, claudeSessionId, codexThreadId, model)
-│   ├── chat-history.json            # Persisted chat history (includes OOC messages with ooc flag)
+│   ├── GEMINI.md                    # Same content as CLAUDE.md (for Gemini CLI)
+│   ├── session.json                 # Metadata (persona, title, sessionId, model)
+│   ├── chat-history.json            # Persisted chat history
 │   ├── memory.md                    # Session memory (written by AI)
 │   ├── .claude/settings.json        # Permission sandbox
 │   ├── .mcp.json                    # MCP config for Claude (includes auth token)
@@ -155,53 +155,107 @@ data/
 └── profiles/{slug}.json             # User profiles (name, description, isPrimary)
 ```
 
-## Key Conventions
+## Shared Document Map
 
-- **Setup wizard**: First-time setup via `node setup.js` (CLI) + `/setup` web wizard. `data/.setup-complete` flag controls redirect: when absent, all routes redirect to `/setup` (handled in `server.ts`, not middleware). Setup API endpoints (`/api/setup/*`) self-guard via `requireSetupAuth()` — open during initial setup, require admin auth after completion.
-- **Port auto-calculation**: `TTS_PORT` defaults to `PORT+1`, `GPU_MANAGER_PORT` defaults to `PORT+2`. Explicit env vars override.
-- **`<dialog_response>` tags**: Claude wraps RP dialogue in these. Both backend (`services.ts`) and frontend (`ChatMessages.tsx`) strip them to show only the RP content. Tool calls and meta-commentary are hidden from the user.
-- **`<choice>` tags**: AI-generated player choices. Extracted for button display, preserved in chat history across reloads. Cleared when user sends any new message.
-- **Special tokens**: `$IMAGE:path$` and `$PANEL:name$` tokens are extracted from Claude's output for inline image display and panel references.
-- **Panel numbering**: Panel files like `01-status.html` — numeric prefix controls display order and is stripped from the UI name.
-- **CLAUDE.md / AGENTS.md dual write**: Both instruction files are generated with identical content for Claude/Codex compatibility.
-- **CLAUDE.md dual use**: Builder sessions use `builder-prompt.md` as CLAUDE.md. RP sessions start from `session-instructions.md` and then append shared service guides (`session-primer.yaml`, `session-shared.md`). These are completely different prompts.
-- **Session resume**: Claude session IDs and Codex thread IDs are saved to `session.json` and used for resume on reconnect. If resume fails, auto-retries without resume.
-- **OOC messages**: Messages prefixed with `OOC:` are out-of-character. Saved to history with `ooc: true` flag. Hidden by default in chat view; visible when OOC mode is toggled on via ChatInput. Per-message OOC flag can be toggled retroactively via hover button.
-- **MCP authentication**: Internal token generated per server process, passed via env vars in `.mcp.json` / `.codex/config.toml`. MCP server sends `x-bridge-token` header. Used for internal API validation only.
-- **MCP bootstrap**: Claude is launched with `--mcp-config <cwd>/.mcp.json --strict-mcp-config` when that file exists.
-- **Permission sandboxing**: Each session has `.claude/settings.json` restricting Claude tools to the session directory.
-- **Panel placement types**: `layout.json` `panels.placement` supports `"left"`, `"right"`, `"modal"`, `"dock"`. Panels without placement are inline.
-- **Modal panels**: Panels with `placement: "modal"` render as centered overlays. Visibility controlled by `__modals` in `variables.json`. Value `true` = required (no ESC/X/backdrop dismiss), `"dismissible"` = freely closable. `__panelBridge.sendMessage()` always auto-closes regardless. Multiple modals stack with incremental z-index; ESC only affects topmost dismissible modal. **Preferred API**: Use `__panelBridge.openModal(name, mode)` / `closeModal(name)` instead of raw `updateVariables({ __modals })` — these methods call `/api/sessions/[id]/modals` which applies modal group logic.
-- **Modal groups**: `layout.json` `panels.modalGroups` defines mutually exclusive modal sets (e.g., `"gameplay": ["schedule", "advance", "competition"]`). When `openModal()` is called, other modals in the same group are auto-closed. Modals not in any group operate independently. The `/modals` endpoint and tools route both apply group logic; legacy `updateVariables({ __modals })` still works but without group awareness.
-- **Dock panels**: Panels with `placement: "dock"` or `"dock-bottom"` render between chat messages and input area (full width). `"dock-left"` / `"dock-right"` float inside the chat scroll area with `position: sticky` — always visible at the bottom corner, and nearby messages shrink to make room (like CSS float/text-wrap around an image). Visibility controlled by `__modals` in `variables.json` (same as modal panels). Multiple dock panels in same direction show as tabs. `panels.dockHeight` (or legacy `panels.dockSize`) in layout.json controls max-height (px). `panels.dockWidth` controls width (px); if omitted, auto-sizes with min 280px / max 50%.
-- **Panel autoRefresh**: `layout.json` `panels.autoRefresh` controls per-panel auto-refresh behavior. Default is `true` (refresh on every variable/data change and AI turn end). Set to `false` to disable automatic re-rendering — the panel will only re-render when its own HTML template file is modified. Example: `{ "panels": { "autoRefresh": { "scene": false } } }`. Useful for panels with animations or effects that would be disrupted by frequent re-renders.
-- **Panel bridge methods**: `__panelBridge.sendMessage(text)` sends chat message immediately. `__panelBridge.fillInput(text)` inserts text at cursor in input box without sending. `__panelBridge.updateVariables(patch)` patches variables.json. `__panelBridge.updateData(fileName, patch)` patches custom data files (e.g., `inventory.json`). `__panelBridge.updateLayout(patch)` deep-merges patch into layout.json (e.g., `{ panels: { dockWidth: 500 } }`). `__panelBridge.openModal(name, mode?)` opens a modal with group-aware auto-close. `__panelBridge.closeModal(name)` closes a modal. `__panelBridge.closeAllModals(except?)` closes all modals. `__panelBridge.queueEvent(header)` queues an event header to prepend to the next user message (AI sees it, history doesn't include it; skipped for OOC messages). `__panelBridge.runTool(toolName, args)` executes server-side custom tool scripts. `__panelBridge.showToast(text, opts?)` shows a non-blocking toast notification in bottom-right corner (opts: `{ duration?: number }`, default 3000ms; CSS vars: `--toast-bg`, `--toast-color`, `--toast-border`, `--toast-shadow`). `__panelBridge.on(event, handler)` subscribes to bridge events (`turnStart`, `turnEnd`, `imageUpdated`), returns unsubscribe function.
-- **Custom panel tools**: Per-persona server-side JavaScript scripts in `tools/` dir. CommonJS format (`module.exports = async function(context, args)`). Context provides `{ variables, data, sessionDir }`. Return `{ variables, data }` patches to auto-apply. Executed in-process via dynamic `import()` with 10s timeout. Synced bidirectionally like other persona files.
-- **MCP `run_tool`**: Session AI calls custom tools via `mcp__claude_bridge__run_tool` instead of curl/bash. Supports single (`{ tool, args }`) and chained (`{ chain: [{tool, args}, ...] }`) execution. Response includes tool results plus an auto-generated state snapshot (formatted by `hint-rules.json` when present). Snapshot includes `display` (formatted value) and `hint` (narrative hint text) per variable.
-- **`hint-rules.json`**: Optional per-persona file defining snapshot formatting rules. Each key maps a variable name to `{ format, max_key, tier_mode, tiers }`. `format` supports `{value}`, `{max}`, `{pct}` placeholders. `tiers` maps value ranges to narrative hint strings. Common variables (`location`, `time`, `outfit`, etc.) are auto-included in snapshot without rules.
-- **Admin authentication**: Optional via `ADMIN_PASSWORD` env var. HMAC-SHA256 signed tokens in httpOnly cookies (90-day expiry). Next.js Edge Runtime middleware. Rate-limited login (5 attempts/min per IP). MCP server bypasses via `x-bridge-token` header. If `ADMIN_PASSWORD` not set, auth is disabled.
-- **Shadow DOM isolation**: PanelSlot and ModalPanel render panel HTML inside Shadow DOM to isolate CSS.
-- **Image modal portal**: ImageModal uses `createPortal(document.body)` to escape `backdrop-blur` CSS containment from chat bubbles.
-- **Windows process killing**: Uses `taskkill /T /F /PID` because `shell: true` wraps the process in cmd.exe.
-- **Global singleton pattern**: `services.ts` and `ws-server.ts` use `globalThis[key]` to share state across Next.js hot-reload module instances. Services are a global singleton via `getServices()`.
-- **System JSON exclusion**: Files like `session.json`, `layout.json`, `chat-history.json` are excluded from custom data file loading in both `PanelEngine` and `SessionManager`.
-- **Real-time layout updates**: `panel-engine.ts` watches `layout.json` via `fs.watch` and broadcasts `layout:update` WebSocket events. Changes reflect immediately without session re-entry.
-- **Compacting status**: Claude CLI `system.status.compacting` events are forwarded to frontend and shown as blue pulsing indicator in StatusBar.
-- **Voice config**: `voice.json` in persona/session dir configures per-character TTS. Fields: `enabled`, `ttsProvider` ("edge"|"local"|"comfyui"), `referenceAudio`, `referenceText`, `design`, `language`, `modelSize` ("0.6B"/"1.7B"), `voiceFile`, `chunkDelay`, `edgeVoice`, `edgeRate`, `edgePitch`. Copied to session on creation.
-- **Voice referenceText**: 레퍼런스 오디오의 대본(transcript). 입력 시 ICL 모드로 정확한 음성 클로닝, 비우면 x-vector only (낮은 품질). 레퍼런스 오디오에서 실제로 말하는 내용과 정확히 일치해야 함. 캐릭터의 성격과 말투를 잘 드러내는 3~30초 분량의 대사를 레퍼런스 오디오로 녹음하고, 그 대사를 referenceText에 기입할 것.
-- **TTS providers**: Edge TTS (cloud, free) via `tts-server.mjs`, Local TTS via GPU Manager (Qwen3-TTS direct inference). `ttsProvider: "local"` or `"comfyui"` (legacy alias) routes through GPU Manager. Output saved as MP3 to session `audio/` dir.
-- **GPU Manager**: Python child process auto-spawned by `server.ts`. Serial queue prevents VRAM conflicts. Health check on startup (30s timeout). Auto-restarts on crash (max 3, 10s backoff). `GPU_MANAGER_PORT` (default 3342), `GPU_MANAGER_PYTHON` env vars.
-- **Audio files**: TTS output saved to `audio/` subdir in session. Served via existing `/api/sessions/[id]/files` route. `audio:ready` WebSocket event notifies frontend with URL and messageId.
+이 프로젝트는 **루트 레벨 공용 문서**들이 빌더/세션 작업 디렉토리로 전파되는 구조다. 각 문서의 역할과 독자를 이해해야 변경 시 올바른 곳을 업데이트할 수 있다.
+
+| Document | Audience | Purpose | Propagation |
+|----------|----------|---------|-------------|
+| `builder-prompt.md` | Builder AI | 페르소나 빌더 워크플로우, 파일 생성 명세 | 빌더 세션 시작 시 → 페르소나 디렉토리의 `CLAUDE.md` / `AGENTS.md` / `GEMINI.md`로 복사 |
+| `builder-primer.yaml` | Builder AI | 빌더 모드 시스템 프롬프트 래퍼 | 빌더 세션 시작 시 `active_system_prompt` 추출 → AI 런타임 시스템 프롬프트로 전달 |
+| `session-primer.yaml` | Session AI (Claude) | RP 세션 시스템 프롬프트 (캐릭터 몰입, 성인 콘텐츠 허용, 가이드라인) | 세션 Open 시 `active_system_prompt` 추출 → AI 런타임 시스템 프롬프트로 전달 (디스크에 쓰이지 않음) |
+| `session-primer-codex.yaml` | Session AI (Codex) | Codex용 RP 세션 시스템 프롬프트 | 세션 Open 시 → `.codex/model-instructions.md`로 작성 |
+| `session-primer-gemini.yaml` | Session AI (Gemini) | Gemini용 RP 세션 시스템 프롬프트 | 세션 Open 시 → `GEMINI.md`에 병합 |
+| `session-shared.md` | Session AI (all) | 공용 세션 가이드 (응답 형식, OOC, STT, 이미지 생성, 선택지 시스템) | 세션 Open 시 primer와 결합 → AI 런타임 시스템 프롬프트로 전달 |
+| `panel-spec.md` | Builder/Session AI | 패널 시스템 기술 레퍼런스 (Handlebars, panelBridge, placement, tools 등) | 빌더 세션 시작 및 RP 세션 Open 시 → 작업 디렉토리로 복사 (매번 최신본으로 갱신) |
+
+### Document Assembly Flow
+
+**빌더 세션** (`POST /api/builder/start`):
+```
+builder-prompt.md → 페르소나 디렉토리 CLAUDE.md / AGENTS.md / GEMINI.md
+builder-primer.yaml → AI 런타임 시스템 프롬프트
+panel-spec.md → 페르소나 디렉토리에 복사 (참조용)
+```
+
+**RP 세션 생성** (`POST /api/sessions`):
+```
+persona/session-instructions.md → 세션 CLAUDE.md / AGENTS.md / GEMINI.md
+  + style section (style.json이 있으면)
+  + profile section (프로필이 있으면)
+  + opening section (opening.md가 있으면)
+persona files (panels/, tools/, variables.json, *.json, ...) → 세션 디렉토리에 복사
+panel-spec.md → 세션 디렉토리에 복사
+global tool skills (data/tools/*/skills/) → .claude/skills/ + .agents/skills/
+```
+
+**RP 세션 Open** (`POST /api/sessions/[id]/open`):
+```
+session-primer{-codex,-gemini}.yaml + session-shared.md → AI 런타임 시스템 프롬프트 (에페메럴)
+panel-spec.md → 세션 디렉토리에 갱신 (최신본)
+global tool skills → 세션 skills 디렉토리에 갱신
+```
+
+## Change Propagation Rules
+
+코드 변경 시 아래 체크리스트를 따라 관련 문서를 함께 업데이트해야 한다.
+
+### 패널 시스템 변경
+
+| 변경 내용 | 업데이트 대상 |
+|-----------|--------------|
+| 패널 렌더링 동작 변경 (Shadow DOM, 클릭 핸들러, CSS 격리 등) | `panel-spec.md` |
+| panelBridge 메서드 추가/변경 | `panel-spec.md` |
+| Handlebars 헬퍼 추가/변경 | `panel-spec.md` |
+| layout.json 스키마 변경 (placement, theme, 새 필드) | `panel-spec.md` |
+| 패널 관련 WebSocket 이벤트 변경 | `panel-spec.md` |
+| 패널 관련 API 엔드포인트 변경 | `panel-spec.md` + 이 문서 (API Routes 표) |
+
+### 세션 런타임 변경
+
+| 변경 내용 | 업데이트 대상 |
+|-----------|--------------|
+| 응답 형식 규칙 변경 (dialog_response, choice, 토큰 등) | `session-shared.md` |
+| OOC 동작 변경 | `session-shared.md` |
+| 이미지 생성 워크플로우 변경 | `session-shared.md` |
+| MCP 도구 인터페이스 변경 | `session-shared.md` + `src/mcp/claude-bridge-mcp-server.mjs` |
+| 세션 AI 시스템 프롬프트 변경 | `session-primer.yaml` (+ `-codex` / `-gemini` 변형) |
+
+### 빌더 변경
+
+| 변경 내용 | 업데이트 대상 |
+|-----------|--------------|
+| 페르소나 파일 스키마 변경 (새 파일 추가, 필드 변경) | `builder-prompt.md` |
+| 빌더 워크플로우 변경 | `builder-prompt.md` |
+| 빌더 AI 시스템 프롬프트 변경 | `builder-primer.yaml` |
+| voice.json 스키마 변경 | `builder-prompt.md` (음성 설정 섹션) |
+
+### 서비스 인프라 변경
+
+| 변경 내용 | 업데이트 대상 |
+|-----------|--------------|
+| API 엔드포인트 추가/변경 | 이 문서 (API Routes 표) |
+| 환경 변수 추가/변경 | 이 문서 (Environment Variables) |
+| 세션 라이프사이클 변경 | 이 문서 (Session Lifecycle) |
+| MCP 서버 인증/설정 변경 | 이 문서 (MCP Server, Infrastructure Conventions) |
+| 프론트엔드 페이지/컴포넌트 추가 | 이 문서 (Frontend Pages/Components) |
+
+### 스킬 전파
+
+| 변경 내용 | 업데이트 대상 |
+|-----------|--------------|
+| `data/tools/{name}/skills/` 글로벌 스킬 변경 | 변경 즉시 반영 안 됨 — 세션 Open 시 자동 갱신 (`refreshToolSkills()`) |
+| 스킬 내 `{{PORT}}` 플레이스홀더 | 세션 Open 시 현재 서버 포트로 치환됨 |
 
 ## Session Lifecycle
 
-1. **Create**: `POST /api/sessions` — Copies persona dir → session dir, assembles CLAUDE.md + AGENTS.md, writes runtime configs (`.claude/settings.json`, `.mcp.json`, `.codex/config.toml`)
-2. **Open**: `POST /api/sessions/[id]/open` — Spawns AI process (Claude or Codex based on model/provider), starts PanelEngine watcher. No automatic persona sync (manual via Sync button).
-3. **Chat**: WebSocket `chat:send` or `POST /api/chat/send` — Pipes user message to AI stdin, streams NDJSON response events back via WebSocket
-4. **Accumulate**: `services.ts` collects `text_delta` stream events into segments, detects tool uses, extracts dialog + choices on `result` event, saves to chat history
-5. **Panel refresh**: At end of each AI turn, `PanelEngine.reload()` re-reads all data files and re-renders panels
-6. **Sync** (manual): `POST /api/sessions/[id]/sync` — bidirectional. Forward (persona→session) auto-sends OOC notification to CLI. Reverse (session→persona) writes back to persona template without notification. Supports custom data files, character-tags, and variables with merge/overwrite/skip modes.
-7. **Leave/Disconnect**: WebSocket `session:leave` or last client disconnect (after 5s grace) kills AI process and stops panel engine
+1. **Create**: `POST /api/sessions` — 페르소나 디렉토리 → 세션 디렉토리 복사, CLAUDE.md/AGENTS.md/GEMINI.md 조립, 런타임 설정 파일 생성
+2. **Open**: `POST /api/sessions/[id]/open` — AI 프로세스 spawn, PanelEngine 시작, panel-spec.md 및 글로벌 스킬 갱신
+3. **Chat**: WebSocket `chat:send` or `POST /api/chat/send` — 사용자 메시지를 AI stdin으로 전달, NDJSON 스트리밍 응답
+4. **Accumulate**: `services.ts`에서 `text_delta` 이벤트를 수집, dialog/choice 추출, 히스토리 저장
+5. **Panel refresh**: AI 턴 종료 시 `PanelEngine.reload()`로 데이터 파일 재로드 및 패널 재렌더링
+6. **Sync** (수동): `POST /api/sessions/[id]/sync` — 양방향. Forward(페르소나→세션)는 OOC 알림 전송, Reverse(세션→페르소나)는 페르소나 템플릿에 역기록
+7. **Leave/Disconnect**: 마지막 클라이언트 연결 해제 후 5초 유예 → AI 프로세스 종료, PanelEngine 중지
 
 ## Dual Runtime (Claude / Codex)
 
@@ -209,9 +263,22 @@ data/
 - Claude: `claude -p` persistent process, NDJSON streaming
 - Codex: `codex app-server` persistent JSON-RPC 2.0 over stdin/stdout
 - Both share same EventEmitter interface (`message/status/error/sessionId`)
-- Instruction files: `CLAUDE.md` (Claude) + `AGENTS.md` (Codex) generated in parallel
+- Instruction files: `CLAUDE.md` (Claude) + `AGENTS.md` (Codex) + `GEMINI.md` (Gemini) generated in parallel
 - MCP config: `.mcp.json` (Claude) + `.codex/config.toml` (Codex)
 - Builder mode supports service switching (Claude↔Codex)
+
+## Infrastructure Conventions
+
+- **Setup wizard**: `node setup.js` (CLI) + `/setup` web wizard. `data/.setup-complete` flag controls redirect.
+- **Port auto-calculation**: `TTS_PORT` defaults to `PORT+1`, `GPU_MANAGER_PORT` defaults to `PORT+2`.
+- **MCP authentication**: Internal token per server process → `.mcp.json` / `.codex/config.toml` env vars → `x-bridge-token` header.
+- **MCP bootstrap**: Claude launched with `--mcp-config <cwd>/.mcp.json --strict-mcp-config`.
+- **Permission sandboxing**: `.claude/settings.json` per session restricts Claude tools to session directory.
+- **Admin authentication**: Optional via `ADMIN_PASSWORD`. HMAC-SHA256 tokens in httpOnly cookies (90-day). Rate-limited login (5/min per IP). MCP server bypasses via `x-bridge-token`.
+- **Global singleton pattern**: `services.ts` and `ws-server.ts` use `globalThis[key]` for HMR-safe state sharing.
+- **Windows process killing**: Uses `taskkill /T /F /PID` because `shell: true` wraps in cmd.exe.
+- **GPU Manager**: Python child process auto-spawned by `server.ts`. Serial queue, health check (30s timeout), auto-restart (max 3, 10s backoff).
+- **TTS dual provider**: Edge TTS (cloud, `tts-server.mjs`) + Local TTS (GPU Manager, Qwen3-TTS). Output saved as MP3 to session `audio/` dir. `audio:ready` WebSocket event notifies frontend.
 
 ## Environment Variables
 

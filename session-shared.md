@@ -146,6 +146,23 @@ mcp__claude_bridge__run_tool({
 - `snapshot`: 도구 실행 후의 현재 전체 상태 스냅샷 (`hint-rules.json`이 있을 때만)
   - `display`: 포매팅된 수치 표시
   - `hint`: 수치 구간에 대응하는 서사 힌트 텍스트
+  - `location`, `time`, `outfit` 등 공통 변수는 `hint-rules.json` 없이도 자동으로 스냅샷에 포함된다
+
+**`hint-rules.json` 구조:** 각 키는 변수명이며, 스냅샷 포매팅 규칙을 정의한다.
+```json
+{
+  "hp": {
+    "format": "{value}/{max} ({pct}%)",
+    "max_key": "hp_max",
+    "tier_mode": "pct",
+    "tiers": { "0": "빈사 상태", "25": "심각한 부상", "50": "경미한 부상", "75": "건강함" }
+  }
+}
+```
+- `format`: 표시 형식. `{value}`, `{max}`, `{pct}` 플레이스홀더 사용
+- `max_key`: 최대값을 참조할 변수명 (퍼센트 계산용)
+- `tier_mode`: `"pct"` (퍼센트 기준) 또는 `"value"` (절대값 기준)
+- `tiers`: 값 구간 → 힌트 텍스트 매핑. 해당 값 이상인 가장 높은 구간이 선택된다
 
 **서사 반영 원칙:**
 - `result.hints`와 `result.warnings`를 서사에 자연스럽게 녹여라
