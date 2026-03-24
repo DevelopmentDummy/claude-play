@@ -152,8 +152,11 @@ function handleMessage(
       const silent = !!msg.silent;
 
       if (silent) {
-        // Silent mode: send to AI only — no history, no broadcast, no event flush
-        instance.claude.send(text);
+        // Silent mode: send to AI only — no history, no broadcast
+        // Still flush pending event headers so they reach the AI
+        const eventHeaders = instance.flushEvents();
+        const aiText = `${eventHeaders}${eventHeaders ? "\n" : ""}${text}`;
+        instance.claude.send(aiText);
         break;
       }
 
