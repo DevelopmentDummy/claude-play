@@ -135,7 +135,7 @@ export default function InlineImage({ sessionId, personaName, path: imgPath, onR
         <img
           src={src}
           alt={imgPath}
-          className="max-w-full rounded-lg max-h-[400px] object-contain hover:opacity-90 transition-opacity"
+          className="max-w-full rounded-lg max-h-[600px] object-contain hover:opacity-90 transition-opacity"
           onLoad={handleImageLoad}
         />
       </div>
