@@ -73,7 +73,8 @@ export async function POST(req: Request) {
 
   const seed = Math.floor(Math.random() * 2 ** 32);
 
-  wsBroadcast("audio:status", { status: "generating", messageId, totalChunks });
+  const wsFilter = { sessionId };
+  wsBroadcast("audio:status", { status: "generating", messageId, totalChunks }, wsFilter);
 
   // Fire-and-forget: submit chunks sequentially
   (async () => {
@@ -116,14 +117,14 @@ export async function POST(req: Request) {
         const result = await client.generateTts(prompt, outputPath);
         if (result.success) {
           const url = `/api/sessions/${sessionId}/files/audio/${audioFilename}`;
-          wsBroadcast("audio:ready", { url, messageId, chunkIndex: i, totalChunks });
+          wsBroadcast("audio:ready", { url, messageId, chunkIndex: i, totalChunks }, wsFilter);
         } else {
           console.error(`[tts] Chunk ${i} failed:`, result.error);
-          wsBroadcast("audio:status", { status: "error", messageId, chunkIndex: i, totalChunks });
+          wsBroadcast("audio:status", { status: "error", messageId, chunkIndex: i, totalChunks }, wsFilter);
         }
       } catch (err) {
         console.error(`[tts] Chunk ${i} error:`, err);
-        wsBroadcast("audio:status", { status: "error", messageId, chunkIndex: i, totalChunks });
+        wsBroadcast("audio:status", { status: "error", messageId, chunkIndex: i, totalChunks }, wsFilter);
       }
     }
   })();
