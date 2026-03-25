@@ -27,6 +27,9 @@ interface StatusBarProps {
   onVoiceChatToggle?: () => void;
   /** Settings */
   onSettings?: () => void;
+  /** Slash commands (compact, context) */
+  onCompact?: () => void;
+  onContext?: () => void;
   /** Version snapshot (builder mode) */
   onVersionSave?: () => void;
   onVersionHistory?: () => void;
@@ -65,6 +68,8 @@ export default function StatusBar({
   voiceChat,
   onVoiceChatToggle,
   onSettings,
+  onCompact,
+  onContext,
   onVersionSave,
   onVersionHistory,
   versionSaving,
@@ -143,6 +148,32 @@ export default function StatusBar({
           </button>
         )}
 
+        {/* Compact button */}
+        {onCompact && (
+          <button
+            onClick={onCompact}
+            disabled={status === "compacting" || status === "streaming" || status === "disconnected"}
+            className="px-2 py-1 rounded-md text-[10px] font-medium tracking-wide border cursor-pointer transition-all duration-fast
+              border-border/40 text-text-dim/50 bg-transparent hover:border-border/60 hover:text-text-dim/80
+              disabled:opacity-30 disabled:cursor-default"
+            title="컨텍스트 압축"
+          >
+            Compact
+          </button>
+        )}
+        {/* Context button */}
+        {onContext && (
+          <button
+            onClick={onContext}
+            disabled={status === "compacting" || status === "streaming" || status === "disconnected"}
+            className="px-2 py-1 rounded-md text-[10px] font-medium tracking-wide border cursor-pointer transition-all duration-fast
+              border-border/40 text-text-dim/50 bg-transparent hover:border-border/60 hover:text-text-dim/80
+              disabled:opacity-30 disabled:cursor-default"
+            title="컨텍스트 사용량 확인"
+          >
+            Context
+          </button>
+        )}
         {/* Sync button */}
         {!isBuilderMode && onSync && (
           <button

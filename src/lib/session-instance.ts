@@ -205,6 +205,7 @@ export class SessionInstance {
   private sawTextDelta = false;
   private currentBlockType = "text";
   private isCompacting = false;
+  private isSlashCommand = false;
   private historyId = 0;
 
   // TTS queue — serialize requests to avoid ENOBUFS
@@ -352,6 +353,15 @@ export class SessionInstance {
     if (!ooc && text && !text.startsWith("OOC:")) {
       this.triggerTts(text, `hist-u-${this.historyId}`);
     }
+  }
+
+  /** Send a slash command (e.g. /compact, /context) — result skips history & TTS.
+   *  Only supported for Claude provider. */
+  sendSlashCommand(command: string): void {
+    if (this._provider !== "claude") return;
+    if (!this.claude.isRunning()) return;
+    this.isSlashCommand = true;
+    this.claude.send(`/${command}`);
   }
 
   addOpeningToHistory(text: string): void {
@@ -643,42 +653,55 @@ export class SessionInstance {
       }
 
       if (msg.type === "result") {
+        const isSlash = this.isSlashCommand;
         const isOOC = this.isOOC;
-        if (this.segments.length > 0 || this.tools.length > 0) {
-          const rawContent = this.segments.join("");
-          const dialogContent = isOOC ? rawContent : extractDialog(rawContent);
-          if (dialogContent) {
-            this.chatHistory.push({
-              id: `hist-a-${++this.historyId}`,
-              role: "assistant",
-              content: dialogContent,
-              tools: this.tools.length > 0 ? [...this.tools] : undefined,
-              ooc: isOOC || undefined,
-            });
-          }
-        } else if (msg.result) {
-          const result = msg.result as Record<string, unknown>;
+
+        if (isSlash) {
+          // Slash command result — broadcast as command:result, skip history & TTS
+          const result = msg.result as Record<string, unknown> | string | undefined;
           const text =
             typeof result === "string" ? result
-            : typeof result.text === "string" ? result.text
-            : null;
-          if (text) {
-            this.chatHistory.push({
-              id: `hist-a-${++this.historyId}`,
-              role: "assistant",
-              content: text as string,
-              ooc: isOOC || undefined,
-            });
+            : result && typeof result.text === "string" ? result.text
+            : this.segments.join("") || null;
+          this.broadcast("command:result", { text: text || "" });
+        } else {
+          if (this.segments.length > 0 || this.tools.length > 0) {
+            const rawContent = this.segments.join("");
+            const dialogContent = isOOC ? rawContent : extractDialog(rawContent);
+            if (dialogContent) {
+              this.chatHistory.push({
+                id: `hist-a-${++this.historyId}`,
+                role: "assistant",
+                content: dialogContent,
+                tools: this.tools.length > 0 ? [...this.tools] : undefined,
+                ooc: isOOC || undefined,
+              });
+            }
+          } else if (msg.result) {
+            const result = msg.result as Record<string, unknown>;
+            const text =
+              typeof result === "string" ? result
+              : typeof result.text === "string" ? result.text
+              : null;
+            if (text) {
+              this.chatHistory.push({
+                id: `hist-a-${++this.historyId}`,
+                role: "assistant",
+                content: text as string,
+                ooc: isOOC || undefined,
+              });
+            }
           }
-        }
-        this.saveHistory();
+          this.saveHistory();
 
-        const lastSaved = this.chatHistory[this.chatHistory.length - 1];
-        if (lastSaved) {
-          this.broadcast("claude:messageId", { messageId: lastSaved.id });
+          const lastSaved = this.chatHistory[this.chatHistory.length - 1];
+          if (lastSaved) {
+            this.broadcast("claude:messageId", { messageId: lastSaved.id });
+          }
         }
 
         this.isOOC = false;
+        this.isSlashCommand = false;
         this.segments = [];
         this.tools = [];
         this.autoImageTokens.clear();
@@ -687,9 +710,11 @@ export class SessionInstance {
         this.currentBlockType = "text";
         this.isCompacting = false;
 
-        this.panels.reload();
+        if (!isSlash) {
+          this.panels.reload();
+        }
 
-        if (!isOOC && this.chatHistory.length > 0) {
+        if (!isSlash && !isOOC && this.chatHistory.length > 0) {
           const lastMsg = this.chatHistory[this.chatHistory.length - 1];
           if (lastMsg.role === "assistant" && lastMsg.content) {
             this.triggerTts(lastMsg.content);

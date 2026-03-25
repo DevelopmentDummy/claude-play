@@ -12,6 +12,7 @@ import ChatInput from "@/components/ChatInput";
 import BuilderOverview from "@/components/BuilderOverview";
 import VersionHistoryModal from "@/components/VersionHistoryModal";
 import ChatOptionsModal from "@/components/ChatOptionsModal";
+import ToastEffect from "@/components/ToastEffect";
 
 export default function BuilderPage() {
   const { name } = useParams<{ name: string }>();
@@ -64,6 +65,12 @@ export default function BuilderPage() {
       "claude:error": (e) => setError(e as string),
       "claude:status": (s) => setStatus(s as string),
       "panels:update": () => {},
+      "command:result": (d) => {
+        const { text } = d as { text: string };
+        if (text) {
+          import("@/components/ToastEffect").then(({ showToast }) => showToast(text, 6000));
+        }
+      },
     },
     enabled: wsEnabled,
   });
@@ -119,6 +126,14 @@ export default function BuilderPage() {
 
     init();
   }, [mode, decodedName, setError, setStatus]);
+
+  const handleCompact = useCallback(() => {
+    wsSend("command:send", { command: "compact" });
+  }, [wsSend]);
+
+  const handleContext = useCallback(() => {
+    wsSend("command:send", { command: "context" });
+  }, [wsSend]);
 
   const handleBack = useCallback(() => {
     wsSend("session:leave");
@@ -205,6 +220,8 @@ export default function BuilderPage() {
         isBuilderMode={true}
         onBack={handleBack}
         onReinit={handleReinit}
+        onCompact={builderService === "claude" ? handleCompact : undefined}
+        onContext={builderService === "claude" ? handleContext : undefined}
         service={builderService}
         onServiceChange={handleServiceChange}
         showPanelButton={isMobile}
@@ -259,6 +276,7 @@ export default function BuilderPage() {
           onClose={() => setOptionsModalOpen(false)}
         />
       )}
+      <ToastEffect />
     </div>
   );
 }

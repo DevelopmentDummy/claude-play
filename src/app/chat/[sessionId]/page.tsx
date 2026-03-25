@@ -430,6 +430,12 @@ export default function ChatPage() {
           setProfileImage(`/api/sessions/${sessionId}/files/${update.profile}?t=${t}`);
         }
       },
+      "command:result": (d) => {
+        const { text } = d as { text: string };
+        if (text) {
+          import("@/components/ToastEffect").then(({ showToast }) => showToast(text, 6000));
+        }
+      },
     },
     enabled: wsEnabled,
     onSessionLost: handleSessionLost,
@@ -458,6 +464,14 @@ export default function ChatPage() {
     },
     [prepareSend, sendChat, setStreamingManually]
   );
+
+  const handleCompact = useCallback(() => {
+    wsSend("command:send", { command: "compact" });
+  }, [wsSend]);
+
+  const handleContext = useCallback(() => {
+    wsSend("command:send", { command: "context" });
+  }, [wsSend]);
 
   const handleOOCToggle = useCallback((on: boolean) => setShowOOC(on), []);
 
@@ -856,6 +870,8 @@ export default function ChatPage() {
         model={currentModel}
         provider={currentProvider}
         onModelChange={handleModelChange}
+        onCompact={currentProvider === "claude" ? handleCompact : undefined}
+        onContext={currentProvider === "claude" ? handleContext : undefined}
         onSync={() => setSyncModalOpen(true)}
         autoPlay={autoPlay}
         onAutoPlayToggle={handleAutoPlayToggle}

@@ -190,6 +190,17 @@ function handleMessage(
       break;
     }
 
+    case "command:send": {
+      const command = msg.command as string;
+      if (!command?.trim() || !client.sessionId) return;
+
+      const instance = getSessionInstance(client.sessionId);
+      if (!instance) return;
+
+      instance.sendSlashCommand(command.trim());
+      break;
+    }
+
     case "session:bind": {
       const rawId = (msg.sessionId as string) || null;
       client.sessionId = rawId ? decodeURIComponent(rawId) : null;
