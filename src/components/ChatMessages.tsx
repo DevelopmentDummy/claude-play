@@ -44,9 +44,16 @@ const CHOICE_OPEN = "<choice>";
 const CHOICE_CLOSE = "</choice>";
 const SPECIAL_TOKEN_REGEX = /\$(?:IMAGE|PANEL):[^$]+\$/g;
 
+export interface ChoiceAction {
+  tool: string;
+  action: string;
+  args?: Record<string, unknown>;
+}
+
 export interface Choice {
   text: string;
   score: number;
+  actions?: ChoiceAction[];
 }
 
 /** Extract choices from <choice> tags in raw content */
@@ -65,6 +72,7 @@ export function extractChoices(raw: string): Choice[] {
         .map((c: Record<string, unknown>) => ({
           text: c.text as string,
           score: typeof c.score === "number" ? c.score : 0,
+          ...(Array.isArray(c.actions) && c.actions.length > 0 ? { actions: c.actions as ChoiceAction[] } : {}),
         }));
     }
   } catch { /* invalid JSON */ }

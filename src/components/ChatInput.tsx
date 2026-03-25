@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect, memo } from "react";
+import { showToast } from "./ToastEffect";
 
 // Web Speech API type shim (not in default DOM lib)
 interface SpeechRecognitionEvent extends Event {
@@ -37,14 +38,22 @@ declare global {
   }
 }
 
+export interface ChoiceAction {
+  tool: string;
+  action: string;
+  args?: Record<string, unknown>;
+}
+
 export interface Choice {
   text: string;
   score: number;
+  actions?: ChoiceAction[];
 }
 
 interface ChatInputProps {
   disabled: boolean;
   onSend: (text: string) => void;
+  sessionId?: string;
   choices?: Choice[];
   pendingEvents?: string[];
   showOOC?: boolean;
@@ -65,9 +74,10 @@ interface ChatInputProps {
   onSteeringEdit?: () => void;
 }
 
-function ChatInput({ disabled, onSend, choices, pendingEvents, showOOC, onOOCToggle, voiceChat, ttsPlaying, autoSendDelay = 3000, autoplayActive, onAutoplayToggle, steeringPresetName, onSteeringEdit }: ChatInputProps) {
+function ChatInput({ disabled, onSend, sessionId, choices, pendingEvents, showOOC, onOOCToggle, voiceChat, ttsPlaying, autoSendDelay = 3000, autoplayActive, onAutoplayToggle, steeringPresetName, onSteeringEdit }: ChatInputProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [oocMode, setOocMode] = useState(false);
+  const [choiceBusy, setChoiceBusy] = useState(false);
   const oocModeRef = useRef(oocMode);
   oocModeRef.current = oocMode;
   const composingRef = useRef(false);
@@ -147,9 +157,41 @@ function ChatInput({ disabled, onSend, choices, pendingEvents, showOOC, onOOCTog
     }
   }, []);
 
-  const handleChoice = useCallback((text: string) => {
-    onSend(text);
-  }, [onSend]);
+  const handleChoice = useCallback(async (choice: Choice) => {
+    if (!choice.actions?.length || !sessionId) {
+      onSend(choice.text);
+      return;
+    }
+    setChoiceBusy(true);
+    try {
+      for (const act of choice.actions) {
+        const toolRes = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/tools/${encodeURIComponent(act.tool)}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ args: { action: act.action, ...(act.args || {}) } }),
+        });
+        if (!toolRes.ok) {
+          const err = await toolRes.json().catch(() => ({ error: "Action failed" }));
+          throw new Error(err.error || `Action ${act.action} failed`);
+        }
+        const toolData = await toolRes.json();
+        const hint = toolData.result?.hints?.narrative || toolData.result?.hints?.summary || "completed";
+        const header = `[${act.action}] ${hint}`;
+        await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/events`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ header }),
+        });
+      }
+      onSend(choice.text);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Action failed";
+      console.error("[choice action]", msg);
+      showToast(msg, 4000);
+    } finally {
+      setChoiceBusy(false);
+    }
+  }, [onSend, sessionId]);
 
   const insertAtCursor = useCallback((text: string) => {
     const el = inputRef.current;
@@ -425,13 +467,15 @@ function ChatInput({ disabled, onSend, choices, pendingEvents, showOOC, onOOCTog
           {choices.map((c, i) => (
             <button
               key={i}
-              onClick={() => handleChoice(c.text)}
-              className="px-3.5 py-2 rounded-xl text-sm text-text bg-[rgba(15,15,26,0.6)]
+              disabled={choiceBusy}
+              onClick={() => handleChoice(c)}
+              className={`px-3.5 py-2 rounded-xl text-sm text-text bg-[rgba(15,15,26,0.6)]
                 border border-border/60 cursor-pointer
                 transition-all duration-fast
                 hover:border-accent hover:bg-[rgba(var(--accent-rgb),0.08)] hover:-translate-y-px
                 hover:shadow-[0_2px_12px_var(--accent-glow)]
-                active:translate-y-0"
+                active:translate-y-0
+                ${choiceBusy ? "opacity-50 pointer-events-none" : ""}`}
             >
               {c.text}
             </button>

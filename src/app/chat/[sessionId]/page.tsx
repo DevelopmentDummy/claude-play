@@ -944,6 +944,7 @@ export default function ChatPage() {
             <ChatInput
               disabled={isStreaming}
               onSend={sendMessage}
+              sessionId={sessionId}
               showOOC={showOOC}
               onOOCToggle={handleOOCToggle}
               choices={currentChoices}
