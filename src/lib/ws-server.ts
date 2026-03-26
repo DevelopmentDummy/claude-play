@@ -155,8 +155,10 @@ function handleMessage(
         // Silent mode: send to AI only — no history, no broadcast
         // Still flush pending event headers so they reach the AI
         const eventHeaders = instance.flushEvents();
-        const aiText = `${eventHeaders}${eventHeaders ? "\n" : ""}${text}`;
-        instance.claude.send(aiText);
+        const hintSnapshot = instance.buildHintSnapshot();
+        const actionHistory = instance.flushActions();
+        const parts = [eventHeaders, hintSnapshot, actionHistory, text].filter(Boolean);
+        instance.claude.send(parts.join("\n"));
         break;
       }
 
@@ -169,9 +171,11 @@ function handleMessage(
 
       // Flush pending event headers and prepend to AI message
       const eventHeaders = isOOC ? "" : instance.flushEvents();
+      const hintSnapshot = isOOC ? "" : instance.buildHintSnapshot();
+      const actionHistory = isOOC ? "" : instance.flushActions();
       const oocHint = isOOC ? "[OOC 메시지입니다. RP 응답(dialog_response)을 포함하지 마세요. 메타/시스템 수준으로만 응답하세요.]\n" : "";
-      const aiText = `${oocHint}${eventHeaders}${eventHeaders ? "\n" : ""}${text}`;
-      instance.claude.send(aiText);
+      const parts = [oocHint, eventHeaders, hintSnapshot, actionHistory, text].filter(Boolean);
+      instance.claude.send(parts.join("\n"));
 
       // Broadcast user message to other clients in same session (sender already has it locally)
       wsBroadcast("chat:user", { text, isOOC }, { sessionId: client.sessionId, exclude: client });

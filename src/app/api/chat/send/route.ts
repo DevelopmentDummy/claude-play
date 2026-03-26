@@ -16,7 +16,9 @@ export async function POST(req: Request) {
 
   // Flush pending event headers and prepend to AI message
   const eventHeaders = isOOC ? "" : instance.flushEvents();
-  const aiText = eventHeaders ? `${eventHeaders}\n${text}` : text;
-  instance.claude.send(aiText);
+  const hintSnapshot = isOOC ? "" : instance.buildHintSnapshot();
+  const actionHistory = isOOC ? "" : instance.flushActions();
+  const parts = [eventHeaders, hintSnapshot, actionHistory, text].filter(Boolean);
+  instance.claude.send(parts.join("\n"));
   return NextResponse.json({ ok: true });
 }
