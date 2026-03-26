@@ -836,6 +836,7 @@ function readVariables() {
   }
 }
 
+// Keep in sync with src/lib/hint-snapshot.ts (cannot import .ts from .mjs)
 function readHintRules() {
   const rulesPath = path.join(sessionDir, "hint-rules.json");
   try {
