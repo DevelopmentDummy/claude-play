@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { NextResponse } from "next/server";
 import { getServices } from "@/lib/services";
+import { validateInternalToken } from "@/lib/auth";
 
 const PROTECTED_FILES = new Set([
   "session.json", "builder-session.json", "layout.json",
@@ -15,6 +16,21 @@ const SYSTEM_JSON = new Set([
   "voice.json", "chat-options.json", "policy-context.json",
   "pending-events.json", "pending-actions.json",
 ]);
+
+function queueActionToFile(
+  sessionDir: string,
+  record: { tool: string; action: string; args?: Record<string, unknown> }
+): void {
+  const fp = path.join(sessionDir, "pending-actions.json");
+  try {
+    let actions: unknown[] = [];
+    if (fs.existsSync(fp)) {
+      actions = JSON.parse(fs.readFileSync(fp, "utf-8"));
+    }
+    actions.push(record);
+    fs.writeFileSync(fp, JSON.stringify(actions), "utf-8");
+  } catch { /* ignore */ }
+}
 
 export async function POST(
   req: Request,
@@ -153,6 +169,18 @@ export async function POST(
           fs.writeFileSync(filePath, JSON.stringify(merged, null, 2), "utf-8");
         } catch {}
       }
+    }
+
+    // Queue action for action history (skip MCP-originated and noActionLog)
+    const isMcpRequest = validateInternalToken(req);
+    const noActionLog = !!(result as Record<string, unknown>)?.noActionLog;
+    if (!isMcpRequest && !noActionLog) {
+      const actionName = (args as Record<string, unknown>)?.action;
+      queueActionToFile(sessionDir, {
+        tool: name,
+        action: typeof actionName === "string" ? actionName : "execute",
+        args: args as Record<string, unknown> | undefined,
+      });
     }
 
     return NextResponse.json({ ok: true, result: result?.result ?? null });
