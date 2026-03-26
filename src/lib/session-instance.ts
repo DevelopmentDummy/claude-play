@@ -7,6 +7,7 @@ import { SessionManager } from "./session-manager";
 import { PanelEngine } from "./panel-engine";
 import { AIProvider } from "./ai-provider";
 import { generateEdgeTts } from "./edge-tts-client";
+import { buildHintSnapshotLine } from "./hint-snapshot";
 
 // --- Constants & helpers (extracted from services.ts) ---
 
@@ -113,6 +114,12 @@ function extractDialog(raw: string): string {
 }
 
 // --- Exports ---
+
+export interface ActionRecord {
+  tool: string;
+  action: string;
+  args?: Record<string, unknown>;
+}
 
 export interface HistoryMessage {
   id: string;
@@ -321,6 +328,64 @@ export class SessionInstance {
   /** Get current pending event headers (read-only) */
   getPendingEvents(): string[] {
     return this.readPendingEvents();
+  }
+
+  // --- Action history queue ---
+
+  private get pendingActionsPath(): string | null {
+    const dir = this.getDir();
+    return dir ? path.join(dir, "pending-actions.json") : null;
+  }
+
+  private readPendingActions(): ActionRecord[] {
+    const fp = this.pendingActionsPath;
+    if (!fp) return [];
+    try {
+      if (fs.existsSync(fp)) {
+        return JSON.parse(fs.readFileSync(fp, "utf-8"));
+      }
+    } catch { /* ignore */ }
+    return [];
+  }
+
+  private writePendingActions(actions: ActionRecord[]): void {
+    const fp = this.pendingActionsPath;
+    if (!fp) return;
+    try {
+      if (actions.length === 0) {
+        if (fs.existsSync(fp)) fs.unlinkSync(fp);
+      } else {
+        fs.writeFileSync(fp, JSON.stringify(actions), "utf-8");
+      }
+    } catch { /* ignore */ }
+  }
+
+  queueAction(record: ActionRecord): void {
+    const actions = this.readPendingActions();
+    actions.push(record);
+    this.writePendingActions(actions);
+  }
+
+  flushActions(): string {
+    const actions = this.readPendingActions();
+    if (actions.length === 0) return "";
+    this.writePendingActions([]);
+    return actions
+      .map(a => {
+        const argsStr = a.args ? `, args=${JSON.stringify(a.args)}` : "";
+        return `[ACTION_LOG] tool=${a.tool}, action=${a.action}${argsStr}`;
+      })
+      .join("\n");
+  }
+
+  getPendingActions(): ActionRecord[] {
+    return this.readPendingActions();
+  }
+
+  buildHintSnapshot(): string {
+    const dir = this.getDir();
+    if (!dir) return "";
+    return buildHintSnapshotLine(dir);
   }
 
   /** Clear __popups from variables.json (called on new user message) */
