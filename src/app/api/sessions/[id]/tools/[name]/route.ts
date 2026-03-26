@@ -13,6 +13,7 @@ const SYSTEM_JSON = new Set([
   "comfyui-config.json", "layout.json", "chat-history.json",
   "package.json", "tsconfig.json", "character-tags.json",
   "voice.json", "chat-options.json", "policy-context.json",
+  "pending-events.json", "pending-actions.json",
 ]);
 
 export async function POST(
