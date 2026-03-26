@@ -175,11 +175,11 @@ export async function POST(
     const isMcpRequest = validateInternalToken(req);
     const noActionLog = !!(result as Record<string, unknown>)?.noActionLog;
     if (!isMcpRequest && !noActionLog) {
-      const actionName = (args as Record<string, unknown>)?.action;
+      const actionName = args.action;
       queueActionToFile(sessionDir, {
         tool: name,
         action: typeof actionName === "string" ? actionName : "execute",
-        args: args as Record<string, unknown> | undefined,
+        args,
       });
     }
 
