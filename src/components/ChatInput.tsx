@@ -164,6 +164,8 @@ function ChatInput({ disabled, onSend, sessionId, choices, pendingEvents, showOO
     }
     setChoiceBusy(true);
     try {
+      let lastAvailable: Array<{ action: string; label: string; args_hint: string | null }> | null = null;
+
       for (const act of choice.actions) {
         const toolRes = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/tools/${encodeURIComponent(act.tool)}`, {
           method: "POST",
@@ -182,7 +184,25 @@ function ChatInput({ disabled, onSend, sessionId, choices, pendingEvents, showOO
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ header }),
         });
+
+        // Capture latest _available_actions (last result wins)
+        if (toolData._available_actions?.length) {
+          lastAvailable = toolData._available_actions;
+        }
       }
+
+      // Queue [AVAILABLE] header if present
+      if (lastAvailable && lastAvailable.length > 0) {
+        const parts = lastAvailable.map((a: { action: string; label: string; args_hint: string | null }) =>
+          a.args_hint ? `${a.action}(${a.label} ${a.args_hint})` : `${a.action}(${a.label})`
+        );
+        await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/events`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ header: `[AVAILABLE] ${parts.join(", ")}` }),
+        });
+      }
+
       onSend(choice.text);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Action failed";
