@@ -478,13 +478,16 @@ mcp__claude_bridge__run_tool({ tool: "engine", args: { action: "milking", params
 - 데이터 파일(`*.json`)을 활용하여 경제/인벤토리/업적 등 구조화된 상태를 관리한다
 - 관련 변수/데이터 파일은 빌더 단계에서 함께 초기 파일을 생성해야 한다
 
-### `hint-rules.json` — 스냅샷 포매팅 규칙 (선택)
+### `hint-rules.json` — 상시 상태 스냅샷 규칙 (선택)
 
-`tools/*.js` 커스텀 도구가 있는 페르소나에서, MCP `run_tool` 응답에 **현재 상태 스냅샷**을 자동 합성하기 위한 규칙 파일. 도구 실행 후 AI가 전체 상태를 한눈에 파악할 수 있도록 수치를 포매팅하고 서사 힌트를 붙인다.
+AI에게 현재 게임/세션 상태를 자동으로 전달하기 위한 규칙 파일. 두 가지 경로로 전달된다:
+
+1. **매 사용자 메시지에 `[STATE]` 텍스트로 prepend** — AI가 항상 최신 상태를 인지
+2. **MCP `run_tool` 응답에 JSON `snapshot` 포함** — 도구 실행 직후 상태 확인
 
 **언제 만드는가:**
-- 커스텀 도구(`tools/*.js`)가 있는 페르소나에서만 의미가 있다
-- 없으면 `run_tool` 응답에 snapshot이 생략되며, 도구 결과(`result`)만 반환된다
+- 커스텀 도구(`tools/*.js`)가 있는 페르소나에서 특히 유용
+- 없으면 `[STATE]` 전달과 `run_tool` 스냅샷 모두 생략된다
 
 **파일 형식:**
 ```json
@@ -521,10 +524,45 @@ mcp__claude_bridge__run_tool({ tool: "engine", args: { action: "milking", params
 
 - `location`, `owner_location`, `time`, `outfit`, `cycle_phase`, `cycle_day`, `day_number`는 hint-rules에 없어도 자동으로 스냅샷에 포함된다
 
+**채팅 메시지 전달 형태 (`[STATE]`):**
+```
+[STATE] hp=45/100 (45%)(hint: "부상 상태"), gold=230G, location=market
+```
+이 줄이 매 사용자 메시지 앞에 자동으로 붙는다. AI는 별도로 파일을 읽지 않아도 현재 상태를 파악할 수 있다.
+
 **작성 원칙:**
 - 서사에 직접 반영할 수치만 포함한다 (내부 계산용 변수는 제외)
 - hint 텍스트는 AI가 서사에 바로 녹일 수 있는 자연어로 작성한다
 - 캐릭터/세계관의 톤에 맞춘다
+
+### 액션 히스토리 — 자동 툴 실행 추적
+
+프론트엔드(패널 `runTool`, 선택지 액션)에서 실행된 커스텀 툴은 **자동으로 기록**되어 다음 사용자 메시지에 AI에게 전달된다. AI는 사용자가 어떤 액션을 활용하는지 인지하고, 선택지에 더 적절한 `actions`를 포함할 수 있게 된다.
+
+**전달 형태:**
+```
+[ACTION_LOG] tool=engine, action=buy, args={"item":"apple"}
+[ACTION_LOG] tool=engine, action=move, args={"destination":"market"}
+```
+
+**동작 규칙:**
+- 기본적으로 모든 프론트엔드 툴 실행이 기록된다 (블랙리스트 방식)
+- AI의 MCP `run_tool` 실행은 기록되지 않는다 (피드백 루프 방지)
+- OOC 메시지에서는 flush되지 않고, 다음 일반 메시지까지 유지
+
+**기록 제외:** 배경 처리 등 AI에게 알릴 필요 없는 액션은 반환값에 `noActionLog: true`를 포함하면 제외된다:
+
+```javascript
+return { noActionLog: true, variables: { ... } };
+```
+
+**전체 메시지 조립 순서:**
+```
+{이벤트 큐 헤더}     ← queueEvent()
+[STATE] ...          ← hint-rules.json 스냅샷
+[ACTION_LOG] ...     ← 툴 실행 히스토리
+(사용자 메시지)
+```
 
 ### `comfyui-config.json` — 이미지 생성 프리셋 설정
 
