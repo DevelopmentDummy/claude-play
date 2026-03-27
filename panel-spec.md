@@ -797,6 +797,7 @@ module.exports = async function(context, args) {
 | `variables` | `Record<string, unknown>` | `variables.json`에 shallow merge. 생략 가능. |
 | `data` | `Record<string, Record<string, unknown>>` | 파일명(확장자 포함) → 패치 객체. 각 파일에 shallow merge. 생략 가능. |
 | `result` | `unknown` | 패널에 그대로 전달되는 임의 데이터. 생략 가능. |
+| `noActionLog` | `boolean` | `true`이면 이 실행을 액션 히스토리에 기록하지 않는다. 아래 "액션 히스토리" 섹션 참조. |
 
 `variables`나 `data`가 있으면 서버가 파일에 반영 후 패널이 자동 재렌더링된다.
 
@@ -983,6 +984,101 @@ module.exports = async function(context, args) {
 - `data` 반환의 키는 파일명 확장자를 포함해야 한다 (예: `"world.json"`, `"inventory.json"`).
 - `session.json`, `layout.json` 등 시스템 파일은 수정할 수 없다.
 - 여러 버튼의 빠른 연타는 race condition을 유발할 수 있다. 클릭 시 `btn.disabled = true`로 중복 방지를 권장한다.
+
+### 액션 히스토리
+
+프론트엔드에서 실행된 툴 액션은 **자동으로 기록**되어, 다음 사용자 메시지에 AI에게 전달된다. AI는 이를 통해 사용자가 어떤 액션을 활용하고 있는지 인지하고, 더 적절한 선택지를 생성할 수 있다.
+
+**전달 형태:** 다음 사용자 메시지에 텍스트로 prepend된다:
+
+```
+[ACTION_LOG] tool=engine, action=buy, args={"item":"apple","quantity":2}
+[ACTION_LOG] tool=engine, action=move, args={"destination":"market"}
+(사용자 메시지)
+```
+
+**동작 규칙:**
+- 패널(`runTool`)이나 선택지 액션으로 실행된 툴만 기록된다.
+- AI가 MCP `run_tool`로 직접 실행한 툴은 기록되지 않는다 (피드백 루프 방지).
+- OOC 메시지에서는 flush되지 않는다 — 다음 일반 메시지까지 유지.
+- 메시지 전송 시 flush되어 비워진다 (1회 전달).
+
+**기록 제외 (`noActionLog`):** 배경 처리나 UI 유틸리티 등 AI에게 알릴 필요 없는 액션은 반환값에 `noActionLog: true`를 포함하면 기록에서 제외된다:
+
+```javascript
+module.exports = async function(context, args) {
+  const { action } = args;
+
+  if (action === 'refresh_ui') {
+    // AI에게 알릴 필요 없는 유틸리티 액션
+    return { noActionLog: true, variables: { lastRefresh: Date.now() } };
+  }
+
+  if (action === 'buy') {
+    // 일반 게임 액션 — 자동 기록됨
+    return { variables: { gold: context.variables.gold - 10 } };
+  }
+};
+```
+
+**활용 팁:**
+- AI가 선택지에 `actions`를 포함할 때 (`<choice>` 시스템), 어떤 tool + action 조합이 사용 가능한지 자연스럽게 학습하게 된다.
+- 복잡한 지시문 없이도 AI가 "사용자가 `buy`, `sell`, `move`를 주로 사용한다"는 맥락을 매 턴 자동으로 파악한다.
+- 반복적이거나 노이즈가 되는 액션은 `noActionLog`로 제외해 가면서 조율한다.
+
+### Hint Rules — 상시 상태 스냅샷
+
+`hint-rules.json`을 세션에 설정하면, **매 사용자 메시지에 현재 상태 스냅샷이 자동으로 전달**된다. AI가 항상 최신 게임 상태를 인지할 수 있다.
+
+**전달 형태:**
+
+```
+[STATE] hp=45/100 (45%)(hint: "부상 상태"), gold=230G, location=market, mood=neutral
+(사용자 메시지)
+```
+
+**`hint-rules.json` 구조:**
+
+```json
+{
+  "hp": {
+    "format": "{value}/{max} ({pct}%)",
+    "max_key": "hp_max",
+    "tiers": [
+      { "max": 20, "hint": "빈사 상태" },
+      { "max": 50, "hint": "부상 상태" },
+      { "max": 80, "hint": "양호" },
+      { "max": 100, "hint": "건강" }
+    ],
+    "tier_mode": "percentage"
+  },
+  "gold": {
+    "format": "{value}G"
+  },
+  "mood": {}
+}
+```
+
+| 필드 | 설명 |
+|------|------|
+| `format` | 표시 형식. `{value}`, `{max}`, `{pct}` 플레이스홀더 사용. 생략 시 값 그대로 표시. |
+| `max` | 최대값 (고정). `{max}` 플레이스홀더와 퍼센트 계산에 사용. |
+| `max_key` | 최대값을 다른 변수에서 가져올 때. `max`보다 우선. |
+| `tiers` | 값 구간별 서사 힌트. `max` 이하인 첫 번째 매치가 사용됨. |
+| `tier_mode` | `"percentage"`: 퍼센트 기준으로 tier 매칭. 생략 시 원시 값 기준. |
+
+**자동 패스스루 변수:** `hint-rules.json`에 규칙을 정의하지 않아도, 다음 변수들은 존재하면 자동으로 스냅샷에 포함된다: `location`, `owner_location`, `time`, `outfit`, `cycle_phase`, `cycle_day`, `day_number`.
+
+**MCP `run_tool` 응답에도 동일한 스냅샷이 JSON 형태로 포함된다** (기존 동작 유지). 채팅 메시지의 `[STATE]`는 한 줄 텍스트, MCP 응답의 `snapshot`은 JSON 객체 — 같은 데이터의 다른 포맷이다.
+
+**전체 메시지 조립 순서:**
+
+```
+{이벤트 큐 헤더}         ← queueEvent()로 등록된 이벤트
+[STATE] ...              ← hint-rules.json 기반 상태 스냅샷
+[ACTION_LOG] ...         ← 툴 실행 히스토리
+(사용자 메시지)
+```
 
 ---
 
