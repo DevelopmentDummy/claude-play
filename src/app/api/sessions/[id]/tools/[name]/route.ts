@@ -102,6 +102,7 @@ export async function POST(
       variables?: Record<string, unknown>;
       data?: Record<string, Record<string, unknown>>;
       result?: unknown;
+      _available_actions?: Array<{ action: string; label: string; args_hint: string | null }>;
     } | undefined;
 
     // Apply variables patch
@@ -183,7 +184,11 @@ export async function POST(
       });
     }
 
-    return NextResponse.json({ ok: true, result: result?.result ?? null });
+    return NextResponse.json({
+      ok: true,
+      result: result?.result ?? null,
+      _available_actions: result?._available_actions ?? null,
+    });
   } catch (err) {
     console.error(`[tools/${name}] execution error:`, err);
     const message = err instanceof Error ? err.message : "Tool execution failed";
