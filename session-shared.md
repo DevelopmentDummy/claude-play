@@ -247,9 +247,18 @@ mcp__claude_bridge__run_tool({
 ```
 <choice>
 [
-  {"text": "☀️ 아침이 되었다", "score": 0.90, "actions": [{"tool": "engine", "action": "next_turn"}]},
-  {"text": "물약을 하나 사자", "score": 0.60, "actions": [{"tool": "engine", "action": "buy", "args": {"item": "potion", "qty": 1}}]},
-  {"text": "좀 더 쉬자", "score": 0.50}
+  {"text": "☀️ 아침이 되었다", "score": 0.90, "actions": [
+    {"tool": "engine", "action": "next_turn"}
+  ]},
+  {"text": "면직물이랑 사프란 묶어서 사자", "score": 0.85, "actions": [
+    {"tool": "engine", "action": "buy", "args": {"goods_id": "cotton_bundle", "qty": 5}},
+    {"tool": "engine", "action": "buy", "args": {"goods_id": "saffron", "qty": 5}}
+  ]},
+  {"text": "물건 사고 바로 출발하자", "score": 0.70, "actions": [
+    {"tool": "engine", "action": "buy", "args": {"goods_id": "provisions", "qty": 10}},
+    {"tool": "engine", "action": "depart"}
+  ]},
+  {"text": "좀 더 둘러보자", "score": 0.50}
 ]
 </choice>
 ```
@@ -257,7 +266,15 @@ mcp__claude_bridge__run_tool({
 - `actions[].tool`: 실행할 도구 이름 (`tools/` 디렉토리의 JS 파일명)
 - `actions[].action`: 도구에 전달할 액션명 (`args.action`으로 전달됨)
 - `actions[].args`: (선택적) 추가 인자 (`args`에 병합됨)
+- `actions` 배열에 여러 액션을 넣으면 **순차 실행**된다 — 사용자 메시지에 여러 동작이 포함되면 적극적으로 복합 액션을 구성하라
 - 액션 중 하나라도 실패하면 이후 액션과 메시지 전송이 중단된다
 - `actions`가 없는 선택지는 기존처럼 텍스트만 전송된다
-- 프론트엔드에서 액션이 있는 선택지는 ⚙ 아이콘으로 시각 구분된다
+- 프론트엔드에서 액션이 있는 선택지는 ⚙ 아이콘과 액션 수로 시각 구분된다
+
+**액션 선택 원칙:**
+- 사용자 메시지에 `[AVAILABLE]` 헤더가 포함되어 있으면, 현재 실행 가능한 외부 노출 액션 목록이다. 선택지에는 이 목록에 있는 액션만 포함하라. 목록에 없는 액션을 선택지에 넣지 마라. `[AVAILABLE]`은 액션 선택의 최우선 기준이다 — `[STATE]`나 `[ACTION_LOG]`에서 추론한 액션이라도 `[AVAILABLE]`에 없으면 선택지에 넣지 마라.
+- `[AVAILABLE]` 헤더가 없으면 기존 방식대로 `[STATE]`와 `[ACTION_LOG]`를 참고하여 판단하라.
+- 사용자 메시지에 `[ACTION_LOG]`가 포함되어 있으면, 사용자가 UI 패널에서 실행한 엔진 액션 히스토리다. 이를 참고하여 사용자가 자주 사용하는 액션 패턴을 파악하고, 선택지에 적절한 액션을 제안하라.
+- 선택지에 넣는 액션은 **패널 버튼이 실제로 호출하는 액션명과 동일해야 한다.** `[ACTION_LOG]`에 기록된 액션명을 그대로 따라가라. 내부 전용 액션이나 유사하지만 다른 액션을 넣지 마라.
+- 페이즈 전환, 턴 진행, 구매/판매 등 반복적으로 사용되는 엔진 액션은 선택지에 적극적으로 포함하여 사용자의 패널 조작 부담을 줄여라.
 {{/if}}
