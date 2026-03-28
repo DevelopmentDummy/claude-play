@@ -85,6 +85,7 @@ export interface SessionInfo {
   hasIcon?: boolean;
   model?: string;
   profileSlug?: string;
+  lastActivity?: number;
 }
 
 export interface DataFileInfo {
@@ -598,34 +599,38 @@ export class SessionManager {
     const dir = this.sessionsDir();
     if (!fs.existsSync(dir)) return [];
 
-    return fs
+    const sessions = fs
       .readdirSync(dir, { withFileTypes: true })
       .filter((d) => d.isDirectory())
-      .map((d) => {
+      .reduce<SessionInfo[]>((acc, d) => {
         const metaPath = path.join(dir, d.name, "session.json");
-        if (!fs.existsSync(metaPath)) return null;
+        if (!fs.existsSync(metaPath)) return acc;
         try {
           const meta: SessionMeta = JSON.parse(
             fs.readFileSync(metaPath, "utf-8")
           );
           const iconPath = path.join(dir, d.name, "images", "icon.png");
           const hasIcon = fs.existsSync(iconPath);
-          return {
+          // Use chat-history.json mtime as last activity time, fall back to createdAt
+          const historyPath = path.join(dir, d.name, "chat-history.json");
+          let lastActivity = new Date(meta.createdAt).getTime();
+          try {
+            if (fs.existsSync(historyPath)) {
+              lastActivity = fs.statSync(historyPath).mtimeMs;
+            }
+          } catch { /* ignore */ }
+          acc.push({
             id: d.name,
             ...meta,
             displayName: this.getPersonaDisplayName(meta.persona),
             ...(hasIcon ? { hasIcon: true } : {}),
             ...(meta.model ? { model: meta.model } : {}),
-          };
-        } catch {
-          return null;
-        }
-      })
-      .filter((s): s is SessionInfo => s !== null)
-      .sort(
-        (a, b) =>
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      );
+            lastActivity,
+          });
+        } catch { /* ignore */ }
+        return acc;
+      }, []);
+    return sessions.sort((a, b) => (b.lastActivity ?? 0) - (a.lastActivity ?? 0));
   }
 
   getSessionDir(id: string): string {
