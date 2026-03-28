@@ -93,6 +93,14 @@ export async function POST(req: Request) {
 
   const resultPath = `images/${safeName}`;
 
+  // Phase 0: Check ComfyUI connectivity
+  if (!(await client.isComfyUIReachable())) {
+    return NextResponse.json(
+      { error: "ComfyUI is not connected. Please start ComfyUI and try again. Image generation requires a running ComfyUI instance." },
+      { status: 503 }
+    );
+  }
+
   // Phase 1: Build prompt (awaited — catches template/param errors early)
   let prompt: Record<string, unknown>;
   try {

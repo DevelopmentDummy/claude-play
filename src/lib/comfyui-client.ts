@@ -1021,6 +1021,19 @@ export class ComfyUIClient {
     return this.gpuManagerAvailable();
   }
 
+  /** Check if ComfyUI is reachable */
+  async isComfyUIReachable(): Promise<boolean> {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5_000);
+      const res = await fetch(`${this.baseUrl}/system_stats`, { signal: controller.signal });
+      clearTimeout(timeout);
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+
   /** Download output files from ComfyUI history and save to session dir */
   private async downloadResults(
     history: Record<string, unknown>,

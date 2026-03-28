@@ -6,6 +6,13 @@ export async function GET() {
   const port = parseInt(process.env.COMFYUI_PORT || "8188", 10);
   const client = new ComfyUIClient({ host, port }, "");
 
+  if (!(await client.isComfyUIReachable())) {
+    return NextResponse.json(
+      { error: "ComfyUI is not connected. Please start ComfyUI and try again." },
+      { status: 503 }
+    );
+  }
+
   try {
     const models = await client.getAvailableModels();
     return NextResponse.json(models);
