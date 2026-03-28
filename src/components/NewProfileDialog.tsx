@@ -59,20 +59,20 @@ export default function NewProfileDialog({
         className="bg-surface backdrop-blur-[16px] border border-border rounded-2xl p-6 px-7 w-[440px] flex flex-col gap-4 shadow-lg animate-[slideUp_0.25s_ease-out]"
         onKeyDown={handleKeyDown}
       >
-        <h3 className="text-lg font-semibold">{isEdit ? "Edit Profile" : "Create Your Profile"}</h3>
+        <h3 className="text-lg font-semibold">{isEdit ? "Edit Profile" : "New Player Profile"}</h3>
         <p className="text-sm text-text-dim -mt-2">
-          {isEdit ? "" : "AI가 당신을 알아볼 수 있도록 프로필을 만들어주세요."}
+          {isEdit ? "" : "세션에서 플레이할 캐릭터 프로필을 만들어주세요."}
         </p>
         <input
           ref={nameRef}
           type="text"
-          placeholder="닉네임 (e.g. 민지, Alex)"
+          placeholder="캐릭터 이름 (e.g. 카이엔, Aria)"
           className="px-4 py-3 border border-border rounded-xl bg-[rgba(15,15,26,0.6)] text-text font-[inherit] text-sm outline-none transition-all duration-fast focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-glow)]"
           autoFocus
         />
         <textarea
           ref={descRef}
-          placeholder="자기소개 — 성격, 관심사, 말투 등 AI에게 알려주고 싶은 것들"
+          placeholder="캐릭터 설정 — 외모, 성격, 배경, 능력 등"
           rows={4}
           className="px-4 py-3 border border-border rounded-xl bg-[rgba(15,15,26,0.6)] text-text font-[inherit] text-sm outline-none resize-y transition-all duration-fast focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-glow)]"
         />
