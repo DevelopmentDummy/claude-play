@@ -1651,33 +1651,53 @@ export class SessionManager {
     this.copyToolSkills(agentsSkillsDest);
   }
 
-  /** Copy skills from all global tools (data/tools/X/skills/) into the session skills dir */
+  /** Copy global shared skills (data/skills/) and tool-specific skills (data/tools/X/skills/) into the session skills dir */
   private copyToolSkills(skillsDest: string): void {
-    const toolsDir = path.join(getDataDir(), "tools");
-    if (!fs.existsSync(toolsDir)) return;
-
+    const dataDir = getDataDir();
     const port = process.env.PORT || "3340";
 
-    for (const toolEntry of fs.readdirSync(toolsDir, { withFileTypes: true })) {
-      if (!toolEntry.isDirectory()) continue;
-      const toolSkillsDir = path.join(toolsDir, toolEntry.name, "skills");
-      if (!fs.existsSync(toolSkillsDir)) continue;
+    // Collect all skill source directories: shared skills + tool-specific skills
+    const skillSources: string[] = [];
 
-      for (const skillEntry of fs.readdirSync(toolSkillsDir, { withFileTypes: true })) {
-        if (!skillEntry.isDirectory()) continue;
-        const src = path.join(toolSkillsDir, skillEntry.name);
-        const dest = path.join(skillsDest, skillEntry.name);
-        fs.mkdirSync(dest, { recursive: true });
-        this.copyDirRecursive(src, dest);
+    // 1. Shared skills (data/skills/*) — generic skills not tied to any tool
+    const sharedSkillsDir = path.join(dataDir, "skills");
+    if (fs.existsSync(sharedSkillsDir)) {
+      for (const entry of fs.readdirSync(sharedSkillsDir, { withFileTypes: true })) {
+        if (entry.isDirectory()) {
+          skillSources.push(path.join(sharedSkillsDir, entry.name));
+        }
+      }
+    }
 
-        // Replace {{PORT}} in SKILL.md and shell scripts
-        for (const file of fs.readdirSync(dest)) {
-          const filePath = path.join(dest, file);
-          if (file === "SKILL.md" || file.endsWith(".sh")) {
-            let content = fs.readFileSync(filePath, "utf-8");
-            content = content.replace(/\{\{PORT\}\}/g, port);
-            fs.writeFileSync(filePath, content, "utf-8");
+    // 2. Tool-specific skills (data/tools/X/skills/*) — skills tied to a specific tool
+    const toolsDir = path.join(dataDir, "tools");
+    if (fs.existsSync(toolsDir)) {
+      for (const toolEntry of fs.readdirSync(toolsDir, { withFileTypes: true })) {
+        if (!toolEntry.isDirectory()) continue;
+        const toolSkillsDir = path.join(toolsDir, toolEntry.name, "skills");
+        if (!fs.existsSync(toolSkillsDir)) continue;
+        for (const entry of fs.readdirSync(toolSkillsDir, { withFileTypes: true })) {
+          if (entry.isDirectory()) {
+            skillSources.push(path.join(toolSkillsDir, entry.name));
           }
+        }
+      }
+    }
+
+    // Copy all collected skills into destination
+    for (const src of skillSources) {
+      const skillName = path.basename(src);
+      const dest = path.join(skillsDest, skillName);
+      fs.mkdirSync(dest, { recursive: true });
+      this.copyDirRecursive(src, dest);
+
+      // Replace {{PORT}} in SKILL.md and shell scripts
+      for (const file of fs.readdirSync(dest)) {
+        const filePath = path.join(dest, file);
+        if (file === "SKILL.md" || file.endsWith(".sh")) {
+          let content = fs.readFileSync(filePath, "utf-8");
+          content = content.replace(/\{\{PORT\}\}/g, port);
+          fs.writeFileSync(filePath, content, "utf-8");
         }
       }
     }

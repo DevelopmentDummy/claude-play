@@ -88,6 +88,97 @@ allowed-tools: Read, Write, Edit, Bash
 
 ---
 
+## 패널 액션 시스템
+
+패널이 외부에서 호출 가능한 액션을 제공할 때, **패널 액션**으로 선언한다. 패널 액션은:
+
+- AI 선택지가 참조하는 유일한 액션 체계 — AI는 `{panel: "...", action: "..."}` 형식으로 선택지를 구성한다
+- 패널 버튼과 선택지가 **동일한 실행 경로**를 공유한다 — 액션 핸들러가 primary 로직
+- 실행 시 자동으로 히스토리에 기록되어 AI에게 `[ACTION_LOG]`로 전달된다
+- `available_when` 조건에 따라 `[AVAILABLE]` 헤더로 AI에게 현재 가능한 액션이 알려진다
+
+### `<panel-actions>` 메타데이터 선언
+
+패널 HTML 최상단에 `<panel-actions>` 태그로 메타데이터를 선언한다. 이 태그는 패널 로드 전에도 파싱 가능하며, 핸들러 없이도 available 목록에 포함된다:
+
+```html
+<panel-actions>
+[
+  {
+    "id": "advance_slot",
+    "label": "스케줄 진행",
+    "description": "현재 슬롯의 활동을 실행한다 (일별 시뮬레이션 애니메이션 포함)",
+    "available_when": "turn_phase === 'executing' && current_slot < 3"
+  }
+]
+</panel-actions>
+
+<style>
+  /* ... 패널 스타일 ... */
+</style>
+```
+
+**필드:**
+| 필드 | 필수 | 설명 |
+|------|------|------|
+| `id` | ✅ | 액션 식별자. `registerAction()`의 첫 번째 인자와 일치해야 함 |
+| `label` | ✅ | AI에게 보여지는 짧은 설명 |
+| `description` | ✅ | 액션의 상세 설명 |
+| `params` | | 파라미터 맵 `{ "param_name": "설명" }`. AI가 선택지에 params를 넣을 수 있음 |
+| `available_when` | | `variables.json` 변수를 참조하는 JS 표현식. 생략 시 항상 available |
+
+### `registerAction()` 핸들러 등록
+
+`<script>` 블록에서 `__panelBridge.registerAction()`으로 런타임 핸들러를 등록한다. **이 핸들러가 패널 액션의 primary 로직이다** — 모든 실행 경로(버튼, 선택지)가 이 핸들러를 통과한다:
+
+```javascript
+// 핸들러 등록 — 이것이 이 액션의 유일한 실행 로직
+__panelBridge.registerAction('buy_item', async (params) => {
+  const res = await __panelBridge.runTool('engine', {
+    action: 'buy_item', item: params.item_id, qty: params.qty || 1
+  });
+  if (res.result?.success) {
+    await __panelBridge.queueEvent(`[구매: ${params.item_id} × ${params.qty || 1}]`);
+    // UI 피드백, 애니메이션 등
+  }
+});
+
+// 버튼은 executeAction으로 위임 — 인라인에 로직을 넣지 않는다
+shadow.querySelector('.buy-btn')?.addEventListener('click', async function() {
+  this.disabled = true;
+  await __panelBridge.executeAction('buy_item', {
+    item_id: this.dataset.item, qty: 1
+  });
+});
+```
+
+### `executeAction()` 실행
+
+`executeAction()`은 레지스트리를 통해 핸들러를 호출하고, 히스토리에 자동 기록한다:
+
+```javascript
+// 패널 내부에서 호출 (패널 이름 자동 감지)
+await __panelBridge.executeAction('advance_slot');
+
+// 파라미터 전달
+await __panelBridge.executeAction('confirm_schedule', {
+  schedule_1: 'private_school',
+  schedule_2: 'job_farm',
+  schedule_3: 'job_farm'
+});
+```
+
+### 패널 액션 체크리스트
+
+서버 연동이 있는 패널을 만들 때:
+
+- [ ] `<panel-actions>` 태그로 메타데이터 선언 (id, label, description, available_when)
+- [ ] `registerAction()`으로 핸들러 등록 — 여기에 모든 비즈니스 로직 (runTool + UI 연출)
+- [ ] UI 버튼의 클릭 이벤트에서 `executeAction()` 호출 — 인라인 로직 금지
+- [ ] AI 선택지 형식 확인: `{"panel": "패널이름", "action": "액션id", "params": {...}}`
+
+---
+
 ## 패널 복잡도 스펙트럼
 
 패널은 용도에 따라 세 단계로 나뉜다. 가장 단순한 수준부터 시작하고, 필요할 때만 복잡도를 올려라:
@@ -242,17 +333,34 @@ allowed-tools: Read, Write, Edit, Bash
 btn.addEventListener('click', () => __panelBridge.sendMessage(btn.dataset.action));
 ```
 
-### B) 엔진 호출 → 상태 변경
+### B) 패널 액션 (엔진 호출 + 상태 변경)
+서버 연동이 있는 패널은 **반드시 패널 액션을 사용하라**. 인라인 핸들러에 runTool을 직접 넣지 않는다:
+
 ```javascript
-btn.addEventListener('click', async () => {
-  btn.disabled = true; // 연타 방지 필수
+// 1. 핸들러 등록 (primary 로직)
+__panelBridge.registerAction('buy_item', async (params) => {
   const res = await __panelBridge.runTool('engine', {
-    action: 'buy_item', item: btn.dataset.item
+    action: 'buy_item', item: params.item_id, qty: params.qty || 1
   });
-  if (!res.result?.success) btn.disabled = false;
-  // 성공 시 패널 자동 재렌더링
+  if (!res.result?.success) throw new Error(res.result?.message || '구매 실패');
+  await __panelBridge.queueEvent(`[구매: ${params.item_id} × ${params.qty || 1}]`);
+});
+
+// 2. 버튼 → executeAction 위임
+shadow.querySelector('.buy-btn')?.addEventListener('click', async function() {
+  this.disabled = true;
+  try {
+    await __panelBridge.executeAction('buy_item', {
+      item_id: this.dataset.item, qty: 1
+    });
+  } catch { this.disabled = false; }
 });
 ```
+
+**왜 이 패턴인가:**
+- AI 선택지와 UI 버튼이 **같은 핸들러**를 호출하여 동작이 동일
+- `executeAction()`이 실행을 히스토리에 자동 기록 → `[ACTION_LOG]`에 반영
+- `available_when` 조건으로 AI에게 현재 가능한 액션만 `[AVAILABLE]`로 노출
 
 ### C) 모달 열기/닫기/토글
 ```javascript
@@ -264,11 +372,17 @@ isOpen ? __panelBridge.closeModal('inventory') : __panelBridge.openModal('invent
 ```
 
 ### D) AI에게 맥락 전달
+패널 액션 핸들러 내부에서 `queueEvent`를 호출하여 AI에게 맥락을 전달한다. 패널 액션을 사용하면 `[ACTION_LOG]`에도 자동 기록되므로, `queueEvent`는 추가 디테일이 필요할 때만 사용:
+
 ```javascript
-const res = await __panelBridge.runTool('engine', { action: 'use_item', item: '회복포션' });
-if (res.result?.success) {
-  await __panelBridge.queueEvent(`[아이템사용: 회복포션 → HP +50]`);
-}
+// 패널 액션 핸들러 안에서 — 상세 결과를 AI에게 전달
+__panelBridge.registerAction('use_item', async (params) => {
+  const res = await __panelBridge.runTool('engine', { action: 'use_item', item: params.item });
+  if (res.result?.success) {
+    const fx = Object.entries(res.result.effects || {}).map(([k,v]) => `${k}${v>0?'+':''}${v}`).join(', ');
+    await __panelBridge.queueEvent(`[아이템사용: ${params.item} → ${fx}]`);
+  }
+});
 ```
 
 ### E) 클라이언트 전용 UI (탭)
@@ -415,6 +529,8 @@ async function finalize(result) {
 8. **커스텀 데이터 네임스페이스**: `world.json` → `{{world.locations}}` (파일명이 키)
 9. **시스템 파일 접근 불가**: `session.json`, `layout.json`, `chat-history.json` 등은 데이터 로딩에서 제외
 10. **JSON 데이터를 JS로 전달**: Handlebars에서 복잡한 객체를 직접 쓸 수 없을 때 `{{json (lookup this "file-name")}}` → `<script type="application/json">` 패턴 사용
+11. **인라인 핸들러에 서버 로직 금지**: 클릭 핸들러에서 `runTool` 직접 호출 ❌ → `registerAction`에 로직을 등록하고 버튼은 `executeAction`으로 위임 ✅. 인라인 핸들러에 로직을 넣으면 AI 선택지가 같은 동작을 재현할 수 없고, 히스토리에 기록되지 않는다
+12. **`<panel-actions>` 누락**: 서버 연동 액션이 있는 패널은 반드시 `<panel-actions>` 메타데이터를 선언해야 AI가 해당 액션을 인지하고 선택지에 포함할 수 있다
 
 ---
 

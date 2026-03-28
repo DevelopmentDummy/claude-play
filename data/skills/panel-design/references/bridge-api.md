@@ -106,15 +106,73 @@ AI가 받게 되는 메시지:
 ### `runTool(name: string, args: object): Promise<{ ok, result }>`
 서버사이드 커스텀 툴 실행. `name`은 `tools/` 내 `.js` 파일명 (확장자 제외).
 
-```javascript
-const res = await __panelBridge.runTool('engine', {
-  action: 'buy_item', item: '회복포션'
-});
-// res = { ok: true, result: { success: true, item: '회복포션', newGold: 450 } }
+**⚠️ 패널 액션 핸들러 내부에서만 호출하라.** 버튼 클릭 이벤트에서 `runTool`을 직접 호출하면 히스토리 기록과 AI 선택지 공유가 안 된다. `registerAction` → `executeAction` 패턴을 사용하라.
 
-if (!res.ok) { /* 서버 에러 */ }
-if (!res.result?.success) { /* 로직 실패 (골드 부족 등) */ }
+```javascript
+// ✅ 패널 액션 핸들러 안에서 호출
+__panelBridge.registerAction('buy_item', async (params) => {
+  const res = await __panelBridge.runTool('engine', {
+    action: 'buy_item', item: params.item
+  });
+  if (!res.result?.success) throw new Error('구매 실패');
+});
+
+// ❌ 클릭 핸들러에서 직접 호출 — 히스토리 기록 안 됨, 선택지 공유 불가
+btn.addEventListener('click', async () => {
+  await __panelBridge.runTool('engine', { action: 'buy_item', item: '...' });
+});
 ```
+
+### `registerAction(actionId: string, handler: function, panelName?: string): void`
+패널 액션 핸들러를 등록한다. `actionId`는 `<panel-actions>`에 선언한 `id`와 일치해야 한다. 패널 이름은 렌더링 컨텍스트에서 자동 감지되므로 생략 가능.
+
+**이 핸들러가 해당 액션의 유일한 실행 로직이다.** UI 버튼과 AI 선택지 모두 이 핸들러를 통과한다.
+
+```javascript
+__panelBridge.registerAction('advance_slot', async (params) => {
+  const res = await __panelBridge.runTool('engine', { action: 'advance_slot' });
+  if (!res.result?.success) return;
+  // 애니메이션, 결과 표시 등 UI 연출
+  await playAnimation(res.result);
+  // AI에게 결과 전달
+  await __panelBridge.queueEvent(buildSummary(res.result));
+  __panelBridge.sendMessage('[진행]');
+});
+```
+
+**핸들러 설계 원칙:**
+- 엔진 호출 (`runTool`) + UI 연출 + AI 알림 (`queueEvent` + `sendMessage`)을 한 곳에 모은다
+- params는 AI 선택지에서 전달될 수 있다 — `<panel-actions>`의 `params` 필드와 대응
+- 핸들러 내부에서 `sendMessage`를 호출하면 AI 턴이 시작된다
+
+### `executeAction(actionId: string, params?: object, panelName?: string): Promise<void>`
+등록된 패널 액션을 실행한다. 레지스트리를 통해 핸들러를 호출하고, 실행을 `[ACTION_LOG]`에 자동 기록한다.
+
+**UI 버튼은 이 메서드로 액션을 실행해야 한다** — 인라인에 로직을 넣지 않는다:
+
+```javascript
+// 버튼 → 패널 액션 실행
+shadow.querySelector('#advBtn')?.addEventListener('click', async function() {
+  if (this.disabled) return;
+  this.disabled = true;
+  await __panelBridge.executeAction('advance_slot');
+});
+
+// 파라미터 전달
+shadow.querySelector('.buy-btn')?.addEventListener('click', async function() {
+  this.disabled = true;
+  await __panelBridge.executeAction('buy_item', {
+    item_id: this.dataset.item, qty: 1
+  });
+});
+```
+
+**`executeAction` vs 직접 `runTool` 호출:**
+| | `executeAction` | 직접 `runTool` |
+|---|---|---|
+| 히스토리 기록 | ✅ 자동 (`[ACTION_LOG]`) | ❌ 없음 |
+| AI 선택지 공유 | ✅ 동일 핸들러 | ❌ 선택지에서 재현 불가 |
+| `[AVAILABLE]` 연동 | ✅ 자동 | ❌ 수동 관리 |
 
 ### `showPopup(template: string, opts?: object): void`
 팝업 이펙트를 큐에 추가. `template`은 `popups/` 내 `.html` 파일명 (확장자 제외).
@@ -252,44 +310,64 @@ testImg.src = base + 'portrait.png?' + Date.now();
 
 ---
 
-## 종합 예제: 엔진 호출 → 결과 표시 → AI 알림
+## 종합 예제: 패널 액션으로 아이템 사용
 
 ```html
+<panel-actions>
+[
+  {
+    "id": "use_item",
+    "label": "아이템 사용",
+    "description": "인벤토리에서 아이템을 사용한다",
+    "params": { "item": "아이템명" },
+    "available_when": "true"
+  }
+]
+</panel-actions>
+
 <button class="use-btn" data-item="회복포션">사용</button>
 <div class="feedback" id="feedback"></div>
 
 <script>
-(function() {
-  // shadow는 자동 주입됨
+  const feedback = shadow.querySelector('#feedback');
+
+  // 1. 패널 액션 등록 — 모든 실행 로직이 여기에
+  __panelBridge.registerAction('use_item', async (params) => {
+    const res = await __panelBridge.runTool('engine', {
+      action: 'use_item', item: params.item
+    });
+
+    if (res.result?.success) {
+      const fx = Object.entries(res.result.effects || {})
+        .map(([k, v]) => `${k} ${v > 0 ? '+' : ''}${v}`)
+        .join(', ');
+      feedback.textContent = `✅ ${res.result.item} 사용 → ${fx}`;
+      feedback.style.color = '#4dcc7a';
+      await __panelBridge.queueEvent(
+        `[아이템사용: ${res.result.item}×${res.result.quantity} → ${fx}]`
+      );
+    } else {
+      feedback.textContent = `❌ ${res.result?.message || '실패'}`;
+      feedback.style.color = '#f07070';
+      throw new Error(res.result?.message || '실패');
+    }
+  });
+
+  // 2. 버튼 → executeAction 위임
   shadow.querySelectorAll('.use-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
       btn.disabled = true;
-      const feedback = shadow.querySelector('#feedback');
-
-      const res = await __panelBridge.runTool('engine', {
-        action: 'use_item', item: btn.dataset.item
-      });
-
-      if (res.result?.success) {
-        // 즉시 UI 피드백
-        const fx = Object.entries(res.result.effects || {})
-          .map(([k, v]) => `${k} ${v > 0 ? '+' : ''}${v}`)
-          .join(', ');
-        feedback.textContent = `✅ ${res.result.item} 사용 → ${fx}`;
-        feedback.style.color = '#4dcc7a';
-
-        // AI에게 알림 (다음 메시지에 첨부)
-        await __panelBridge.queueEvent(
-          `[아이템사용: ${res.result.item}×${res.result.quantity} → ${fx}]`
-        );
-        // 패널이 자동 재렌더링되어 수량 갱신됨
-      } else {
-        feedback.textContent = `❌ ${res.result?.message || '실패'}`;
-        feedback.style.color = '#f07070';
+      try {
+        await __panelBridge.executeAction('use_item', { item: btn.dataset.item });
+      } catch {
         btn.disabled = false;
       }
     });
   });
-})();
 </script>
+```
+
+AI 선택지에서도 동일한 액션을 호출할 수 있다:
+```json
+{"panel": "inventory", "action": "use_item", "params": {"item": "회복포션"}}
 ```
