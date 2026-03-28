@@ -23,6 +23,7 @@ import PopupEffect from "@/components/PopupEffect";
 import ToastEffect from "@/components/ToastEffect";
 import { dispatchBridgeEvent } from "@/lib/use-panel-bridge";
 import { buildAutoplayMessage, calculateAutoplayDelay, getSelectedPreset, type SteeringPreset } from "@/lib/autoplay";
+import { getPanelActionRegistry } from "@/lib/panel-action-registry";
 
 interface Panel {
   name: string;
@@ -58,6 +59,9 @@ export default function ChatPage() {
   const [panelData, setPanelData] = useState<Record<string, unknown>>({});
   const panelDataRef = useRef<Record<string, unknown>>({});
   useEffect(() => { panelDataRef.current = panelData; }, [panelData]);
+  useEffect(() => {
+    getPanelActionRegistry().updateVariables(panelData);
+  }, [panelData]);
   const [sharedPlacements, setSharedPlacements] = useState<Record<string, "modal" | "dock" | "dock-left" | "dock-right" | "dock-bottom">>({});
   const [layout, setLayout] = useState<LayoutConfig | null>(null);
   const [title, setTitle] = useState("");
@@ -441,9 +445,20 @@ export default function ChatPage() {
     onSessionLost: handleSessionLost,
   });
 
+  const queueAvailableHeader = useCallback(async () => {
+    if (!sessionId) return;
+    const header = getPanelActionRegistry().buildAvailableHeader();
+    if (!header) return;
+    await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/events`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ header }),
+    });
+  }, [sessionId]);
+
   // Send via WebSocket: update local UI state + send through WS
   const sendMessage = useCallback(
-    (text: string, opts?: { silent?: boolean }) => {
+    async (text: string, opts?: { silent?: boolean }) => {
       if (opts?.silent) {
         // Silent: send to AI only, skip history/user message
         // But still mark streaming so input gets disabled
@@ -458,11 +473,13 @@ export default function ChatPage() {
         const win = window as unknown as Record<string, unknown>;
         win.__popupsPlaying = false;
         win.__pendingPanelMsg = null;
+        // Queue [AVAILABLE] header before sending so it's flushed with this turn
+        await queueAvailableHeader();
       }
       prepareSend(text);
       sendChat(text);
     },
-    [prepareSend, sendChat, setStreamingManually]
+    [prepareSend, sendChat, setStreamingManually, queueAvailableHeader]
   );
 
   const handleCompact = useCallback(() => {
