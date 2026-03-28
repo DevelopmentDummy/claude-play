@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect, memo } from "react";
 import { showToast } from "./ToastEffect";
+import { getPanelActionRegistry } from "@/lib/panel-action-registry";
 
 // Web Speech API type shim (not in default DOM lib)
 interface SpeechRecognitionEvent extends Event {
@@ -39,9 +40,11 @@ declare global {
 }
 
 export interface ChoiceAction {
-  tool: string;
+  tool?: string;       // legacy: tool name (e.g. "engine")
+  panel?: string;      // new: panel name (e.g. "advance", "schedule")
   action: string;
   args?: Record<string, unknown>;
+  params?: Record<string, unknown>; // panel action params (alias for args)
 }
 
 export interface Choice {
@@ -164,35 +167,74 @@ function ChatInput({ disabled, onSend, sessionId, choices, pendingEvents, showOO
     }
     setChoiceBusy(true);
     try {
+      const registry = getPanelActionRegistry();
+      const win = window as unknown as Record<string, unknown>;
       let lastAvailable: Array<{ action: string; label: string; args_hint: string | null }> | null = null;
 
-      for (const act of choice.actions) {
-        const toolRes = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/tools/${encodeURIComponent(act.tool)}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ args: { action: act.action, ...(act.args || {}) } }),
-        });
-        if (!toolRes.ok) {
-          const err = await toolRes.json().catch(() => ({ error: "Action failed" }));
-          throw new Error(err.error || `Action ${act.action} failed`);
-        }
-        const toolData = await toolRes.json();
-        const hint = toolData.result?.hints?.narrative || toolData.result?.hints?.summary || "completed";
-        const header = `[${act.action}] ${hint}`;
-        await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/events`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ header }),
-        });
+      const panelActions = choice.actions.filter(a => a.panel);
+      const isCompound = panelActions.length > 1;
+      let panelActionIndex = 0;
 
-        // Capture latest _available_actions (last result wins)
-        if (toolData._available_actions?.length) {
-          lastAvailable = toolData._available_actions;
+      for (const act of choice.actions) {
+        if (act.panel) {
+          // ═══ Panel Action ═══
+          const isLast = panelActionIndex === panelActions.length - 1;
+          panelActionIndex++;
+
+          // Suppress intermediate sendMessage in compound actions
+          if (isCompound && !isLast) {
+            win.__panelActionSuppressSend = true;
+          }
+
+          // 1. Open the panel modal
+          await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/modals`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "open", name: act.panel, mode: true }),
+          });
+
+          // 2. Wait for handler to be registered
+          await registry.waitForHandler(act.panel, act.action, 8000);
+
+          // 3. Execute via registry (records to history + runs handler)
+          const params = act.params || act.args;
+          await registry.execute(act.panel, act.action, params);
+
+          win.__panelActionSuppressSend = false;
+
+        } else if (act.tool) {
+          // ═══ Legacy Tool Action ═══
+          const toolRes = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/tools/${encodeURIComponent(act.tool)}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ args: { action: act.action, ...(act.args || {}) } }),
+          });
+          if (!toolRes.ok) {
+            const err = await toolRes.json().catch(() => ({ error: "Action failed" }));
+            throw new Error(err.error || `Action ${act.action} failed`);
+          }
+          const toolData = await toolRes.json();
+          const hint = toolData.result?.hints?.narrative || toolData.result?.hints?.summary || "completed";
+          await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/events`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ header: `[${act.action}] ${hint}` }),
+          });
+          if (toolData._available_actions?.length) {
+            lastAvailable = toolData._available_actions;
+          }
         }
       }
 
-      // Queue [AVAILABLE] header if present
-      if (lastAvailable && lastAvailable.length > 0) {
+      // [AVAILABLE] header: prefer registry, fallback to legacy
+      const availableHeader = registry.buildAvailableHeader();
+      if (availableHeader) {
+        await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/events`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ header: availableHeader }),
+        });
+      } else if (lastAvailable && lastAvailable.length > 0) {
         const parts = lastAvailable.map((a: { action: string; label: string; args_hint: string | null }) =>
           a.args_hint ? `${a.action}(${a.label} ${a.args_hint})` : `${a.action}(${a.label})`
         );
@@ -203,7 +245,13 @@ function ChatInput({ disabled, onSend, sessionId, choices, pendingEvents, showOO
         });
       }
 
-      onSend(choice.text);
+      // Panel actions: handler calls sendMessage internally
+      // Legacy/no-action: send choice text directly
+      const hasPanelAction = choice.actions.some(a => a.panel);
+      if (!hasPanelAction) {
+        onSend(choice.text);
+      }
+
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Action failed";
       console.error("[choice action]", msg);

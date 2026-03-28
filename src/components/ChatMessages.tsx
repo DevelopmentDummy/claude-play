@@ -45,9 +45,11 @@ const CHOICE_CLOSE = "</choice>";
 const SPECIAL_TOKEN_REGEX = /\$(?:IMAGE|PANEL):[^$]+\$/g;
 
 export interface ChoiceAction {
-  tool: string;
+  tool?: string;       // legacy: tool name (e.g. "engine")
+  panel?: string;      // new: panel name (e.g. "advance", "schedule")
   action: string;
   args?: Record<string, unknown>;
+  params?: Record<string, unknown>; // panel action params (alias for args)
 }
 
 export interface Choice {
