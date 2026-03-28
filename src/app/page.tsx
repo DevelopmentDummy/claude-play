@@ -72,7 +72,11 @@ export default function LobbyPage() {
     ]);
     if (pRes.ok) setPersonas(await pRes.json());
     if (sRes.ok) setSessions(await sRes.json());
-    if (prRes.ok) setProfiles(await prRes.json());
+    if (prRes.ok) {
+      const list = await prRes.json();
+      setProfiles(list);
+      if (list.length === 0) setProfileDialogOpen(true);
+    }
   }, []);
 
   useEffect(() => {
@@ -351,6 +355,7 @@ export default function LobbyPage() {
         }}
         onSave={saveProfile}
         editData={editingProfile}
+        required={profiles.length === 0}
       />
 
       <PersonaStartModal
