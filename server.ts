@@ -57,6 +57,10 @@ let gpuManagerRestarts = 0;
 const GPU_MANAGER_MAX_RESTARTS = 3;
 
 function spawnGpuManager(): ChildProcess | null {
+  if (process.env.GPU_MANAGER_ENABLED === "false") {
+    console.log("[gpu-manager] disabled via GPU_MANAGER_ENABLED=false");
+    return null;
+  }
   const serverScript = path.join(process.cwd(), "gpu-manager", "server.py");
   if (!fs.existsSync(serverScript)) {
     console.log("[gpu-manager] server.py not found, skipping");
