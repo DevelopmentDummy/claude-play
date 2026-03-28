@@ -1,3 +1,19 @@
+<panel-actions>
+[
+  {
+    "id": "confirm_schedule",
+    "label": "스케줄 확정",
+    "description": "3슬롯 스케줄을 설정하고 확정한다. 실행 페이즈로 전환됨",
+    "params": {
+      "schedule_1": "활동 ID (상순)",
+      "schedule_2": "활동 ID (중순)",
+      "schedule_3": "활동 ID (하순)"
+    },
+    "available_when": "turn_phase === 'setup'"
+  }
+]
+</panel-actions>
+
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap');
 
@@ -584,9 +600,23 @@
     __panelBridge.updateVariables(p);
   });
 
-  shadow.querySelector('#advBtn')?.addEventListener('click', async function() {
-    if (this.disabled) return;
-    this.disabled = true;
+  // Register confirm_schedule as panel action
+  __panelBridge.registerAction('confirm_schedule', async (params) => {
+    // If params provided (from AI choice), set schedule slots first
+    if (params) {
+      const patch = {};
+      if (params.schedule_1) patch.schedule_1 = params.schedule_1;
+      if (params.schedule_2) patch.schedule_2 = params.schedule_2;
+      if (params.schedule_3) patch.schedule_3 = params.schedule_3;
+      if (Object.keys(patch).length > 0) {
+        await __panelBridge.updateVariables(patch);
+        // Update local slots array to reflect changes
+        if (params.schedule_1) slots[0] = params.schedule_1;
+        if (params.schedule_2) slots[1] = params.schedule_2;
+        if (params.schedule_3) slots[2] = params.schedule_3;
+      }
+    }
+
     // Queue schedule info for AI awareness
     if (locked > 0) {
       // Mid-month modification — only report remaining (unlocked) slots
@@ -616,6 +646,13 @@
       __refreshPanels: ['advance']
     });
     await __panelBridge.openModal('advance', true);
+  });
+
+  // Button click delegates to panel action
+  shadow.querySelector('#advBtn')?.addEventListener('click', async function() {
+    if (this.disabled) return;
+    this.disabled = true;
+    await __panelBridge.executeAction('confirm_schedule');
   });
 
   shadow.querySelectorAll('.pm-comp-btn').forEach(b => {

@@ -1,3 +1,14 @@
+<panel-actions>
+[
+  {
+    "id": "advance_slot",
+    "label": "스케줄 진행",
+    "description": "현재 슬롯의 활동을 실행한다 (일별 시뮬레이션 애니메이션 포함)",
+    "available_when": "turn_phase === 'executing' && current_slot < 3"
+  }
+]
+</panel-actions>
+
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap');
   :host {
@@ -633,26 +644,27 @@
     await __panelBridge.openModal('schedule', true);
   });
 
-    advBtn?.addEventListener('click', async function() {
-    if (this.disabled) return;
-    _running = true;
-    _animating = true;
-    this.disabled = true;
-    this.textContent = '⏳ 진행 중...';
+    // Register advance_slot as panel action — all execution logic here
+    __panelBridge.registerAction('advance_slot', async (params) => {
+      if (_running) return;
+      _running = true;
+      _animating = true;
+      if (advBtn) {
+        advBtn.disabled = true;
+        advBtn.textContent = '⏳ 진행 중...';
+      }
 
     let res;
     try {
       res = await __panelBridge.runTool('engine', { action: 'advance_slot' });
     } catch(e) {
       _running = false;
-      this.disabled = false;
-      this.textContent = '▶ 스케줄 진행';
+      if (advBtn) { advBtn.disabled = false; advBtn.textContent = '▶ 스케줄 진행'; }
       return;
     }
     if (!res.result?.success) {
       _running = false;
-      this.disabled = false;
-      this.textContent = '▶ 스케줄 진행';
+      if (advBtn) { advBtn.disabled = false; advBtn.textContent = '▶ 스케줄 진행'; }
       return;
     }
     const r = res.result;
@@ -1068,6 +1080,12 @@
       await finalize(r);
     }
   });
+
+    // Button click delegates to panel action
+    advBtn?.addEventListener('click', async function() {
+      if (this.disabled) return;
+      await __panelBridge.executeAction('advance_slot');
+    });
 
   } // end buildPanel
 
