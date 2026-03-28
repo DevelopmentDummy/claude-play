@@ -18,6 +18,10 @@ export async function POST(req: Request) {
   const instance = openSessionInstance(name, true, provider);
   instance.clearHistory();
 
+  // Add builder opening message
+  const opening = "안녕하세요! 새로운 페르소나를 함께 만들어볼까요?\n\n이름, 성격, 말투, 배경 설정 등 원하는 것을 자유롭게 알려주세요. 구체적일수록 좋지만, 간단한 아이디어만 있어도 괜찮아요 — 대화하면서 함께 다듬어 나갈 수 있습니다.";
+  instance.addOpeningToHistory(opening);
+
   const personaDir = svc.sessions.createPersonaDir(name);
   svc.sessions.ensureClaudeRuntimeConfig(personaDir, name, "builder");
 
@@ -58,5 +62,5 @@ export async function POST(req: Request) {
   instance.claude.spawn(personaDir, undefined, model || undefined, runtimeSystemPrompt, effectiveEffort);
 
   const displayName = svc.sessions.getPersonaDisplayName(name);
-  return NextResponse.json({ name, displayName, dir: personaDir, provider });
+  return NextResponse.json({ name, displayName, dir: personaDir, provider, opening });
 }

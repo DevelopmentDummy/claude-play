@@ -34,6 +34,7 @@ export default function BuilderPage() {
     loadHistory,
     loadMore,
     hasMore,
+    addOpeningMessage,
   } = useChat(decodedName);
 
   const [refreshTrigger, setRefreshTrigger] = useState(0);
@@ -119,13 +120,19 @@ export default function BuilderPage() {
         }
       } catch { /* ignore */ }
 
-      await loadHistory();
+      const historyCount = await loadHistory();
+
+      // Show opening message for new builder sessions
+      if (historyCount === 0 && data.opening) {
+        addOpeningMessage(data.opening);
+      }
+
       setStatus("connected");
       setWsEnabled(true);
     };
 
     init();
-  }, [mode, decodedName, setError, setStatus]);
+  }, [mode, decodedName, setError, setStatus, addOpeningMessage]);
 
   const handleCompact = useCallback(() => {
     wsSend("command:send", { command: "compact" });
