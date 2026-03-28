@@ -30,38 +30,6 @@ function extractSpecialTokens(raw: string): string[] {
   return unique;
 }
 
-function sanitizeFilename(value: string): string {
-  const trimmed = value.trim();
-  if (!trimmed) return "";
-  const slash = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
-  return slash >= 0 ? trimmed.slice(slash + 1) : trimmed;
-}
-
-function detectImageToken(toolName: string, input: unknown): string | null {
-  const imageToolNames = new Set([
-    "mcp__claude_play__generate_image",
-    "mcp__claude_play__generate_image_gemini",
-    "mcp__claude_play__comfyui_generate",
-    "mcp__claude_play__gemini_generate",
-    // Gemini MCP prefix (hyphen in server name)
-    "mcp_claude-play_generate_image",
-    "mcp_claude-play_generate_image_gemini",
-    "mcp_claude-play_comfyui_generate",
-    "mcp_claude-play_gemini_generate",
-  ]);
-  if (!imageToolNames.has(toolName)) return null;
-  if (!input || typeof input !== "object") return null;
-
-  const body = input as Record<string, unknown>;
-  const fromPath = typeof body.path === "string" ? body.path.trim() : "";
-  if (fromPath.startsWith("images/")) {
-    return `$IMAGE:${fromPath}$`;
-  }
-
-  const filename = typeof body.filename === "string" ? sanitizeFilename(body.filename) : "";
-  if (!filename) return null;
-  return `$IMAGE:images/${filename}$`;
-}
 
 function toolUseKey(name: string, input: unknown): string {
   try {
@@ -207,7 +175,7 @@ export class SessionInstance {
   // Accumulator for assistant turn
   private segments: string[] = [];
   private tools: Array<{ name: string; input: unknown }> = [];
-  private autoImageTokens = new Set<string>();
+
   private seenToolKeys = new Set<string>();
   private sawTextDelta = false;
   private currentBlockType = "text";
@@ -442,7 +410,7 @@ export class SessionInstance {
     this.chatHistory = [];
     this.segments = [];
     this.tools = [];
-    this.autoImageTokens.clear();
+
     this.seenToolKeys.clear();
     this.sawTextDelta = false;
     const dir = this.getDir();
@@ -499,14 +467,6 @@ export class SessionInstance {
     this.seenToolKeys.add(key);
 
     this.tools.push({ name: toolName, input });
-    const imageToken = detectImageToken(toolName, input);
-    if (imageToken && !this.autoImageTokens.has(imageToken)) {
-      this.autoImageTokens.add(imageToken);
-      const joined = this.segments.join("");
-      if (!joined.includes(imageToken)) {
-        this.segments.push(`\n${imageToken}\n`);
-      }
-    }
   }
 
   // --- TTS ---
@@ -769,7 +729,7 @@ export class SessionInstance {
         this.isSlashCommand = false;
         this.segments = [];
         this.tools = [];
-        this.autoImageTokens.clear();
+    
         this.seenToolKeys.clear();
         this.sawTextDelta = false;
         this.currentBlockType = "text";

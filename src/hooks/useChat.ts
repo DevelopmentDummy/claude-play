@@ -18,38 +18,6 @@ function toolUseKey(name: string, input: unknown): string {
   }
 }
 
-function sanitizeFilename(value: string): string {
-  const trimmed = value.trim();
-  if (!trimmed) return "";
-  const slash = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
-  return slash >= 0 ? trimmed.slice(slash + 1) : trimmed;
-}
-
-function detectImageToken(toolName: string, input: unknown): string | null {
-  const imageToolNames = new Set([
-    "mcp__claude_play__generate_image",
-    "mcp__claude_play__generate_image_gemini",
-    "mcp__claude_play__comfyui_generate",
-    "mcp__claude_play__gemini_generate",
-    // Gemini MCP prefix (hyphen in server name)
-    "mcp_claude-play_generate_image",
-    "mcp_claude-play_generate_image_gemini",
-    "mcp_claude-play_comfyui_generate",
-    "mcp_claude-play_gemini_generate",
-  ]);
-  if (!imageToolNames.has(toolName)) return null;
-
-  if (!input || typeof input !== "object") return null;
-  const body = input as Record<string, unknown>;
-  const fromPath = typeof body.path === "string" ? body.path.trim() : "";
-  if (fromPath.startsWith("images/")) {
-    return `$IMAGE:${fromPath}$`;
-  }
-
-  const filename = typeof body.filename === "string" ? sanitizeFilename(body.filename) : "";
-  if (!filename) return null;
-  return `$IMAGE:images/${filename}$`;
-}
 
 export function useChat(rawSessionId?: string) {
   const sessionId = rawSessionId ? decodeURIComponent(rawSessionId) : undefined;
@@ -61,7 +29,7 @@ export function useChat(rawSessionId?: string) {
 
   const segmentsRef = useRef<string[]>([]);
   const toolsRef = useRef<Array<{ name: string; input: unknown }>>([]);
-  const autoImageTokensRef = useRef<Set<string>>(new Set());
+
   const seenToolKeysRef = useRef<Set<string>>(new Set());
   const sawTextDeltaRef = useRef(false);
   const currentBlockTypeRef = useRef<string>("text");
@@ -102,13 +70,6 @@ export function useChat(rawSessionId?: string) {
       if (seenToolKeysRef.current.has(key)) return;
       seenToolKeysRef.current.add(key);
       toolsRef.current.push({ name, input });
-      const imageToken = detectImageToken(name, input);
-      if (imageToken && !autoImageTokensRef.current.has(imageToken)) {
-        autoImageTokensRef.current.add(imageToken);
-        if (!segmentsRef.current.join("").includes(imageToken)) {
-          segmentsRef.current.push(`\n${imageToken}\n`);
-        }
-      }
 
       const fullText = segmentsRef.current.join("");
       const isOOC = oocRef.current;
@@ -146,7 +107,7 @@ export function useChat(rawSessionId?: string) {
   const finishAssistantTurn = useCallback(() => {
     segmentsRef.current = [];
     toolsRef.current = [];
-    autoImageTokensRef.current.clear();
+
     seenToolKeysRef.current.clear();
     sawTextDeltaRef.current = false;
     currentBlockTypeRef.current = "text";
@@ -265,7 +226,7 @@ export function useChat(rawSessionId?: string) {
     setMessages([]);
     segmentsRef.current = [];
     toolsRef.current = [];
-    autoImageTokensRef.current.clear();
+
     seenToolKeysRef.current.clear();
     sawTextDeltaRef.current = false;
   }, []);
