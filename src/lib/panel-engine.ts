@@ -344,7 +344,6 @@ export class PanelEngine {
     this.watchDataFiles();
     // Clear autoRefresh cache so that autoRefresh:false panels also re-render at turn end
     this.autoRefreshCache.clear();
-    console.log("[panel-engine] reload — dataFiles keys:", Object.keys(this.dataFiles), "inventory items:", (this.dataFiles.inventory as Record<string, unknown>)?.items ? "yes" : "no");
     this.render();
   }
 
