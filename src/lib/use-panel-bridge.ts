@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { getPanelActionRegistry, type PanelActionHandler } from "./panel-action-registry";
 
 /** Internal event prefix for bridge events dispatched on window */
 const EVT_PREFIX = "__bridge_evt:";
@@ -24,6 +25,11 @@ export function usePanelBridge(
     const bridge = {
       sendMessage(text: string, opts?: { silent?: boolean }) {
         const win = window as unknown as Record<string, unknown>;
+        // Suppress during compound panel action execution
+        if (win.__panelActionSuppressSend) {
+          win.__panelActionSuppressedMsg = { text, opts };
+          return;
+        }
         const detail = opts?.silent ? { text, silent: true } : text;
         // If popups are playing/pending, queue the message for later delivery
         if (win.__popupsPlaying) {
@@ -138,6 +144,24 @@ export function usePanelBridge(
         window.addEventListener(`${EVT_PREFIX}${event}`, wrapped);
         return () => window.removeEventListener(`${EVT_PREFIX}${event}`, wrapped);
       },
+      /** Register a panel action handler. panelName auto-detected from __currentPanelName. */
+      registerAction(actionId: string, handler: PanelActionHandler, panelName?: string): void {
+        const panel = panelName || (window as unknown as Record<string, unknown>).__currentPanelName as string;
+        if (!panel) {
+          console.warn("[panelBridge] registerAction: no panel name context");
+          return;
+        }
+        getPanelActionRegistry().registerHandler(panel, actionId, handler);
+      },
+      /** Execute a registered panel action. Records to history automatically. */
+      async executeAction(actionId: string, params?: Record<string, unknown>, panelName?: string): Promise<void> {
+        const panel = panelName || (window as unknown as Record<string, unknown>).__currentPanelName as string;
+        if (!panel) {
+          console.warn("[panelBridge] executeAction: no panel name context");
+          return;
+        }
+        await getPanelActionRegistry().execute(panel, actionId, params);
+      },
       sessionId,
       data: panelData || {},
       get isStreaming() {
@@ -145,5 +169,8 @@ export function usePanelBridge(
       },
     };
     (window as unknown as Record<string, unknown>).__panelBridge = bridge;
+    if (sessionId) {
+      getPanelActionRegistry().setSessionId(sessionId);
+    }
   }, [sessionId, panelData]);
 }

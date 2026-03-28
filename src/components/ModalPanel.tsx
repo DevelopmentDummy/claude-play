@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import ImageModal from "./ImageModal";
 import { installImagePolling } from "@/lib/panel-image-polling";
 import { usePanelBridge } from "@/lib/use-panel-bridge";
+import { getPanelActionRegistry, parsePanelActions } from "@/lib/panel-action-registry";
 
 interface ModalPanelProps {
   name: string;
@@ -146,6 +147,15 @@ export default function ModalPanel({
 
     installImagePolling(shadow);
 
+    // Parse <panel-actions> and register metadata
+    const actionMetas = parsePanelActions(html);
+    if (actionMetas.length > 0) {
+      getPanelActionRegistry().registerMeta(name, actionMetas);
+    }
+
+    // Set panel name context for registerAction calls in panel scripts
+    (window as unknown as Record<string, unknown>).__currentPanelName = name;
+
     const scripts = Array.from(shadow.querySelectorAll("script:not([type]), script[type='text/javascript']"));
     for (const oldScript of scripts) {
       oldScript.remove();
@@ -160,7 +170,15 @@ export default function ModalPanel({
         console.warn(`[ModalPanel] Script error in "${name}":`, e);
       }
     }
+
+    // Clear panel name context
+    delete (window as unknown as Record<string, unknown>).__currentPanelName;
   }, [html, name]);
+
+  // Cleanup panel action registry on unmount
+  useEffect(() => {
+    return () => { getPanelActionRegistry().clearPanel(name); };
+  }, [name]);
 
   // Close on Escape key (only if dismissible AND topmost in stack)
   useEffect(() => {

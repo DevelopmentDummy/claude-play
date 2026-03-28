@@ -84,9 +84,9 @@ function extractDialog(raw: string): string {
 // --- Exports ---
 
 export interface ActionRecord {
-  tool: string;
+  panel: string;
   action: string;
-  args?: Record<string, unknown>;
+  params?: Record<string, unknown>;
 }
 
 export interface HistoryMessage {
@@ -340,8 +340,10 @@ export class SessionInstance {
     this.writePendingActions([]);
     return actions
       .map(a => {
-        const argsStr = a.args ? `, args=${JSON.stringify(a.args)}` : "";
-        return `[ACTION_LOG] tool=${a.tool}, action=${a.action}${argsStr}`;
+        const paramsStr = a.params && Object.keys(a.params).length > 0
+          ? `(${Object.entries(a.params).map(([k, v]) => `${k}=${v}`).join(", ")})`
+          : "";
+        return `[ACTION_LOG] ${a.panel}.${a.action}${paramsStr}`;
       })
       .join("\n");
   }

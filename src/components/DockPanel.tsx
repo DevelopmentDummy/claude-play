@@ -4,6 +4,7 @@ import { useRef, useEffect, useState } from "react";
 import ImageModal from "./ImageModal";
 import { installImagePolling } from "@/lib/panel-image-polling";
 import { usePanelBridge } from "@/lib/use-panel-bridge";
+import { getPanelActionRegistry, parsePanelActions } from "@/lib/panel-action-registry";
 
 export interface DockPanelEntry {
   name: string;
@@ -97,6 +98,15 @@ export default function DockPanel({
 
     installImagePolling(shadow);
 
+    // Parse <panel-actions> and register metadata
+    const actionMetas = parsePanelActions(current.html);
+    if (actionMetas.length > 0) {
+      getPanelActionRegistry().registerMeta(current.name, actionMetas);
+    }
+
+    // Set panel name context for registerAction calls in panel scripts
+    (window as unknown as Record<string, unknown>).__currentPanelName = current.name;
+
     const scripts = Array.from(shadow.querySelectorAll("script:not([type]), script[type='text/javascript']"));
     for (const oldScript of scripts) {
       oldScript.remove();
@@ -111,7 +121,20 @@ export default function DockPanel({
         console.warn(`[DockPanel] Script error in "${current.name}":`, e);
       }
     }
+
+    // Clear panel name context
+    delete (window as unknown as Record<string, unknown>).__currentPanelName;
   }, [current?.html, current?.name]);
+
+  // Cleanup panel action registry entries on unmount
+  useEffect(() => {
+    return () => {
+      for (const p of panels) {
+        getPanelActionRegistry().clearPanel(p.name);
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const showTabs = panels.length > 1;
   const isSide = direction === "left" || direction === "right";

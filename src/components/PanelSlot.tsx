@@ -4,6 +4,7 @@ import { useRef, useEffect, useCallback, useState } from "react";
 import ImageModal from "./ImageModal";
 import { installImagePolling } from "@/lib/panel-image-polling";
 import { usePanelBridge } from "@/lib/use-panel-bridge";
+import { getPanelActionRegistry, parsePanelActions } from "@/lib/panel-action-registry";
 
 interface PanelSlotProps {
   name: string;
@@ -63,6 +64,15 @@ export default function PanelSlot({ name, html, sessionId, panelData, onSendMess
     // Auto-poll images that haven't loaded yet (deferred generation)
     installImagePolling(shadow);
 
+    // Parse <panel-actions> and register metadata
+    const actionMetas = parsePanelActions(html);
+    if (actionMetas.length > 0) {
+      getPanelActionRegistry().registerMeta(name, actionMetas);
+    }
+
+    // Set panel name context for registerAction calls in panel scripts
+    (window as unknown as Record<string, unknown>).__currentPanelName = name;
+
     // Execute <script> tags manually via Function() to avoid DOM insertion issues
     // Skip non-JS scripts (e.g. type="application/json" used as embedded data)
     const scripts = Array.from(shadow.querySelectorAll("script:not([type]), script[type='text/javascript']"));
@@ -81,7 +91,15 @@ export default function PanelSlot({ name, html, sessionId, panelData, onSendMess
         console.warn(`[PanelSlot] Script error in "${name}":`, e);
       }
     }
+
+    // Clear panel name context
+    delete (window as unknown as Record<string, unknown>).__currentPanelName;
   }, [html, name]);
+
+  // Cleanup panel action registry on unmount
+  useEffect(() => {
+    return () => { getPanelActionRegistry().clearPanel(name); };
+  }, [name]);
 
   return (
     <>
