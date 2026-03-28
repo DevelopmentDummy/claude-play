@@ -1,5 +1,5 @@
 {
-  "name": "claude-bridge",
+  "name": "claude-play",
   "version": "0.2.0",
   "private": true,
   "description": "Next.js chat UI bridging to Claude Code CLI via NDJSON pipes",

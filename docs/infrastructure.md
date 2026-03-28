@@ -58,8 +58,8 @@
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `CLAUDE_BRIDGE_API_BASE` | `http://127.0.0.1:{PORT}` | API base URL for MCP server |
-| `CLAUDE_BRIDGE_AUTH_TOKEN` | (auto-generated) | MCP server auth token |
-| `CLAUDE_BRIDGE_MODE` | (per-session) | MCP mode (session/builder) |
-| `CLAUDE_BRIDGE_PERSONA` | (per-session) | MCP persona name |
-| `CLAUDE_BRIDGE_SESSION_DIR` | (per-session) | MCP session directory path |
+| `CLAUDE_PLAY_API_BASE` | `http://127.0.0.1:{PORT}` | API base URL for MCP server |
+| `CLAUDE_PLAY_AUTH_TOKEN` | (auto-generated) | MCP server auth token |
+| `CLAUDE_PLAY_MODE` | (per-session) | MCP mode (session/builder) |
+| `CLAUDE_PLAY_PERSONA` | (per-session) | MCP persona name |
+| `CLAUDE_PLAY_SESSION_DIR` | (per-session) | MCP session directory path |

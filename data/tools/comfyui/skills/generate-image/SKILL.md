@@ -156,7 +156,7 @@ curl -s -X POST http://localhost:3340/api/tools/comfyui/generate \
 
 ### MCP 도구 사용 (권장)
 ```
-mcp__claude_bridge__update_profile({ sourceImage: "images/mira-walk-flustered-202.png" })
+mcp__claude_play__update_profile({ sourceImage: "images/mira-walk-flustered-202.png" })
 ```
 
 ### API 직접 호출
@@ -402,7 +402,7 @@ breast focus, close-up → 가슴
 특수 포즈, 액션, 상황에 대한 LoRA는 요청마다 동적으로 추가할 수 있다.
 
 ### MCP 도구 우선 사용
-`generate-image.sh` 대신 `mcp__claude_bridge__generate_image` MCP 도구를 우선 사용하라.
+`generate-image.sh` 대신 `mcp__claude_play__generate_image` MCP 도구를 우선 사용하라.
 bash 셸 인코딩 문제 없이 `loras` 파라미터를 직접 전달할 수 있다.
 
 ### 사용 방법

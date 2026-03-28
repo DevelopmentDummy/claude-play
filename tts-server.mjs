@@ -33,7 +33,7 @@ function sendJson(res, status, data) {
 }
 
 // Ensure temp dir exists
-const TMP_DIR = join(tmpdir(), "claude-bridge-tts");
+const TMP_DIR = join(tmpdir(), "claude-play-tts");
 mkdirSync(TMP_DIR, { recursive: true });
 
 const server = createServer(async (req, res) => {

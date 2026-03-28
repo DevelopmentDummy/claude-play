@@ -468,9 +468,9 @@ module.exports = async function(context, args) {
 - 실행 타임아웃: 10초
 
 **세션 AI의 호출 방식:**
-세션 AI는 `mcp__claude_bridge__run_tool` MCP 도구로 호출한다 (curl 불필요):
+세션 AI는 `mcp__claude_play__run_tool` MCP 도구로 호출한다 (curl 불필요):
 ```
-mcp__claude_bridge__run_tool({ tool: "engine", args: { action: "milking", params: {} } })
+mcp__claude_play__run_tool({ tool: "engine", args: { action: "milking", params: {} } })
 ```
 
 **설계 원칙:**

@@ -1,4 +1,4 @@
-# Claude Bridge Setup Guide
+# Claude Play Setup Guide
 
 > This guide is designed for both humans and AI agents.
 > AI agents: use `node setup.js --yes` for non-interactive mode, then call the setup APIs directly.

@@ -73,7 +73,7 @@ export default function LoginPage() {
             marginBottom: "8px",
           }}
         >
-          Claude Bridge
+          Claude Play
         </h1>
 
         <input

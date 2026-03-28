@@ -15,7 +15,7 @@ interface WSClient {
 }
 
 // Use globalThis to share state across module instances (server.ts vs Next.js routes)
-const WS_KEY = "__claude_bridge_ws__";
+const WS_KEY = "__claude_play_ws__";
 interface WSGlobal {
   clients: Set<WSClient>;
 }

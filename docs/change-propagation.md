@@ -20,7 +20,7 @@
 | 응답 형식 규칙 변경 (dialog_response, choice, 토큰 등) | `session-shared.md` |
 | OOC 동작 변경 | `session-shared.md` |
 | 이미지 생성 워크플로우 변경 | `session-shared.md` |
-| MCP 도구 인터페이스 변경 | `session-shared.md` + `src/mcp/claude-bridge-mcp-server.mjs` |
+| MCP 도구 인터페이스 변경 | `session-shared.md` + `src/mcp/claude-play-mcp-server.mjs` |
 | 세션 AI 시스템 프롬프트 변경 | `session-primer.yaml` (+ `-codex` / `-gemini` 변형) |
 
 ## 빌더 변경

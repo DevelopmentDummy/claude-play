@@ -16,7 +16,7 @@ async function verifyTokenEdge(token: string, password: string): Promise<boolean
     const [payloadB64, sigB64] = token.split(".");
     if (!payloadB64 || !sigB64) return false;
 
-    const salt = "claude-bridge-auth";
+    const salt = "claude-play-auth";
     const keyData = new TextEncoder().encode(password + salt);
     const hashBuffer = await crypto.subtle.digest("SHA-256", keyData);
     const key = await crypto.subtle.importKey("raw", hashBuffer, { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);

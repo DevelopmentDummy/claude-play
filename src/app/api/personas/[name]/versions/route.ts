@@ -13,7 +13,7 @@ type Params = { params: Promise<{ name: string }> };
 async function git(personaDir: string, args: string[]): Promise<string> {
   const { stdout } = await execFileAsync("git", args, {
     cwd: personaDir,
-    env: { ...process.env, GIT_AUTHOR_NAME: "Claude Bridge", GIT_AUTHOR_EMAIL: "bridge@local", GIT_COMMITTER_NAME: "Claude Bridge", GIT_COMMITTER_EMAIL: "bridge@local" },
+    env: { ...process.env, GIT_AUTHOR_NAME: "Claude Play", GIT_AUTHOR_EMAIL: "bridge@local", GIT_COMMITTER_NAME: "Claude Play", GIT_COMMITTER_EMAIL: "bridge@local" },
     windowsHide: true,
   });
   return stdout.trim();

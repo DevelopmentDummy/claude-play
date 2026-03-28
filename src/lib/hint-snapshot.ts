@@ -14,7 +14,7 @@ export type HintRules = Record<string, HintRule>;
 export type SnapshotEntry = string | { display: string; hint?: string };
 export type Snapshot = Record<string, SnapshotEntry>;
 
-// Keep in sync with src/mcp/claude-bridge-mcp-server.mjs buildSnapshot()
+// Keep in sync with src/mcp/claude-play-mcp-server.mjs buildSnapshot()
 const PASSTHROUGH_KEYS = [
   "location", "owner_location", "time", "outfit",
   "cycle_phase", "cycle_day", "day_number",

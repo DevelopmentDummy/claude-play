@@ -14,7 +14,7 @@ interface SessionRegistry {
   sessions: SessionManager;
 }
 
-const GLOBAL_KEY = "__claude_bridge_registry__";
+const GLOBAL_KEY = "__claude_play_registry__";
 
 function getRegistryState(): SessionRegistry {
   const g = globalThis as unknown as Record<string, SessionRegistry>;

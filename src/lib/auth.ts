@@ -2,7 +2,7 @@ import * as crypto from "crypto";
 
 // ── Internal token for MCP server authentication ──
 // MCP server processes use this token to authenticate API calls back to Bridge.
-const INTERNAL_TOKEN_KEY = "__claude_bridge_internal_token__";
+const INTERNAL_TOKEN_KEY = "__claude_play_internal_token__";
 
 export function getInternalToken(): string {
   const g = globalThis as unknown as Record<string, string>;
@@ -20,7 +20,7 @@ export function validateInternalToken(req: Request): boolean {
 
 // ── Admin authentication ──
 const AUTH_COOKIE_NAME = "bridge_auth";
-const AUTH_SALT = "claude-bridge-auth";
+const AUTH_SALT = "claude-play-auth";
 const TOKEN_MAX_AGE = 90 * 24 * 60 * 60; // 90 days in seconds
 
 /** Check if admin auth is enabled (ADMIN_PASSWORD env var is set) */

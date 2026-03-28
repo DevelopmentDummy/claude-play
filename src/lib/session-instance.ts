@@ -39,15 +39,15 @@ function sanitizeFilename(value: string): string {
 
 function detectImageToken(toolName: string, input: unknown): string | null {
   const imageToolNames = new Set([
-    "mcp__claude_bridge__generate_image",
-    "mcp__claude_bridge__generate_image_gemini",
-    "mcp__claude_bridge__comfyui_generate",
-    "mcp__claude_bridge__gemini_generate",
+    "mcp__claude_play__generate_image",
+    "mcp__claude_play__generate_image_gemini",
+    "mcp__claude_play__comfyui_generate",
+    "mcp__claude_play__gemini_generate",
     // Gemini MCP prefix (hyphen in server name)
-    "mcp_claude-bridge_generate_image",
-    "mcp_claude-bridge_generate_image_gemini",
-    "mcp_claude-bridge_comfyui_generate",
-    "mcp_claude-bridge_gemini_generate",
+    "mcp_claude-play_generate_image",
+    "mcp_claude-play_generate_image_gemini",
+    "mcp_claude-play_comfyui_generate",
+    "mcp_claude-play_gemini_generate",
   ]);
   if (!imageToolNames.has(toolName)) return null;
   if (!input || typeof input !== "object") return null;

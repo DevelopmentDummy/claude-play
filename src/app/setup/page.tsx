@@ -442,7 +442,7 @@ export default function SetupPage() {
     return (
       <div style={styles.page}>
         <div style={{ ...styles.container, alignItems: "center", gap: "16px" }}>
-          <h1 style={styles.title}>Claude Bridge</h1>
+          <h1 style={styles.title}>Claude Play</h1>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "12px" }}>
             <div style={{ fontSize: "32px", color: "var(--accent)" }}>&#10003;</div>
             <p style={{ color: "var(--text)", fontSize: "16px", fontWeight: 600 }}>
@@ -805,7 +805,7 @@ export default function SetupPage() {
   return (
     <div style={styles.page}>
       <div style={styles.container}>
-        <h1 style={styles.title}>Claude Bridge Setup</h1>
+        <h1 style={styles.title}>Claude Play Setup</h1>
 
         {isReconfigure && (
           <p style={styles.notice as React.CSSProperties}>

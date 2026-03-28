@@ -4,7 +4,7 @@ This file provides guidance to OpenAI Codex CLI when working with code in this r
 
 ## Project Overview
 
-Claude Bridge is a Next.js web app that bridges interactive roleplay (RP) chat sessions with the Claude Code CLI. Users create personas via a builder UI, then conduct immersive RP sessions with dynamic state, panels, and memory.
+Claude Play is a Next.js web app that bridges interactive roleplay (RP) chat sessions with the Claude Code CLI. Users create personas via a builder UI, then conduct immersive RP sessions with dynamic state, panels, and memory.
 
 > **Note**: This project controls Claude Code as a subprocess — Codex is used here for development assistance, not as the RP runtime.
 
@@ -41,7 +41,7 @@ No test framework is configured.
 
 ### MCP Server
 
-`src/mcp/claude-bridge-mcp-server.mjs` — Per-session MCP server spawned as a child process by Claude. Configured via `.mcp.json` in the session directory. Provides `claude_bridge` tools for Claude to interact with the bridge (image generation, panel updates, etc.).
+`src/mcp/claude-play-mcp-server.mjs` — Per-session MCP server spawned as a child process by Claude. Configured via `.mcp.json` in the session directory. Provides `claude_play` tools for Claude to interact with the bridge (image generation, panel updates, etc.).
 
 ### API Routes (`src/app/api/`)
 
@@ -103,7 +103,7 @@ data/
 │   ├── chat-history.json      # Persisted chat history
 │   ├── memory.md              # Session memory (written by Claude)
 │   ├── .claude/settings.json  # Permission sandbox
-│   ├── .mcp.json              # MCP config for claude_bridge server
+│   ├── .mcp.json              # MCP config for claude_play server
 │   └── policy-context.json    # Content policy context
 ├── profiles/{slug}.json       # User profiles (name, description, isPrimary)
 └── tools/{name}/skills/       # Global tool skills auto-copied to all sessions
@@ -139,7 +139,7 @@ data/
 - `PORT` — Server port (default: 3340)
 - `COMFYUI_URL`, `COMFYUI_WORKFLOW_PATH` — Optional ComfyUI integration
 - `GEMINI_API_KEY` — Optional Gemini image generation API key
-- `CLAUDE_BRIDGE_API_BASE` — Override API base URL for MCP server (default: `http://127.0.0.1:{PORT}`)
+- `CLAUDE_PLAY_API_BASE` — Override API base URL for MCP server (default: `http://127.0.0.1:{PORT}`)
 
 ## Style Guide
 

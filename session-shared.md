@@ -107,7 +107,7 @@
 
 **단일 호출:**
 ```
-mcp__claude_bridge__run_tool({
+mcp__claude_play__run_tool({
   tool: "engine",
   args: { action: "milking", params: {} }
 })
@@ -115,7 +115,7 @@ mcp__claude_bridge__run_tool({
 
 **체인 호출** (한 턴에 여러 액션이 필요할 때):
 ```
-mcp__claude_bridge__run_tool({
+mcp__claude_play__run_tool({
   chain: [
     { tool: "engine", args: { action: "move", params: { location: "사육실" } } },
     { tool: "engine", args: { action: "breeding", params: {} } }

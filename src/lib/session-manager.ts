@@ -175,7 +175,7 @@ const CLAUDE_SETTINGS = {
       "Bash(bash ./*.sh *)",
       "Glob",
       "Grep",
-      "mcp__claude_bridge__*",
+      "mcp__claude_play__*",
     ],
   },
 };
@@ -184,7 +184,7 @@ const SERVICE_SESSION_GUIDE_FILES_CODEX = ["session-primer-codex.yaml", "session
 const SERVICE_SESSION_GUIDE_FILES_GEMINI = ["session-primer-gemini.yaml", "session-shared.md"] as const;
 const BUILDER_GUIDE_FILES = ["builder-primer.yaml"] as const;
 const MCP_CONFIG_FILE = ".mcp.json";
-const CLAUDE_MCP_SERVER_NAME = "claude_bridge";
+const CLAUDE_MCP_SERVER_NAME = "claude_play";
 const POLICY_CONTEXT_FILE = "policy-context.json";
 const DEFAULT_POLICY_CONTEXT = {
   extreme_traits: [],
@@ -1705,8 +1705,8 @@ export class SessionManager {
     personaName?: string,
     mode: "builder" | "session" = "session"
   ): void {
-    const serverScript = path.join(this.appRoot, "src", "mcp", "claude-bridge-mcp-server.mjs");
-    const apiBase = (process.env.CLAUDE_BRIDGE_API_BASE || `http://127.0.0.1:${process.env.PORT || "3340"}`)
+    const serverScript = path.join(this.appRoot, "src", "mcp", "claude-play-mcp-server.mjs");
+    const apiBase = (process.env.CLAUDE_PLAY_API_BASE || `http://127.0.0.1:${process.env.PORT || "3340"}`)
       .replace(/\/+$/, "");
 
     const mcpConfig = {
@@ -1715,11 +1715,11 @@ export class SessionManager {
           command: "node",
           args: [serverScript],
           env: {
-            CLAUDE_BRIDGE_API_BASE: apiBase,
-            CLAUDE_BRIDGE_SESSION_DIR: projectDir,
-            CLAUDE_BRIDGE_MODE: mode,
-            CLAUDE_BRIDGE_AUTH_TOKEN: getInternalToken(),
-            ...(personaName ? { CLAUDE_BRIDGE_PERSONA: personaName } : {}),
+            CLAUDE_PLAY_API_BASE: apiBase,
+            CLAUDE_PLAY_SESSION_DIR: projectDir,
+            CLAUDE_PLAY_MODE: mode,
+            CLAUDE_PLAY_AUTH_TOKEN: getInternalToken(),
+            ...(personaName ? { CLAUDE_PLAY_PERSONA: personaName } : {}),
           },
         },
       },
@@ -1741,8 +1741,8 @@ export class SessionManager {
     const codexDir = path.join(projectDir, ".codex");
     fs.mkdirSync(codexDir, { recursive: true });
 
-    const serverScript = path.join(this.appRoot, "src", "mcp", "claude-bridge-mcp-server.mjs");
-    const apiBase = (process.env.CLAUDE_BRIDGE_API_BASE || `http://127.0.0.1:${process.env.PORT || "3340"}`)
+    const serverScript = path.join(this.appRoot, "src", "mcp", "claude-play-mcp-server.mjs");
+    const apiBase = (process.env.CLAUDE_PLAY_API_BASE || `http://127.0.0.1:${process.env.PORT || "3340"}`)
       .replace(/\/+$/, "");
 
     // model_instructions_file: absolute path to instructions file
@@ -1757,12 +1757,12 @@ export class SessionManager {
     lines.push(`args = [${JSON.stringify(serverScript)}]`);
     lines.push(``);
     lines.push(`[mcp_servers.${CLAUDE_MCP_SERVER_NAME}.env]`);
-    lines.push(`CLAUDE_BRIDGE_API_BASE = ${JSON.stringify(apiBase)}`);
-    lines.push(`CLAUDE_BRIDGE_SESSION_DIR = ${JSON.stringify(projectDir)}`);
-    lines.push(`CLAUDE_BRIDGE_MODE = ${JSON.stringify(mode)}`);
-    lines.push(`CLAUDE_BRIDGE_AUTH_TOKEN = ${JSON.stringify(getInternalToken())}`);
+    lines.push(`CLAUDE_PLAY_API_BASE = ${JSON.stringify(apiBase)}`);
+    lines.push(`CLAUDE_PLAY_SESSION_DIR = ${JSON.stringify(projectDir)}`);
+    lines.push(`CLAUDE_PLAY_MODE = ${JSON.stringify(mode)}`);
+    lines.push(`CLAUDE_PLAY_AUTH_TOKEN = ${JSON.stringify(getInternalToken())}`);
     if (personaName) {
-      lines.push(`CLAUDE_BRIDGE_PERSONA = ${JSON.stringify(personaName)}`);
+      lines.push(`CLAUDE_PLAY_PERSONA = ${JSON.stringify(personaName)}`);
     }
 
     fs.writeFileSync(
@@ -1792,21 +1792,21 @@ export class SessionManager {
     const geminiDir = path.join(projectDir, ".gemini");
     fs.mkdirSync(geminiDir, { recursive: true });
 
-    const serverScript = path.join(this.appRoot, "src", "mcp", "claude-bridge-mcp-server.mjs");
-    const apiBase = (process.env.CLAUDE_BRIDGE_API_BASE || `http://127.0.0.1:${process.env.PORT || "3340"}`)
+    const serverScript = path.join(this.appRoot, "src", "mcp", "claude-play-mcp-server.mjs");
+    const apiBase = (process.env.CLAUDE_PLAY_API_BASE || `http://127.0.0.1:${process.env.PORT || "3340"}`)
       .replace(/\/+$/, "");
 
     const settings = {
       mcpServers: {
-        "claude-bridge": {
+        "claude-play": {
           command: "node",
           args: [serverScript],
           env: {
-            CLAUDE_BRIDGE_API_BASE: apiBase,
-            CLAUDE_BRIDGE_SESSION_DIR: projectDir,
-            CLAUDE_BRIDGE_MODE: mode,
-            CLAUDE_BRIDGE_AUTH_TOKEN: getInternalToken(),
-            ...(personaName ? { CLAUDE_BRIDGE_PERSONA: personaName } : {}),
+            CLAUDE_PLAY_API_BASE: apiBase,
+            CLAUDE_PLAY_SESSION_DIR: projectDir,
+            CLAUDE_PLAY_MODE: mode,
+            CLAUDE_PLAY_AUTH_TOKEN: getInternalToken(),
+            ...(personaName ? { CLAUDE_PLAY_PERSONA: personaName } : {}),
           },
         },
       },

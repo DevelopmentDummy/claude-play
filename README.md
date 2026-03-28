@@ -1,4 +1,4 @@
-# Claude Bridge
+# Claude Play
 
 A Next.js web application that bridges interactive roleplay (RP) chat sessions with the [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) (and optionally [Codex CLI](https://github.com/openai/codex)). Create rich personas with dynamic state panels, then conduct immersive sessions powered by AI.
 
@@ -88,7 +88,7 @@ src/
 │   ├── env-file.ts                # .env.local read/write utility
 │   └── data-dir.ts                # Data directory resolution
 ├── mcp/
-│   └── claude-bridge-mcp-server.mjs  # Per-session MCP server
+│   └── claude-play-mcp-server.mjs  # Per-session MCP server
 ├── components/                    # React components
 └── hooks/                         # React hooks
 data/                              # File-based storage (gitignored)
@@ -100,7 +100,7 @@ data/                              # File-based storage (gitignored)
 
 ## How It Works
 
-Claude Bridge spawns `claude -p` (or `codex app-server`) as a subprocess for each session, communicating via NDJSON (or JSON-RPC) streams. The web UI connects over WebSocket for real-time message streaming.
+Claude Play spawns `claude -p` (or `codex app-server`) as a subprocess for each session, communicating via NDJSON (or JSON-RPC) streams. The web UI connects over WebSocket for real-time message streaming.
 
 **Session lifecycle:**
 1. Persona directory is cloned to a new session directory

@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Claude Bridge",
+  title: "Claude Play",
   description: "Chat UI bridging to Claude Code CLI",
 };
 

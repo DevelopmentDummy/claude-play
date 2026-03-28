@@ -5,13 +5,13 @@ import fs from "node:fs";
 import path from "node:path";
 import * as z from "zod/v4";
 
-const apiBase = (process.env.CLAUDE_BRIDGE_API_BASE || `http://127.0.0.1:${process.env.PORT || "3340"}`)
+const apiBase = (process.env.CLAUDE_PLAY_API_BASE || `http://127.0.0.1:${process.env.PORT || "3340"}`)
   .replace(/\/+$/, "");
-const mode = process.env.CLAUDE_BRIDGE_MODE || "session";
-const persona = process.env.CLAUDE_BRIDGE_PERSONA || "";
-const sessionDir = process.env.CLAUDE_BRIDGE_SESSION_DIR || process.cwd();
+const mode = process.env.CLAUDE_PLAY_MODE || "session";
+const persona = process.env.CLAUDE_PLAY_PERSONA || "";
+const sessionDir = process.env.CLAUDE_PLAY_SESSION_DIR || process.cwd();
 const sessionId = mode === "session" ? path.basename(sessionDir) : "";
-const authToken = process.env.CLAUDE_BRIDGE_AUTH_TOKEN || "";
+const authToken = process.env.CLAUDE_PLAY_AUTH_TOKEN || "";
 const POLICY_REVIEW_LOG_FILE = "policy-review.log";
 const HARD_DENY_PATTERNS = [
 ];
@@ -31,7 +31,7 @@ const COMFY_DEFAULT_NEGATIVE =
 const COMFY_DEFAULT_TEMPLATE = "portrait";
 
 const server = new McpServer({
-  name: "claude-bridge",
+  name: "claude-play",
   version: "0.1.0",
 });
 
@@ -344,7 +344,7 @@ async function requestJson(method, route, payload) {
 server.registerTool(
   "bridge_status",
   {
-    description: "Show Claude Bridge MCP runtime configuration.",
+    description: "Show Claude Play MCP runtime configuration.",
     inputSchema: {},
   },
   async () => {
@@ -355,7 +355,7 @@ server.registerTool(
 server.registerTool(
   "comfyui_models",
   {
-    description: "List available ComfyUI checkpoints/models through Claude Bridge API.",
+    description: "List available ComfyUI checkpoints/models through Claude Play API.",
     inputSchema: {},
   },
   async () => {
@@ -979,6 +979,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error("[claude-bridge-mcp] fatal:", error);
+  console.error("[claude-play-mcp] fatal:", error);
   process.exit(1);
 });

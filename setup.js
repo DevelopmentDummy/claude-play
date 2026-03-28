@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// setup.js — Claude Bridge Setup (pure JS, zero dependencies)
+// setup.js — Claude Play Setup (pure JS, zero dependencies)
 
 const { execSync, spawn } = require("child_process");
 const fs = require("fs");
@@ -354,7 +354,7 @@ async function stepDataDir() {
 }
 
 async function main() {
-  console.log("\n  Claude Bridge Setup\n");
+  console.log("\n  Claude Play Setup\n");
 
   await stepNodeCheck();
   await stepNpmInstall();

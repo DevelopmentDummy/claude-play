@@ -132,7 +132,7 @@ export class CodexProcess extends EventEmitter<CodexProcessEvents> {
   private async performInitialize(): Promise<void> {
     try {
       await this.sendRequest("initialize", {
-        clientInfo: { name: "claude-bridge", version: "1.0.0" },
+        clientInfo: { name: "claude-play", version: "1.0.0" },
       });
 
       // Send initialized notification (no id, no response expected)

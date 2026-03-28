@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Claude Bridge is a Next.js web app that bridges interactive roleplay (RP) chat sessions with the Claude Code CLI (and optionally Codex CLI, Gemini CLI). Users create personas via a builder UI, then conduct immersive RP sessions with dynamic state, panels, and memory. Single-user personal service with optional admin password authentication.
+Claude Play is a Next.js web app that bridges interactive roleplay (RP) chat sessions with the Claude Code CLI (and optionally Codex CLI, Gemini CLI). Users create personas via a builder UI, then conduct immersive RP sessions with dynamic state, panels, and memory. Single-user personal service with optional admin password authentication.
 
 ## Commands
 
@@ -40,7 +40,7 @@ Detailed documentation is split into topic-specific files under `docs/`:
 - `server.ts` — Custom HTTP server, WebSocket, spawns TTS server + GPU Manager
 - `src/lib/session-registry.ts` — Active session state management
 - `src/lib/session-manager.ts` — File-based session/persona CRUD
-- `src/mcp/claude-bridge-mcp-server.mjs` — Per-session MCP server (11 tools)
+- `src/mcp/claude-play-mcp-server.mjs` — Per-session MCP server (11 tools)
 - `src/lib/panel-engine.ts` — Handlebars panel rendering + file watching
 
 **Data**: File-based under `data/` (gitignored). Personas, sessions, profiles, styles, tools.

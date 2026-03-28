@@ -88,7 +88,7 @@ Python FastAPI child process (port 3342) for serial GPU task queueing. Prevents 
 
 ## MCP Server
 
-`src/mcp/claude-bridge-mcp-server.mjs` — Per-session MCP server spawned as a child process by Claude/Codex. Configured via `.mcp.json` (Claude) or `.codex/config.toml` (Codex) in the session directory. Authenticates to Bridge API via internal `x-bridge-token` header.
+`src/mcp/claude-play-mcp-server.mjs` — Per-session MCP server spawned as a child process by Claude/Codex. Configured via `.mcp.json` (Claude) or `.codex/config.toml` (Codex) in the session directory. Authenticates to Bridge API via internal `x-bridge-token` header.
 
 ### MCP Tools (11)
 
