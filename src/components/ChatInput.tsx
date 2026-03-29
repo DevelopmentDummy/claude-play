@@ -172,19 +172,15 @@ function ChatInput({ disabled, onSend, sessionId, choices, pendingEvents, showOO
       let lastAvailable: Array<{ action: string; label: string; args_hint: string | null }> | null = null;
 
       const panelActions = choice.actions.filter(a => a.panel);
-      const isCompound = panelActions.length > 1;
       let panelActionIndex = 0;
 
       for (const act of choice.actions) {
         if (act.panel) {
           // ═══ Panel Action ═══
-          const isLast = panelActionIndex === panelActions.length - 1;
           panelActionIndex++;
 
-          // Suppress intermediate sendMessage in compound actions
-          if (isCompound && !isLast) {
-            win.__panelActionSuppressSend = true;
-          }
+          // Suppress handler's sendMessage — choice text will be sent via onSend instead
+          win.__panelActionSuppressSend = true;
 
           // 1. Open the panel modal
           await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/modals`, {
@@ -197,10 +193,9 @@ function ChatInput({ disabled, onSend, sessionId, choices, pendingEvents, showOO
           await registry.waitForHandler(act.panel, act.action, 8000);
 
           // 3. Execute via registry (records to history + runs handler)
+          //    sendMessage inside handler is suppressed; queueEvent still works
           const params = act.params || act.args;
           await registry.execute(act.panel, act.action, params);
-
-          win.__panelActionSuppressSend = false;
 
         } else if (act.tool) {
           // ═══ Legacy Tool Action ═══
@@ -245,12 +240,11 @@ function ChatInput({ disabled, onSend, sessionId, choices, pendingEvents, showOO
         });
       }
 
-      // Panel actions: handler calls sendMessage internally
-      // Legacy/no-action: send choice text directly
-      const hasPanelAction = choice.actions.some(a => a.panel);
-      if (!hasPanelAction) {
-        onSend(choice.text);
-      }
+      // Clear suppress flag and send choice text as user message.
+      // Panel handler's sendMessage was suppressed; queued events (slot results etc.)
+      // will be picked up by onSend along with the choice text.
+      win.__panelActionSuppressSend = false;
+      onSend(choice.text);
 
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Action failed";
@@ -537,6 +531,17 @@ function ChatInput({ disabled, onSend, sessionId, choices, pendingEvents, showOO
               key={i}
               disabled={choiceBusy}
               onClick={() => handleChoice(c)}
+              title={c.actions?.length ? c.actions.map(a => {
+                if (a.panel) {
+                  const registry = getPanelActionRegistry();
+                  const available = registry.getAvailable();
+                  const meta = available.find(m => m.panel === a.panel && m.id === a.action);
+                  const label = meta?.label || a.action;
+                  const paramsStr = a.params ? Object.entries(a.params).map(([k, v]) => `${k}=${v}`).join(", ") : "";
+                  return paramsStr ? `${label} (${paramsStr})` : label;
+                }
+                return a.action;
+              }).join(" → ") : undefined}
               className={`relative px-3.5 py-2 rounded-xl text-sm text-text bg-[rgba(15,15,26,0.6)]
                 border border-border/60 cursor-pointer
                 transition-all duration-fast

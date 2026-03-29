@@ -113,7 +113,6 @@ export async function POST(
     vars.__modals = modals;
     fs.writeFileSync(varsPath, JSON.stringify(vars, null, 2), "utf-8");
 
-    console.log(`[modals] ${action} ${name || "*"} → ${JSON.stringify(modals)}`);
 
     return NextResponse.json({ ok: true, __modals: modals });
   } catch (err) {

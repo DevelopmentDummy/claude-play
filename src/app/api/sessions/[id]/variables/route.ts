@@ -71,7 +71,6 @@ export async function PATCH(
       current.__modals !== null
     ) {
       merged.__modals = { ...current.__modals, ...patch.__modals };
-      console.log("[PATCH __modals] current:", JSON.stringify(current.__modals), "patch:", JSON.stringify(patch.__modals), "result:", JSON.stringify(merged.__modals));
     }
     // Strip __refreshPanels from merged output (should not persist)
     delete merged.__refreshPanels;
