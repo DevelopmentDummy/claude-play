@@ -571,7 +571,6 @@ function ChatInput({ disabled, onSend, sessionId, choices, pendingEvents, showOO
             </div>
             );
           })}
-          ))}
         </div>
       )}
       {pendingEvents && pendingEvents.length > 0 && (
