@@ -253,16 +253,30 @@
 
   // === 상점 탭 ===
   const shopPanel = shadow.querySelector('#tab-shop');
+  const STAT_LABELS = {stamina:'체력',intelligence:'지력',elegance:'기품',charm:'매력',morals:'도덕',
+    sensitivity:'감수성',faith:'신앙',combat:'무술',etiquette:'예절',cooking:'요리',art:'예술',
+    music:'음악',attack:'공격',defense:'방어',magic_power:'마력',age:'나이'};
   for (const [name, product] of Object.entries(catalog)) {
+    // Check requirements
+    const reqs = product.requirements || {};
+    const unmet = [];
+    for (const [stat, needed] of Object.entries(reqs)) {
+      const current = stat === 'age' ? (d.age || 0) : Math.floor(d[stat] || 0);
+      if (current < needed) {
+        unmet.push(`${STAT_LABELS[stat] || stat} ${needed} 필요 (현재 ${current})`);
+      }
+    }
+    const locked = unmet.length > 0;
     const row = document.createElement('div');
     row.className = 'item-row';
+    if (locked) row.style.opacity = '0.45';
     row.innerHTML = `
       <div class="item-info">
-        <div class="item-name">${name}</div>
-        <div class="item-desc">${product.description || ''}</div>
+        <div class="item-name">${locked ? '🔒 ' : ''}${name}</div>
+        <div class="item-desc">${product.description || ''}${locked ? '<br><span style="color:#e87da0;font-size:10px">' + unmet.join(', ') + '</span>' : ''}</div>
       </div>
       <span class="shop-price">${product.price}G</span>
-      <button class="item-btn buy" data-item="${name}">구매</button>
+      <button class="item-btn buy" data-item="${name}" ${locked ? 'disabled' : ''}>구매</button>
     `;
     shopPanel.appendChild(row);
   }
@@ -314,4 +328,5 @@
       }
     });
   });
+
 </script>

@@ -5,8 +5,8 @@
     "placement": {
       "stats": "right",
       "schedule": "modal",
-      "catalog": "modal",
-      "inventory": "modal",
+      "catalog": "modal-dismissible",
+      "inventory": "modal-dismissible",
       "log": "right",
       "portrait": "left",
       "info": "left",

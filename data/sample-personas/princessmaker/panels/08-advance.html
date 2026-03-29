@@ -776,7 +776,7 @@
         else if (sc >= wd*0.7) rh += `<span class="adv-result-score"><span class="hi">${sc}/${wd}</span> 성공</span>`;
         else rh += `<span class="adv-result-score"><span class="lo">${sc}/${wd}</span> 성공</span>`;
 
-        const changes = Object.entries(r.stat_changes||{}).filter(([k])=>!k.startsWith('_'));
+        const changes = Object.entries(r.stat_changes||{}).filter(([k])=>!k.startsWith('_')).map(([k,v])=>[k,Math.floor(v)]);
         let detail = '';
         for (const [k,v] of changes) {
           const cls = v>=0 ? (k==='stress'?'loss':'gain') : (k==='stress'?'gain':'loss');
@@ -813,7 +813,7 @@
       // ── Enhanced stat gauge animation (non-adventure non-daily) ──
       const hasAdventure = adv && adv.battles && adv.battles.length > 0;
       if (!hasAdventure && gaugeContainer) {
-        const changes = Object.entries(r.stat_changes||{}).filter(([k])=>!k.startsWith('_'));
+        const changes = Object.entries(r.stat_changes||{}).filter(([k])=>!k.startsWith('_')).map(([k,v])=>[k,Math.floor(v)]);
         const STAT_MAX = { stress: d.stress_max || 100, hp: d.hp_max || 40 };
         const DEFAULT_VIS_MAX = 300;
 
@@ -845,7 +845,7 @@
 
         if (changes.length > 0 && gaugesEl) {
           for (const [stat, delta] of changes) {
-            const oldVal = d[stat] || 0;
+            const oldVal = Math.floor(d[stat] || 0);
             const newVal = oldVal + delta;
             const visMax = STAT_MAX[stat] || Math.max(DEFAULT_VIS_MAX, Math.max(oldVal, newVal) + 50);
             const isStress = stat === 'stress';
