@@ -199,30 +199,52 @@ export class PanelActionRegistry {
   }
 
   // -------------------------------------------------------------------------
+  // Lookup
+  // -------------------------------------------------------------------------
+
+  /**
+   * Find which panel owns a given actionId.
+   * Returns the panel name, or undefined if not found.
+   */
+  findPanelByAction(actionId: string): string | undefined {
+    for (const [panelName, panelMap] of this.entries) {
+      if (panelMap.has(actionId)) return panelName;
+    }
+    return undefined;
+  }
+
+  // -------------------------------------------------------------------------
   // Execution
   // -------------------------------------------------------------------------
 
   /**
    * Record action via API call, then invoke the handler.
    * Throws if no handler is registered for the action.
+   * If panel is empty, auto-resolves from registry.
    */
   async execute(
     panel: string,
     actionId: string,
     params?: Record<string, unknown>
   ): Promise<void> {
-    const panelMap = this.entries.get(panel);
+    const resolvedPanel = panel || this.findPanelByAction(actionId);
+    if (!resolvedPanel) {
+      throw new Error(
+        `No panel found for action "${actionId}"`
+      );
+    }
+    const panelMap = this.entries.get(resolvedPanel);
     const entry = panelMap?.get(actionId);
 
     if (!entry?.handler) {
       throw new Error(
-        `No handler registered for action "${panel}.${actionId}"`
+        `No handler registered for action "${resolvedPanel}.${actionId}"`
       );
     }
 
     // Record via API (best-effort, don't block execution on failure)
     if (this.sessionId) {
-      const record: PanelActionRecord = { panel, action: actionId };
+      const record: PanelActionRecord = { panel: resolvedPanel, action: actionId };
       if (params !== undefined) record.params = params;
 
       fetch(`/api/sessions/${this.sessionId}/panel-actions`, {
@@ -364,4 +386,12 @@ export function parsePanelActions(
   }
 
   return results;
+}
+
+/**
+ * Remove `<panel-actions>...</panel-actions>` tags from HTML string.
+ * Call before setting innerHTML so the metadata block doesn't render.
+ */
+export function stripPanelActions(html: string): string {
+  return html.replace(/<panel-actions[^>]*>[\s\S]*?<\/panel-actions>/gi, "");
 }

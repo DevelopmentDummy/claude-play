@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import ImageModal from "./ImageModal";
 import { installImagePolling } from "@/lib/panel-image-polling";
 import { usePanelBridge } from "@/lib/use-panel-bridge";
-import { getPanelActionRegistry, parsePanelActions } from "@/lib/panel-action-registry";
+import { getPanelActionRegistry, parsePanelActions, stripPanelActions } from "@/lib/panel-action-registry";
 
 interface ModalPanelProps {
   name: string;
@@ -143,7 +143,7 @@ export default function ModalPanel({
 
     shadow.innerHTML =
       `<style>:host{display:block;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:14px;line-height:1.6;color:#e0e0e0;}img{cursor:zoom-in;}</style>` +
-      html;
+      stripPanelActions(html);
 
     installImagePolling(shadow);
 

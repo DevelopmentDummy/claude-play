@@ -153,13 +153,9 @@ export function usePanelBridge(
         }
         getPanelActionRegistry().registerHandler(panel, actionId, handler);
       },
-      /** Execute a registered panel action. Records to history automatically. */
+      /** Execute a registered panel action. Records to history automatically. Panel auto-resolved from registry if not provided. */
       async executeAction(actionId: string, params?: Record<string, unknown>, panelName?: string): Promise<void> {
-        const panel = panelName || (window as unknown as Record<string, unknown>).__currentPanelName as string;
-        if (!panel) {
-          console.warn("[panelBridge] executeAction: no panel name context");
-          return;
-        }
+        const panel = panelName || (window as unknown as Record<string, unknown>).__currentPanelName as string || "";
         await getPanelActionRegistry().execute(panel, actionId, params);
       },
       sessionId,

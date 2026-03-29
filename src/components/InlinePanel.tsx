@@ -3,6 +3,7 @@
 import { useRef, useEffect, useCallback, useState } from "react";
 import ImageModal from "./ImageModal";
 import { installImagePolling } from "@/lib/panel-image-polling";
+import { stripPanelActions } from "@/lib/panel-action-registry";
 
 interface InlinePanelProps {
   html: string;
@@ -26,7 +27,7 @@ export default function InlinePanel({ html, sessionId }: InlinePanelProps) {
 
     shadow.innerHTML =
       `<style>:host{font-family:inherit;font-size:inherit;line-height:inherit;color:inherit;white-space:normal;display:block;}img{cursor:zoom-in;}</style>` +
-      html;
+      stripPanelActions(html);
 
     // Execute <script> tags via Function() with shadow reference
     const scripts = Array.from(shadow.querySelectorAll("script:not([type]), script[type='text/javascript']"));
