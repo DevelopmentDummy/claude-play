@@ -148,14 +148,33 @@ export class PanelActionRegistry {
   /** Evaluate available_when expression safely */
   private evalAvailableWhen(expr: string): boolean {
     try {
-      const keys = Object.keys(this.variables);
-      const values = Object.values(this.variables);
+      // Filter to valid JS identifier keys only (e.g. skip "schedule-config")
+      const validEntries = Object.entries(this.variables).filter(
+        ([k]) => /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(k)
+      );
+      const keys = validEntries.map(([k]) => k);
+      const values = validEntries.map(([, v]) => v);
       // eslint-disable-next-line @typescript-eslint/no-implied-eval
       const fn = new Function(...keys, `return (${expr})`);
       return Boolean(fn(...values));
     } catch {
       return false;
     }
+  }
+
+  /** Find label for a specific action, regardless of availability */
+  getLabel(panel: string, actionId: string): string | undefined {
+    const panelMap = this.entries.get(panel);
+    return panelMap?.get(actionId)?.meta.label;
+  }
+
+  /** Find label by actionId only (searches all panels) */
+  getLabelByAction(actionId: string): string | undefined {
+    for (const panelMap of this.entries.values()) {
+      const entry = panelMap.get(actionId);
+      if (entry) return entry.meta.label;
+    }
+    return undefined;
   }
 
   /** Return all actions whose available_when evaluates to true (or is absent) */
@@ -317,6 +336,24 @@ export class PanelActionRegistry {
   /** Remove all entries */
   clear(): void {
     this.entries.clear();
+  }
+
+  /** Debug: return snapshot of registry state */
+  debug(): Record<string, unknown> {
+    const actions: Record<string, string[]> = {};
+    for (const [panel, panelMap] of this.entries) {
+      actions[panel] = [...panelMap.keys()];
+    }
+    const validVars = Object.entries(this.variables)
+      .filter(([k]) => /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(k))
+      .reduce((o, [k, v]) => { o[k] = v; return o; }, {} as Record<string, unknown>);
+    return {
+      registeredPanels: actions,
+      variableKeys: Object.keys(validVars),
+      turn_phase: validVars.turn_phase,
+      current_slot: validVars.current_slot,
+      available: this.getAvailable().map(a => `${a.panel}.${a.id}(${a.available_when || "always"})`),
+    };
   }
 }
 

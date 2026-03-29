@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect, memo } from "react";
+import { createPortal } from "react-dom";
 import { showToast } from "./ToastEffect";
 import { getPanelActionRegistry } from "@/lib/panel-action-registry";
 
@@ -51,6 +52,74 @@ export interface Choice {
   text: string;
   score: number;
   actions?: ChoiceAction[];
+}
+
+/** Choice button with portal-based tooltip that escapes overflow clipping */
+function ChoiceButton({ choice, busy, onChoice }: { choice: Choice; busy: boolean; onChoice: (c: Choice) => void }) {
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const [hover, setHover] = useState(false);
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+
+  const actionLabel = choice.actions?.length ? choice.actions.map(a => {
+    if (a.panel) {
+      const reg = getPanelActionRegistry();
+      return reg.getLabel(a.panel, a.action) || reg.getLabelByAction(a.action) || a.action;
+    }
+    // Tool action: try to find a readable label from args.action
+    const toolAction = a.args?.action as string | undefined;
+    if (toolAction) {
+      const reg = getPanelActionRegistry();
+      return reg.getLabelByAction(toolAction) || toolAction.replace(/_/g, " ");
+    }
+    return a.action || a.tool || "";
+  }).join(" → ") : "";
+
+  useEffect(() => {
+    if (hover && btnRef.current && actionLabel) {
+      const rect = btnRef.current.getBoundingClientRect();
+      setPos({ x: rect.left + rect.width / 2, y: rect.top });
+    }
+  }, [hover, actionLabel]);
+
+  return (
+    <>
+      <button
+        ref={btnRef}
+        disabled={busy}
+        onClick={() => onChoice(choice)}
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
+        className={`relative px-3.5 py-2 rounded-xl text-sm text-text bg-[rgba(15,15,26,0.6)]
+          border border-border/60 cursor-pointer
+          transition-all duration-fast
+          hover:border-accent hover:bg-[rgba(var(--accent-rgb),0.08)] hover:-translate-y-px
+          hover:shadow-[0_2px_12px_var(--accent-glow)]
+          active:translate-y-0
+          ${choice.actions?.length ? "pr-7" : ""}
+          ${busy ? "opacity-50 pointer-events-none" : ""}`}
+      >
+        {choice.text}
+        {choice.actions && choice.actions.length > 0 && (
+          <span className="absolute -top-1.5 -right-1.5 flex items-center gap-px px-1 py-0.5 rounded-full text-[10px] leading-none bg-accent/20 text-accent border border-accent/30">
+            <svg className="w-2.5 h-2.5" viewBox="0 0 16 16" fill="currentColor"><path d="M9.405 1.05c-.413-1.4-2.397-1.4-2.81 0l-.1.34a1.464 1.464 0 0 1-2.105.872l-.31-.17c-1.283-.698-2.686.705-1.987 1.987l.169.311c.446.82.023 1.841-.872 2.105l-.34.1c-1.4.413-1.4 2.397 0 2.81l.34.1a1.464 1.464 0 0 1 .872 2.105l-.17.31c-.698 1.283.705 2.686 1.987 1.987l.311-.169a1.464 1.464 0 0 1 2.105.872l.1.34c.413 1.4 2.397 1.4 2.81 0l.1-.34a1.464 1.464 0 0 1 2.105-.872l.31.17c1.283.698 2.686-.705 1.987-1.987l-.169-.311a1.464 1.464 0 0 1 .872-2.105l.34-.1c1.4-.413 1.4-2.397 0-2.81l-.34-.1a1.464 1.464 0 0 1-.872-2.105l.17-.31c.698-1.283-.705-2.686-1.987-1.987l-.311.169a1.464 1.464 0 0 1-2.105-.872l-.1-.34zM8 10.93a2.929 2.929 0 1 1 0-5.86 2.929 2.929 0 0 1 0 5.858z"/></svg>
+            {choice.actions.length > 1 && <span>{choice.actions.length}</span>}
+          </span>
+        )}
+      </button>
+      {hover && actionLabel && pos && createPortal(
+        <div
+          style={{ left: pos.x, top: pos.y }}
+          className="fixed -translate-x-1/2 -translate-y-full -mt-2 px-2.5 py-1.5
+            rounded-lg text-xs whitespace-nowrap pointer-events-none z-[9999]
+            bg-[rgba(20,16,32,0.95)] text-[#e0e0e0] border border-[rgba(var(--accent-rgb),0.2)]
+            shadow-[0_4px_16px_rgba(0,0,0,0.4)]"
+        >
+          <span className="opacity-70 mr-1">⚙</span>{actionLabel}
+        </div>,
+        document.body
+      )}
+    </>
+  );
 }
 
 interface ChatInputProps {
@@ -181,6 +250,11 @@ function ChatInput({ disabled, onSend, sessionId, choices, pendingEvents, showOO
 
           // Suppress handler's sendMessage — choice text will be sent via onSend instead
           win.__panelActionSuppressSend = true;
+          // Signal panels that an action is about to execute
+          win.__panelActionExecuting = `${act.panel}.${act.action}`;
+          window.dispatchEvent(new CustomEvent("__panel_action_executing", {
+            detail: `${act.panel}.${act.action}`
+          }));
 
           // 1. Open the panel modal
           await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/modals`, {
@@ -196,6 +270,7 @@ function ChatInput({ disabled, onSend, sessionId, choices, pendingEvents, showOO
           //    sendMessage inside handler is suppressed; queueEvent still works
           const params = act.params || act.args;
           await registry.execute(act.panel, act.action, params);
+          win.__panelActionExecuting = null;
 
         } else if (act.tool) {
           // ═══ Legacy Tool Action ═══
@@ -526,51 +601,9 @@ function ChatInput({ disabled, onSend, sessionId, choices, pendingEvents, showOO
     <footer className="flex flex-col bg-surface backdrop-blur-[16px] border-t border-border shrink-0">
       {choices && choices.length > 0 && !disabled && (
         <div className="flex flex-wrap gap-2 px-4 pt-3 pb-1">
-          {choices.map((c, i) => {
-            const actionLabel = c.actions?.length ? c.actions.map(a => {
-              if (a.panel) {
-                const meta = getPanelActionRegistry().getAvailable().find(m => m.panel === a.panel && m.id === a.action);
-                return meta?.label || a.action;
-              }
-              return a.action;
-            }).join(" → ") : "";
-
-            return (
-            <div key={i} className="relative group">
-              <button
-                disabled={choiceBusy}
-                onClick={() => handleChoice(c)}
-                className={`relative px-3.5 py-2 rounded-xl text-sm text-text bg-[rgba(15,15,26,0.6)]
-                  border border-border/60 cursor-pointer
-                  transition-all duration-fast
-                  hover:border-accent hover:bg-[rgba(var(--accent-rgb),0.08)] hover:-translate-y-px
-                  hover:shadow-[0_2px_12px_var(--accent-glow)]
-                  active:translate-y-0
-                  ${c.actions?.length ? "pr-7" : ""}
-                  ${choiceBusy ? "opacity-50 pointer-events-none" : ""}`}
-              >
-                {c.text}
-                {c.actions && c.actions.length > 0 && (
-                  <span className="absolute -top-1.5 -right-1.5 flex items-center gap-px px-1 py-0.5 rounded-full text-[10px] leading-none bg-accent/20 text-accent border border-accent/30">
-                    <svg className="w-2.5 h-2.5" viewBox="0 0 16 16" fill="currentColor"><path d="M9.405 1.05c-.413-1.4-2.397-1.4-2.81 0l-.1.34a1.464 1.464 0 0 1-2.105.872l-.31-.17c-1.283-.698-2.686.705-1.987 1.987l.169.311c.446.82.023 1.841-.872 2.105l-.34.1c-1.4.413-1.4 2.397 0 2.81l.34.1a1.464 1.464 0 0 1 .872 2.105l-.17.31c-.698 1.283.705 2.686 1.987 1.987l.311-.169a1.464 1.464 0 0 1 2.105.872l.1.34c.413 1.4 2.397 1.4 2.81 0l.1-.34a1.464 1.464 0 0 1 2.105-.872l.31.17c1.283.698 2.686-.705 1.987-1.987l-.169-.311a1.464 1.464 0 0 1 .872-2.105l.34-.1c1.4-.413 1.4-2.397 0-2.81l-.34-.1a1.464 1.464 0 0 1-.872-2.105l.17-.31c.698-1.283-.705-2.686-1.987-1.987l-.311.169a1.464 1.464 0 0 1-2.105-.872l-.1-.34zM8 10.93a2.929 2.929 0 1 1 0-5.86 2.929 2.929 0 0 1 0 5.858z"/></svg>
-                    {c.actions.length > 1 && <span>{c.actions.length}</span>}
-                  </span>
-                )}
-              </button>
-              {actionLabel && (
-                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2.5 py-1.5
-                  rounded-lg text-xs whitespace-nowrap
-                  bg-[rgba(20,16,32,0.95)] text-text/90 border border-accent/20
-                  shadow-[0_4px_16px_rgba(0,0,0,0.4)]
-                  opacity-0 scale-95 pointer-events-none
-                  group-hover:opacity-100 group-hover:scale-100
-                  transition-all duration-150 z-50">
-                  <span className="text-accent/70 mr-1">⚙</span>{actionLabel}
-                </div>
-              )}
-            </div>
-            );
-          })}
+          {choices.map((c, i) => (
+            <ChoiceButton key={i} choice={c} busy={choiceBusy} onChoice={handleChoice} />
+          ))}
         </div>
       )}
       {pendingEvents && pendingEvents.length > 0 && (

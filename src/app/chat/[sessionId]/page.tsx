@@ -23,7 +23,7 @@ import PopupEffect from "@/components/PopupEffect";
 import ToastEffect from "@/components/ToastEffect";
 import { dispatchBridgeEvent } from "@/lib/use-panel-bridge";
 import { buildAutoplayMessage, calculateAutoplayDelay, getSelectedPreset, type SteeringPreset } from "@/lib/autoplay";
-import { getPanelActionRegistry } from "@/lib/panel-action-registry";
+import { getPanelActionRegistry, parsePanelActions } from "@/lib/panel-action-registry";
 
 interface Panel {
   name: string;
@@ -334,6 +334,12 @@ export default function ChatPage() {
         };
         setPanels(update.panels);
         setPanelData(update.context);
+        // Pre-parse <panel-actions> metadata from all panel HTML (before rendering)
+        const registry = getPanelActionRegistry();
+        for (const panel of update.panels) {
+          const metas = parsePanelActions(panel.html);
+          if (metas.length > 0) registry.registerMeta(panel.name, metas);
+        }
         if (update.sharedPlacements) setSharedPlacements(update.sharedPlacements);
         // Only update popup queue when explicitly present in update
         if (update.popups !== undefined) {
@@ -527,6 +533,12 @@ export default function ChatPage() {
       // Set initial panels + context from response (WS may not be connected yet)
       if (data.panels?.length) {
         setPanels(data.panels);
+        // Pre-parse <panel-actions> metadata from all panel HTML
+        const registry = getPanelActionRegistry();
+        for (const panel of data.panels) {
+          const metas = parsePanelActions(panel.html);
+          if (metas.length > 0) registry.registerMeta(panel.name, metas);
+        }
       }
       if (data.panelContext) {
         setPanelData(data.panelContext);
