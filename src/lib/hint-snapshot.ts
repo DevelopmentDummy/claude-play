@@ -18,6 +18,7 @@ export type Snapshot = Record<string, SnapshotEntry>;
 const PASSTHROUGH_KEYS = [
   "location", "owner_location", "time", "outfit",
   "cycle_phase", "cycle_day", "day_number",
+  "wish_text",
 ];
 
 export function readHintRules(sessionDir: string): HintRules | null {
@@ -42,11 +43,16 @@ export function buildSnapshot(
 
     const entry: { display: string; hint?: string } = { display: "" };
 
+    // Floor numeric values for display (engine stores floats internally)
+    const displayValue = typeof value === "number" ? Math.floor(value) : value;
+
     if (rule.format) {
       let formatted = rule.format;
-      formatted = formatted.replace("{value}", String(value));
+      formatted = formatted.replace("{value}", String(displayValue));
       if (rule.max_key && vars[rule.max_key] !== undefined) {
-        formatted = formatted.replace("{max}", String(vars[rule.max_key]));
+        const maxDisplay = typeof vars[rule.max_key] === "number"
+          ? Math.floor(vars[rule.max_key] as number) : vars[rule.max_key];
+        formatted = formatted.replace("{max}", String(maxDisplay));
       } else if (rule.max !== undefined) {
         formatted = formatted.replace("{max}", String(rule.max));
       }
@@ -57,7 +63,7 @@ export function buildSnapshot(
       }
       entry.display = formatted;
     } else {
-      entry.display = String(value);
+      entry.display = String(displayValue);
     }
 
     if (Array.isArray(rule.tiers) && typeof value === "number") {
@@ -81,6 +87,14 @@ export function buildSnapshot(
     if (vars[passKey] !== undefined && !(passKey in snapshot)) {
       snapshot[passKey] = String(vars[passKey]);
     }
+  }
+
+  // Competition urgency hint
+  const compRemaining = vars.__competitions_remaining_turns;
+  const compAvailable = vars.__competitions_available;
+  if (compAvailable && Array.isArray(compAvailable) && compAvailable.length > 0 && compRemaining !== undefined) {
+    const label = compRemaining === 0 ? "🏆대회참가가능(마지막기회!)" : `🏆대회참가가능(남은턴:${compRemaining})`;
+    snapshot["competition_notice"] = label;
   }
 
   return snapshot;

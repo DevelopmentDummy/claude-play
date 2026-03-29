@@ -144,14 +144,18 @@ export function usePanelBridge(
         window.addEventListener(`${EVT_PREFIX}${event}`, wrapped);
         return () => window.removeEventListener(`${EVT_PREFIX}${event}`, wrapped);
       },
-      /** Register a panel action handler. panelName auto-detected from __currentPanelName. */
+      /** Register a panel action handler. panelName auto-detected from __currentPanelName or registry lookup. */
       registerAction(actionId: string, handler: PanelActionHandler, panelName?: string): void {
-        const panel = panelName || (window as unknown as Record<string, unknown>).__currentPanelName as string;
+        const registry = getPanelActionRegistry();
+        const panel = panelName
+          || (window as unknown as Record<string, unknown>).__currentPanelName as string
+          || registry.findPanelByAction(actionId)
+          || "";
         if (!panel) {
-          console.warn("[panelBridge] registerAction: no panel name context");
+          console.warn("[panelBridge] registerAction: no panel name context for", actionId);
           return;
         }
-        getPanelActionRegistry().registerHandler(panel, actionId, handler);
+        registry.registerHandler(panel, actionId, handler);
       },
       /** Execute a registered panel action. Records to history automatically. Panel auto-resolved from registry if not provided. */
       async executeAction(actionId: string, params?: Record<string, unknown>, panelName?: string): Promise<void> {

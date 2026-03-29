@@ -256,12 +256,15 @@ function ChatInput({ disabled, onSend, sessionId, choices, pendingEvents, showOO
             detail: `${act.panel}.${act.action}`
           }));
 
-          // 1. Open the panel modal
-          await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/modals`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "open", name: act.panel, mode: true }),
-          });
+          // 1. Open the panel modal only if handler isn't registered yet
+          const needsOpen = !registry.hasHandler(act.panel, act.action);
+          if (needsOpen) {
+            await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/modals`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "open", name: act.panel, mode: true }),
+            });
+          }
 
           // 2. Wait for handler to be registered
           await registry.waitForHandler(act.panel, act.action, 8000);

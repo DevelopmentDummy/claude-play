@@ -162,6 +162,14 @@ export class PanelActionRegistry {
     }
   }
 
+  /** Check if a handler is registered for a specific action */
+  hasHandler(panel: string, actionId: string): boolean {
+    const resolvedPanel = panel || this.findPanelByAction(actionId);
+    if (!resolvedPanel) return false;
+    const panelMap = this.entries.get(resolvedPanel);
+    return !!panelMap?.get(actionId)?.handler;
+  }
+
   /** Find label for a specific action, regardless of availability */
   getLabel(panel: string, actionId: string): string | undefined {
     const panelMap = this.entries.get(panel);
