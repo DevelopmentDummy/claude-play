@@ -145,6 +145,11 @@ export class PanelActionRegistry {
     this.variables = { ...vars };
   }
 
+  /** Get layout config from variables (injected by panel engine as __layout) */
+  getLayout(): Record<string, unknown> | null {
+    return (this.variables.__layout as Record<string, unknown>) || null;
+  }
+
   /** Evaluate available_when expression safely */
   private evalAvailableWhen(expr: string): boolean {
     try {

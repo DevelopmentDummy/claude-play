@@ -62,7 +62,7 @@ export default function ChatPage() {
   useEffect(() => {
     getPanelActionRegistry().updateVariables(panelData);
   }, [panelData]);
-  const [sharedPlacements, setSharedPlacements] = useState<Record<string, "modal" | "dock" | "dock-left" | "dock-right" | "dock-bottom">>({});
+  const [sharedPlacements, setSharedPlacements] = useState<Record<string, "modal" | "modal-dismissible" | "dock" | "dock-left" | "dock-right" | "dock-bottom">>({});
   const [layout, setLayout] = useState<LayoutConfig | null>(null);
   const [title, setTitle] = useState("");
   const [profileImage, setProfileImage] = useState<string | null>(null);
@@ -329,7 +329,7 @@ export default function ChatPage() {
         const update = p as {
           panels: Panel[];
           context: Record<string, unknown>;
-          sharedPlacements?: Record<string, "modal" | "dock" | "dock-left" | "dock-right" | "dock-bottom">;
+          sharedPlacements?: Record<string, "modal" | "modal-dismissible" | "dock" | "dock-left" | "dock-right" | "dock-bottom">;
           popups?: Array<{ template: string; html: string; duration: number }>;
         };
         setPanels(update.panels);
@@ -631,7 +631,7 @@ export default function ChatPage() {
 
   // Normalize placement keys: strip numeric prefix (e.g. "01-상태" → "상태") so it matches panel names
   // Merge layout placements with shared panel default placements (shared panels default to modal)
-  const placement: Record<string, "left" | "right" | "modal" | "dock" | "dock-left" | "dock-right" | "dock-bottom"> = {};
+  const placement: Record<string, "left" | "right" | "modal" | "modal-dismissible" | "dock" | "dock-left" | "dock-right" | "dock-bottom"> = {};
   // Apply shared placements first (lower priority)
   for (const [key, val] of Object.entries(sharedPlacements)) {
     placement[key] = val;
@@ -646,7 +646,7 @@ export default function ChatPage() {
   // Split panels by placement: left, right, modal, or inline (no placement = inline)
   const leftPanels = panels.filter((p) => placement[p.name] === "left");
   const rightPanels = panels.filter((p) => placement[p.name] === "right");
-  const modalPanels = panels.filter((p) => placement[p.name] === "modal");
+  const modalPanels = panels.filter((p) => placement[p.name] === "modal" || placement[p.name] === "modal-dismissible");
   const dockBottomPanels = panels.filter((p) => placement[p.name] === "dock" || placement[p.name] === "dock-bottom");
   const dockLeftPanels = panels.filter((p) => placement[p.name] === "dock-left");
   const dockRightPanels = panels.filter((p) => placement[p.name] === "dock-right");

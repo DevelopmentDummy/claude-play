@@ -7,7 +7,7 @@ export interface LayoutConfig {
   panels: {
     position: "right" | "left" | "bottom" | "hidden";
     size: number;
-    placement?: Record<string, "left" | "right" | "modal" | "dock" | "dock-left" | "dock-right" | "dock-bottom">;
+    placement?: Record<string, "left" | "right" | "modal" | "modal-dismissible" | "dock" | "dock-left" | "dock-right" | "dock-bottom">;
     modalSize?: Record<string, { maxWidth?: string; maxHeight?: string }>;
     dockSize?: number;   // deprecated, use dockHeight
     dockHeight?: number;

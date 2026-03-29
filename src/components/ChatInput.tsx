@@ -259,10 +259,14 @@ function ChatInput({ disabled, onSend, sessionId, choices, pendingEvents, showOO
           // 1. Open the panel modal only if handler isn't registered yet
           const needsOpen = !registry.hasHandler(act.panel, act.action);
           if (needsOpen) {
+            // Determine modal mode from layout: dismissible panels open as dismissible
+            const layout = registry.getLayout() as Record<string, Record<string, string>> | null;
+            const placement = layout?.placement?.[act.panel];
+            const mode = placement === "modal-dismissible" ? "dismissible" : true;
             await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/modals`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ action: "open", name: act.panel, mode: true }),
+              body: JSON.stringify({ action: "open", name: act.panel, mode }),
             });
           }
 
@@ -274,6 +278,15 @@ function ChatInput({ disabled, onSend, sessionId, choices, pendingEvents, showOO
           const params = act.params || act.args;
           await registry.execute(act.panel, act.action, params);
           win.__panelActionExecuting = null;
+
+          // 4. If we opened the modal just for this action, close it after execution
+          if (needsOpen) {
+            await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/modals`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "close", name: act.panel }),
+            });
+          }
 
         } else if (act.tool) {
           // ═══ Legacy Tool Action ═══
