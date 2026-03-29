@@ -1439,7 +1439,9 @@ function checkValuesTrigger(v, state, slotEvents, statChanges, sysConfig) {
   const valCfg = (sysConfig && sysConfig.values_system) || {};
   if (valCfg.enabled === false) return null;
 
-  const periodicInterval = valCfg.periodic_interval || 2;
+  const periodicInterval = valCfg.periodic_interval || 3;
+  const conditionalCooldown = valCfg.conditional_cooldown || 6;
+  const urgentCooldown = valCfg.urgent_cooldown || 3;
   const condCfg = valCfg.conditional_triggers || {};
 
   // Already triggered this slot? (set by values panel after user picks a choice)
@@ -1451,10 +1453,10 @@ function checkValuesTrigger(v, state, slotEvents, statChanges, sysConfig) {
 
   const triggers = [];
 
-  // --- Conditional triggers (higher priority) ---
+  // --- Urgent triggers (shorter cooldown: 3 months) ---
 
   // Stress explosion (runaway or sick)
-  if (condCfg.stress_explosion !== false) {
+  if (condCfg.stress_explosion !== false && monthsSince >= urgentCooldown) {
     if (slotEvents.some(e => e.type === 'runaway' || e.type === 'sick')) {
       triggers.push({
         reason: 'stress_explosion', priority: 5, topic: 'stress_crisis',
@@ -1464,7 +1466,7 @@ function checkValuesTrigger(v, state, slotEvents, statChanges, sysConfig) {
   }
 
   // Dark path events this slot
-  if (state.dark_path && condCfg.dark_event !== false) {
+  if (state.dark_path && condCfg.dark_event !== false && monthsSince >= urgentCooldown) {
     if (slotEvents.some(e =>
       e.type === 'dark_encounter' || e.type === 'dark_random' ||
       (e.type === 'encounter' && state.dark_path)
@@ -1476,7 +1478,9 @@ function checkValuesTrigger(v, state, slotEvents, statChanges, sysConfig) {
     }
   }
 
-  // Stat milestones (100, 200, 300...)
+  // --- Conditional triggers (longer cooldown: 6 months) ---
+
+  // Stat milestones (100, 200, 300...) — no cooldown, each milestone fires only once
   const milestoneInterval = condCfg.stat_milestone_interval || 100;
   if (statChanges && condCfg.stat_milestone !== false) {
     for (const [stat, delta] of Object.entries(statChanges)) {
@@ -1496,10 +1500,10 @@ function checkValuesTrigger(v, state, slotEvents, statChanges, sysConfig) {
     }
   }
 
-  // Morals extremes (only if at least 1 month since last trigger)
+  // Morals extremes
   const moralsLow = condCfg.morals_extreme_low ?? 5;
   const moralsHigh = condCfg.morals_extreme_high ?? 80;
-  if (monthsSince >= 1) {
+  if (monthsSince >= conditionalCooldown) {
     if ((v.morals || 0) <= moralsLow) {
       triggers.push({
         reason: 'morals_low', priority: 3, topic: 'moral_boundary',
@@ -1513,9 +1517,9 @@ function checkValuesTrigger(v, state, slotEvents, statChanges, sysConfig) {
     }
   }
 
-  // High stress approaching explosion (only if not same month)
+  // High stress approaching explosion
   const stressThresh = condCfg.high_stress_threshold || 90;
-  if ((v.stress || 0) >= stressThresh && monthsSince >= 1) {
+  if ((v.stress || 0) >= stressThresh && monthsSince >= conditionalCooldown) {
     triggers.push({
       reason: 'high_stress', priority: 2, topic: 'stress_coping',
       context: `스트레스가 ${v.stress}까지 올라간 상태`
@@ -2997,11 +3001,15 @@ const ACTIONS = {
     if (!state.competitions_entered) state.competitions_entered = [];
     state.competitions_entered.push(competition_id);
 
+    // Clear available competitions — only 1 per season
+    v.__competitions_available = [];
+    v.__competitions_remaining_turns = 0;
+
     // Log the competition
     eventLog = addLogEntry(eventLog, {
       type: 'competition',
       month: `${v.current_year}년차 ${v.current_month}월`,
-      text: `${compResult.competition_name}: ${compResult.rank} (점수: ${compResult.score})`
+      text: `${compResult.competition_name}: ${compResult.rank} (점수: ${Math.floor(compResult.score)})`
     });
 
     // Collect popup effects for competition
@@ -3016,8 +3024,8 @@ const ACTIONS = {
         category: compResult.category,
         rank: compResult.rank,
         rank_index: compResult.rank_index,
-        score: compResult.score,
-        npc_scores: compResult.npc_scores,
+        score: Math.floor(compResult.score),
+        npc_scores: compResult.npc_scores.map(n => ({ ...n, score: Math.floor(n.score) })),
         rewards: statChanges,
         popups: compPopups.length > 0 ? compPopups : undefined
       }
@@ -3107,6 +3115,24 @@ const ACTIONS = {
     const s3 = v.schedule_3 || 'none';
     if (s1 === 'none' && s2 === 'none' && s3 === 'none') {
       return { result: { success: false, message: '스케줄이 비어있습니다. 최소 1개 슬롯을 설정해주세요.' } };
+    }
+
+    // Validate activity IDs exist
+    const unlocked = new Set(state.unlocked_activities || []);
+    const invalidSlots = [];
+    for (const [slot, aid] of [['상순', s1], ['중순', s2], ['하순', s3]]) {
+      if (aid === 'none') continue;
+      if (!allActs[aid]) {
+        invalidSlots.push({ slot, aid });
+      }
+    }
+    if (invalidSlots.length > 0) {
+      const errSlots = invalidSlots.map(s => `${s.slot}: "${s.aid}"`).join(', ');
+      const validIds = Object.entries(allActs)
+        .filter(([id, act]) => !act.requirements || Object.keys(act.requirements).length === 0 || unlocked.has(id))
+        .map(([id, act]) => `${id}(${act.name})`)
+        .join(', ');
+      return { result: { success: false, message: `존재하지 않는 활동 ID: ${errSlots}. 사용 가능한 활동: ${validIds}` } };
     }
 
     // Transition to executing phase

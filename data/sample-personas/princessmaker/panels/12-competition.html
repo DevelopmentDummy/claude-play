@@ -499,16 +499,16 @@
 
     const result = res.result;
     const playerName = d.name || '올리브';
-    const playerScore = result.score;
+    const playerScore = Math.floor(result.score);
     const npcs = result.npc_scores || [];
     const rankText = result.rank;
     const rankMap = { '우승': 1, '준우승': 2, '3위': 3 };
     const rankNum = rankMap[rankText] || 4;
 
-    // Build all participants sorted by score desc
+    // Build all participants sorted by score desc (floor all scores)
     const allParticipants = [
       { name: playerName, score: playerScore, isPlayer: true },
-      ...npcs.map(n => ({ name: n.name, score: n.score, isPlayer: false }))
+      ...npcs.map(n => ({ name: n.name, score: Math.floor(n.score), isPlayer: false }))
     ].sort((a, b) => b.score - a.score);
 
     // Simulate based on mode
@@ -946,10 +946,10 @@
       }
     });
 
-    // Queue event for AI
+    // Queue event for AI (floor all scores to hide float internals)
     await __panelBridge.queueEvent(
-      `[COMPETITION] ${result.competition_name}: ${result.rank} (점수: ${result.score})\n` +
-      `참가자: ${result.npc_scores.map(n => n.name + ':' + n.score).join(', ')}\n` +
+      `[COMPETITION] ${result.competition_name}: ${result.rank} (점수: ${Math.floor(result.score)})\n` +
+      `참가자: ${result.npc_scores.map(n => n.name + ':' + Math.floor(n.score)).join(', ')}\n` +
       `보상: ${Object.entries(result.rewards).map(([k, v]) => k + (v >= 0 ? '+' : '') + v).join(', ')}`
     );
 

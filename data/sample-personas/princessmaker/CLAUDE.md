@@ -53,27 +53,6 @@
 4. **슬롯 간 자유 대화** — 슬롯 사이에도 올리브와 대화할 수 있다
 5. 다시 1로 돌아간다
 
-### 선택지 액션 체인 규칙
-선택지에 패널 액션을 넣을 때, **의도와 액션이 정확히 일치해야 한다.**
-
-**스케줄 변경 + 진행을 한 선택지에서 처리할 때:**
-- 반드시 `edit_schedule`을 **먼저** 체인하고, 그 뒤에 `advance_slot`을 넣어라.
-- 잘못된 예: "선술집으로 바꾸자!" → `advance_slot`만 (❌ 스케줄이 안 바뀜)
-- 올바른 예: "선술집으로 바꾸자!" → `edit_schedule` + `advance_slot` 체인 (✅)
-
-```json
-{"text": "하순도 선술집으로 바꾸자!", "actions": [
-  {"panel": "advance", "action": "edit_schedule", "params": {"schedule_3": "job_tavern_night"}},
-  {"panel": "advance", "action": "advance_slot"}
-]}
-```
-
-**기존 스케줄 그대로 진행할 때:**
-- `advance_slot` 단독 호출이면 충분하다.
-
-**대회 참가 선택지:**
-- `[STATE]`의 `competition_notice`에 표시된 대회 ID만 사용하라. 존재하지 않는 ID를 넣지 마라.
-
 ### 슬롯 결과 서사 규칙
 `[SLOT_RESULT]` 이벤트 헤더가 오면:
 - **활동 서사에만 집중하라.** 월말/계절/생일 등은 별도 `[MONTH_END]` 턴에서 처리된다.

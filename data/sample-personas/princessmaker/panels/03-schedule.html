@@ -628,7 +628,6 @@
 
     // Queue schedule info for AI awareness
     if (locked > 0) {
-      // Mid-month modification — only report remaining (unlocked) slots
       const changes = [];
       for (let i = locked; i < 3; i++) {
         const aid = slots[i];
@@ -639,7 +638,6 @@
         `[SCHEDULE_MODIFIED] ${d.current_year}년차 ${d.current_month}월 남은 스케줄 수정\n${changes.join('\n')}`
       );
     } else {
-      // Fresh month — report all slots
       const sNames = slots.map((aid, i) => {
         const a = aid !== 'none' ? all[aid] : null;
         return `${LBL[i+1]}: ${a ? a.name : '(없음)'}`;
@@ -648,12 +646,20 @@
         `[SCHEDULE_SET] ${d.current_year}년차 ${d.current_month}월 스케줄 확정\n${sNames.join('\n')}`
       );
     }
-    // Transition to executing phase: close schedule modal, open advance dock
-    // __refreshPanels forces advance panel to re-render with fresh turn_phase data
-    await __panelBridge.updateVariables({
-      turn_phase: 'executing',
-      __refreshPanels: ['advance']
-    });
+
+    // Call engine to handle phase transition (sets turn_phase, current_slot, modals, validation)
+    let res;
+    try {
+      res = await __panelBridge.runTool('engine', { action: 'confirm_schedule' });
+    } catch (e) {
+      console.error('confirm_schedule engine call failed:', e);
+      return;
+    }
+    if (res && res.result && !res.result.success) {
+      console.error('confirm_schedule rejected:', res.result.message);
+      await __panelBridge.queueEvent(`[SCHEDULE_ERROR] ${res.result.message}`);
+      return;
+    }
     await __panelBridge.openModal('advance', true);
   });
 
@@ -671,8 +677,15 @@
     // Read from variables directly (not closure) to avoid stale scope
     const available = __panelBridge.data.__competitions_available || [];
     const comp = available.find(c => c.id === compId);
-    const compName = comp ? comp.name : compId;
-    const compCat = comp ? (comp.category || '') : '';
+    if (!comp) {
+      console.error(`[enter_competition] Invalid competition_id: "${compId}". Available: ${available.map(c => c.id).join(', ')}`);
+      await __panelBridge.queueEvent(
+        `[COMPETITION_ERROR] "${compId}" 대회는 존재하지 않습니다. 참가 가능한 대회: ${available.map(c => `${c.id}(${c.name})`).join(', ')}`
+      );
+      return;
+    }
+    const compName = comp.name;
+    const compCat = comp.category || '';
     await __panelBridge.updateVariables({
       __competition_pending: { id: compId, name: compName, category: compCat }
     });

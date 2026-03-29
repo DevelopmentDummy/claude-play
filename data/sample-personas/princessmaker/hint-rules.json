@@ -134,5 +134,6 @@
       { "max": 70, "hint": "살이 많이 찐 편" },
       { "max": 100, "hint": "비만" }
     ]
-  }
+  },
+  "_passthrough": ["current_year", "current_month", "age", "wish_text"]
 }
