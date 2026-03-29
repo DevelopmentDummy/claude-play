@@ -1036,17 +1036,20 @@ export default function ChatPage() {
           onSendMessage={sendMessage}
         />
       )}
-      {/* Modal panels — centered overlay, driven by __modals in variables.json */}
-      {activeModalPanels.map((p, i) => {
+      {/* Modal panels — always mounted (hidden via display:none when inactive) to keep Shadow DOM + handlers alive */}
+      {effectiveModalPanels.map((p) => {
+        const isActive = !!modalsState?.[p.name] && !minimizedModals.has(p.name);
         const isDismissible = modalsState?.[p.name] === "dismissible";
+        const activeIndex = isActive ? activeModalPanels.indexOf(p) : 0;
         return (
           <ModalPanel
             key={p.name}
             name={p.name}
             html={p.html}
             dismissible={isDismissible}
-            zIndex={i}
-            isTopmost={i === activeModalPanels.length - 1}
+            active={isActive}
+            zIndex={activeIndex}
+            isTopmost={isActive && activeIndex === activeModalPanels.length - 1}
             maxWidth={modalSize[p.name]?.maxWidth}
             maxHeight={modalSize[p.name]?.maxHeight}
             sessionId={sessionId}

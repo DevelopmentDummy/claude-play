@@ -18,7 +18,6 @@ export type Snapshot = Record<string, SnapshotEntry>;
 const PASSTHROUGH_KEYS = [
   "location", "owner_location", "time", "outfit",
   "cycle_phase", "cycle_day", "day_number",
-  "wish_text",
 ];
 
 export function readHintRules(sessionDir: string): HintRules | null {
@@ -89,12 +88,23 @@ export function buildSnapshot(
     }
   }
 
+  // Per-persona passthrough keys from _passthrough in hint-rules.json
+  const customPassthrough = (hintRules as Record<string, unknown>)._passthrough;
+  if (Array.isArray(customPassthrough)) {
+    for (const passKey of customPassthrough) {
+      if (typeof passKey === "string" && vars[passKey] !== undefined && !(passKey in snapshot)) {
+        snapshot[passKey] = String(vars[passKey]);
+      }
+    }
+  }
+
   // Competition urgency hint
   const compRemaining = vars.__competitions_remaining_turns;
   const compAvailable = vars.__competitions_available;
   if (compAvailable && Array.isArray(compAvailable) && compAvailable.length > 0 && compRemaining !== undefined) {
-    const label = compRemaining === 0 ? "🏆대회참가가능(마지막기회!)" : `🏆대회참가가능(남은턴:${compRemaining})`;
-    snapshot["competition_notice"] = label;
+    const urgency = compRemaining === 0 ? "마지막기회!" : `남은턴:${compRemaining}`;
+    const compList = (compAvailable as any[]).map((c: any) => `${c.id}(${c.name})`).join(', ');
+    snapshot["competition_notice"] = `🏆대회참가가능(${urgency}) [${compList}]`;
   }
 
   return snapshot;

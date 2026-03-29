@@ -11,6 +11,8 @@ interface ModalPanelProps {
   name: string;
   html: string;
   dismissible: boolean;
+  /** Whether this modal is currently open (visible). When false, rendered with display:none to keep handlers alive. */
+  active?: boolean;
   zIndex?: number;
   isTopmost?: boolean;
   maxWidth?: string;
@@ -26,6 +28,7 @@ export default function ModalPanel({
   name,
   html,
   dismissible,
+  active = true,
   zIndex = 0,
   isTopmost = true,
   maxWidth = "860px",
@@ -45,21 +48,17 @@ export default function ModalPanel({
   const [closed, setClosed] = useState(false);
   const [minimizing, setMinimizing] = useState(false);
 
-  // Animate in on mount
+  // Animate in when active becomes true (or on initial mount if active)
   useEffect(() => {
-    requestAnimationFrame(() => setVisible(true));
-  }, []);
-
-  // Safety: if component is mounted but was internally closed (stale state desync),
-  // reset to visible. This handles edge cases where onClose PATCH was overwritten.
-  useEffect(() => {
-    if (closed) {
+    if (active) {
       setClosed(false);
       setVisible(false);
       requestAnimationFrame(() => setVisible(true));
+    } else {
+      setVisible(false);
+      setClosed(true);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [html]);
+  }, [active]);
 
   const handleClose = useCallback(() => {
     if (!dismissible) return;
@@ -175,10 +174,8 @@ export default function ModalPanel({
     delete (window as unknown as Record<string, unknown>).__currentPanelName;
   }, [html, name]);
 
-  // Cleanup panel action registry on unmount
-  useEffect(() => {
-    return () => { getPanelActionRegistry().clearPanel(name); };
-  }, [name]);
+  // No clearPanel on unmount — modal panels stay mounted (hidden via display:none)
+  // so that panel action handlers remain alive for choice actions.
 
   // Close on Escape key (only if dismissible AND topmost in stack)
   useEffect(() => {
@@ -190,10 +187,8 @@ export default function ModalPanel({
     return () => window.removeEventListener("keydown", handler);
   }, [dismissible, isTopmost, handleClose]);
 
-  if (closed) return null;
-
   return createPortal(
-    <>
+    <div style={{ display: closed ? "none" : "contents" }}>
       {/* Backdrop */}
       <div
         className="fixed inset-0 transition-opacity duration-200"
@@ -302,7 +297,7 @@ export default function ModalPanel({
       {modalSrc && (
         <ImageModal src={modalSrc} onClose={() => setModalSrc(null)} />
       )}
-    </>,
+    </div>,
     document.body
   );
 }

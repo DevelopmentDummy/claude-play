@@ -901,9 +901,19 @@ function buildSnapshot(vars, hintRules) {
   }
 
   // Pass through non-rule variables that are commonly useful
-  for (const passKey of ["location", "owner_location", "time", "outfit", "cycle_phase", "cycle_day", "day_number", "wish_text"]) {
+  for (const passKey of ["location", "owner_location", "time", "outfit", "cycle_phase", "cycle_day", "day_number"]) {
     if (vars[passKey] !== undefined && !(passKey in snapshot)) {
       snapshot[passKey] = String(vars[passKey]);
+    }
+  }
+
+  // Per-persona passthrough keys from _passthrough in hint-rules
+  const customPassthrough = (hintRules || {})._passthrough;
+  if (Array.isArray(customPassthrough)) {
+    for (const passKey of customPassthrough) {
+      if (typeof passKey === "string" && vars[passKey] !== undefined && !(passKey in snapshot)) {
+        snapshot[passKey] = String(vars[passKey]);
+      }
     }
   }
 
