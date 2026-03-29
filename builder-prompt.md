@@ -478,6 +478,53 @@ mcp__claude_play__run_tool({ tool: "engine", args: { action: "milking", params: 
 - 데이터 파일(`*.json`)을 활용하여 경제/인벤토리/업적 등 구조화된 상태를 관리한다
 - 관련 변수/데이터 파일은 빌더 단계에서 함께 초기 파일을 생성해야 한다
 
+### `engine-meta.json` — 엔진 액션 메타데이터 (선택)
+
+커스텀 도구(`tools/engine.js`)가 있는 페르소나에서, 각 엔진 액션의 **사용 가능 조건**과 **노출 여부**를 구조화한 파일. AI가 대화 선택지(`<choice>`)에 `actions`를 달 때 이 파일을 참조한다.
+
+**왜 필요한가 — 선택지 액션 시스템:**
+세션에서 AI는 응답 끝에 `<choice>` 태그로 선택지를 제시한다. 각 선택지에 `actions` 필드를 달면, 사용자가 클릭만으로 엔진 액션을 실행할 수 있다. 이는 **사용자가 패널 버튼으로 할 수 있는 것을 대화 선택지로도 제안**하여 플레이 편의성을 높이기 위함이다.
+
+```json
+{
+  "actions": {
+    "set_schedule": {
+      "name": "스케줄 설정",
+      "description": "스케줄 슬롯에 활동을 배정한다.",
+      "available_when": { "turn_phase": "setup" },
+      "params": { "slots": "object ({ 1: 'activity_id', ... })" },
+      "category": "schedule",
+      "choice_examples": [
+        "검술에 집중! → { slots: { 1: 'sword_dojo', 2: 'sword_dojo', 3: 'rest' } }"
+      ]
+    }
+  },
+  "_internal_actions": {
+    "_description": "시스템 내부에서만 호출. AI 선택지에 절대 포함 금지.",
+    "turn_transition": "advance_slot에 자동 병합됨"
+  },
+  "choice_action_guide": {
+    "rules": [
+      "_internal_actions에 있는 액션은 선택지에 넣지 마라",
+      "available_when 조건을 반드시 확인할 것"
+    ]
+  }
+}
+```
+
+**액션 설계 핵심 원칙:**
+
+1. **사용자 버튼 = AI 선택지**: 패널에서 사용자가 클릭할 수 있는 모든 액션은 AI도 선택지로 제안할 수 있어야 한다
+2. **트랜잭션 원자성**: 패널이 A→B를 연달아 호출하는데, 하나만 실행되면 상태가 깨지는 경우 반드시 하나의 통합 액션으로 합쳐라. AI가 선택지에 단독으로 실어도 안전해야 한다
+   - 예: `advance_slot`이 마지막 슬롯이면 `turn_transition`을 자동 포함 — 별도 액션으로 분리하면 AI가 하나만 호출할 위험
+3. **내부 액션 비노출**: 사용자 버튼이 아닌 시스템 내부 액션(자동 트리거, 연쇄 호출의 후속 단계)은 `_internal_actions`에 넣어 AI에게 노출하지 않는다
+   - 예: `run_competition`은 `enter_competition` 후 모달이 자동 호출 → 별도 노출 불필요
+4. **available_when 조건**: 각 액션이 언제 사용 가능한지 조건을 명시하여 AI가 잘못된 타이밍에 제안하는 것을 방지
+
+**언제 만드는가:**
+- 커스텀 도구가 있고, 패널 인터랙션이 풍부한 페르소나에서 유용
+- 단순 호감도/대화만 있는 페르소나에서는 불필요
+
 ### `hint-rules.json` — 상시 상태 스냅샷 규칙 (선택)
 
 AI에게 현재 게임/세션 상태를 자동으로 전달하기 위한 규칙 파일. 두 가지 경로로 전달된다:
@@ -880,6 +927,10 @@ yt-dlp "ytsearch5:{검색어}" --flat-playlist --dump-json --no-download 2>/dev/
 - [ ] 스킬 내용이 이 페르소나의 변수명/패널명과 일치하는가?
 - [ ] 커스텀 도구(`tools/*.js`)가 있다면, `hint-rules.json`이 적절히 작성되어 있는가?
 - [ ] `hint-rules.json`의 변수명이 `variables.json`의 키와 일치하는가?
+- [ ] 패널 인터랙션이 풍부한 경우, `engine-meta.json`이 작성되어 있는가?
+- [ ] 사용자 버튼에 해당하는 액션이 모두 `actions`에 공개되어 있는가?
+- [ ] 시스템 내부 전용 액션이 `_internal_actions`에 분리되어 있는가?
+- [ ] 트랜잭션이 필요한 액션 묶음(A→B 연쇄)이 단일 원자 액션으로 합쳐져 있는가?
 - [ ] 문체(Writing Style)를 설정했는가? (`style.json`에 선택한 문체 이름이 저장되어 있는가, 또는 의도적으로 생략했는가?)
 - [ ] 선택한 문체가 `data/styles/`에 실제 존재하는가?
 - [ ] `session-instructions.md`에 문체 관련 지시를 중복 작성하지 않았는가?
