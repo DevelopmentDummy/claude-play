@@ -10,6 +10,15 @@
       "schedule_3": "활동 ID (하순)"
     },
     "available_when": "turn_phase === 'setup'"
+  },
+  {
+    "id": "enter_competition",
+    "label": "대회 참가",
+    "description": "계절 축제 대회에 참가한다. 대회 모달이 열리며 결과가 처리됨.",
+    "params": {
+      "competition_id": "대회 ID (sprint, flower, swim 등)"
+    },
+    "available_when": "__competitions_available && __competitions_available.length > 0"
   }
 ]
 </panel-actions>
@@ -655,13 +664,42 @@
     await __panelBridge.executeAction('confirm_schedule');
   });
 
+  // Register enter_competition as panel action
+  __panelBridge.registerAction('enter_competition', async (params) => {
+    const compId = params && params.competition_id;
+    if (!compId) return;
+    // Read from variables directly (not closure) to avoid stale scope
+    const available = __panelBridge.data.__competitions_available || [];
+    const comp = available.find(c => c.id === compId);
+    const compName = comp ? comp.name : compId;
+    const compCat = comp ? (comp.category || '') : '';
+    await __panelBridge.updateVariables({
+      __competition_pending: { id: compId, name: compName, category: compCat }
+    });
+    await __panelBridge.closeModal('schedule');
+    await __panelBridge.openModal('competition', true);
+
+    // Wait for competition to complete (modal runs async animation + engine call)
+    await new Promise(resolve => {
+      const handler = () => {
+        window.removeEventListener('__competition_complete', handler);
+        resolve();
+      };
+      window.addEventListener('__competition_complete', handler);
+      // Timeout safety: resolve after 30s even if event never fires
+      setTimeout(() => {
+        window.removeEventListener('__competition_complete', handler);
+        resolve();
+      }, 30000);
+    });
+  });
+
+  // Button clicks delegate to panel action
   shadow.querySelectorAll('.pm-comp-btn').forEach(b => {
     b.addEventListener('click', async () => {
-      // Store pending competition info: close schedule, open competition modal
-      await __panelBridge.updateVariables({
-        __competition_pending: { id: b.dataset.cid, name: b.dataset.cn, category: b.dataset.cat || '' }
+      await __panelBridge.executeAction('enter_competition', {
+        competition_id: b.dataset.cid
       });
-      await __panelBridge.openModal('competition', true);
     });
   });
 </script>

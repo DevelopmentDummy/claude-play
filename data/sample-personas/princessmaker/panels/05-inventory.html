@@ -242,7 +242,10 @@
     if (!isEquipped) {
       card.addEventListener('click', async () => {
         const res = await __panelBridge.runTool('engine', { action: 'equip', type: 'outfit', outfit_id: outfit.id });
-        if (res.result?.success) showMsg(`${outfit.name} 착용!`, true);
+        if (res.result?.success) {
+          showMsg(`${outfit.name} 착용!`, true);
+          await __panelBridge.updateVariables({ __refreshPanels: ['inventory'] });
+        }
       });
     }
     outfitPanel.appendChild(card);

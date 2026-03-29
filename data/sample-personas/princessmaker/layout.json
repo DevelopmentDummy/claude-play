@@ -18,14 +18,15 @@
       "father": "modal"
     },
     "modalGroups": {
-      "gameplay": ["schedule", "advance", "competition", "adventure", "inventory", "catalog", "father"],
-      "overlay": ["portrait", "values"]
+      "gameplay": ["schedule", "advance", "adventure", "inventory", "catalog"],
+      "overlay": ["portrait", "values", "father", "competition"]
     },
     "autoRefresh": {
       "portrait": false,
       "advance": false,
       "competition": false,
-      "adventure": false
+      "adventure": false,
+      "log": false
     }
   },
   "chat": {

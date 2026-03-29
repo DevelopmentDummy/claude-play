@@ -124,8 +124,8 @@
     "context": "상황 설명 (1줄)",
     "question": "올리브에게 던지는 질문",
     "choices": [
-      { "label": "선택지 텍스트", "hint": "짧은 성향 힌트", "effects": { "morals": 3 }, "flags": { "flag_name": true } },
-      { "label": "다른 선택지", "hint": "힌트", "effects": { "sensitivity": 2 } }
+      { "label": "선택지 텍스트", "hint": "짧은 성향 힌트", "effects": { "morals": 3 }, "modifiers": { "morals": 0.05 }, "flags": { "flag_name": true } },
+      { "label": "다른 선택지", "hint": "힌트", "effects": { "sensitivity": 2 }, "modifiers": { "sensitivity": 0.1 } }
     ]
   }
 }
@@ -135,7 +135,8 @@
 **질문 설계 원칙:**
 - `topic`과 `context`를 참고하되, 최근 서사와 올리브의 경험에 맞게 구체화한다
 - 선택지는 2~4개, 각각 다른 가치관 방향을 반영 (도덕적/실용적/감성적/반항적 등)
-- `effects`는 소폭 스탯 변화 (±2~5 범위), 없어도 됨
+- `effects`는 소폭 즉시 스탯 변화 (±2~5 범위), 없어도 됨
+- `modifiers`는 영구 성장 계수 조정 (±0.05~0.15 범위). 선택한 가치관 방향의 스탯이 이후 영구적으로 더 잘 오른다. 선택당 1~2개 스탯에만 적용
 - `flags`는 game-state.json에 기록되어 미래 서사에 참조됨 (예: `values_saw_poverty: true`)
 - 올리브의 나이에 맞는 난이도와 어휘로 질문한다
 - 정답이 없어야 한다 — 각 선택이 올리브의 성격을 다른 방향으로 형성한다

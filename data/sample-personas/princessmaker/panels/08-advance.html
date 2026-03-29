@@ -5,6 +5,17 @@
     "label": "스케줄 진행",
     "description": "현재 슬롯의 활동을 실행한다 (일별 시뮬레이션 애니메이션 포함)",
     "available_when": "turn_phase === 'executing' && current_slot < 3"
+  },
+  {
+    "id": "edit_schedule",
+    "label": "스케줄 수정",
+    "description": "남은 스케줄을 수정하고 확정한다. 이미 진행된 슬롯은 변경 불가.",
+    "params": {
+      "schedule_1": "활동 ID (상순, 이미 진행됐으면 무시)",
+      "schedule_2": "활동 ID (중순, 이미 진행됐으면 무시)",
+      "schedule_3": "활동 ID (하순, 이미 진행됐으면 무시)"
+    },
+    "available_when": "turn_phase === 'executing'"
   }
 ]
 </panel-actions>
@@ -638,11 +649,31 @@
     if (window.__bridgeIsStreaming) syncStreaming(true);
     window.addEventListener('__bridge_streaming_change', function(e) { syncStreaming(e.detail); });
 
-    // ═══ Edit button: go back to schedule setup for remaining slots ═══
+    // Register edit_schedule as panel action
+    __panelBridge.registerAction('edit_schedule', async (params) => {
+      if (params && (params.schedule_1 || params.schedule_2 || params.schedule_3)) {
+        // Direct schedule edit with params — set remaining slots and stay in executing
+        const locked = d.current_slot || 0;
+        const patch = {};
+        if (locked < 1 && params.schedule_1) patch.schedule_1 = params.schedule_1;
+        if (locked < 2 && params.schedule_2) patch.schedule_2 = params.schedule_2;
+        if (locked < 3 && params.schedule_3) patch.schedule_3 = params.schedule_3;
+        if (Object.keys(patch).length > 0) {
+          await __panelBridge.updateVariables(patch);
+          // Refresh advance panel to show updated schedule
+          await __panelBridge.updateVariables({ __refreshPanels: ['advance'] });
+        }
+      } else {
+        // No params — open schedule panel for manual edit
+        await __panelBridge.updateVariables({ turn_phase: 'setup' });
+        await __panelBridge.openModal('schedule', true);
+      }
+    });
+
+    // Edit button delegates to panel action
     shadow.querySelector('#editBtn')?.addEventListener('click', async function() {
-    await __panelBridge.updateVariables({ turn_phase: 'setup' });
-    await __panelBridge.openModal('schedule', true);
-  });
+      await __panelBridge.executeAction('edit_schedule');
+    });
 
     // Register advance_slot as panel action — all execution logic here
     __panelBridge.registerAction('advance_slot', async (params) => {
@@ -894,7 +925,7 @@
         }
 
         // Gold change row
-        const goldDelta = (r.gold_change || 0) - (r.cost_paid || 0);
+        const goldDelta = (r.gold_change || 0);
         if (goldDelta !== 0) {
           await delay(300);
           const goldContainer = shadow.querySelector('#rcGold');
@@ -1081,6 +1112,21 @@
     }
   });
 
+    // Disable button when choice action triggers advance_slot (panel already open)
+    function onActionExecuting(e) {
+      if (e.detail === 'advance.advance_slot' && advBtn) {
+        advBtn.disabled = true;
+        advBtn.textContent = '⏳ 진행 중...';
+      }
+    }
+    // Check if already executing (render after flag set)
+    if (window.__panelActionExecuting === 'advance.advance_slot' && advBtn) {
+      advBtn.disabled = true;
+      advBtn.textContent = '⏳ 진행 중...';
+    }
+    // Listen for future triggers (panel already rendered when choice clicked)
+    window.addEventListener('__panel_action_executing', onActionExecuting);
+
     // Button click delegates to panel action
     advBtn?.addEventListener('click', async function() {
       if (this.disabled) return;
@@ -1216,27 +1262,10 @@
       }
       return (rule.tiers.find(t => val <= t.max) || {}).hint || '';
     }
-    const l = ['\n[STATE_SNAPSHOT]'];
-    const stats = ['stamina','intelligence','elegance','charm','morals','sensitivity',
-                   'faith','combat','etiquette','cooking','art','music'];
-    const statLine = stats.map(s => `${STAT_NM[s]}:${d[s]||0}`).join(' ');
-    l.push(statLine);
-    const stressH = getHint('stress', d.stress||0);
-    const goldH = getHint('gold', d.gold||0);
-    l.push(`스트레스:${d.stress||0}/${d.stress_max||100}${stressH?'('+stressH+')':''} 골드:${d.gold||0}G${goldH?'('+goldH+')':''} HP:${d.hp||0}/${d.hp_max||30} 명성:${d.reputation||0}`);
-    l.push(`기분:${d.mood||'보통'} 나이:${d.age||10}세 계절:${d.season||''}`);
-    if (d.wish_text) l.push(`소원: ${d.wish_text}`);
-    // Dominant stat hint
-    let topStat = '', topVal = 0;
-    for (const s of stats) {
-      if (s === 'stamina') continue;
-      if ((d[s]||0) > topVal) { topVal = d[s]||0; topStat = s; }
-    }
-    if (topStat) { const h = getHint(topStat, topVal); if (h) l.push(`성향: ${STAT_NM[topStat]} — ${h}`); }
+    // Only append dark path reminder — stats/wish/mood are covered by [STATE] hint line
+    const l = [];
     const gs = d['game-state'] || {};
     if (gs.dark_path) {
-      l.push('🌑 어둠의 길: 활성화');
-      // Contextual dark path reminder for high-impact events
       if (eventContext) {
         const darkTriggers = new Set(['failure','dark_encounter','dark_random']);
         const hasDarkEvent = (eventContext.events||[]).some(e => darkTriggers.has(e.type));
@@ -1268,8 +1297,9 @@
     if (r.cost_paid) l.push(`비용: -${r.cost_paid}G`);
     if (r.pay_earned) l.push(`수입: +${r.pay_earned}G`);
     for (const e of (r.events||[])) {
+      if (e.type === 'perfect_run') continue; // Already shown in daily_summary line above
       const p = {critical_success:'🌟',failure:'💫',exam:'📝',sparring:'⚔️',tip:'💰',inspiration:'✨',encounter:'👤',dark_encounter:'🌑',
-                 perfect_run:'🌟',wish_bonus:'📌',wish_penalty:'📌'}[e.type]||'📌';
+                 wish_bonus:'📌',wish_penalty:'📌'}[e.type]||'📌';
       l.push(`${p} ${e.message}`);
     }
     if (r.adventure_result) {

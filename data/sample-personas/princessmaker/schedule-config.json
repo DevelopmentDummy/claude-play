@@ -34,7 +34,7 @@
       "cost": 20,
       "requirements": {},
       "effects": { "combat": [8, 15], "stamina": [3, 8], "stress": [4, 8] },
-      "side_effects": { "elegance": [-1, -3] },
+      "side_effects": { "elegance": [0, -1] },
       "npcs": {
         "instructor": { "name": "사범", "desc": "무술도장과 검술도장을 운영하는 노련한 무인. 과묵하지만 제자에게는 따뜻하다." }
       },
@@ -46,7 +46,7 @@
       "cost": 50,
       "requirements": { "combat": 50 },
       "effects": { "combat": [12, 22], "attack": [2, 5], "stamina": [2, 5], "stress": [5, 10] },
-      "side_effects": { "elegance": [-2, -4] },
+      "side_effects": { "elegance": [-1, -2] },
       "npcs": {
         "instructor": { "name": "사범", "desc": "무술도장과 검술도장을 운영하는 노련한 무인. 과묵하지만 제자에게는 따뜻하다." },
         "rival": { "name": "민호", "age": 15, "desc": "상급반 선배. 올리브보다 덩치가 크고 경험이 많지만, 올리브에게 한 번 진 적이 있다. 은근히 올리브를 인정하는 중." }
@@ -168,7 +168,7 @@
       "effects": { "stress": [2, 5] },
       "pay": [15, 30],
       "stat_bonus": { "stamina": [2, 5] },
-      "side_effects": { "elegance": [-1, -2] },
+      "side_effects": { "elegance": [0, -1] },
       "description": "농장에서 일한다. 힘든 만큼 체력이 좋아진다."
     },
     "job_shop": {
@@ -543,6 +543,15 @@
       "effects": { "stress": [-15, -8] },
       "random_event_chance": 0.4,
       "description": "마을을 자유롭게 돌아다닌다. 뜻밖의 만남이 있을 수 있다."
+    },
+    "vacation": {
+      "name": "바캉스",
+      "category": "rest",
+      "cost": 100,
+      "requirements": {},
+      "effects": { "stress": [-80, -50] },
+      "stat_bonus": { "sensitivity": [8, 15], "charm": [5, 10] },
+      "description": "교외로 나가 며칠간 여행한다. 스트레스가 크게 줄고 감수성이 오른다."
     },
     "dark_lounge": {
       "name": "홍련관 나들이",

@@ -99,14 +99,13 @@
 
     "talk_to_father": {
       "name": "아빠와 대화",
-      "description": "아빠와 대화한다. 주제에 따라 소폭 스탯 변동. 용사 배경 시 무술 보너스. 월 1회 무료.",
+      "description": "아빠와 대화한다. 다정하게(warm) 또는 엄하게(strict). 모드 선택 후 랜덤 주제가 뽑혀 스탯 변동. 월 1회 무료.",
       "available_when": { "turn_phase": "setup", "father_not_talked": true },
-      "params": { "topic": "string (martial/study/life/play)" },
+      "params": { "mode": "string (warm/strict)" },
       "category": "family",
       "choice_examples": [
-        "아빠한테 무술 배우자! → { topic: 'martial' }",
-        "아빠한테 고민 상담하자 → { topic: 'life' }",
-        "아빠랑 놀자! → { topic: 'play' }"
+        "아빠한테 다정하게 → { mode: 'warm' }",
+        "아빠한테 엄하게 배우자 → { mode: 'strict' }"
       ]
     }
   },

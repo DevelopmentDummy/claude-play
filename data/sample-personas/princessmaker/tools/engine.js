@@ -83,6 +83,50 @@ function clamp(val, min, max) {
   return Math.max(min, Math.min(max, val));
 }
 
+// ── Stat Modifier System ──
+// All stat gains/losses go through applyStat to apply growth multipliers.
+// Modifiers are stored in variables.__stat_modifiers (default 1.0 per stat).
+// Float internally, Math.floor() for display.
+
+const MODIFIER_EXEMPT = new Set(['gold', 'hp', 'stress', 'weight', 'reputation']);
+const MODIFIER_MIN = 0.1;
+
+/**
+ * Apply a stat change with modifier.
+ * Returns display delta (floor(new) - floor(old)).
+ */
+function applyStat(v, stat, rawDelta, modifiers) {
+  if (rawDelta === 0) return 0;
+  const mod = MODIFIER_EXEMPT.has(stat) ? 1.0
+    : Math.max(MODIFIER_MIN, (modifiers || {})[stat] || 1.0);
+  const actualDelta = rawDelta * mod;
+  const max = v[stat + '_max'] || (stat === 'stress' ? (v.stress_max || 100) : 999);
+  const minVal = stat === 'stress' ? -999 : 0;
+  const oldVal = v[stat] || 0;
+  v[stat] = clamp(oldVal + actualDelta, minVal, max);
+  return Math.floor(v[stat]) - Math.floor(oldVal);
+}
+
+/**
+ * Apply multiple stat changes, returning display deltas.
+ * Skips stats with 0 display change.
+ */
+function applyStatChanges(v, changes, modifiers) {
+  const displayDeltas = {};
+  for (const [stat, delta] of Object.entries(changes)) {
+    const d = applyStat(v, stat, delta, modifiers);
+    if (d !== 0) displayDeltas[stat] = d;
+  }
+  return displayDeltas;
+}
+
+/**
+ * Get stat modifiers from variables (safe access).
+ */
+function getModifiers(v) {
+  return v.__stat_modifiers || {};
+}
+
 function getSeason(month) {
   if (month >= 1 && month <= 3) return '봄';
   if (month >= 4 && month <= 6) return '여름';
@@ -326,7 +370,7 @@ const DAILY_SIM_CATEGORIES = new Set([
  * Starting stats (~25): ~80%  |  Mid-game (~100): ~84%  |  High (~400): ~90%+
  * High stress (80): -24%  |  Low HP: -10%  |  Fatigue: -0.5% per day
  */
-function calcDailySuccessRate(activity, currentVars, dayIndex, sysConfig) {
+function calcDailySuccessRate(activity, currentVars, dayIndex, sysConfig, activityCount) {
   const cfg = ((sysConfig || {}).daily_simulation || {}).success_rate || {};
   const mainStat = getMainStatForCategory(activity.category, currentVars, sysConfig);
 
@@ -334,6 +378,13 @@ function calcDailySuccessRate(activity, currentVars, dayIndex, sysConfig) {
 
   // Proficiency: sqrt scaling (diminishing returns at high stats)
   rate += Math.sqrt(mainStat) * (cfg.stat_factor || 0.02);
+
+  // Repetition bonus: how many times this specific activity has been done before
+  // log2 curve: 1회→0, 2회→+3%, 4회→+6%, 8회→+9%, 16회→+12%
+  const repCount = activityCount || 0;
+  if (repCount > 0) {
+    rate += Math.log2(repCount + 1) * (cfg.repetition_factor || 0.04);
+  }
 
   // Stance alignment bonus
   const stanceGroups = ((sysConfig.stance_config || {}).groups || {});
@@ -375,7 +426,7 @@ function calcDailySuccessRate(activity, currentVars, dayIndex, sysConfig) {
  * steps[]: { day, success, success_rate, day_changes, cumulative_vars }
  *   - cumulative_vars: absolute stat values after this day (for animation)
  */
-function simulateSlotDaily(activity, vars, sysConfig) {
+function simulateSlotDaily(activity, vars, sysConfig, activityCount) {
   const cfg = (sysConfig || {}).daily_simulation || {};
   const workingDays = cfg.working_days || 8;
   const failCfg = cfg.on_failure || {};
@@ -443,7 +494,7 @@ function simulateSlotDaily(activity, vars, sysConfig) {
       simVars[stat] = cum[stat];
     }
 
-    const rate = calcDailySuccessRate(activity, simVars, day, sysConfig);
+    const rate = calcDailySuccessRate(activity, simVars, day, sysConfig, activityCount);
     const success = Math.random() < rate;
     if (success) successCount++;
 
@@ -1159,11 +1210,6 @@ function advanceMonth(v, config, state, eventLog, sysConfig, eventsConfig) {
     events.push(stressEvent);
   }
 
-  // --- Seasonal events (check BEFORE advancing month, so we check the ending month) ---
-  const endingMonth = v.current_month;
-  const seasonalEvent = checkSeasonalEvent({ ...v, current_month: endingMonth }, eventsConfig);
-  if (seasonalEvent) events.push(seasonalEvent);
-
   // --- Advance month ---
   v.current_month += 1;
   if (v.current_month > 12) {
@@ -1174,6 +1220,22 @@ function advanceMonth(v, config, state, eventLog, sysConfig, eventsConfig) {
   v.season = getSeason(v.current_month);
   v.day_number = (v.day_number || 0) + 1;
   v.mood = getMood(v.stress, sysConfig);
+
+  // --- Seasonal events (check the NEW month — festivals happen when you arrive, not when you leave) ---
+  const seasonalEvent = checkSeasonalEvent(v, eventsConfig);
+  if (seasonalEvent) events.push(seasonalEvent);
+
+  // --- Yearly allowance from guardian background (once per year, on month 1) ---
+  if (v.current_month === 1) {
+    const allowanceRange = v.__allowance;
+    if (allowanceRange && Array.isArray(allowanceRange) && (allowanceRange[0] > 0 || allowanceRange[1] > 0)) {
+      const allowance = randRange(allowanceRange);
+      if (allowance > 0) {
+        v.gold += allowance;
+        events.push({ type: 'allowance', message: `${v.__allowance_desc || '양육비'} +${allowance}G 지급!` });
+      }
+    }
+  }
 
   // --- HP natural recovery (from system-config) ---
   const hpRecCfg = (sysConfig && sysConfig.hp_recovery) || {};
@@ -1189,6 +1251,7 @@ function advanceMonth(v, config, state, eventLog, sysConfig, eventsConfig) {
   v.turn_phase = 'setup';
   state.competitions_entered = [];
   state.father_talked_this_month = false;
+  v.father_talked = false;
   // Don't set advance:null here — let the panel's finalize() handle closing
   // via sendMessage() auto-close after animation completes
   v.__modals = { ...(v.__modals || {}), portrait: 'dismissible' };
@@ -1210,7 +1273,7 @@ function advanceMonth(v, config, state, eventLog, sysConfig, eventsConfig) {
     events.push({ type: 'unlock', message: `새 활동 해금: ${newUnlocks.map(id => (activities[id] || {}).name || id).join(', ')}` });
   }
 
-  // --- Competitions available this month (uses advanced month = upcoming month) ---
+  // --- Competitions available (uses NEW month — same month as seasonal event) ---
   const seasonalEvents = (eventsConfig && eventsConfig.seasonal_events) || {};
   const monthKey = String(v.current_month);
   const currentSeasonalEvt = seasonalEvents[monthKey];
@@ -1225,6 +1288,15 @@ function advanceMonth(v, config, state, eventLog, sysConfig, eventsConfig) {
       .filter(c => !c.age_min || age >= c.age_min)
       .map(c => ({ id: c.id, name: c.name, category: c.category, stat: c.stat }));
     competitionsAvailable = (competitionsAvailable || []).concat(darkComps);
+  }
+
+  // Store competitions in variables for panel available_when check
+  v.__competitions_available = competitionsAvailable || [];
+  // Remaining turns to enter competition (slot 3 auto-transitions, so only 2 chances: before slot 1 and before slot 2)
+  if (competitionsAvailable && competitionsAvailable.length > 0) {
+    v.__competitions_remaining_turns = 2;
+  } else {
+    v.__competitions_remaining_turns = 0;
   }
 
   // --- Birthday ---
@@ -1763,10 +1835,19 @@ const ACTIONS = {
         statChanges[stat] = (statChanges[stat] || 0) + bonus;
       }
 
-      // Gold bonus
-      if (bgConfig.gold_bonus) {
+      // Initial gold (replaces default 500G)
+      if (bgConfig.initial_gold !== undefined) {
+        v.gold = bgConfig.initial_gold;
+        statChanges.gold = bgConfig.initial_gold - 500; // delta from default
+      } else if (bgConfig.gold_bonus) {
         v.gold = (v.gold || 500) + bgConfig.gold_bonus;
         statChanges.gold = bgConfig.gold_bonus;
+      }
+
+      // Monthly allowance (stored in variables for advanceMonth to use)
+      if (bgConfig.allowance) {
+        v.__allowance = bgConfig.allowance;
+        v.__allowance_desc = bgConfig.allowance_desc || '양육비';
       }
 
       // Special early unlocks — generic array or legacy hardcoded
@@ -1934,22 +2015,13 @@ const ACTIONS = {
     let adventureResult = null;
     let wishFollowed = null;
 
-    // Empty slot -> skip
+    // Empty slot -> reject, prompt schedule edit
     if (!actId || actId === 'none') {
-      v.current_slot = nextSlot;
-      v.turn_phase = 'executing';
-      v.__modals = { ...(v.__modals || {}), portrait: null };
-
       return {
-        variables: v,
-        data: { 'game-state.json': state, 'event-log.json': eventLog },
         result: {
-          success: true, slot_number: nextSlot, slot_label: SLOT_LABELS[nextSlot],
-          activity_name: '(없음)', activity_category: 'none',
-          stat_changes: {}, gold_change: 0, pay_earned: 0, cost_paid: 0,
-          events: [], wish_followed: null,
-          pending_transition: nextSlot === 3,
-          adventure_result: null
+          success: false,
+          message: `${SLOT_LABELS[nextSlot]} 스케줄이 비어있습니다. 스케줄을 수정해주세요.`,
+          empty_slot: nextSlot
         }
       };
     }
@@ -2002,14 +2074,14 @@ const ACTIONS = {
       // ===== DAILY SIMULATION PATH (study, martial, arts, job...) =====
       // ================================================================
 
-      simResult = simulateSlotDaily(act, v, sysConfig);
+      const prevCount = ((state.activity_stats || {})[actId] || {}).count || 0;
+      simResult = simulateSlotDaily(act, v, sysConfig, prevCount);
 
-      // Apply simulation stat results to v
+      // Apply simulation stat results to v (with modifiers)
+      const mods = getModifiers(v);
       for (const [stat, delta] of Object.entries(simResult.totalStatChanges)) {
-        const maxKey = stat + '_max';
-        const max = v[maxKey] || (stat === 'stress' ? (v.stress_max || 100) : 999);
-        v[stat] = clamp((v[stat] || 0) + delta, 0, max);
-        statChanges[stat] = delta;
+        const displayDelta = applyStat(v, stat, delta, mods);
+        if (displayDelta !== 0) statChanges[stat] = displayDelta;
       }
       v.gold = Math.max(0, (v.gold || 0) + simResult.totalGoldChange);
       goldChange += simResult.totalGoldChange;
@@ -2020,15 +2092,12 @@ const ACTIONS = {
       for (const evt of slotEvents) {
         if (evt.effects) {
           for (const [stat, delta] of Object.entries(evt.effects)) {
-            const oldVal = v[stat] || 0;
             if (stat === 'gold') {
               v.gold = Math.max(0, (v.gold || 0) + delta);
               goldChange += delta;
             } else {
-              const maxKey = stat + '_max';
-              const max = v[maxKey] || 999;
-              v[stat] = clamp(oldVal + delta, 0, max);
-              statChanges[stat] = (statChanges[stat] || 0) + (v[stat] - oldVal);
+              const dd = applyStat(v, stat, delta, mods);
+              if (dd !== 0) statChanges[stat] = (statChanges[stat] || 0) + dd;
             }
           }
         }
@@ -2042,8 +2111,8 @@ const ACTIONS = {
         for (const [stat, delta] of Object.entries(simResult.totalStatChanges)) {
           if (stat !== 'stress' && delta > 0) {
             const bonus = Math.max(1, Math.round(delta * bonusRatio));
-            v[stat] = clamp((v[stat] || 0) + bonus, 0, v[stat + '_max'] || 999);
-            statChanges[stat] = (statChanges[stat] || 0) + bonus;
+            const dd = applyStat(v, stat, bonus, mods);
+            if (dd !== 0) statChanges[stat] = (statChanges[stat] || 0) + dd;
           }
         }
         if (simResult.totalPayEarned > 0) {
@@ -2052,9 +2121,8 @@ const ACTIONS = {
           goldChange += goldBonus;
         }
         const stressReduction = perfectCfg.stress_reduction || 3;
-        const oldStress = v.stress || 0;
-        v.stress = Math.max(0, oldStress - stressReduction);
-        statChanges.stress = (statChanges.stress || 0) + (v.stress - oldStress);
+        const dd = applyStat(v, 'stress', -stressReduction, mods);
+        if (dd !== 0) statChanges.stress = (statChanges.stress || 0) + dd;
 
         events.push({
           type: 'perfect_run',
@@ -2067,7 +2135,8 @@ const ACTIONS = {
       // ===== OLD SINGLE-ROLL PATH (rest, adventure, free_time) =====
       // ================================================================
 
-      const slotEvents = rollSlotEvents(act, v, nextSlot, sysConfig, eventsConfig, { gameState: state, actId });
+      const isRest = act.category === 'rest';
+      const slotEvents = rollSlotEvents(act, v, nextSlot, sysConfig, eventsConfig, { skipCritFail: isRest, gameState: state, actId });
       let effectMultiplier = 1.0;
       for (const evt of slotEvents) {
         if (evt.multiplier) effectMultiplier = evt.multiplier;
@@ -2078,7 +2147,8 @@ const ACTIONS = {
         effectMultiplier *= (followBonus.effect_multiplier || 1.2);
       }
 
-      // Apply stat effects
+      // Apply stat effects (with modifiers)
+      const mods = getModifiers(v);
       const failStressMultiplier = (sysConfig.slot_events && sysConfig.slot_events.failure && sysConfig.slot_events.failure.stress_on_fail_multiplier) || 1.5;
       if (act.effects) {
         for (const [stat, range] of Object.entries(act.effects)) {
@@ -2094,11 +2164,8 @@ const ACTIONS = {
           } else {
             delta = Math.round(delta * effectMultiplier);
           }
-          const maxKey = stat + '_max';
-          const max = v[maxKey] || 999;
-          const oldVal = v[stat] || 0;
-          v[stat] = clamp(oldVal + delta, stat === 'stress' ? -999 : 0, max);
-          statChanges[stat] = v[stat] - oldVal;
+          const dd = applyStat(v, stat, delta, mods);
+          if (dd !== 0) statChanges[stat] = dd;
         }
       }
 
@@ -2106,9 +2173,8 @@ const ACTIONS = {
       if (act.side_effects) {
         for (const [stat, range] of Object.entries(act.side_effects)) {
           const delta = randRange(range);
-          const oldVal = v[stat] || 0;
-          v[stat] = Math.max(0, oldVal + delta);
-          statChanges[stat] = (statChanges[stat] || 0) + (v[stat] - oldVal);
+          const dd = applyStat(v, stat, delta, mods);
+          if (dd !== 0) statChanges[stat] = (statChanges[stat] || 0) + dd;
         }
       }
 
@@ -2125,11 +2191,8 @@ const ACTIONS = {
       if (act.stat_bonus) {
         for (const [stat, range] of Object.entries(act.stat_bonus)) {
           const delta = Math.round(randRange(range) * effectMultiplier);
-          const maxKey = stat + '_max';
-          const max = v[maxKey] || 999;
-          const oldVal = v[stat] || 0;
-          v[stat] = clamp(oldVal + delta, 0, max);
-          statChanges[stat] = (statChanges[stat] || 0) + (v[stat] - oldVal);
+          const dd = applyStat(v, stat, delta, mods);
+          if (dd !== 0) statChanges[stat] = (statChanges[stat] || 0) + dd;
         }
       }
 
@@ -2137,15 +2200,12 @@ const ACTIONS = {
       for (const evt of slotEvents) {
         if (evt.effects) {
           for (const [stat, delta] of Object.entries(evt.effects)) {
-            const oldVal = v[stat] || 0;
             if (stat === 'gold') {
               v.gold = Math.max(0, (v.gold || 0) + delta);
               goldChange += delta;
             } else {
-              const maxKey = stat + '_max';
-              const max = v[maxKey] || 999;
-              v[stat] = clamp(oldVal + delta, 0, max);
-              statChanges[stat] = (statChanges[stat] || 0) + (v[stat] - oldVal);
+              const dd = applyStat(v, stat, delta, mods);
+              if (dd !== 0) statChanges[stat] = (statChanges[stat] || 0) + dd;
             }
           }
         }
@@ -2157,13 +2217,12 @@ const ACTIONS = {
         const rndEvt = generateRandomEvent(v, eventsConfig, state);
         if (rndEvt.effects) {
           for (const [stat, delta] of Object.entries(rndEvt.effects)) {
-            const oldVal = v[stat] || 0;
             if (stat === 'gold') {
               v.gold = Math.max(0, (v.gold || 0) + delta);
               goldChange += delta;
             } else {
-              v[stat] = Math.max(0, oldVal + delta);
-              statChanges[stat] = (statChanges[stat] || 0) + (v[stat] - oldVal);
+              const dd = applyStat(v, stat, delta, mods);
+              if (dd !== 0) statChanges[stat] = (statChanges[stat] || 0) + dd;
             }
           }
         }
@@ -2226,6 +2285,10 @@ const ACTIONS = {
     // Update state
     v.current_slot = nextSlot;
     v.turn_phase = 'executing';
+    // Decrement competition remaining turns
+    if (v.__competitions_remaining_turns > 0) {
+      v.__competitions_remaining_turns -= 1;
+    }
     // Keep advance dock visible during animation — finalize()'s sendMessage() auto-closes it
     v.__modals = { ...(v.__modals || {}), portrait: null };
 
@@ -2420,8 +2483,12 @@ const ACTIONS = {
       text: `${result.zone} 모험: ${winsCount}/${result.battles.length}승, +${result.total_gold}G${result.treasures.length ? ', 보물: ' + result.treasures.join(', ') : ''}`
     });
 
+    // Apply combat exp with modifiers
+    const mods = getModifiers(v);
+    applyStat(v, 'combat', result.total_exp_combat, mods);
+
     return {
-      variables: { hp: result.hp_remaining, gold: (v.gold || 0) + result.total_gold, combat: Math.min(v.combat_max || 999, (v.combat || 0) + result.total_exp_combat) },
+      variables: { hp: result.hp_remaining, gold: (v.gold || 0) + result.total_gold, combat: v.combat },
       data: { 'inventory.json': inv, 'event-log.json': updatedLog },
       result: { success: true, ...result }
     };
@@ -2464,11 +2531,12 @@ const ACTIONS = {
     let defeatPenalties = null;
 
     if (fightResult.won) {
-      // Apply rewards
+      // Apply rewards (combat exp with modifiers)
+      const mods = getModifiers(v);
       const goldReward = fightResult.rewards.gold || 0;
       const expReward = fightResult.rewards.exp_combat || 0;
       v.gold = (v.gold || 0) + goldReward;
-      v.combat = Math.min(v.combat_max || 999, (v.combat || 0) + expReward);
+      applyStat(v, 'combat', expReward, mods);
       adv.total_gold += goldReward;
       adv.total_exp += expReward;
 
@@ -2671,7 +2739,10 @@ const ACTIONS = {
     const catalog = inv.shop_catalog || {};
 
     const product = catalog[item];
-    if (!product) return { result: { success: false, message: `상점에 ${item}이(가) 없습니다` } };
+    if (!product) {
+      const available = Object.entries(catalog).map(([id, p]) => `${id}(${p.price}G)`).join(', ');
+      return { result: { success: false, message: `상점에 '${item}'이(가) 없습니다. inventory.json의 shop_catalog에서 올바른 아이템 ID를 확인한 뒤, 이 턴의 응답을 생성하기 전에 run_tool로 직접 재호출하라.` } };
+    }
     if (product.requirements && !meetsRequirements(product.requirements, v))
       return { result: { success: false, message: '구매 조건 미달' } };
 
@@ -2720,12 +2791,16 @@ const ACTIONS = {
 
     const product = catalog[item];
     const effects = product?.effect || {};
+    const mods = getModifiers(v);
     const appliedEffects = {};
     for (const [stat, delta] of Object.entries(effects)) {
-      const max = v[stat + '_max'] || 999;
-      const oldVal = v[stat] || 0;
-      v[stat] = clamp(oldVal + delta, 0, max);
-      appliedEffects[stat] = v[stat] - oldVal;
+      if (stat === 'gold') {
+        v.gold = Math.max(0, (v.gold || 0) + delta);
+        appliedEffects.gold = delta;
+      } else {
+        const dd = applyStat(v, stat, delta, mods);
+        if (dd !== 0) appliedEffects[stat] = dd;
+      }
     }
 
     return {
@@ -2902,18 +2977,16 @@ const ACTIONS = {
       return { result: compResult };
     }
 
-    // Apply rewards to variables
+    // Apply rewards to variables (with modifiers)
+    const mods = getModifiers(v);
     const statChanges = {};
     for (const [stat, delta] of Object.entries(compResult.rewards)) {
-      const oldVal = v[stat] || 0;
       if (stat === 'gold') {
         v.gold = Math.max(0, (v.gold || 0) + delta);
         statChanges.gold = delta;
       } else {
-        const maxKey = stat + '_max';
-        const max = v[maxKey] || 999;
-        v[stat] = clamp(oldVal + delta, stat === 'stress' ? -999 : 0, max);
-        statChanges[stat] = v[stat] - oldVal;
+        const dd = applyStat(v, stat, delta, mods);
+        if (dd !== 0) statChanges[stat] = dd;
       }
     }
 
@@ -3077,90 +3150,121 @@ const ACTIONS = {
   // ============================================================
   /**
    * talk_to_father — 아빠와 대화 (월 1회 무료)
-   * args: { topic: "martial"|"study"|"life"|"play" }
+   * args: { mode: "warm"|"strict" }
    *
-   * 용사 출신 아버지와의 대화. 주제에 따라 소폭 스탯 변동.
-   * guardian_background에 따라 보너스가 달라진다.
-   * result: { success, topic, topic_name, effects, already_talked }
+   * 2가지 모드 중 선택 → 내부 풀에서 랜덤 대화 주제 뽑기.
+   * 스탠스에 따라 풀 내 가중치 변동. guardian_background 보너스 적용.
+   * result: { success, mode, picked_topic, topic_name, effects }
    */
   talk_to_father(ctx, args) {
-    const { topic } = args;
-    if (!topic) {
-      return { result: { success: false, message: 'topic이 필요합니다 (martial/study/life/play)' } };
+    const { mode } = args;
+    if (!mode || !['warm', 'strict'].includes(mode)) {
+      return { result: { success: false, message: 'mode가 필요합니다 (warm/strict)' } };
     }
 
     const v = { ...ctx.variables };
     const state = { ...(ctx.data['game-state'] || {}) };
 
-    // Once per month check
     if (state.father_talked_this_month) {
       return { result: { success: false, already_talked: true, message: '이번 달에는 이미 아빠와 대화했습니다.' } };
     }
 
     const bg = v.guardian_background || 'hero';
+    const stance = v.stance || 'default';
 
-    // Topic definitions: { name, base_effects, bonus_backgrounds }
-    const TOPICS = {
-      martial: {
-        name: '무술 지도',
-        base_effects: { combat: 3, stamina: 2, stress: -3 },
-        bonus_backgrounds: { hero: { combat: 3, attack: 1 }, knight: { combat: 2, defense: 1 } }
-      },
-      study: {
-        name: '학업 격려',
-        base_effects: { intelligence: 3, morals: 1, stress: -2 },
-        bonus_backgrounds: { scholar: { intelligence: 3 }, wizard: { magic_power: 2 } }
-      },
-      life: {
-        name: '인생 상담',
-        base_effects: { morals: 3, sensitivity: 2, stress: -5 },
-        bonus_backgrounds: { priest: { faith: 3, morals: 2 }, noble: { elegance: 2 } }
-      },
-      play: {
-        name: '함께 놀기',
-        base_effects: { charm: 2, stress: -8 },
-        bonus_backgrounds: { artist: { art: 2, sensitivity: 1 }, merchant: { charm: 2 } }
-      }
+    // ── Conversation pools ──
+    const POOLS = {
+      warm: [
+        { id: 'play', name: '함께 놀기', effects: { charm: 2, stress: -8 }, weight: 1 },
+        { id: 'cook_together', name: '같이 요리하기', effects: { cooking: 3, sensitivity: 2, stress: -4 }, weight: 1 },
+        { id: 'listen', name: '이야기 들어주기', effects: { sensitivity: 3, morals: 2, stress: -3 }, weight: 1 },
+        { id: 'praise', name: '칭찬해주기', effects: { charm: 2, morals: 2, stress: -5 }, weight: 1 },
+        { id: 'adventure_tale', name: '모험담 들려주기', effects: { combat: 2, sensitivity: 2, stress: -3 }, weight: 1 },
+        { id: 'music_together', name: '같이 노래하기', effects: { music: 3, charm: 1, stress: -5 }, weight: 1 }
+      ],
+      strict: [
+        { id: 'martial_train', name: '무술 지도', effects: { combat: 4, stamina: 2, attack: 1, stress: 2 }, weight: 1 },
+        { id: 'study_check', name: '학업 점검', effects: { intelligence: 4, morals: 2, stress: 1 }, weight: 1 },
+        { id: 'etiquette_lesson', name: '예절 교육', effects: { etiquette: 3, elegance: 3, stress: 2 }, weight: 1 },
+        { id: 'life_lecture', name: '인생 훈화', effects: { morals: 5, sensitivity: 1, stress: 1 }, weight: 1 },
+        { id: 'endurance', name: '체력 단련', effects: { stamina: 4, combat: 2, stress: 3 }, weight: 1 },
+        { id: 'discipline', name: '정신 수양', effects: { faith: 3, morals: 3, stress: 2 }, weight: 1 }
+      ]
     };
 
-    const topicDef = TOPICS[topic];
-    if (!topicDef) {
-      return { result: { success: false, message: '알 수 없는 주제입니다. martial/study/life/play 중 하나를 선택하세요.' } };
+    // ── Stance-based weight modifiers ──
+    const STANCE_WEIGHTS = {
+      warrior:   { martial_train: 2, endurance: 1.5, adventure_tale: 1.5 },
+      studious:  { study_check: 2, life_lecture: 1.5, listen: 1.5 },
+      charming:  { praise: 2, play: 1.5, music_together: 1.5 },
+      elegant:   { etiquette_lesson: 2, discipline: 1.5, praise: 1.5 },
+      artistic:  { music_together: 2, listen: 1.5, cook_together: 1.5 },
+      devout:    { discipline: 2, life_lecture: 1.5, listen: 1.5 },
+      rebellious:{ play: 2, adventure_tale: 1.5, martial_train: 1.5 },
+      culinary:  { cook_together: 2, praise: 1.5, play: 1.5 }
+    };
+
+    const pool = POOLS[mode].map(t => ({ ...t }));
+    const stanceW = STANCE_WEIGHTS[stance] || {};
+    for (const t of pool) {
+      if (stanceW[t.id]) t.weight *= stanceW[t.id];
     }
 
-    // Apply base effects
+    // Weighted random pick
+    const totalWeight = pool.reduce((s, t) => s + t.weight, 0);
+    let roll = Math.random() * totalWeight;
+    let picked = pool[0];
+    for (const t of pool) {
+      roll -= t.weight;
+      if (roll <= 0) { picked = t; break; }
+    }
+
+    // Apply effects (with modifiers)
+    const mods = getModifiers(v);
     const appliedEffects = {};
-    for (const [stat, val] of Object.entries(topicDef.base_effects)) {
-      const maxKey = stat + '_max';
-      const max = v[maxKey] || (stat === 'stress' ? 100 : 999);
-      const oldVal = v[stat] || 0;
-      v[stat] = clamp(oldVal + val, 0, max);
-      appliedEffects[stat] = v[stat] - oldVal;
+    for (const [stat, val] of Object.entries(picked.effects)) {
+      if (stat === 'gold') {
+        v.gold = Math.max(0, (v.gold || 0) + val);
+        appliedEffects.gold = val;
+      } else {
+        const dd = applyStat(v, stat, val, mods);
+        if (dd !== 0) appliedEffects[stat] = dd;
+      }
     }
 
-    // Apply background bonus
-    const bonus = (topicDef.bonus_backgrounds || {})[bg] || {};
-    for (const [stat, val] of Object.entries(bonus)) {
-      const maxKey = stat + '_max';
-      const max = v[maxKey] || (stat === 'stress' ? 100 : 999);
-      const oldVal = v[stat] || 0;
-      v[stat] = clamp(oldVal + val, 0, max);
-      appliedEffects[stat] = (appliedEffects[stat] || 0) + (v[stat] - oldVal + (appliedEffects[stat] ? 0 : 0));
-      // Recalculate to avoid double-counting
-      appliedEffects[stat] = v[stat] - ((ctx.variables[stat]) || 0);
+    // Guardian background bonus (flat bonus on top, also with modifiers)
+    const BG_BONUS = {
+      hero: { combat: 2, attack: 1 },
+      knight: { combat: 1, defense: 1 },
+      scholar: { intelligence: 2 },
+      wizard: { magic_power: 2 },
+      priest: { faith: 2, morals: 1 },
+      noble: { elegance: 2 },
+      artist: { art: 2 },
+      merchant: { charm: 1, gold: 5 }
+    };
+    const bgBonus = BG_BONUS[bg] || {};
+    for (const [stat, val] of Object.entries(bgBonus)) {
+      if (stat === 'gold') {
+        v.gold = Math.max(0, (v.gold || 0) + val);
+        appliedEffects.gold = (appliedEffects.gold || 0) + val;
+      } else {
+        const dd = applyStat(v, stat, val, mods);
+        if (dd !== 0) appliedEffects[stat] = (appliedEffects[stat] || 0) + dd;
+      }
     }
 
-    // Mark talked this month
     state.father_talked_this_month = true;
+    v.father_talked = true;
 
     return {
       variables: v,
       data: { 'game-state.json': state },
       result: {
         success: true,
-        topic,
-        topic_name: topicDef.name,
-        background_bonus: Object.keys(bonus).length > 0 ? bg : null,
+        mode,
+        picked_topic: picked.id,
+        topic_name: picked.name,
         effects: appliedEffects
       }
     };

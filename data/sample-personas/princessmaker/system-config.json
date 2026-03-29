@@ -116,7 +116,7 @@
 
   "daily_simulation": {
     "working_days": 8,
-    "skip_categories": ["rest"],
+    "skip_categories": ["rest", "adventure"],
     "success_rate": {
       "base": 0.70,
       "stat_factor": 0.02,
@@ -129,14 +129,14 @@
       "max_rate": 0.95
     },
     "on_failure": {
-      "stat_gain_ratio": 0.3,
+      "stat_gain_ratio": 0.5,
       "pay_ratio": 0.0,
       "stress_per_fail": 1
     },
     "perfect_run": {
-      "stat_bonus_ratio": 0.25,
-      "gold_bonus_ratio": 0.20,
-      "stress_reduction": 3,
+      "stat_bonus_ratio": 0.5,
+      "gold_bonus_ratio": 0.5,
+      "stress_reduction": 5,
       "message": "완벽! 모든 날을 성공적으로 보냈다!"
     }
   },

@@ -367,8 +367,8 @@
     magic_power:'마력', attack:'공격', defense:'방어',
     hp_max:'HP', stress_max:'스트레스 한계'
   };
-  const GICO = { hero:'\u2694\uFE0F', merchant:'\uD83D\uDCB0', noble:'\uD83D\uDC51', wizard:'\uD83D\uDD2E', scholar:'\uD83D\uDCDA', artist:'\uD83C\uDFA8', knight:'\uD83D\uDEE1\uFE0F', priest:'\u2728', courtesan:'\uD83C\uDF19' };
-  const PICO = { active:'\uD83C\uDFC3', quiet:'\uD83D\uDCD6', cheerful:'\uD83D\uDE0A', stubborn:'\uD83D\uDCAA', gentle:'\uD83C\uDF80', curious:'\uD83D\uDD0D' };
+  const GICO = { hero:'⚔️', merchant:'💰', noble:'👑', wizard:'🔮', scholar:'📚', artist:'🎨', knight:'🛡️', priest:'✨', courtesan:'🌙' };
+  const PICO = { active:'🏃', quiet:'📖', cheerful:'😊', stubborn:'💪', gentle:'🎀', curious:'🔍' };
 
   function tags(bonuses, penalties, goldBonus) {
     let h = '';
@@ -388,7 +388,7 @@
 
     // Header
     h += '<div class="sp-hdr">';
-    h += '<div class="sp-title">\u25C6 게임 설정 \u25C6</div>';
+    h += '<div class="sp-title">◆ 게임 설정 ◆</div>';
     h += '<div class="sp-sub">올리브의 새로운 이야기를 시작합니다</div>';
     h += '<div class="sp-progress">';
     for (let i = 0; i < 3; i++) h += '<div class="sp-dot' + (i < filled ? ' filled' : '') + '"></div>';
@@ -400,7 +400,7 @@
       const ac = sel.guardian === id ? ' active' : '';
       const dk = g.dark_only ? ' dark' : '';
       h += '<div class="sp-card' + ac + dk + '" data-t="guardian" data-id="' + id + '">';
-      h += '<div class="sp-ico">' + (GICO[id]||'\u2753') + '</div>';
+      h += '<div class="sp-ico">' + (GICO[id]||'❓') + '</div>';
       h += '<div class="sp-nm">' + g.name + '</div></div>';
     }
     h += '</div>';
@@ -409,8 +409,8 @@
       h += '<div class="sp-info">';
       h += '<div class="sp-desc">' + g.description + '</div>';
       h += '<div class="sp-tags">' + tags(g.bonuses, null, g.gold_bonus) + '</div>';
-      if (g.special) h += '<div class="sp-spc">\u2726 ' + g.special + '</div>';
-      if (g.dark_only) h += '<div class="sp-dwarn">\uD83C\uDF11 \uC5B4\uB460\uC758 \uAE38\uC774 \uC790\uB3D9\uC73C\uB85C \uD65C\uC131\uD654\uB429\uB2C8\uB2E4</div>';
+      if (g.special) h += '<div class="sp-spc">✦ ' + g.special + '</div>';
+      if (g.dark_only) h += '<div class="sp-dwarn">🌑 어둠의 길이 자동으로 활성화됩니다</div>';
       h += '</div>';
     }
     h += '</div>';
@@ -427,7 +427,7 @@
     for (const [id, p] of Object.entries(personalities)) {
       const ac = sel.personality === id ? ' active' : '';
       h += '<div class="sp-card' + ac + '" data-t="personality" data-id="' + id + '">';
-      h += '<div class="sp-ico">' + (PICO[id]||'\u2753') + '</div>';
+      h += '<div class="sp-ico">' + (PICO[id]||'❓') + '</div>';
       h += '<div class="sp-nm">' + p.name + '</div></div>';
     }
     h += '</div>';
@@ -444,19 +444,19 @@
     h += '<div class="sp-dark">';
     h += '<div class="sp-dark-row' + (sel.darkPath ? ' on' : '') + '" id="darkToggle">';
     h += '<div class="sp-toggle"></div>';
-    h += '<div class="sp-dark-ico">\uD83C\uDF11</div>';
+    h += '<div class="sp-dark-ico">🌑</div>';
     h += '<div class="sp-dark-txt">';
-    h += '<div class="sp-dark-nm">\uC5B4\uB460\uC758 \uAE38</div>';
+    h += '<div class="sp-dark-nm">어둠의 길</div>';
     h += '<div class="sp-dark-desc">' + (sel.darkPath
-      ? '\uC131\uC778\uD5A5 \uCF58\uD150\uCE20\uAC00 \uD65C\uC131\uD654\uB429\uB2C8\uB2E4. \uC5B4\uB450\uC6B4 \uD65C\uB3D9\uACFC \uC120\uC815\uC801 \uC774\uBCA4\uD2B8\uAC00 \uCD94\uAC00\uB429\uB2C8\uB2E4.'
-      : '\uC911\uC138 \uD310\uD0C0\uC9C0 \uC138\uACC4\uC758 \uC5B4\uB461\uACE0 \uC120\uC815\uC801\uC778 \uBA74\uC744 \uACBD\uD5D8\uD569\uB2C8\uB2E4.') + '</div>';
+      ? '성인향 콘텐츠가 활성화됩니다. 어두운 활동과 선정적 이벤트가 추가됩니다.'
+      : '중세 판타지 세계의 어둡고 선정적인 면을 경험합니다.') + '</div>';
     h += '</div></div></div>';
 
     // === Start Button ===
     const ready = sel.guardian && sel.month && sel.personality;
     const cls = sent ? 'sent' : (ready ? 'ready' : '');
     const dis = (!ready || sent) ? ' disabled' : '';
-    const txt = sent ? '\u2728 \uC124\uC815 \uC644\uB8CC!' : '\uD83C\uDF1F \uBAA8\uD5D8\uC744 \uC2DC\uC791\uD558\uB2E4';
+    const txt = sent ? '✨ 설정 완료!' : '🌟 모험을 시작하다';
     h += '<div class="sp-foot"><button class="sp-start ' + cls + '" id="startBtn"' + dis + '>' + txt + '</button></div>';
 
     panel.innerHTML = h;

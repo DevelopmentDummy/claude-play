@@ -3,11 +3,11 @@
   {
     "id": "talk_to_father",
     "label": "아빠와 대화",
-    "description": "아빠와 대화한다. 주제에 따라 소폭 스탯 변동. 월 1회 무료.",
+    "description": "아빠와 대화한다. 다정하게 또는 엄하게. 랜덤 주제로 스탯 변동. 월 1회 무료.",
     "params": {
-      "topic": "대화 주제 (martial/study/life/play)"
+      "mode": "대화 모드 (warm/strict)"
     },
-    "available_when": "turn_phase === 'setup'"
+    "available_when": "turn_phase === 'setup' && !father_talked"
   }
 ]
 </panel-actions>
@@ -66,96 +66,101 @@
     margin-bottom: 8px;
   }
 
-  .fthr-topics {
+  .fthr-modes {
     padding: 12px;
     display: flex;
-    flex-direction: column;
-    gap: 8px;
+    gap: 10px;
   }
 
-  .fthr-card {
+  .fthr-mode {
+    flex: 1;
     background: rgba(255,255,255,0.015);
     border: 1.5px solid rgba(255,255,255,0.04);
-    border-radius: 12px;
-    padding: 12px 16px;
+    border-radius: 14px;
+    padding: 16px 14px;
     cursor: pointer;
     transition: all 0.18s ease-out;
+    text-align: center;
     position: relative;
     overflow: hidden;
   }
-  .fthr-card::before {
-    content: '';
-    position: absolute;
-    left: 0; top: 0; bottom: 0;
-    width: 3px;
-    background: rgba(240,192,96,0.0);
-    transition: background 0.18s;
-    border-radius: 3px 0 0 3px;
+  .fthr-mode:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.3);
   }
-  .fthr-card:hover {
-    background: rgba(240,192,96,0.04);
-    border-color: rgba(240,192,96,0.2);
-    transform: translateX(4px);
-    box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+  .fthr-mode.warm:hover {
+    background: rgba(255,180,100,0.06);
+    border-color: rgba(255,180,100,0.25);
   }
-  .fthr-card:hover::before {
-    background: #f0c060;
+  .fthr-mode.strict:hover {
+    background: rgba(100,150,255,0.06);
+    border-color: rgba(100,150,255,0.25);
   }
-  .fthr-card:active {
-    transform: translateX(2px) scale(0.99);
-    transition-duration: 0.06s;
+  .fthr-mode:active {
+    transform: translateY(0) scale(0.98);
   }
-  .fthr-card.disabled {
-    opacity: 0.3;
+  .fthr-mode.selected {
+    box-shadow: 0 0 20px rgba(240,192,96,0.15);
+  }
+  .fthr-mode.selected.warm {
+    border-color: rgba(255,180,100,0.4);
+    background: rgba(255,180,100,0.08);
+  }
+  .fthr-mode.selected.strict {
+    border-color: rgba(100,150,255,0.4);
+    background: rgba(100,150,255,0.08);
+  }
+  .fthr-mode.dimmed {
+    opacity: 0.2;
     pointer-events: none;
   }
-  .fthr-card.selected {
-    border-color: rgba(240,192,96,0.4);
-    background: rgba(240,192,96,0.06);
-    box-shadow: 0 0 20px rgba(240,192,96,0.1);
+  .fthr-mode-ico {
+    font-size: 28px;
+    margin-bottom: 8px;
   }
-  .fthr-card.selected::before {
-    background: #f0c060;
-  }
-  .fthr-card.dimmed {
-    opacity: 0.25;
-    pointer-events: none;
-  }
-
-  .fthr-card-top {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .fthr-card-ico {
-    font-size: 18px;
-  }
-  .fthr-card-name {
+  .fthr-mode-name {
     font-size: 13px;
-    font-weight: 600;
-    color: #e8e0f0;
+    font-weight: 700;
+    color: #f0e8f5;
+    margin-bottom: 4px;
   }
-  .fthr-card-bonus {
-    margin-left: auto;
-    font-size: 9px;
-    color: #f0c060;
-    background: rgba(240,192,96,0.08);
-    border-radius: 10px;
-    padding: 2px 8px;
-  }
-  .fthr-card-desc {
+  .fthr-mode-desc {
     font-size: 10px;
     color: #9080aa;
-    margin-top: 4px;
     line-height: 1.4;
   }
-  .fthr-card-effects {
-    font-size: 9px;
-    color: #665577;
-    margin-top: 4px;
+
+  /* Result reveal */
+  .fthr-result {
+    padding: 14px 16px;
+    text-align: center;
   }
-  .fthr-card-effects .up { color: #6ee09a; }
-  .fthr-card-effects .dn { color: #f08098; }
+  .fthr-result-topic {
+    font-size: 13px;
+    font-weight: 700;
+    color: #f0c060;
+    margin-bottom: 10px;
+  }
+  .fthr-result-effects {
+    font-size: 11px;
+    min-height: 20px;
+  }
+  .fthr-result-effects .up { color: #6ee09a; }
+  .fthr-result-effects .dn { color: #f08098; }
+  .fthr-eff-pop {
+    display: inline-block;
+    animation: fthrEffPop 0.35s ease-out;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 6px;
+    background: rgba(255,255,255,0.04);
+    margin: 2px;
+  }
+  @keyframes fthrEffPop {
+    0% { opacity: 0; transform: translateY(8px) scale(0.8); }
+    60% { opacity: 1; transform: translateY(-2px) scale(1.05); }
+    100% { opacity: 1; transform: translateY(0) scale(1); }
+  }
 
   .fthr-done {
     padding: 20px;
@@ -169,7 +174,7 @@
   }
 </style>
 
-<!-- {{turn_phase}}:{{guardian_background}} -->
+<!-- {{turn_phase}}:{{guardian_background}}:{{stance}} -->
 <div class="fthr" id="fatherPanel"></div>
 
 <script>
@@ -177,51 +182,13 @@
   const el = shadow.querySelector('#fatherPanel');
   const gs = d['game-state'] || {};
   const talked = gs.father_talked_this_month || false;
-  const bg = d.guardian_background || 'hero';
 
   const STAT_NM = {
     stamina:'체력', intelligence:'지력', elegance:'기품', charm:'매력',
     morals:'도덕', sensitivity:'감수성', faith:'신앙', combat:'무술',
     etiquette:'예절', cooking:'요리', art:'예술', music:'음악',
     stress:'스트레스', hp:'HP', attack:'공격', defense:'방어',
-    magic_power:'마력'
-  };
-
-  const BG_NM = {
-    hero: '전직 용사', merchant: '전직 상인', noble: '전직 귀족',
-    wizard: '전직 마법사', scholar: '전직 학자', artist: '전직 예술가',
-    knight: '전직 기사', priest: '전직 사제', courtesan: '전직 기녀'
-  };
-
-  const TOPICS = {
-    martial: {
-      name: '무술 지도',
-      ico: '⚔️',
-      desc: '아빠에게 무술을 배운다.',
-      base: { combat: 3, stamina: 2, stress: -3 },
-      bonus: { hero: { combat: 3, attack: 1 }, knight: { combat: 2, defense: 1 } }
-    },
-    study: {
-      name: '학업 격려',
-      ico: '📚',
-      desc: '아빠와 함께 공부한다.',
-      base: { intelligence: 3, morals: 1, stress: -2 },
-      bonus: { scholar: { intelligence: 3 }, wizard: { magic_power: 2 } }
-    },
-    life: {
-      name: '인생 상담',
-      ico: '💬',
-      desc: '아빠에게 고민을 이야기한다.',
-      base: { morals: 3, sensitivity: 2, stress: -5 },
-      bonus: { priest: { faith: 3, morals: 2 }, noble: { elegance: 2 } }
-    },
-    play: {
-      name: '함께 놀기',
-      ico: '🎈',
-      desc: '아빠와 신나게 논다.',
-      base: { charm: 2, stress: -8 },
-      bonus: { artist: { art: 2, sensitivity: 1 }, merchant: { charm: 2 } }
-    }
+    magic_power:'마력', gold:'골드'
   };
 
   if (talked) {
@@ -240,66 +207,74 @@
   let h = '';
   h += '<div class="fthr-hdr">';
   h += '<div class="fthr-badge">아빠와 대화</div>';
-  h += `<div class="fthr-title">아빠와 무슨 이야기를 할까?</div>`;
-  h += `<div class="fthr-sub">월 1회 무료 · ${BG_NM[bg] || bg} 보너스 적용</div>`;
+  h += '<div class="fthr-title">아빠에게 어떻게 다가갈까?</div>';
+  h += '<div class="fthr-sub">월 1회 무료 · 랜덤 대화 주제</div>';
   h += '</div>';
 
-  h += '<div class="fthr-topics">';
-  for (const [topicId, t] of Object.entries(TOPICS)) {
-    const bonusEffects = (t.bonus || {})[bg] || {};
-    const hasBonus = Object.keys(bonusEffects).length > 0;
-
-    // Merge base + bonus for preview
-    const merged = { ...t.base };
-    for (const [k, v2] of Object.entries(bonusEffects)) {
-      merged[k] = (merged[k] || 0) + v2;
-    }
-
-    let effHtml = '';
-    const parts = [];
-    for (const [k, v2] of Object.entries(merged)) {
-      const nm = STAT_NM[k] || k;
-      const cls = (k === 'stress' ? (v2 > 0 ? 'dn' : 'up') : (v2 > 0 ? 'up' : 'dn'));
-      parts.push(`<span class="${cls}">${nm}${v2 > 0 ? '+' : ''}${v2}</span>`);
-    }
-    effHtml = parts.join(' ');
-
-    h += `<div class="fthr-card" data-topic="${topicId}">
-      <div class="fthr-card-top">
-        <span class="fthr-card-ico">${t.ico}</span>
-        <span class="fthr-card-name">${t.name}</span>
-        ${hasBonus ? `<span class="fthr-card-bonus">★ ${BG_NM[bg] || bg} 보너스</span>` : ''}
-      </div>
-      <div class="fthr-card-desc">${t.desc}</div>
-      <div class="fthr-card-effects">${effHtml}</div>
-    </div>`;
-  }
+  h += '<div class="fthr-modes">';
+  h += `<div class="fthr-mode warm" data-mode="warm">
+    <div class="fthr-mode-ico">🤗</div>
+    <div class="fthr-mode-name">다정하게 대하기</div>
+    <div class="fthr-mode-desc">함께 놀거나, 이야기를 나누거나, 칭찬을 받거나</div>
+  </div>`;
+  h += `<div class="fthr-mode strict" data-mode="strict">
+    <div class="fthr-mode-ico">📖</div>
+    <div class="fthr-mode-name">엄하게 가르치기</div>
+    <div class="fthr-mode-desc">무술을 배우거나, 공부를 점검받거나, 훈화를 듣거나</div>
+  </div>`;
   h += '</div>';
+
+  h += '<div class="fthr-result" id="fthrResult" style="display:none;"></div>';
 
   el.innerHTML = h;
 
   // Register panel action
   __panelBridge.registerAction('talk_to_father', async (params) => {
-    const topic = params && params.topic;
-    if (!topic) return;
+    const mode = params && params.mode;
+    if (!mode) return;
 
     // Visual feedback
-    const cards = shadow.querySelectorAll('.fthr-card');
-    cards.forEach(c => c.classList.add('dimmed'));
-    const target = shadow.querySelector(`.fthr-card[data-topic="${topic}"]`);
+    const modes = shadow.querySelectorAll('.fthr-mode');
+    modes.forEach(m => m.classList.add('dimmed'));
+    const target = shadow.querySelector(`.fthr-mode[data-mode="${mode}"]`);
     if (target) {
       target.classList.remove('dimmed');
       target.classList.add('selected');
     }
 
-    await new Promise(r => setTimeout(r, 500));
+    await new Promise(r => setTimeout(r, 600));
 
     // Call engine
-    const res = await __panelBridge.runTool('engine', { action: 'talk_to_father', topic });
+    const res = await __panelBridge.runTool('engine', { action: 'talk_to_father', mode });
     if (!res.result?.success) return;
 
     const r = res.result;
-    const topicDef = TOPICS[topic];
+
+    // Show result area
+    const resultEl = shadow.querySelector('#fthrResult');
+    if (resultEl) {
+      resultEl.style.display = '';
+      resultEl.innerHTML = `<div class="fthr-result-topic">💬 ${r.topic_name}</div><div class="fthr-result-effects" id="fthrEffects"></div>`;
+
+      // Reveal effects one by one
+      const effectsEl = shadow.querySelector('#fthrEffects');
+      if (effectsEl && r.effects) {
+        const entries = Object.entries(r.effects).filter(([k, v]) => v !== 0);
+        for (let i = 0; i < entries.length; i++) {
+          await new Promise(r => setTimeout(r, 750));
+          const [k, v] = entries[i];
+          const nm = STAT_NM[k] || k;
+          const cls = (k === 'stress' ? (v > 0 ? 'dn' : 'up') : (v > 0 ? 'up' : 'dn'));
+          const span = document.createElement('span');
+          span.className = cls + ' fthr-eff-pop';
+          span.textContent = `${nm}${v > 0 ? '+' : ''}${v}`;
+          effectsEl.appendChild(span);
+        }
+      }
+    }
+
+    // Wait 2s then close and send
+    await new Promise(r => setTimeout(r, 2000));
 
     // Build event header
     let effStr = '';
@@ -310,17 +285,17 @@
         .join(', ');
     }
 
-    const header = `[FATHER_TALK]\n주제: ${topicDef ? topicDef.name : topic}\n효과: ${effStr}${r.background_bonus ? '\n★ ' + (BG_NM[r.background_bonus] || r.background_bonus) + ' 보너스 적용' : ''}`;
+    const header = `[FATHER_TALK]\n주제: ${r.topic_name}\n효과: ${effStr}`;
     await __panelBridge.queueEvent(header);
     await __panelBridge.closeModal('father');
-    __panelBridge.sendMessage(`아빠한테 ${topicDef ? topicDef.name : topic} 이야기를 했다!`);
+    __panelBridge.sendMessage(`아빠한테 ${r.topic_name} 이야기를 했다!`);
   });
 
   // Click handlers delegate to panel action
-  shadow.querySelectorAll('.fthr-card').forEach(card => {
+  shadow.querySelectorAll('.fthr-mode').forEach(card => {
     card.addEventListener('click', () => {
-      const topic = card.dataset.topic;
-      __panelBridge.executeAction('talk_to_father', { topic });
+      const mode = card.dataset.mode;
+      __panelBridge.executeAction('talk_to_father', { mode });
     });
   });
 </script>

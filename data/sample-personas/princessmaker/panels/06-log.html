@@ -110,4 +110,15 @@
     `;
     container.appendChild(el);
   }
+
+  // Refresh log when AI response completes (autoRefresh is off for this panel)
+  window.addEventListener('__bridge_streaming_change', function handler(e) {
+    if (e.detail === false) {
+      // Streaming ended — request panel refresh
+      window.removeEventListener('__bridge_streaming_change', handler);
+      if (__panelBridge && __panelBridge.updateVariables) {
+        __panelBridge.updateVariables({ __refreshPanels: ['log'] });
+      }
+    }
+  });
 </script>

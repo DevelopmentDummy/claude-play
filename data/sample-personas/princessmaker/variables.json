@@ -80,6 +80,8 @@
     "inventory": false
   },
 
+  "__stat_modifiers": {},
+
   "__adventure": null,
   "__values_prompt": null,
   "__popups": [],

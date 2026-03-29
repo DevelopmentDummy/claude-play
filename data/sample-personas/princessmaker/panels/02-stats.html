@@ -41,7 +41,17 @@
     font-size: 11px;
     color: #c8b8d8;
     flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 2px;
   }
+  .mod-indicator {
+    font-size: 8px;
+    font-weight: 700;
+    line-height: 1;
+  }
+  .mod-up { color: #6ee09a; }
+  .mod-down { color: #f07070; }
   .stat-bar {
     flex: 1;
     height: 7px;
@@ -231,9 +241,9 @@
     return bonus;
   }
 
-  const baseAtk = d.attack || 0, atkBonus = equipBonus('attack');
-  const baseDef = d.defense || 0, defBonus = equipBonus('defense');
-  const baseMag = d.magic_power || 0;
+  const baseAtk = Math.floor(d.attack || 0), atkBonus = equipBonus('attack');
+  const baseDef = Math.floor(d.defense || 0), defBonus = equipBonus('defense');
+  const baseMag = Math.floor(d.magic_power || 0);
 
   function fmt(base, bonus) {
     return bonus > 0 ? `${base} <span style="font-size:9px;color:#6ee09a">+${bonus}</span>` : `${base}`;
@@ -247,6 +257,47 @@
     __panelBridge.openModal('options', 'dismissible');
   });
 
-  // Values modal is now opened via inline panel (14-values-trigger.html)
-  // instead of auto-opening on turnEnd, for better UX (user reads narrative first).
+  // Dynamic gauge scale: MIN(999, MAX(all stats) + 100)
+  const scaleStats = ['stamina','intelligence','elegance','charm','morals','sensitivity',
+    'faith','combat','etiquette','cooking','art','music'];
+  let maxStat = 0;
+  for (const s of scaleStats) {
+    if ((d[s] || 0) > maxStat) maxStat = d[s] || 0;
+  }
+  const gaugeMax = Math.min(999, maxStat + 100);
+
+  // Stat modifier indicators
+  const mods = d.__stat_modifiers || {};
+
+  shadow.querySelectorAll('.stat-fill').forEach(el => {
+    // Extract stat key from class name (fill-stamina -> stamina, fill-intel -> intelligence)
+    const cls = [...el.classList].find(c => c.startsWith('fill-'));
+    if (!cls) return;
+    const key = cls.replace('fill-', '');
+    const statMap = { intel: 'intelligence' };
+    const statKey = statMap[key] || key;
+    const val = d[statKey] || 0;
+    // Use raw float for smooth gauge bar width
+    el.style.width = Math.min(100, (val / gaugeMax) * 100) + '%';
+
+    // Floor the displayed stat number
+    const row = el.closest('.stat-row');
+    if (row) {
+      const valSpan = row.querySelector('.stat-val');
+      if (valSpan) valSpan.textContent = Math.floor(val);
+
+      // Add modifier indicator next to stat name
+      const mod = mods[statKey];
+      if (mod != null && mod !== 1.0) {
+        const nameSpan = row.querySelector('.stat-name');
+        if (nameSpan && !nameSpan.querySelector('.mod-indicator')) {
+          const indicator = document.createElement('span');
+          indicator.className = 'mod-indicator ' + (mod > 1.0 ? 'mod-up' : 'mod-down');
+          indicator.textContent = mod > 1.0 ? '↑' : '↓';
+          indicator.title = `x${mod.toFixed(2)}`;
+          nameSpan.appendChild(indicator);
+        }
+      }
+    }
+  });
 </script>
