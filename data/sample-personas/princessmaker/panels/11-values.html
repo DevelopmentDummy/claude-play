@@ -1,3 +1,17 @@
+<panel-actions>
+[
+  {
+    "id": "select_value",
+    "label": "가치관 선택",
+    "description": "가치관 형성 질문에 대한 답을 선택한다",
+    "params": {
+      "choice_index": "선택지 인덱스 (0부터)"
+    },
+    "available_when": "__values_prompt !== null && __values_prompt !== undefined"
+  }
+]
+</panel-actions>
+
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap');
 
@@ -202,57 +216,66 @@
 
   el.innerHTML = h;
 
-  // Click handlers
+  // Register select_value as panel action
+  __panelBridge.registerAction('select_value', async (params) => {
+    const idx = params && params.choice_index !== undefined ? Number(params.choice_index) : -1;
+    const chosen = vp.choices[idx];
+    if (!chosen) return;
+
+    // Visual feedback
+    const cards = shadow.querySelectorAll('.val-card');
+    cards.forEach(c => c.classList.add('dimmed'));
+    const targetCard = shadow.querySelector(`.val-card[data-idx="${idx}"]`);
+    if (targetCard) {
+      targetCard.classList.remove('dimmed');
+      targetCard.classList.add('selected');
+    }
+
+    await new Promise(r => setTimeout(r, 500));
+
+    // Compute absolute values from effect deltas
+    const varPatch = { __values_prompt: null };
+    if (chosen.effects) {
+      for (const [k, v] of Object.entries(chosen.effects)) {
+        varPatch[k] = (d[k] || 0) + v;
+      }
+    }
+    await __panelBridge.updateVariables(varPatch);
+    await __panelBridge.closeModal('values');
+
+    // Apply flags to game-state
+    if (chosen.flags && Object.keys(chosen.flags).length > 0) {
+      const gs = d['game-state'] || {};
+      const merged = { ...gs.flags, ...chosen.flags };
+      await __panelBridge.updateData('game-state', {
+        flags: merged,
+        values_this_slot: true
+      });
+    } else {
+      await __panelBridge.updateData('game-state', { values_this_slot: true });
+    }
+
+    // Build effect summary for event header
+    let effSummary = '';
+    if (chosen.effects) {
+      effSummary = '\neffects: ' + Object.entries(chosen.effects)
+        .map(([k, v]) => `${STAT_NM[k]||k}${v>0?'+':''}${v}`).join(', ');
+    }
+    if (chosen.flags) {
+      effSummary += '\nflags: ' + Object.keys(chosen.flags).join(', ');
+    }
+
+    const header = `[VALUES_CHOICE]\ncontext: ${vp.context || vp.question}\nchosen: ${chosen.label}${effSummary}`;
+    await __panelBridge.queueEvent(header);
+    __panelBridge.sendMessage(chosen.label);
+    window.dispatchEvent(new CustomEvent('values-chosen'));
+  });
+
+  // Click handlers delegate to panel action
   shadow.querySelectorAll('.val-card').forEach(card => {
     card.addEventListener('click', () => {
       const idx = parseInt(card.dataset.idx);
-      const chosen = vp.choices[idx];
-      if (!chosen) return;
-
-      // Visual feedback
-      shadow.querySelectorAll('.val-card').forEach(c => c.classList.add('dimmed'));
-      card.classList.remove('dimmed');
-      card.classList.add('selected');
-
-      setTimeout(async () => {
-        // Compute absolute values from effect deltas
-        const varPatch = { __values_prompt: null };
-        if (chosen.effects) {
-          for (const [k, v] of Object.entries(chosen.effects)) {
-            varPatch[k] = (d[k] || 0) + v;
-          }
-        }
-        // Close modal manually (no sendMessage auto-close)
-        await __panelBridge.updateVariables(varPatch);
-        await __panelBridge.closeModal('values');
-
-        // Apply flags to game-state
-        if (chosen.flags && Object.keys(chosen.flags).length > 0) {
-          const gs = d['game-state'] || {};
-          const merged = { ...gs.flags, ...chosen.flags };
-          await __panelBridge.updateData('game-state', {
-            flags: merged,
-            values_this_slot: true
-          });
-        } else {
-          await __panelBridge.updateData('game-state', { values_this_slot: true });
-        }
-
-        // Build effect summary for event header
-        let effSummary = '';
-        if (chosen.effects) {
-          effSummary = '\neffects: ' + Object.entries(chosen.effects)
-            .map(([k, v]) => `${STAT_NM[k]||k}${v>0?'+':''}${v}`).join(', ');
-        }
-        if (chosen.flags) {
-          effSummary += '\nflags: ' + Object.keys(chosen.flags).join(', ');
-        }
-
-        // Queue event header only — user can chat freely, header prepends to next message
-        const header = `[VALUES_CHOICE]\ncontext: ${vp.context || vp.question}\nchosen: ${chosen.label}${effSummary}`;
-        await __panelBridge.queueEvent(header);
-        window.dispatchEvent(new CustomEvent('values-chosen'));
-      }, 500);
+      __panelBridge.executeAction('select_value', { choice_index: idx });
     });
   });
 </script>

@@ -73,6 +73,15 @@
     transition: all 0.2s;
   }
   .qbtn:hover { background: rgba(232,160,191,0.1); border-color: rgba(232,160,191,0.3); color: #e8a0bf; }
+  .qbtn.pulse {
+    animation: qbtnPulse 1.8s ease-in-out infinite;
+    border-color: rgba(232,160,191,0.4);
+    color: #e8a0bf;
+  }
+  @keyframes qbtnPulse {
+    0%, 100% { background: rgba(232,160,191,0.06); box-shadow: none; }
+    50% { background: rgba(232,160,191,0.18); box-shadow: 0 0 10px rgba(232,160,191,0.2); }
+  }
 </style>
 
 <div class="status-card">
@@ -139,12 +148,29 @@
 
 <div class="quick-btns">
   <button class="qbtn" id="openSchedule">📅 스케줄</button>
+  <button class="qbtn" id="openFather">🏠 아빠</button>
   <button class="qbtn" id="openCatalog">📖 활동</button>
   <button class="qbtn" id="openInventory">🎒 인벤</button>
 </div>
 
 <script>
-  shadow.querySelector('#openSchedule')?.addEventListener('click', () => __panelBridge.openModal('schedule', 'dismissible'));
+  const d = __panelBridge.data;
+  const gs = d['game-state'] || {};
+  const needsSchedule = d.turn_phase === 'setup'
+    && d.schedule_1 === 'none' && d.schedule_2 === 'none' && d.schedule_3 === 'none';
+  const schedBtn = shadow.querySelector('#openSchedule');
+  if (needsSchedule && schedBtn) schedBtn.classList.add('pulse');
+
+  schedBtn?.addEventListener('click', () => __panelBridge.openModal('schedule', 'dismissible'));
+  const fatherBtn = shadow.querySelector('#openFather');
+  if (!gs.father_talked_this_month && d.turn_phase === 'setup') {
+    if (fatherBtn) fatherBtn.classList.add('pulse');
+  }
+  if (gs.father_talked_this_month && fatherBtn) {
+    fatherBtn.style.opacity = '0.4';
+    fatherBtn.title = '이번 달 대화 완료';
+  }
+  fatherBtn?.addEventListener('click', () => __panelBridge.openModal('father', 'dismissible'));
   shadow.querySelector('#openCatalog')?.addEventListener('click', () => __panelBridge.openModal('catalog', 'dismissible'));
   shadow.querySelector('#openInventory')?.addEventListener('click', () => __panelBridge.openModal('inventory', 'dismissible'));
 </script>

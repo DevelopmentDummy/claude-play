@@ -563,9 +563,9 @@
     "plains": {
       "name": "초원",
       "enemies": [
-        { "name": "슬라임", "hp": 15, "atk": 3, "def": 1, "exp_combat": [5, 10], "gold": [5, 15] },
-        { "name": "야생 토끼", "hp": 10, "atk": 5, "def": 0, "exp_combat": [3, 8], "gold": [3, 8] },
-        { "name": "고블린", "hp": 25, "atk": 8, "def": 3, "exp_combat": [8, 15], "gold": [10, 25] }
+        { "name": "슬라임", "hp": 15, "atk": 3, "def": 1, "exp_combat": [1, 3], "gold": [5, 15] },
+        { "name": "야생 토끼", "hp": 10, "atk": 5, "def": 0, "exp_combat": [1, 2], "gold": [3, 8] },
+        { "name": "고블린", "hp": 25, "atk": 8, "def": 3, "exp_combat": [2, 4], "gold": [10, 25] }
       ],
       "treasures": [
         { "name": "회복약", "chance": 0.3 },
@@ -575,9 +575,9 @@
     "forest": {
       "name": "숲",
       "enemies": [
-        { "name": "대형 거미", "hp": 40, "atk": 12, "def": 5, "exp_combat": [12, 20], "gold": [15, 35] },
-        { "name": "늑대", "hp": 35, "atk": 15, "def": 3, "exp_combat": [10, 18], "gold": [12, 30] },
-        { "name": "오크", "hp": 60, "atk": 18, "def": 8, "exp_combat": [18, 30], "gold": [25, 50] }
+        { "name": "대형 거미", "hp": 40, "atk": 12, "def": 5, "exp_combat": [3, 5], "gold": [15, 35] },
+        { "name": "늑대", "hp": 35, "atk": 15, "def": 3, "exp_combat": [3, 5], "gold": [12, 30] },
+        { "name": "오크", "hp": 60, "atk": 18, "def": 8, "exp_combat": [5, 8], "gold": [25, 50] }
       ],
       "treasures": [
         { "name": "좋은 회복약", "chance": 0.25 },
@@ -588,9 +588,9 @@
     "mountain": {
       "name": "산",
       "enemies": [
-        { "name": "석인", "hp": 80, "atk": 22, "def": 15, "exp_combat": [25, 40], "gold": [30, 60] },
-        { "name": "와이번", "hp": 70, "atk": 28, "def": 10, "exp_combat": [30, 45], "gold": [35, 70] },
-        { "name": "트롤", "hp": 100, "atk": 25, "def": 12, "exp_combat": [35, 55], "gold": [40, 80] }
+        { "name": "석인", "hp": 80, "atk": 22, "def": 15, "exp_combat": [6, 10], "gold": [30, 60] },
+        { "name": "와이번", "hp": 70, "atk": 28, "def": 10, "exp_combat": [8, 11], "gold": [35, 70] },
+        { "name": "트롤", "hp": 100, "atk": 25, "def": 12, "exp_combat": [9, 14], "gold": [40, 80] }
       ],
       "treasures": [
         { "name": "고급 회복약", "chance": 0.2 },
@@ -601,9 +601,9 @@
     "desert": {
       "name": "사막",
       "enemies": [
-        { "name": "사막 전갈", "hp": 90, "atk": 30, "def": 18, "exp_combat": [40, 60], "gold": [50, 90] },
-        { "name": "샌드웜", "hp": 120, "atk": 35, "def": 20, "exp_combat": [50, 70], "gold": [60, 100] },
-        { "name": "라미아", "hp": 100, "atk": 40, "def": 15, "exp_combat": [55, 80], "gold": [70, 120] }
+        { "name": "사막 전갈", "hp": 90, "atk": 30, "def": 18, "exp_combat": [10, 15], "gold": [50, 90] },
+        { "name": "샌드웜", "hp": 120, "atk": 35, "def": 20, "exp_combat": [13, 18], "gold": [60, 100] },
+        { "name": "라미아", "hp": 100, "atk": 40, "def": 15, "exp_combat": [14, 20], "gold": [70, 120] }
       ],
       "treasures": [
         { "name": "고급 회복약", "chance": 0.25 },
@@ -614,9 +614,9 @@
     "ruins": {
       "name": "마왕성 폐허",
       "enemies": [
-        { "name": "데스나이트", "hp": 150, "atk": 45, "def": 25, "exp_combat": [70, 100], "gold": [80, 150] },
-        { "name": "리치", "hp": 130, "atk": 50, "def": 20, "exp_combat": [80, 110], "gold": [100, 180] },
-        { "name": "마왕의 잔영", "hp": 200, "atk": 60, "def": 30, "exp_combat": [120, 180], "gold": [150, 250] }
+        { "name": "데스나이트", "hp": 150, "atk": 45, "def": 25, "exp_combat": [18, 25], "gold": [80, 150] },
+        { "name": "리치", "hp": 130, "atk": 50, "def": 20, "exp_combat": [20, 28], "gold": [100, 180] },
+        { "name": "마왕의 잔영", "hp": 200, "atk": 60, "def": 30, "exp_combat": [30, 45], "gold": [150, 250] }
       ],
       "treasures": [
         { "name": "전설의 무기", "chance": 0.05 },

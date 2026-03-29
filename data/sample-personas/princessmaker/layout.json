@@ -14,10 +14,11 @@
       "competition": "modal",
       "options": "modal",
       "values": "modal",
-      "adventure": "modal"
+      "adventure": "modal",
+      "father": "modal"
     },
     "modalGroups": {
-      "gameplay": ["schedule", "advance", "competition", "adventure", "inventory", "catalog"],
+      "gameplay": ["schedule", "advance", "competition", "adventure", "inventory", "catalog", "father"],
       "overlay": ["portrait", "values"]
     },
     "autoRefresh": {

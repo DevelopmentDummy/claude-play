@@ -760,8 +760,17 @@ function generateWishInternal(vars, sysConfig, eventsConfig, scheduleConfig, gam
   }
 
   // Build candidate categories with scores
+  // Only include categories that have at least one unlocked activity
+  const unlocked = new Set(state.unlocked_activities || []);
   const catScores = {};
-  const availableCats = Object.keys(categories).filter(c => c !== 'rest');
+  const availableCats = Object.keys(categories).filter(c => {
+    if (c === 'rest') return false;
+    // Check if any unlocked activity belongs to this category
+    for (const [actId, act] of Object.entries(activities)) {
+      if (act.category === c && unlocked.has(actId)) return true;
+    }
+    return false;
+  });
 
   for (const cat of availableCats) {
     catScores[cat] = 0;
@@ -1179,6 +1188,7 @@ function advanceMonth(v, config, state, eventLog, sysConfig, eventsConfig) {
   v.current_slot = 0;
   v.turn_phase = 'setup';
   state.competitions_entered = [];
+  state.father_talked_this_month = false;
   // Don't set advance:null here — let the panel's finalize() handle closing
   // via sendMessage() auto-close after animation completes
   v.__modals = { ...(v.__modals || {}), portrait: 'dismissible' };
@@ -1469,7 +1479,13 @@ function checkUnlocksInternal(vars, config, state) {
   for (const [id, act] of Object.entries(activities)) {
     if (unlocked.has(id)) continue;
     if (act.dark_only && !darkPath) continue;
-    if (!act.requirements || Object.keys(act.requirements).length === 0) continue;
+    if (!act.requirements || Object.keys(act.requirements).length === 0) {
+      // dark_only activities with no requirements should auto-unlock when dark_path is active
+      if (act.dark_only && darkPath) {
+        newUnlocks.push(id);
+      }
+      continue;
+    }
     if (meetsRequirements(act.requirements, vars)) newUnlocks.push(id);
   }
   return newUnlocks;
@@ -1820,6 +1836,12 @@ const ACTIONS = {
     if (!state.wish_history) state.wish_history = [];
     state.wish_history.push(wish.wish_category);
 
+    // Run unlock check after setup (catches dark_only activities with empty requirements)
+    const setupUnlocks = checkUnlocksInternal(v, scheduleConfig, state);
+    if (setupUnlocks.length > 0) {
+      state.unlocked_activities = [...(state.unlocked_activities || []), ...setupUnlocks];
+    }
+
     return {
       variables: v,
       data: { 'game-state.json': state },
@@ -1844,8 +1866,45 @@ const ACTIONS = {
    * args: (none — reads current_slot and schedule_N from variables)
    *
    * Checks wish_activity match for wish bonus/penalty.
+   * When slot 3 is processed, automatically includes turn_transition (month advance)
+   * so this action is always safe to call standalone.
    */
   advance_slot(ctx, args) {
+    // Wrapper: run slot processing, then auto-merge transition if slot 3
+    const slotResult = ACTIONS._advance_slot_inner(ctx, args);
+    if (!slotResult.result?.success || !slotResult.result?.pending_transition) {
+      return slotResult;
+    }
+    // Slot 3 done — auto-run turn_transition with updated context
+    const mergedCtx = {
+      ...ctx,
+      variables: { ...ctx.variables, ...slotResult.variables },
+      data: { ...ctx.data }
+    };
+    // Apply data changes from slot result to context
+    for (const [k, v] of Object.entries(slotResult.data || {})) {
+      const key = k.replace('.json', '');
+      mergedCtx.data[key] = { ...(mergedCtx.data[key] || {}), ...v };
+    }
+    const transResult = ACTIONS.turn_transition(mergedCtx, {});
+    // Merge: slot variables + transition variables
+    const mergedVars = { ...slotResult.variables, ...(transResult.variables || {}) };
+    // Merge data files
+    const mergedData = { ...(slotResult.data || {}) };
+    for (const [k, v] of Object.entries(transResult.data || {})) {
+      mergedData[k] = { ...(mergedData[k] || {}), ...v };
+    }
+    // Attach transition info to result
+    slotResult.result.transition = transResult.result;
+    delete slotResult.result.pending_transition;
+    return {
+      variables: mergedVars,
+      data: mergedData,
+      result: slotResult.result
+    };
+  },
+
+  _advance_slot_inner(ctx, args) {
     const v = { ...ctx.variables };
     const config = ctx.data['schedule-config'] || {};
     const state = { ...(ctx.data['game-state'] || {}) };
@@ -2888,6 +2947,275 @@ const ACTIONS = {
         npc_scores: compResult.npc_scores,
         rewards: statChanges,
         popups: compPopups.length > 0 ? compPopups : undefined
+      }
+    };
+  },
+
+
+  // ============================================================
+  // === set_schedule — Set schedule slots (1-3) in one call ===
+  // ============================================================
+  /**
+   * set_schedule — 스케줄 슬롯을 설정한다.
+   * args: { slots: { 1: "actId", 2: "actId", 3: "actId" } }
+   *   - 일부 슬롯만 설정 가능 (예: { 1: "martial_dojo" })
+   *   - "none"으로 설정하면 해당 슬롯 비움
+   * result: { success, slots: { 1: actName, ... }, warnings: [] }
+   */
+  set_schedule(ctx, args) {
+    const { slots } = args;
+    if (!slots || typeof slots !== 'object') {
+      return { result: { success: false, message: 'slots 파라미터가 필요합니다. 예: { 1: "martial_dojo", 2: "rest" }' } };
+    }
+
+    const v = { ...ctx.variables };
+    const config = ctx.data['schedule-config'] || {};
+    const acts = config.activities || {};
+    const state = ctx.data['game-state'] || {};
+    const custom = state.custom_activities || {};
+    const allActs = { ...acts, ...custom };
+    const unlocked = new Set(state.unlocked_activities || []);
+    const warnings = [];
+    const result = {};
+
+    for (const [slotNum, actId] of Object.entries(slots)) {
+      const n = parseInt(slotNum);
+      if (n < 1 || n > 3) { warnings.push(`슬롯 ${slotNum}은 유효하지 않습니다 (1-3)`); continue; }
+
+      if (actId === 'none' || !actId) {
+        v[`schedule_${n}`] = 'none';
+        result[n] = null;
+        continue;
+      }
+
+      const act = allActs[actId];
+      if (!act) { warnings.push(`활동 '${actId}'을(를) 찾을 수 없습니다.`); continue; }
+      if (!unlocked.has(actId)) { warnings.push(`활동 '${act.name}'이(가) 아직 해금되지 않았습니다.`); continue; }
+
+      // Check requirements
+      const reqs = act.requirements || {};
+      let meetsReqs = true;
+      for (const [stat, min] of Object.entries(reqs)) {
+        if (stat === 'gold_cost') continue;
+        if ((v[stat] || 0) < min) { warnings.push(`${act.name}: ${stat} ${min} 이상 필요`); meetsReqs = false; }
+      }
+      if (!meetsReqs) continue;
+
+      v[`schedule_${n}`] = actId;
+      result[n] = act.name;
+    }
+
+    return {
+      variables: v,
+      result: { success: true, slots: result, warnings }
+    };
+  },
+
+
+  // ============================================================
+  // === confirm_schedule — Confirm schedule and start executing ===
+  // ============================================================
+  /**
+   * confirm_schedule — 스케줄을 확정하고 실행 페이즈로 전환한다.
+   * args: {} (없음)
+   * result: { success, schedule: [{ slot, activity_name, activity_id }], message }
+   */
+  confirm_schedule(ctx, args) {
+    const v = { ...ctx.variables };
+    const config = ctx.data['schedule-config'] || {};
+    const acts = config.activities || {};
+    const state = ctx.data['game-state'] || {};
+    const custom = state.custom_activities || {};
+    const allActs = { ...acts, ...custom };
+
+    // Validate at least one slot is set
+    const s1 = v.schedule_1 || 'none';
+    const s2 = v.schedule_2 || 'none';
+    const s3 = v.schedule_3 || 'none';
+    if (s1 === 'none' && s2 === 'none' && s3 === 'none') {
+      return { result: { success: false, message: '스케줄이 비어있습니다. 최소 1개 슬롯을 설정해주세요.' } };
+    }
+
+    // Transition to executing phase
+    v.turn_phase = 'executing';
+    v.current_slot = 0;
+
+    // Close schedule modal, open advance dock, hide portrait
+    v.__modals = {
+      ...(v.__modals || {}),
+      schedule: false,
+      advance: true,
+      portrait: null
+    };
+
+    const schedule = [];
+    const LBL = ['', '상순', '중순', '하순'];
+    for (let i = 1; i <= 3; i++) {
+      const aid = v[`schedule_${i}`];
+      const act = allActs[aid];
+      schedule.push({
+        slot: i,
+        label: LBL[i],
+        activity_id: aid,
+        activity_name: act ? act.name : (aid === 'none' ? '없음' : aid)
+      });
+    }
+
+    return {
+      variables: v,
+      result: {
+        success: true,
+        schedule,
+        message: `${v.current_year}년차 ${v.current_month}월 스케줄이 확정되었습니다.`
+      }
+    };
+  },
+
+
+  // ============================================================
+  // === talk_to_father — Monthly conversation with father ===
+  // ============================================================
+  /**
+   * talk_to_father — 아빠와 대화 (월 1회 무료)
+   * args: { topic: "martial"|"study"|"life"|"play" }
+   *
+   * 용사 출신 아버지와의 대화. 주제에 따라 소폭 스탯 변동.
+   * guardian_background에 따라 보너스가 달라진다.
+   * result: { success, topic, topic_name, effects, already_talked }
+   */
+  talk_to_father(ctx, args) {
+    const { topic } = args;
+    if (!topic) {
+      return { result: { success: false, message: 'topic이 필요합니다 (martial/study/life/play)' } };
+    }
+
+    const v = { ...ctx.variables };
+    const state = { ...(ctx.data['game-state'] || {}) };
+
+    // Once per month check
+    if (state.father_talked_this_month) {
+      return { result: { success: false, already_talked: true, message: '이번 달에는 이미 아빠와 대화했습니다.' } };
+    }
+
+    const bg = v.guardian_background || 'hero';
+
+    // Topic definitions: { name, base_effects, bonus_backgrounds }
+    const TOPICS = {
+      martial: {
+        name: '무술 지도',
+        base_effects: { combat: 3, stamina: 2, stress: -3 },
+        bonus_backgrounds: { hero: { combat: 3, attack: 1 }, knight: { combat: 2, defense: 1 } }
+      },
+      study: {
+        name: '학업 격려',
+        base_effects: { intelligence: 3, morals: 1, stress: -2 },
+        bonus_backgrounds: { scholar: { intelligence: 3 }, wizard: { magic_power: 2 } }
+      },
+      life: {
+        name: '인생 상담',
+        base_effects: { morals: 3, sensitivity: 2, stress: -5 },
+        bonus_backgrounds: { priest: { faith: 3, morals: 2 }, noble: { elegance: 2 } }
+      },
+      play: {
+        name: '함께 놀기',
+        base_effects: { charm: 2, stress: -8 },
+        bonus_backgrounds: { artist: { art: 2, sensitivity: 1 }, merchant: { charm: 2 } }
+      }
+    };
+
+    const topicDef = TOPICS[topic];
+    if (!topicDef) {
+      return { result: { success: false, message: '알 수 없는 주제입니다. martial/study/life/play 중 하나를 선택하세요.' } };
+    }
+
+    // Apply base effects
+    const appliedEffects = {};
+    for (const [stat, val] of Object.entries(topicDef.base_effects)) {
+      const maxKey = stat + '_max';
+      const max = v[maxKey] || (stat === 'stress' ? 100 : 999);
+      const oldVal = v[stat] || 0;
+      v[stat] = clamp(oldVal + val, 0, max);
+      appliedEffects[stat] = v[stat] - oldVal;
+    }
+
+    // Apply background bonus
+    const bonus = (topicDef.bonus_backgrounds || {})[bg] || {};
+    for (const [stat, val] of Object.entries(bonus)) {
+      const maxKey = stat + '_max';
+      const max = v[maxKey] || (stat === 'stress' ? 100 : 999);
+      const oldVal = v[stat] || 0;
+      v[stat] = clamp(oldVal + val, 0, max);
+      appliedEffects[stat] = (appliedEffects[stat] || 0) + (v[stat] - oldVal + (appliedEffects[stat] ? 0 : 0));
+      // Recalculate to avoid double-counting
+      appliedEffects[stat] = v[stat] - ((ctx.variables[stat]) || 0);
+    }
+
+    // Mark talked this month
+    state.father_talked_this_month = true;
+
+    return {
+      variables: v,
+      data: { 'game-state.json': state },
+      result: {
+        success: true,
+        topic,
+        topic_name: topicDef.name,
+        background_bonus: Object.keys(bonus).length > 0 ? bg : null,
+        effects: appliedEffects
+      }
+    };
+  },
+
+  // ============================================================
+  // === enter_competition — Register for seasonal competition ===
+  // ============================================================
+  /**
+   * enter_competition — 계절 대회에 등록한다.
+   * args: { competition_id }
+   * result: { success, competition_name, category }
+   */
+  enter_competition(ctx, args) {
+    const { competition_id } = args;
+    if (!competition_id) {
+      return { result: { success: false, message: 'competition_id가 필요합니다.' } };
+    }
+
+    const v = { ...ctx.variables };
+    const eventsConfig = ctx.data['events-config'] || {};
+    const seasonalEvents = eventsConfig.seasonal_events || {};
+
+    // Find the competition in seasonal events
+    let foundComp = null;
+    for (const [, season] of Object.entries(seasonalEvents)) {
+      const comps = season.competitions || [];
+      const match = comps.find(c => c.id === competition_id);
+      if (match) { foundComp = match; break; }
+    }
+
+    if (!foundComp) {
+      return { result: { success: false, message: `대회 '${competition_id}'를 찾을 수 없습니다.` } };
+    }
+
+    // Check if already entered this season
+    const state = { ...(ctx.data['game-state'] || {}) };
+    if ((state.competitions_entered || []).includes(competition_id)) {
+      return { result: { success: false, message: `이미 '${foundComp.name}'에 참가했습니다.` } };
+    }
+
+    // Set competition pending and open modal
+    v.__competition_pending = {
+      id: competition_id,
+      name: foundComp.name,
+      category: foundComp.category
+    };
+    v.__modals = { ...(v.__modals || {}), competition: true };
+
+    return {
+      variables: v,
+      result: {
+        success: true,
+        competition_name: foundComp.name,
+        category: foundComp.category
       }
     };
   }
