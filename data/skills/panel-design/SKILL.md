@@ -64,11 +64,18 @@ allowed-tools: Read, Write, Edit, Bash
 
 ### 모달 패널
 - [ ] `panels/{번호}-{이름}.html` 파일 생성
-- [ ] `layout.json` → `panels.placement.{이름}` = `"modal"`
+- [ ] `layout.json` → `panels.placement.{이름}`:
+  - `"modal"` = 필수 모달 (ESC로 닫을 수 없음, 게임플레이 흐름 패널)
+  - `"modal-dismissible"` = 해제 가능 모달 (ESC로 닫기 가능, 보조 UI 패널)
 - [ ] `variables.json` → `__modals.{이름}` = `false` (초기값)
-- [ ] 어딘가에 열기 버튼: `__panelBridge.openModal('{이름}', 'dismissible')`
+- [ ] 어딘가에 열기 버튼: `__panelBridge.openModal('{이름}', 'dismissible')` 또는 `__panelBridge.openModal('{이름}', true)`
 - [ ] (선택) `layout.json` → `panels.modalGroups`에 그룹 등록 (상호 배타)
-- [ ] (선택) `layout.json` → `panels.autoRefresh.{이름}` = `false` (복잡한 JS 상태 보존 시)
+
+**모달 동작 원리:**
+- 모달 패널은 **항상 마운트**되어 있다 (`display:none`으로 숨김). 닫아도 DOM과 핸들러가 유지된다.
+- 패널 액션 핸들러(`registerAction`)는 모달이 닫혀있을 때도 살아있어서, 선택지 액션이 모달을 열지 않고 직접 실행할 수 있다.
+- **모달이 다시 열릴 때 (active: false→true) 스크립트가 자동 재실행된다.** 따라서 대회, 모험 등 매번 초기화가 필요한 패널도 정상 동작한다.
+- `autoRefresh: false`는 이제 대부분의 모달에서 불필요하다 — 모달이 열릴 때마다 자동으로 재초기화되므로.
 
 ### 독 패널 (dock 계열)
 - [ ] `panels/{번호}-{이름}.html` 파일 생성
@@ -96,6 +103,7 @@ allowed-tools: Read, Write, Edit, Bash
 - 패널 버튼과 선택지가 **동일한 실행 경로**를 공유한다 — 액션 핸들러가 primary 로직
 - 실행 시 자동으로 히스토리에 기록되어 AI에게 `[ACTION_LOG]`로 전달된다
 - `available_when` 조건에 따라 `[AVAILABLE]` 헤더로 AI에게 현재 가능한 액션이 알려진다
+- `needs_ui` 플래그로 모달 표시 여부가 결정된다 — UI 연출이 있는 액션은 모달을 열고, 없는 액션은 백그라운드에서 실행된다
 
 ### `<panel-actions>` 메타데이터 선언
 
@@ -108,7 +116,8 @@ allowed-tools: Read, Write, Edit, Bash
     "id": "advance_slot",
     "label": "스케줄 진행",
     "description": "현재 슬롯의 활동을 실행한다 (일별 시뮬레이션 애니메이션 포함)",
-    "available_when": "turn_phase === 'executing' && current_slot < 3"
+    "available_when": "turn_phase === 'executing' && current_slot < 3",
+    "needs_ui": true
   }
 ]
 </panel-actions>
@@ -126,6 +135,7 @@ allowed-tools: Read, Write, Edit, Bash
 | `description` | ✅ | 액션의 상세 설명 |
 | `params` | | 파라미터 맵 `{ "param_name": "설명" }`. AI가 선택지에 params를 넣을 수 있음 |
 | `available_when` | | `variables.json` 변수를 참조하는 JS 표현식. 생략 시 항상 available |
+| `needs_ui` | | **기본값: `true`**. 선택지에서 이 액션을 실행할 때 모달을 열어서 UI 연출을 보여준다. `false`로 명시하면 모달을 열지 않고 백그라운드에서 실행한다. 엔진만 호출하고 시각적 피드백이 없는 액션(스케줄 확정, 변수 수정 등)에 `false`를 설정한다. |
 
 ### `registerAction()` 핸들러 등록
 
@@ -200,7 +210,8 @@ await __panelBridge.executeAction('confirm_schedule', {
 | 용도 | 배치 타입 | 근거 |
 |------|-----------|------|
 | 상시 표시 요약 (HP, 스탯, 프로필) | `left` / `right` | 항상 보이는 사이드바 |
-| 상세 조작 UI (스케줄, 인벤토리, 상점) | `modal` | 필요할 때 열고 닫음 |
+| 게임플레이 흐름 UI (스케줄, 슬롯 진행, 대회) | `modal` | 필수 조작, ESC 닫기 불가 |
+| 보조 조작 UI (인벤토리, 상점, 카탈로그) | `modal-dismissible` | 필요할 때 열고 닫음, ESC 닫기 가능 |
 | 진행 컨트롤 (슬롯 진행 버튼) | `dock` / `dock-right` | 채팅 옆에 항상 접근 가능 |
 | 캐릭터 일러스트 / 씬 이미지 | `left` / `dock-left` | 시각적 참조용 |
 | 일회성 선택지 (거래, 퀴즈) | 인라인 (`$PANEL:이름$`) | 대화 흐름에 자연 삽입 |
