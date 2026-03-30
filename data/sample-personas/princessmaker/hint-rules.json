@@ -135,5 +135,6 @@
       { "max": 100, "hint": "비만" }
     ]
   },
-  "_passthrough": ["current_year", "current_month", "age", "wish_text"]
+  "_passthrough": ["current_year", "current_month", "age", "wish_text"],
+  "_data_files": ["game-state"]
 }

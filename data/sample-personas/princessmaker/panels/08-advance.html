@@ -4,7 +4,8 @@
     "id": "advance_slot",
     "label": "스케줄 진행",
     "description": "현재 슬롯의 활동을 실행한다 (일별 시뮬레이션 애니메이션 포함)",
-    "available_when": "turn_phase === 'executing' && current_slot < 3"
+    "available_when": "turn_phase === 'executing' && current_slot < 3",
+    "needs_ui": true
   },
   {
     "id": "edit_schedule",
@@ -15,7 +16,8 @@
       "schedule_2": "활동 ID (중순, 이미 진행됐으면 무시)",
       "schedule_3": "활동 ID (하순, 이미 진행됐으면 무시)"
     },
-    "available_when": "turn_phase === 'executing'"
+    "available_when": "turn_phase === 'executing'",
+    "needs_ui": false
   }
 ]
 </panel-actions>

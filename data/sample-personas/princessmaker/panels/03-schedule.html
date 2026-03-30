@@ -9,7 +9,8 @@
       "schedule_2": "활동 ID (중순)",
       "schedule_3": "활동 ID (하순)"
     },
-    "available_when": "turn_phase === 'setup'"
+    "available_when": "turn_phase === 'setup'",
+    "needs_ui": false
   },
   {
     "id": "enter_competition",
@@ -18,7 +19,8 @@
     "params": {
       "competition_id": "대회 ID (sprint, flower, swim 등)"
     },
-    "available_when": "__competitions_available && __competitions_available.length > 0"
+    "available_when": "__competitions_available && __competitions_available.length > 0",
+    "needs_ui": false
   }
 ]
 </panel-actions>
