@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useRef, useEffect } from "react";
 import { MODEL_GROUPS } from "@/lib/ai-provider";
 
 interface StatusBarProps {
@@ -34,6 +35,9 @@ interface StatusBarProps {
   onVersionSave?: () => void;
   onVersionHistory?: () => void;
   versionSaving?: boolean;
+  /** Force chat input visible */
+  forceInput?: boolean;
+  onForceInputToggle?: () => void;
 }
 
 const selectClass = `px-2 py-1 rounded-md text-xs text-text-dim bg-transparent border border-border/60 outline-none cursor-pointer appearance-none
@@ -48,6 +52,9 @@ const selectStyle = {
 };
 
 const optClass = "bg-[#1a1a2e] text-[#ccc]";
+
+const menuBtnClass = `w-full text-left px-3 py-1.5 text-xs text-text-dim hover:bg-surface-light hover:text-text
+  transition-colors duration-fast disabled:opacity-30 disabled:cursor-default`;
 
 export default function StatusBar({
   title,
@@ -73,7 +80,24 @@ export default function StatusBar({
   onVersionSave,
   onVersionHistory,
   versionSaving,
+  forceInput,
+  onForceInputToggle,
 }: StatusBarProps) {
+  const [debugOpen, setDebugOpen] = useState(false);
+  const debugRef = useRef<HTMLDivElement>(null);
+
+  // Close debug menu on outside click
+  useEffect(() => {
+    if (!debugOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (debugRef.current && !debugRef.current.contains(e.target as Node)) {
+        setDebugOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [debugOpen]);
+
   const statusColors: Record<string, string> = {
     connected: "bg-success shadow-[0_0_8px_rgba(77,255,145,0.4)]",
     streaming: "bg-warning animate-pulse shadow-[0_0_8px_rgba(255,166,77,0.4)]",
@@ -87,6 +111,8 @@ export default function StatusBar({
     compacting: "Compacting...",
     disconnected: "Disconnected",
   };
+
+  const hasDebugItems = onCompact || onContext || onReinit || (!isBuilderMode && onSync) || onForceInputToggle;
 
   return (
     <header className="flex flex-wrap items-center gap-2 px-4 py-2 bg-surface backdrop-blur-[16px] border-b border-border shrink-0">
@@ -148,42 +174,71 @@ export default function StatusBar({
           </button>
         )}
 
-        {/* Compact button */}
-        {onCompact && (
-          <button
-            onClick={onCompact}
-            disabled={status === "compacting" || status === "streaming" || status === "disconnected"}
-            className="px-2 py-1 rounded-md text-[10px] font-medium tracking-wide border cursor-pointer transition-all duration-fast
-              border-border/40 text-text-dim/50 bg-transparent hover:border-border/60 hover:text-text-dim/80
-              disabled:opacity-30 disabled:cursor-default"
-            title="컨텍스트 압축"
-          >
-            Compact
-          </button>
-        )}
-        {/* Context button */}
-        {onContext && (
-          <button
-            onClick={onContext}
-            disabled={status === "compacting" || status === "streaming" || status === "disconnected"}
-            className="px-2 py-1 rounded-md text-[10px] font-medium tracking-wide border cursor-pointer transition-all duration-fast
-              border-border/40 text-text-dim/50 bg-transparent hover:border-border/60 hover:text-text-dim/80
-              disabled:opacity-30 disabled:cursor-default"
-            title="컨텍스트 사용량 확인"
-          >
-            Context
-          </button>
-        )}
-        {/* Sync button */}
-        {!isBuilderMode && onSync && (
-          <button
-            onClick={onSync}
-            className="px-2 py-1 rounded-md text-[10px] font-medium tracking-wide border cursor-pointer transition-all duration-fast
-              border-border/40 text-text-dim/50 bg-transparent hover:border-border/60 hover:text-text-dim/80"
-            title="페르소나 동기화"
-          >
-            Sync
-          </button>
+        {/* Debug / Tools dropdown */}
+        {hasDebugItems && (
+          <div className="relative" ref={debugRef}>
+            <button
+              onClick={() => setDebugOpen(!debugOpen)}
+              className={`px-2 py-1 rounded-md text-xs border cursor-pointer transition-all duration-fast
+                ${debugOpen
+                  ? "border-accent/40 text-accent/70 bg-accent/5"
+                  : "border-border/40 text-text-dim/50 bg-transparent hover:border-border/60 hover:text-text-dim/80"
+                }`}
+              title="도구"
+            >
+              &#9776;
+            </button>
+            {debugOpen && (
+              <div className="absolute right-0 top-full mt-1 min-w-[160px] py-1
+                rounded-lg border border-border/60 bg-[rgba(20,16,32,0.97)]
+                shadow-[0_8px_32px_rgba(0,0,0,0.5)] z-[100]
+                animate-[fadeIn_100ms_ease-out]"
+              >
+                {onForceInputToggle && (
+                  <button
+                    onClick={() => { onForceInputToggle(); setDebugOpen(false); }}
+                    className={menuBtnClass}
+                  >
+                    {forceInput ? "✅ " : ""}채팅 입력 강제 표시
+                  </button>
+                )}
+                {onCompact && (
+                  <button
+                    onClick={() => { onCompact(); setDebugOpen(false); }}
+                    disabled={status === "compacting" || status === "streaming" || status === "disconnected"}
+                    className={menuBtnClass}
+                  >
+                    Compact
+                  </button>
+                )}
+                {onContext && (
+                  <button
+                    onClick={() => { onContext(); setDebugOpen(false); }}
+                    disabled={status === "compacting" || status === "streaming" || status === "disconnected"}
+                    className={menuBtnClass}
+                  >
+                    Context
+                  </button>
+                )}
+                {!isBuilderMode && onSync && (
+                  <button
+                    onClick={() => { onSync(); setDebugOpen(false); }}
+                    className={menuBtnClass}
+                  >
+                    Sync
+                  </button>
+                )}
+                {onReinit && (
+                  <button
+                    onClick={() => { onReinit(); setDebugOpen(false); }}
+                    className={menuBtnClass}
+                  >
+                    Reconnect
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         )}
 
         {/* Builder: service (provider) selector */}
@@ -246,15 +301,6 @@ export default function StatusBar({
             </button>
           )}
         </div>
-      )}
-      {onReinit && (
-        <button
-          onClick={onReinit}
-          className="px-3 py-1 border border-border rounded-md bg-transparent text-text-dim cursor-pointer text-xs hover:bg-surface-light hover:text-text hover:-translate-y-px transition-all duration-fast"
-          title="Kill and respawn process"
-        >
-          Reconnect
-        </button>
       )}
     </header>
   );

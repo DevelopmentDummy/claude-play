@@ -19,6 +19,8 @@ export interface PanelActionMeta {
   description: string;
   params?: Record<string, string>;
   available_when?: string;
+  /** If false, the modal won't be opened when this action runs from a choice (background execution). Default: true. */
+  needs_ui?: boolean;
 }
 
 export type PanelActionHandler = (
@@ -173,6 +175,16 @@ export class PanelActionRegistry {
     if (!resolvedPanel) return false;
     const panelMap = this.entries.get(resolvedPanel);
     return !!panelMap?.get(actionId)?.handler;
+  }
+
+  /** Check if an action requires its modal to be visible (for UI animations). Defaults to true. */
+  needsUI(panel: string, actionId: string): boolean {
+    const resolvedPanel = panel || this.findPanelByAction(actionId);
+    if (!resolvedPanel) return true;
+    const panelMap = this.entries.get(resolvedPanel);
+    const entry = panelMap?.get(actionId);
+    if (!entry) return true;
+    return entry.meta.needs_ui !== false;
   }
 
   /** Find label for a specific action, regardless of availability */

@@ -107,6 +107,24 @@ export function buildSnapshot(
     snapshot["competition_notice"] = `🏆대회참가가능(${urgency}) [${compList}]`;
   }
 
+  // Next slot activity history (so AI knows if it's a first-time or repeat activity)
+  const turnPhase = vars.turn_phase;
+  const currentSlot = typeof vars.current_slot === "number" ? vars.current_slot : 0;
+  if (turnPhase === "executing" && currentSlot < 3) {
+    const nextSlotKey = `schedule_${currentSlot + 1}`;
+    const nextActivityId = vars[nextSlotKey];
+    if (nextActivityId && nextActivityId !== "none") {
+      const gameState = vars["game-state"] as Record<string, unknown> | undefined;
+      const activityStats = (gameState?.activity_stats || {}) as Record<string, { count?: number; last_period?: string }>;
+      const stats = activityStats[nextActivityId as string];
+      if (stats && stats.count && stats.count > 0) {
+        snapshot["next_activity"] = `${nextActivityId}(통산${stats.count}회, 최근:${stats.last_period || "?"})`;
+      } else {
+        snapshot["next_activity"] = `${nextActivityId}(첫 도전)`;
+      }
+    }
+  }
+
   return snapshot;
 }
 
@@ -125,6 +143,20 @@ export function buildHintSnapshotLine(sessionDir: string): string {
       vars = JSON.parse(fs.readFileSync(varsPath, "utf-8"));
     }
   } catch { /* ignore */ }
+
+  // Read additional data files specified in hint-rules._data_files (per-persona config)
+  const dataFiles = (rules as Record<string, unknown>)._data_files;
+  if (Array.isArray(dataFiles)) {
+    for (const fname of dataFiles) {
+      if (typeof fname !== "string") continue;
+      const filePath = path.join(sessionDir, fname.endsWith(".json") ? fname : `${fname}.json`);
+      try {
+        if (fs.existsSync(filePath)) {
+          vars[fname.replace(/\.json$/, "")] = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+        }
+      } catch { /* ignore */ }
+    }
+  }
 
   const snapshot = buildSnapshot(vars, rules);
   if (Object.keys(snapshot).length === 0) return "";

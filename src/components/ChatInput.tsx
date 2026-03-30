@@ -256,10 +256,15 @@ function ChatInput({ disabled, onSend, sessionId, choices, pendingEvents, showOO
             detail: `${act.panel}.${act.action}`
           }));
 
-          // 1. Open the panel modal only if handler isn't registered yet
-          const needsOpen = !registry.hasHandler(act.panel, act.action);
+          // 1. Check handler and UI requirements
+          const hasHandler = registry.hasHandler(act.panel, act.action);
+          const needsUI = registry.needsUI(act.panel, act.action); // defaults to true
+
+          // 2. Open modal if: (a) handler not registered yet, or (b) action needs_ui and modal isn't active
+          const modalsState = win.__panelModalsState as Record<string, boolean | string> | undefined;
+          const isActive = modalsState ? !!modalsState[act.panel] : false;
+          const needsOpen = !hasHandler || (needsUI && !isActive);
           if (needsOpen) {
-            // Determine modal mode from layout: dismissible panels open as dismissible
             const layout = registry.getLayout() as Record<string, Record<string, string>> | null;
             const placement = layout?.placement?.[act.panel];
             const mode = placement === "modal-dismissible" ? "dismissible" : true;
@@ -268,10 +273,14 @@ function ChatInput({ disabled, onSend, sessionId, choices, pendingEvents, showOO
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ action: "open", name: act.panel, mode }),
             });
+            // Brief delay for modal to become visible (UI animations need it)
+            if (needsUI) await new Promise(r => setTimeout(r, 150));
           }
 
-          // 2. Wait for handler to be registered
-          await registry.waitForHandler(act.panel, act.action, 8000);
+          // 3. Wait for handler registration only if not already registered
+          if (!hasHandler) {
+            await registry.waitForHandler(act.panel, act.action, 8000);
+          }
 
           // 3. Execute via registry (records to history + runs handler)
           //    sendMessage inside handler is suppressed; queueEvent still works

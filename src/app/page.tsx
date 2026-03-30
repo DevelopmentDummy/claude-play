@@ -263,7 +263,7 @@ export default function LobbyPage() {
           <div className="flex items-end gap-2.5">
             <h1 className="text-xl tracking-tight" style={{ fontWeight: 300, letterSpacing: "-0.02em" }}>
               <span className="text-accent" style={{ fontWeight: 600 }}>Claude</span>
-              <span className="text-text-dim" style={{ fontWeight: 300 }}>{" "}Bridge</span>
+              <span className="text-text-dim" style={{ fontWeight: 300 }}>{" "}Play</span>
             </h1>
           </div>
 

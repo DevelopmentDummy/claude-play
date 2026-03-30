@@ -43,21 +43,32 @@ export default function ModalPanel({
   const contentZ = 9999 + zIndex * 2;
   const containerRef = useRef<HTMLDivElement>(null);
   const shadowRef = useRef<ShadowRoot | null>(null);
+  const prevHtmlRef = useRef<string>("");
   const [modalSrc, setModalSrc] = useState<string | null>(null);
   const [visible, setVisible] = useState(false);
   const [closed, setClosed] = useState(false);
   const [minimizing, setMinimizing] = useState(false);
+  // Counter to force shadow re-render when modal becomes active
+  const [renderEpoch, setRenderEpoch] = useState(0);
 
   // Animate in when active becomes true (or on initial mount if active)
+  const prevActiveRef = useRef(active);
   useEffect(() => {
     if (active) {
       setClosed(false);
       setVisible(false);
       requestAnimationFrame(() => setVisible(true));
+      // Force shadow re-render when modal becomes active again
+      // (e.g. competition/adventure panel needs fresh DOM/scripts each time it opens)
+      if (!prevActiveRef.current) {
+        prevHtmlRef.current = "";
+        setRenderEpoch(e => e + 1);
+      }
     } else {
       setVisible(false);
       setClosed(true);
     }
+    prevActiveRef.current = active;
   }, [active]);
 
   const handleClose = useCallback(() => {
@@ -132,8 +143,8 @@ export default function ModalPanel({
     }
   }, []);
 
-  // Render shadow content only when html actually changes
-  const prevHtmlRef = useRef<string>("");
+  // Render shadow content only when html actually changes (or when prevHtmlRef is reset by active toggle)
+  // NOTE: prevHtmlRef is declared above, near other refs
   useEffect(() => {
     const shadow = shadowRef.current;
     if (!shadow) return;
@@ -172,7 +183,7 @@ export default function ModalPanel({
 
     // Clear panel name context
     delete (window as unknown as Record<string, unknown>).__currentPanelName;
-  }, [html, name]);
+  }, [html, name, renderEpoch]);
 
   // No clearPanel on unmount — modal panels stay mounted (hidden via display:none)
   // so that panel action handlers remain alive for choice actions.

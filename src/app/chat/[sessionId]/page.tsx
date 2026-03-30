@@ -98,6 +98,7 @@ export default function ChatPage() {
   const autoplayOnRef = useRef(false);
   const [steeringPreset, setSteeringPreset] = useState<SteeringPreset | null>(null);
   const [steeringModalOpen, setSteeringModalOpen] = useState(false);
+  const [forceInput, setForceInput] = useState(false);
   const autoplayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastAssistantTextRef = useRef("");
   const isMobile = useIsMobile();
@@ -676,6 +677,10 @@ export default function ChatPage() {
   // Determine which modal panels are currently active (driven by __modals in variables.json)
   // __modals values: true = required (no dismiss), "dismissible" = user can close freely
   const modalsState = (panelData as Record<string, unknown>)?.__modals as Record<string, boolean | string> | undefined;
+  // Expose modals state to window for ChatInput choice action access
+  useEffect(() => {
+    (window as unknown as Record<string, unknown>).__panelModalsState = modalsState || {};
+  }, [modalsState]);
   // On mobile, dock panels are promoted to modals for better usability
   const effectiveModalPanels = isMobile
     ? [...modalPanels, ...dockBottomPanels, ...dockLeftPanels, ...dockRightPanels]
@@ -907,6 +912,8 @@ export default function ChatPage() {
         voiceChat={voiceChat}
         onVoiceChatToggle={() => setVoiceChat((v) => !v)}
         onSettings={() => setOptionsModalOpen(true)}
+        forceInput={forceInput}
+        onForceInputToggle={() => setForceInput((v) => !v)}
       />
       <ErrorBanner error={error} onDismiss={() => setError(null)} />
       <div className="flex-1 relative min-h-0">
@@ -965,8 +972,8 @@ export default function ChatPage() {
           <div
             style={{
               overflow: "hidden",
-              maxHeight: hasRequiredModal ? 0 : 200,
-              opacity: hasRequiredModal ? 0 : 1,
+              maxHeight: hasRequiredModal && !forceInput ? 0 : 200,
+              opacity: hasRequiredModal && !forceInput ? 0 : 1,
               transition: "max-height 0.25s ease, opacity 0.2s ease",
             }}
           >
