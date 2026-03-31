@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { MODEL_GROUPS } from "@/lib/ai-provider";
 
 interface StatusBarProps {
@@ -84,15 +85,23 @@ export default function StatusBar({
   onForceInputToggle,
 }: StatusBarProps) {
   const [debugOpen, setDebugOpen] = useState(false);
-  const debugRef = useRef<HTMLDivElement>(null);
+  const debugBtnRef = useRef<HTMLButtonElement>(null);
+  const debugMenuRef = useRef<HTMLDivElement>(null);
+  const [debugPos, setDebugPos] = useState<{ x: number; y: number } | null>(null);
 
-  // Close debug menu on outside click
+  // Position menu below button and close on outside click
   useEffect(() => {
     if (!debugOpen) return;
+    if (debugBtnRef.current) {
+      const rect = debugBtnRef.current.getBoundingClientRect();
+      setDebugPos({ x: rect.right, y: rect.bottom + 4 });
+    }
     const handler = (e: MouseEvent) => {
-      if (debugRef.current && !debugRef.current.contains(e.target as Node)) {
-        setDebugOpen(false);
-      }
+      if (
+        debugBtnRef.current?.contains(e.target as Node) ||
+        debugMenuRef.current?.contains(e.target as Node)
+      ) return;
+      setDebugOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -176,8 +185,9 @@ export default function StatusBar({
 
         {/* Debug / Tools dropdown */}
         {hasDebugItems && (
-          <div className="relative" ref={debugRef}>
+          <>
             <button
+              ref={debugBtnRef}
               onClick={() => setDebugOpen(!debugOpen)}
               className={`px-2 py-1 rounded-md text-xs border cursor-pointer transition-all duration-fast
                 ${debugOpen
@@ -188,11 +198,13 @@ export default function StatusBar({
             >
               &#9776;
             </button>
-            {debugOpen && (
-              <div className="absolute right-0 top-full mt-1 min-w-[160px] py-1
-                rounded-lg border border-border/60 bg-[rgba(20,16,32,0.97)]
-                shadow-[0_8px_32px_rgba(0,0,0,0.5)] z-[100]
-                animate-[fadeIn_100ms_ease-out]"
+            {debugOpen && debugPos && createPortal(
+              <div
+                ref={debugMenuRef}
+                style={{ position: "fixed", top: debugPos.y, right: window.innerWidth - debugPos.x }}
+                className="min-w-[160px] py-1
+                  rounded-lg border border-border/60 bg-[rgba(20,16,32,0.97)]
+                  shadow-[0_8px_32px_rgba(0,0,0,0.5)] z-[9999]"
               >
                 {onForceInputToggle && (
                   <button
@@ -236,9 +248,10 @@ export default function StatusBar({
                     Reconnect
                   </button>
                 )}
-              </div>
+              </div>,
+              document.body
             )}
-          </div>
+          </>
         )}
 
         {/* Builder: service (provider) selector */}
