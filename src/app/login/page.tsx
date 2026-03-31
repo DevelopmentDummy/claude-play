@@ -22,7 +22,8 @@ export default function LoginPage() {
       });
 
       if (res.ok) {
-        router.replace("/");
+        // Full page navigation to ensure middleware re-evaluates auth cookie
+        window.location.href = "/";
         return;
       }
 

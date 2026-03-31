@@ -55,13 +55,15 @@ export async function POST(req: Request) {
   }
 
   const token = createAuthToken();
-  const isProduction = process.env.NODE_ENV === "production";
+  // Only set secure flag if actually served over HTTPS
+  const isSecure = req.url.startsWith("https://")
+    || req.headers.get("x-forwarded-proto") === "https";
 
   const res = NextResponse.json({ ok: true });
   res.cookies.set(AUTH_COOKIE_NAME, token, {
     httpOnly: true,
-    secure: isProduction,
-    sameSite: "strict",
+    secure: isSecure,
+    sameSite: isSecure ? "strict" : "lax",
     maxAge: TOKEN_MAX_AGE,
     path: "/",
   });
