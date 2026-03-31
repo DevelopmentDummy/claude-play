@@ -204,6 +204,36 @@
   .result-stat .val.gold { color: var(--gold); }
   .result-stat .val.red { color: var(--red); }
 
+  .slot-stats {
+    margin-bottom: 14px;
+    padding: 12px;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(232,160,191,0.08);
+    border-radius: 8px;
+    text-align: left;
+  }
+  .slot-stats-title {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--accent, #e8a0bf);
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+  }
+  .ss-row {
+    display: flex; align-items: center; gap: 6px;
+    margin-bottom: 5px;
+  }
+  .ss-name { font-size: 10px; color: var(--dim, #9988aa); width: 40px; text-align: right; }
+  .ss-bar { flex: 1; height: 8px; background: rgba(0,0,0,0.3); border-radius: 4px; overflow: hidden; }
+  .ss-fill { height: 100%; border-radius: 4px; transition: width 0.8s ease; }
+  .ss-fill.up { background: linear-gradient(90deg, #38b868, #6ee09a); }
+  .ss-fill.dn { background: linear-gradient(90deg, #c05070, #f08098); }
+  .ss-fill.stress-up { background: linear-gradient(90deg, #d06080, #f08098); }
+  .ss-fill.stress-dn { background: linear-gradient(90deg, #50c880, #a0f0c0); }
+  .ss-delta { font-size: 10px; font-weight: 700; width: 36px; }
+  .ss-delta.pos { color: #6ee09a; }
+  .ss-delta.neg { color: #f08098; }
+
   .penalty-list {
     background: rgba(240,128,152,0.06);
     border: 1px solid rgba(240,128,152,0.15);
@@ -337,6 +367,7 @@
     <div class="result-stats" id="resultStats"></div>
     <div class="penalty-list" id="penaltyList" style="display:none"></div>
     <div class="treasures-list" id="treasuresList" style="display:none"></div>
+    <div class="slot-stats" id="slotStatsList" style="display:none"></div>
     <button class="complete-btn" id="btnComplete">완료</button>
   </div>
 </div>
@@ -669,6 +700,94 @@
     } else {
       trEl.style.display = 'none';
     }
+
+    // Slot-level stat changes (from __adventure.slot_stat_changes)
+    const ssEl = $('slotStatsList');
+    const slotChanges = adv?.slot_stat_changes || {};
+    const slotGold = adv?.slot_gold_change || 0;
+    const slotCost = adv?.slot_cost_paid || 0;
+    const slotEvents = adv?.slot_events || [];
+    const hasSlotChanges = Object.keys(slotChanges).length > 0 || slotGold !== 0 || slotCost !== 0;
+
+    if (hasSlotChanges && ssEl) {
+      ssEl.style.display = '';
+      let html = '<div class="slot-stats-title">📊 활동 결과</div>';
+
+      for (const [stat, delta] of Object.entries(slotChanges)) {
+        if (stat.startsWith('_') || delta === 0) continue;
+        const isStress = stat === 'stress';
+        const isPositive = isStress ? delta < 0 : delta > 0;
+        const fillClass = isStress ? (delta < 0 ? 'stress-dn' : 'stress-up') : (delta > 0 ? 'up' : 'dn');
+        const deltaClass = isPositive ? 'pos' : 'neg';
+        const sign = delta > 0 ? '+' : '';
+        const pct = Math.min(100, Math.abs(delta) * 3); // visual scale
+        html += `<div class="ss-row">
+          <span class="ss-name">${STAT_NM[stat]||stat}</span>
+          <div class="ss-bar"><div class="ss-fill ${fillClass}" style="width:${pct}%"></div></div>
+          <span class="ss-delta ${deltaClass}">${sign}${delta}</span>
+        </div>`;
+      }
+
+      if (slotGold !== 0) {
+        const sign = slotGold > 0 ? '+' : '';
+        html += `<div class="ss-row">
+          <span class="ss-name">골드</span>
+          <div class="ss-bar"><div class="ss-fill ${slotGold>0?'up':'dn'}" style="width:${Math.min(100,Math.abs(slotGold))}%"></div></div>
+          <span class="ss-delta ${slotGold>0?'pos':'neg'}">${sign}${slotGold}G</span>
+        </div>`;
+      }
+
+      if (slotEvents.length > 0) {
+        const EVT_ICO = {critical_success:'🌟',failure:'💫',encounter:'👤',dark_encounter:'🌑',tip:'💰',inspiration:'✨'};
+        for (const e of slotEvents) {
+          if (e.type === 'wish_bonus' || e.type === 'wish_penalty') continue;
+          html += `<div style="font-size:10px;color:var(--dim);margin-top:4px">${EVT_ICO[e.type]||'📌'} ${e.message}</div>`;
+        }
+      }
+
+      ssEl.innerHTML = html;
+    } else if (ssEl) {
+      ssEl.style.display = 'none';
+    }
+  }
+
+  // ═══ SLOT_RESULT builder (mirrors advance panel's buildSlotSummary) ═══
+  // Uses slot-level data stored in __adventure by the engine.
+  function buildSlotResultHeader(adv) {
+    const d = __panelBridge.data;
+    const FULL_STAT_NM = {stamina:'체력',intelligence:'지력',elegance:'기품',charm:'매력',morals:'도덕',
+      sensitivity:'감수성',faith:'신앙',combat:'무술',etiquette:'예절',cooking:'요리',art:'예술',
+      music:'음악',stress:'스트레스',reputation:'명성',hp:'HP',weight:'체중'};
+
+    const l = [`[SLOT_RESULT] ${d.current_year}년차 ${d.current_month}월 ${adv.slot_label || ''}`];
+    l.push(`활동: ${adv.slot_activity_name || '모험'} (${adv.slot_activity_category || 'adventure'})`);
+    if (adv.slot_activity_context) {
+      const ctx = adv.slot_activity_context;
+      const countStr = `통산 ${ctx.total_count}회째`;
+      const lastStr = ctx.last_period ? `이전: ${ctx.last_period}` : '첫 도전';
+      l.push(`📊 ${countStr} | ${lastStr}`);
+    }
+    const changes = adv.slot_stat_changes || {};
+    const ch = Object.entries(changes)
+      .filter(([k]) => !k.startsWith('_'))
+      .map(([k,v]) => `${FULL_STAT_NM[k]||k}${v>=0?'+':''}${v}`)
+      .join(', ');
+    if (ch) l.push(`스탯 변화: ${ch}`);
+    if (adv.slot_cost_paid) l.push(`비용: -${adv.slot_cost_paid}G`);
+    if (adv.slot_pay_earned) l.push(`수입: +${adv.slot_pay_earned}G`);
+    for (const e of (adv.slot_events || [])) {
+      const p = {critical_success:'🌟',failure:'💫',exam:'📝',sparring:'⚔️',tip:'💰',inspiration:'✨',encounter:'👤',dark_encounter:'🌑',
+                 wish_bonus:'📌',wish_penalty:'📌'}[e.type]||'📌';
+      l.push(`${p} ${e.message}`);
+    }
+    if (adv.slot_values_trigger) {
+      const vt = adv.slot_values_trigger;
+      l.push(`\n[VALUES_TRIGGER] reason=${vt.reason} topic=${vt.topic}`);
+      l.push(`context: ${vt.context}`);
+      if (vt.stat) l.push(`stat: ${vt.stat} milestone: ${vt.milestone}`);
+      l.push(`→ __values_prompt를 설정한 뒤, 서사 마지막에 $PANEL:values-trigger$ 토큰을 삽입하라. 유저가 버튼을 눌러야 모달이 열린다.`);
+    }
+    return l.join('\n');
   }
 
   async function doComplete() {
@@ -677,30 +796,114 @@
 
     try {
       const adv = getAdv();
+      // Capture slot-level data before adventure_complete clears __adventure
+      const slotResultHeader = buildSlotResultHeader(adv);
+      const pendingTransition = adv.slot_pending_transition || window.__advSlotPendingTransition || false;
+      const slotPopups = window.__advSlotPopups || null;
+
       const res = await __panelBridge.runTool('engine', { action: 'adventure_complete' });
       const r = res?.result;
       if (!r || !r.success) { _busy = false; return; }
 
+      // Build [ADVENTURE_COMPLETE] section
       const s = r.summary;
-      let msg = `[ADVENTURE_COMPLETE] ${s.zone}\n상태: ${s.status}`;
+      let advMsg = `\n[ADVENTURE_COMPLETE] ${s.zone}\n상태: ${s.status}`;
       for (const b of (s.battles || [])) {
-        msg += `\n- ${b.enemy}: ${b.won?'승리':'패배'} (${b.rounds}R, 피해${b.damage_taken}${b.rewards?.gold?', +'+b.rewards.gold+'G':''})`;
+        advMsg += `\n- ${b.enemy}: ${b.won?'승리':'패배'} (${b.rounds}R, 피해${b.damage_taken}${b.rewards?.gold?', +'+b.rewards.gold+'G':''})`;
       }
-      if (s.treasures?.length) msg += `\n보물: ${s.treasures.join(', ')}`;
-      msg += `\nHP 잔여: ${s.hp_remaining}/${s.hp_max}`;
+      if (s.treasures?.length) advMsg += `\n보물: ${s.treasures.join(', ')}`;
+      advMsg += `\nHP 잔여: ${s.hp_remaining}/${s.hp_max}`;
       if (s.status === 'defeated') {
-        msg += `\n💀 패배 — 패널티 적용됨`;
+        advMsg += `\n💀 패배 — 패널티 적용됨`;
         if (s.dark_path) {
-          msg += `\n[DARK_PATH_DEFEAT] 어둠의 길 활성화 상태에서 전투 패배. 의식을 잃은 올리브가 적에게 무방비 상태로 노출됨. 다크패스 수위에 맞는 패배 씬을 구성하라 — 전투형 게임의 패배 연출 참조. CLAUDE.md "다크패스 서사" 섹션의 나이별 묘사 수위를 따를 것.`;
+          advMsg += `\n[DARK_PATH_DEFEAT] 어둠의 길 활성화 상태에서 전투 패배. 의식을 잃은 올리브가 적에게 무방비 상태로 노출됨. 다크패스 수위에 맞는 패배 씬을 구성하라 — 전투형 게임의 패배 연출 참조. CLAUDE.md "다크패스 서사" 섹션의 나이별 묘사 수위를 따를 것.`;
         }
       }
-      if (s.status === 'retreated') msg += `\n🏃 퇴각`;
+      if (s.status === 'retreated') advMsg += `\n🏃 퇴각`;
 
-      // Close adventure modal and open advance dock FIRST
-      await __panelBridge.openModal('advance', true);
+      // Combined message: [SLOT_RESULT] + [ADVENTURE_COMPLETE]
+      const combinedMsg = slotResultHeader + '\n' + advMsg;
 
-      // Then send message after modal is closed
-      await __panelBridge.queueEvent(msg);
+      // Re-open advance dock if not pending transition
+      if (!pendingTransition) {
+        await __panelBridge.openModal('advance', true);
+      }
+
+      // Queue combined event and send single message
+      await __panelBridge.queueEvent(combinedMsg);
+
+      // Handle popups from slot processing (deferred from advance panel)
+      if (slotPopups && slotPopups.length > 0) {
+        // Setup popup hook for after AI response
+        if (window.__popupTurnEndUnsub) {
+          window.__popupTurnEndUnsub();
+          window.__popupTurnEndUnsub = null;
+        }
+        const pendingPopups = [...slotPopups];
+        window.__popupTurnEndUnsub = __panelBridge.on('turnEnd', async () => {
+          if (window.__popupTurnEndUnsub) {
+            window.__popupTurnEndUnsub();
+            window.__popupTurnEndUnsub = null;
+          }
+          window.__popupsPlaying = true;
+          await __panelBridge.updateVariables({ __popups: pendingPopups });
+        });
+      }
+
+      // Handle pending_transition (month advance after slot 3)
+      if (pendingTransition) {
+        if (window.__transitionTurnEndUnsub) {
+          window.__transitionTurnEndUnsub();
+          window.__transitionTurnEndUnsub = null;
+        }
+        window.__transitionTurnEndUnsub = __panelBridge.on('turnEnd', async () => {
+          if (window.__transitionTurnEndUnsub) {
+            window.__transitionTurnEndUnsub();
+            window.__transitionTurnEndUnsub = null;
+          }
+          await __panelBridge.updateVariables({
+            __popups: [{ type: 'info', title: '월말 정산', message: '다음 달을 준비하고 있습니다...', icon: '📅' }]
+          });
+          let tr;
+          try {
+            tr = await __panelBridge.runTool('engine', { action: 'turn_transition' });
+          } catch (e) { return; }
+          if (!tr.result?.success) return;
+
+          const result = tr.result;
+          if (result.popups && result.popups.length > 0) {
+            await __panelBridge.updateVariables({ __popups: result.popups });
+          }
+          if (result.needs_narration && result.month_summary) {
+            const ms = result.month_summary;
+            const d = __panelBridge.data;
+            let ml = [`[MONTH_END] → ${ms.year}년차 ${ms.month}월 (${ms.season}), ${d.name} ${ms.age}세`];
+            if (ms.stress_event) ml.push(`⚠ ${ms.stress_event.message}`);
+            for (const e of (ms.events||[]))
+              ml.push(`${e.type==='unlock'?'🔓':e.type==='seasonal'?'🎉':e.type==='birthday'?'🎂':'📌'} ${e.message}`);
+            if (ms.competitions_available?.length)
+              ml.push(`🏆 참가 가능 대회: ${ms.competitions_available.map(c=>c.name).join(', ')}`);
+            if (ms.next_wish) ml.push(`💭 다음 달 소원: ${ms.next_wish.text}`);
+            if (ms.ending_notice) ml.push(`🏆 ${ms.ending_notice}`);
+            if (ms.portrait_update) {
+              const pu = ms.portrait_update;
+              ml.push(`\n[PORTRAIT_UPDATE] ${pu.reason === 'stance_change' ? `스탠스 변경: ${pu.old_stance} → ${pu.new_stance}` : `나이 변경: ${pu.age}세`}`);
+              ml.push(`→ standing_portrait.png를 재생성하고 portrait_needs_update를 false로 설정하라. 워크플로: profile, 파일명: standing_portrait.png`);
+            }
+            const header = ml.join('\n');
+            const popupDelay = (result.popups?.length || 0) * 4500 + 500;
+            setTimeout(async () => {
+              await __panelBridge.queueEvent(header);
+              window.dispatchEvent(new CustomEvent('__panel_send_message', { detail: '[월말 정산]' }));
+            }, popupDelay);
+          }
+        });
+      }
+
+      // Clean up window state
+      window.__advSlotPopups = null;
+      window.__advSlotPendingTransition = false;
+
       setTimeout(() => {
         window.dispatchEvent(new CustomEvent('__panel_send_message', { detail: '[모험 완료]' }));
       }, 300);

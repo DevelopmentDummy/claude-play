@@ -702,6 +702,20 @@
     }
     const r = res.result;
 
+    // ═══ ADVENTURE: skip all animation/message, open adventure modal directly ═══
+    // The adventure panel will handle sending [SLOT_RESULT] + [ADVENTURE_COMPLETE] together
+    // after combat completes, producing a single AI response instead of two.
+    if (r.adventure_started) {
+      _animating = false;
+      _running = false;
+      // Store pending_transition + popups on window for adventure panel to pick up
+      window.__advSlotPopups = r.popups || null;
+      window.__advSlotPendingTransition = r.pending_transition || false;
+      // Open adventure modal directly — no message sent, no AI response yet
+      __panelBridge.openModal('adventure', true);
+      return;
+    }
+
     if (r.steps && r.steps.length > 0) {
       // ═══ DAILY SIM ANIMATION ═══
       const simEl = shadow.querySelector('#simArea');
@@ -1146,7 +1160,7 @@
 
     // Re-open advance dock for next slot (sendMessage auto-closes panels)
     // pending_transition이면 복원 불필요 (곧 setup으로 갈 예정)
-    if (!r.pending_transition && !r.adventure_started) {
+    if (!r.pending_transition) {
       setTimeout(() => {
         __panelBridge.openModal('advance', true);
       }, 500);
@@ -1155,11 +1169,6 @@
     // 활동 팝업은 AI 응답 후에 (기존 패턴 유지)
     if (r.popups && r.popups.length > 0) {
       setupPopupHook(r.popups);
-    }
-
-    // 모험 모달도 AI 응답 후에 (기존 패턴 유지)
-    if (r.adventure_started) {
-      setupAdventureHook();
     }
 
     // Phase 2: 월 전환 (활동 AI 응답 완료 후)
@@ -1182,26 +1191,6 @@
       // Batch set all popups at once to avoid PopupEffect resetting on each addition
       window.__popupsPlaying = true;
       await __panelBridge.updateVariables({ __popups: pendingPopups });
-    });
-  }
-
-  function setupAdventureHook() {
-    // Clean up any orphaned listener from previous render
-    if (window.__advTurnEndUnsub) {
-      window.__advTurnEndUnsub();
-      window.__advTurnEndUnsub = null;
-    }
-    window.__advTurnEndUnsub = __panelBridge.on('turnEnd', () => {
-      // One-shot: clean up immediately
-      if (window.__advTurnEndUnsub) {
-        window.__advTurnEndUnsub();
-        window.__advTurnEndUnsub = null;
-      }
-      // Only open if adventure data actually exists and is pending
-      const adv = __panelBridge.data?.__adventure;
-      if (adv && adv.active && adv.status === 'encounter') {
-        __panelBridge.openModal('adventure', true);
-      }
     });
   }
 
@@ -1310,9 +1299,6 @@
         l.push(`- ${b.enemy}: ${b.won?'승리':'패배'} (${b.rounds}R, 피해${b.damage_taken}${b.rewards?.gold?', +'+b.rewards.gold+'G':''})`);
       if (r.adventure_result.treasures.length) l.push(`보물: ${r.adventure_result.treasures.join(', ')}`);
       l.push(`HP 잔여: ${r.adventure_result.hp_remaining}`);
-    }
-    if (r.adventure_started) {
-      l.push(`\n[ADVENTURE_STARTED] 모험 패널에서 전투를 진행하세요.`);
     }
     if (r.values_trigger) {
       l.push(`\n[VALUES_TRIGGER] reason=${r.values_trigger.reason} topic=${r.values_trigger.topic}`);

@@ -2239,8 +2239,21 @@ const ACTIONS = {
         if (advState) {
           advState.player_hp = v.hp || 0;
           advState.player_max_hp = v.hp_max || 40;
+          // Include full slot result so adventure panel can build [SLOT_RESULT] after combat
+          advState.slot_stat_changes = { ...statChanges };
+          advState.slot_gold_change = goldChange;
+          advState.slot_cost_paid = costPaid;
+          advState.slot_events = events.map(e => ({ type: e.type, message: e.message }));
+          advState.slot_pay_earned = payEarned;
+          advState.slot_wish_followed = wishFollowed;
+          advState.slot_pending_transition = (nextSlot === 3);
+          advState.slot_number = nextSlot;
+          advState.slot_label = SLOT_LABELS[nextSlot];
+          advState.slot_activity_name = act.name;
+          advState.slot_activity_category = act.category;
+          advState.slot_activity_context = activityContext;
+          advState.slot_values_trigger = valuesTrigger || null;
           v.__adventure = advState;
-          // adventure modal is opened by advance panel after AI turn completes (turnEnd)
         }
       }
     }
