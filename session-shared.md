@@ -272,14 +272,15 @@ mcp__claude_play__run_tool({
    - 예: 슬롯 진행, 스케줄 확정, 가치관 선택
 
 2. **툴 액션** — UI 없이 엔진을 직접 호출하는 단순 조작
-   - `{"tool": "engine", "args": {"action": "액션명", ...추가파라미터}}`
+   - `{"tool": "engine", "action": "액션명", "args": {추가파라미터}}`
+   - `tool`: 도구 이름 (예: `"engine"`), `action`: 실행할 액션명, `args`: 추가 파라미터 (선택)
    - 패널을 거치지 않고 엔진에 직접 요청한다
    - 예: 골드 차감, 아이템 사용, NPC 선물 등 간단한 상태 변경
 
 두 유형을 한 `actions` 배열에 섞어서 **체인**할 수 있다:
 ```
 {"text": "리본 사서 미연 언니한테 줘!", "score": 0.80, "actions": [
-  {"tool": "engine", "args": {"action": "buy_item", "item": "silk_ribbon"}},
+  {"tool": "engine", "action": "buy_item", "args": {"item": "silk_ribbon"}},
   {"panel": "advance", "action": "advance_slot"}
 ]}
 ```
