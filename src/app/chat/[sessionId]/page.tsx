@@ -262,10 +262,11 @@ export default function ChatPage() {
     setAutoPlay((prev) => {
       const next = !prev;
       localStorage.setItem("tts-autoplay", String(next));
+      // Notify server to skip/resume TTS generation
       fetch(`/api/sessions/${sessionId}/voice`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled: next }),
+        body: JSON.stringify({ ttsAutoPlay: next }),
       });
       return next;
     });
@@ -456,7 +457,7 @@ export default function ChatPage() {
     if (!sessionId) return;
     const header = getPanelActionRegistry().buildAvailableHeader();
     if (!header) return;
-    await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/events`, {
+    await fetch(`/api/sessions/${sessionId}/events`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ header }),
@@ -553,10 +554,17 @@ export default function ChatPage() {
 
       setProfileImage(data.profileImage ? `/api/sessions/${sessionId}/files/${data.profileImage}` : null);
 
-      // Sync autoPlay with session voice config
-      const voiceOn = data.voiceEnabled ?? false;
+      // Sync autoPlay: use client preference if stored, otherwise follow voice config
+      const stored = localStorage.getItem("tts-autoplay");
+      const voiceOn = stored !== null ? stored !== "false" : (data.voiceEnabled ?? false);
       setAutoPlay(voiceOn);
       localStorage.setItem("tts-autoplay", String(voiceOn));
+      // Notify server of initial TTS state
+      fetch(`/api/sessions/${sessionId}/voice`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ttsAutoPlay: voiceOn }),
+      });
 
       // Load chat options
       if (data.chatOptions) {

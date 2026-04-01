@@ -154,6 +154,7 @@ function handleMessage(
       if (silent) {
         // Silent mode: send to AI only — no history, no broadcast
         // Still flush pending event headers so they reach the AI
+        instance.runMessageHooks(text);
         const eventHeaders = instance.flushEvents();
         const hintSnapshot = instance.buildHintSnapshot();
         const actionHistory = instance.flushActions();
@@ -168,6 +169,9 @@ function handleMessage(
         instance.clearPopups();
       }
       instance.addUserToHistory(text, isOOC);
+
+      // Run per-persona message hooks (e.g. dynamic hint data)
+      if (!isOOC) instance.runMessageHooks(text);
 
       // Flush pending event headers and prepend to AI message
       const eventHeaders = isOOC ? "" : instance.flushEvents();

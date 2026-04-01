@@ -186,6 +186,8 @@ export class SessionInstance {
   // TTS queue — serialize requests to avoid ENOBUFS
   private ttsQueue: Array<() => Promise<void>> = [];
   private ttsRunning = false;
+  /** Client-side TTS toggle — when false, skip TTS generation even if voice.json is configured */
+  ttsAutoPlay = true;
 
   constructor(
     id: string,
@@ -358,6 +360,72 @@ export class SessionInstance {
     return buildHintSnapshotLine(dir);
   }
 
+  /**
+   * Run session hooks/on-message.js if it exists.
+   * Called before building hint snapshot so hooks can massage data.
+   * Hook receives { variables, data, sessionDir, message } and may return
+   * { variables?: patch, data?: { filename: patch } } to apply changes.
+   */
+  runMessageHooks(messageText: string): void {
+    const dir = this.getDir();
+    if (!dir) return;
+    const hookPath = path.join(dir, "hooks", "on-message.js");
+    if (!fs.existsSync(hookPath)) return;
+
+    try {
+      // Build context (same pattern as tools)
+      const varsPath = path.join(dir, "variables.json");
+      let variables: Record<string, unknown> = {};
+      try { variables = JSON.parse(fs.readFileSync(varsPath, "utf-8")); } catch {}
+
+      const SYSTEM_JSON = new Set([
+        "variables.json", "session.json", "builder-session.json", "layout.json",
+        "chat-history.json", "pending-events.json", "pending-actions.json",
+        "package.json", "tsconfig.json", "voice.json", "chat-options.json",
+      ]);
+      const data: Record<string, unknown> = {};
+      try {
+        for (const f of fs.readdirSync(dir)) {
+          if (f.endsWith(".json") && !SYSTEM_JSON.has(f)) {
+            try { data[f.replace(".json", "")] = JSON.parse(fs.readFileSync(path.join(dir, f), "utf-8")); } catch {}
+          }
+        }
+      } catch {}
+
+      // eslint-disable-next-line no-eval
+      const nativeRequire = eval("require") as NodeRequire;
+      delete nativeRequire.cache[hookPath];
+      const mod = nativeRequire(hookPath);
+      const fn = typeof mod === "function" ? mod : mod.default;
+      if (typeof fn !== "function") return;
+
+      const result = fn({ variables: { ...variables }, data, sessionDir: dir, message: messageText });
+      if (!result || typeof result !== "object") return;
+
+      // Apply variable patches
+      if (result.variables && typeof result.variables === "object") {
+        const current = JSON.parse(fs.readFileSync(varsPath, "utf-8"));
+        const merged = { ...current, ...result.variables };
+        fs.writeFileSync(varsPath, JSON.stringify(merged, null, 2), "utf-8");
+      }
+
+      // Apply data file patches
+      if (result.data && typeof result.data === "object") {
+        for (const [rawKey, patch] of Object.entries(result.data as Record<string, Record<string, unknown>>)) {
+          if (!patch || typeof patch !== "object") continue;
+          const fileName = rawKey.endsWith(".json") ? rawKey : `${rawKey}.json`;
+          if (SYSTEM_JSON.has(fileName)) continue;
+          const filePath = path.join(dir, fileName);
+          let current: Record<string, unknown> = {};
+          try { if (fs.existsSync(filePath)) current = JSON.parse(fs.readFileSync(filePath, "utf-8")); } catch {}
+          fs.writeFileSync(filePath, JSON.stringify({ ...current, ...patch }, null, 2), "utf-8");
+        }
+      }
+    } catch (err) {
+      console.error("[hooks/on-message] error:", err);
+    }
+  }
+
   /** Clear __popups from variables.json (called on new user message) */
   clearPopups(): void {
     const dir = this.getDir();
@@ -477,6 +545,7 @@ export class SessionInstance {
   private triggerTts(dialogText: string, overrideMessageId?: string): void {
     if (process.env.TTS_ENABLED === "false") return;
     if (this.isBuilder) return;
+    if (!this.ttsAutoPlay) return;
 
     const dir = this.getDir();
     if (!dir) return;

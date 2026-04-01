@@ -525,6 +525,54 @@ mcp__claude_play__run_tool({ tool: "engine", args: { action: "milking", params: 
 - 커스텀 도구가 있고, 패널 인터랙션이 풍부한 페르소나에서 유용
 - 단순 호감도/대화만 있는 페르소나에서는 불필요
 
+### `hooks/on-message.js` — 메시지 훅 (선택)
+
+매 사용자 메시지 전송 직전에 서버 사이드에서 자동 실행되는 스크립트. `hint-rules.json`이 읽기 전에 데이터를 동적으로 가공하여 **조건부 힌트**를 구현할 수 있다.
+
+**실행 타이밍:** 사용자 메시지 → `runMessageHooks()` → `buildHintSnapshot()` → AI 전송. 훅이 수정한 데이터가 hint-rules에 바로 반영된다. OOC 메시지에서는 실행되지 않는다.
+
+**인터페이스:**
+```javascript
+// hooks/on-message.js
+module.exports = function({ variables, data, sessionDir, message }) {
+  // variables: variables.json 현재 값 (읽기 전용 사본)
+  // data: 커스텀 *.json 파일들 (파일명 → 객체)
+  // sessionDir: 세션 디렉토리 절대 경로
+  // message: 사용자가 보낸 메시지 텍스트
+  
+  // 반환값으로 variables/data 패치 가능
+  return {
+    variables: { /* variables.json에 shallow merge */ },
+    data: { "파일명": { /* 해당 json에 shallow merge */ } }
+  };
+};
+```
+
+**사용 예시 — 동적 힌트 데이터:**
+```javascript
+module.exports = function({ variables, data }) {
+  const patch = {};
+  // HP 위험 단계를 동적으로 계산하여 hint-rules가 읽을 변수에 반영
+  const hpPct = variables.hp / (variables.hp_max || 1);
+  if (hpPct < 0.2) patch._hp_danger = "critical";
+  else if (hpPct < 0.5) patch._hp_danger = "warning";
+  else patch._hp_danger = "safe";
+  
+  return { variables: patch };
+};
+```
+
+**설계 원칙:**
+- **빠르게 실행되어야 한다** — 매 메시지마다 동기 실행되므로 I/O 최소화. 비동기 불가.
+- **`_` 접두사 관례** — 훅이 생성하는 파생 변수는 `_` 접두사로 구분 (예: `_hp_danger`, `_weather_mood`)
+- **hint-rules.json과 조합** — 훅이 계산한 변수를 hint-rules에서 `tier_mode`로 표시하면 정적 규칙 + 동적 데이터의 조합이 가능
+- tools/engine.js와 같은 context 구조이므로 로직 공유 가능
+
+**언제 만드는가:**
+- `hint-rules.json`만으로 표현 불가능한 **조건부/계산 기반 힌트**가 필요할 때
+- 매 턴마다 여러 변수를 조합한 파생 상태를 AI에게 전달해야 할 때
+- 단순 정적 힌트만 필요하면 `hint-rules.json`만으로 충분
+
 ### `hint-rules.json` — 상시 상태 스냅샷 규칙 (선택)
 
 AI에게 현재 게임/세션 상태를 자동으로 전달하기 위한 규칙 파일. 두 가지 경로로 전달된다:
@@ -927,6 +975,7 @@ yt-dlp "ytsearch5:{검색어}" --flat-playlist --dump-json --no-download 2>/dev/
 - [ ] 스킬 내용이 이 페르소나의 변수명/패널명과 일치하는가?
 - [ ] 커스텀 도구(`tools/*.js`)가 있다면, `hint-rules.json`이 적절히 작성되어 있는가?
 - [ ] `hint-rules.json`의 변수명이 `variables.json`의 키와 일치하는가?
+- [ ] 동적/조건부 힌트가 필요하면 `hooks/on-message.js`가 작성되어 있는가?
 - [ ] 패널 인터랙션이 풍부한 경우, `engine-meta.json`이 작성되어 있는가?
 - [ ] 사용자 버튼에 해당하는 액션이 모두 `actions`에 공개되어 있는가?
 - [ ] 시스템 내부 전용 액션이 `_internal_actions`에 분리되어 있는가?
