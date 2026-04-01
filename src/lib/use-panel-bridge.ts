@@ -138,6 +138,29 @@ export function usePanelBridge(
           detail: { text, duration: opts?.duration || 3000 },
         }));
       },
+      /** Show a confirm dialog. Returns a Promise<boolean> (true = confirmed, false = cancelled). */
+      confirm(message: string, opts?: { yesText?: string; noText?: string }): Promise<boolean> {
+        return new Promise((resolve) => {
+          const yesText = opts?.yesText || "확인";
+          const noText = opts?.noText || "취소";
+          const overlay = document.createElement("div");
+          overlay.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:99999;display:flex;align-items:center;justify-content:center;animation:__confirmFade 0.15s ease";
+          overlay.innerHTML = `
+            <style>@keyframes __confirmFade{from{opacity:0}to{opacity:1}}</style>
+            <div style="background:#121829;border:1px solid var(--accent,#c8a44e);border-radius:8px;padding:16px 20px;min-width:240px;max-width:300px;font-family:'Segoe UI',sans-serif;color:#e0ddd4;box-shadow:0 4px 20px rgba(0,0,0,0.5)">
+              <div style="font-size:13px;margin-bottom:14px;line-height:1.5;text-align:center">${message}</div>
+              <div style="display:flex;gap:8px;justify-content:center">
+                <button data-confirm="yes" style="padding:6px 20px;border-radius:5px;font-size:12px;cursor:pointer;font-family:'Segoe UI',sans-serif;border:1px solid var(--accent,#c8a44e);background:#1a2035;color:var(--accent,#c8a44e);transition:all 0.2s">${yesText}</button>
+                <button data-confirm="no" style="padding:6px 20px;border-radius:5px;font-size:12px;cursor:pointer;font-family:'Segoe UI',sans-serif;border:1px solid #1e2a45;background:#0d1220;color:#7a7a8a;transition:all 0.2s">${noText}</button>
+              </div>
+            </div>`;
+          const cleanup = (result: boolean) => { overlay.remove(); resolve(result); };
+          overlay.querySelector("[data-confirm=yes]")!.addEventListener("click", () => cleanup(true));
+          overlay.querySelector("[data-confirm=no]")!.addEventListener("click", () => cleanup(false));
+          overlay.addEventListener("click", (e) => { if (e.target === overlay) cleanup(false); });
+          document.body.appendChild(overlay);
+        });
+      },
       /** Subscribe to a bridge event. Returns an unsubscribe function. */
       on(event: string, handler: (detail?: unknown) => void): () => void {
         const wrapped = (e: Event) => handler((e as CustomEvent).detail);

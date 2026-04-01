@@ -268,7 +268,7 @@ function ChatInput({ disabled, onSend, sessionId, choices, pendingEvents, showOO
             const layout = registry.getLayout() as Record<string, Record<string, string>> | null;
             const placement = layout?.placement?.[act.panel];
             const mode = placement === "modal-dismissible" ? "dismissible" : true;
-            await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/modals`, {
+            await fetch(`/api/sessions/${sessionId}/modals`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ action: "open", name: act.panel, mode }),
@@ -290,7 +290,7 @@ function ChatInput({ disabled, onSend, sessionId, choices, pendingEvents, showOO
 
           // 4. If we opened the modal just for this action, close it after execution
           if (needsOpen) {
-            await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/modals`, {
+            await fetch(`/api/sessions/${sessionId}/modals`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ action: "close", name: act.panel }),
@@ -299,7 +299,7 @@ function ChatInput({ disabled, onSend, sessionId, choices, pendingEvents, showOO
 
         } else if (act.tool) {
           // ═══ Legacy Tool Action ═══
-          const toolRes = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/tools/${encodeURIComponent(act.tool)}`, {
+          const toolRes = await fetch(`/api/sessions/${sessionId}/tools/${encodeURIComponent(act.tool)}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ args: { action: act.action, ...(act.args || {}) } }),
@@ -310,7 +310,7 @@ function ChatInput({ disabled, onSend, sessionId, choices, pendingEvents, showOO
           }
           const toolData = await toolRes.json();
           const hint = toolData.result?.hints?.narrative || toolData.result?.hints?.summary || "completed";
-          await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/events`, {
+          await fetch(`/api/sessions/${sessionId}/events`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ header: `[${act.action}] ${hint}` }),
@@ -324,7 +324,7 @@ function ChatInput({ disabled, onSend, sessionId, choices, pendingEvents, showOO
       // [AVAILABLE] header: prefer registry, fallback to legacy
       const availableHeader = registry.buildAvailableHeader();
       if (availableHeader) {
-        await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/events`, {
+        await fetch(`/api/sessions/${sessionId}/events`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ header: availableHeader }),
@@ -333,7 +333,7 @@ function ChatInput({ disabled, onSend, sessionId, choices, pendingEvents, showOO
         const parts = lastAvailable.map((a: { action: string; label: string; args_hint: string | null }) =>
           a.args_hint ? `${a.action}(${a.label} ${a.args_hint})` : `${a.action}(${a.label})`
         );
-        await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/events`, {
+        await fetch(`/api/sessions/${sessionId}/events`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ header: `[AVAILABLE] ${parts.join(", ")}` }),

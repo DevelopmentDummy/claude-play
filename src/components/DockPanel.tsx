@@ -38,6 +38,15 @@ export default function DockPanel({
   const shadowRef = useRef<ShadowRoot | null>(null);
   const [modalSrc, setModalSrc] = useState<string | null>(null);
   const [visible, setVisible] = useState(false);
+  const [streaming, setStreaming] = useState(false);
+
+  // Track streaming state via global event
+  useEffect(() => {
+    const handler = (e: Event) => setStreaming(!!(e as CustomEvent).detail);
+    window.addEventListener("__bridge_streaming_change", handler);
+    setStreaming(!!(window as unknown as Record<string, unknown>).__bridgeIsStreaming);
+    return () => window.removeEventListener("__bridge_streaming_change", handler);
+  }, []);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   // Animate open/close
@@ -221,8 +230,15 @@ export default function DockPanel({
         {tabBar}
         {singleHeader}
         {/* Content */}
-        <div className="overflow-y-auto px-4 py-3 flex-1 min-h-0">
+        <div className="overflow-y-auto px-4 py-3 flex-1 min-h-0 relative">
           <div ref={containerRef} />
+          {streaming && (
+            <div
+              className="absolute inset-0 z-10"
+              style={{ cursor: "not-allowed" }}
+              title="AI 응답 중..."
+            />
+          )}
         </div>
       </div>
       {modalSrc && <ImageModal src={modalSrc} onClose={() => setModalSrc(null)} />}

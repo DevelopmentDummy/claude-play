@@ -986,7 +986,7 @@ export default function ChatPage() {
             }}
           >
             <ChatInput
-              disabled={isStreaming}
+              disabled={isStreaming || status === "compacting"}
               onSend={sendMessage}
               sessionId={sessionId}
               showOOC={showOOC}

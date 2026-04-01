@@ -50,6 +50,15 @@ export default function ModalPanel({
   const [minimizing, setMinimizing] = useState(false);
   // Counter to force shadow re-render when modal becomes active
   const [renderEpoch, setRenderEpoch] = useState(0);
+  const [streaming, setStreaming] = useState(false);
+
+  // Track streaming state via global event
+  useEffect(() => {
+    const handler = (e: Event) => setStreaming(!!(e as CustomEvent).detail);
+    window.addEventListener("__bridge_streaming_change", handler);
+    setStreaming(!!(window as unknown as Record<string, unknown>).__bridgeIsStreaming);
+    return () => window.removeEventListener("__bridge_streaming_change", handler);
+  }, []);
 
   // Animate in when active becomes true (or on initial mount if active)
   const prevActiveRef = useRef(active);
@@ -297,10 +306,17 @@ export default function ModalPanel({
             </div>
             {/* Content */}
             <div
-              className="px-5 py-4 overflow-y-auto"
+              className="px-5 py-4 overflow-y-auto relative"
               style={{ maxHeight: `calc(${maxHeight} - 52px)` }}
             >
               <div ref={containerRef} />
+              {streaming && (
+                <div
+                  className="absolute inset-0 z-10"
+                  style={{ cursor: "not-allowed" }}
+                  title="AI 응답 중..."
+                />
+              )}
             </div>
           </div>
         </div>

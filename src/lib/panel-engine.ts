@@ -102,9 +102,23 @@ export class PanelEngine {
     // Extract session ID from directory name for resource URL construction
     const sessionId = this.sessionDir ? path.basename(this.sessionDir) : "";
     let layout: unknown = null;
+    let userName = "";
     if (this.sessionDir) {
       try {
         layout = JSON.parse(fs.readFileSync(path.join(this.sessionDir, "layout.json"), "utf-8"));
+      } catch {}
+      // Resolve user name from session profile
+      try {
+        const meta = JSON.parse(fs.readFileSync(path.join(this.sessionDir, "session.json"), "utf-8"));
+        if (meta.profileSlug) {
+          const profilePath = path.join(getDataDir(), "profiles", `${meta.profileSlug}.json`);
+          if (fs.existsSync(profilePath)) {
+            const profile = JSON.parse(fs.readFileSync(profilePath, "utf-8"));
+            userName = profile.name || meta.profileSlug;
+          } else {
+            userName = meta.profileSlug;
+          }
+        }
       } catch {}
     }
     return {
@@ -113,6 +127,7 @@ export class PanelEngine {
       __sessionId: sessionId,
       __imageBase: sessionId ? `/api/sessions/${sessionId}/files/images/` : "",
       __layout: layout,
+      __userName: userName,
     };
   }
 
