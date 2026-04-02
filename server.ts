@@ -8,6 +8,7 @@ import { setupWebSocket } from "./src/lib/ws-server";
 import { handleTtsRequest } from "./src/lib/tts-handler";
 import { isAuthEnabled, verifyAuthToken, parseCookieToken } from "./src/lib/auth";
 import { shouldRedirectToSetup } from "./src/lib/setup-guard";
+import { destroyAllBackgroundProcesses } from "./src/lib/background-session";
 
 const dev = process.env.NODE_ENV !== "production";
 const hostname = "0.0.0.0";
@@ -212,6 +213,7 @@ for (const sig of ["exit", "SIGINT", "SIGTERM", "SIGHUP"] as const) {
   process.on(sig, () => {
     killTtsServer(ttsProcess);
     killGpuManager(gpuManagerProcess);
+    destroyAllBackgroundProcesses();
   });
 }
 
