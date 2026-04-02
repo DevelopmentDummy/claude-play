@@ -1,4 +1,4 @@
-import { spawn, execSync, ChildProcess } from "child_process";
+import { spawn, ChildProcess, execSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -25,7 +25,7 @@ const activeProcesses = new Map<number, ChildProcess>();
 // ── Helpers ─────────────────────────────────────────────────
 
 /** Build a clean env without CLAUDECODE/CLAUDE_CODE vars (prevents nested session errors) */
-function buildCleanEnv(): Record<string, string | undefined> {
+function buildCleanEnv(): NodeJS.ProcessEnv {
   const env = { ...process.env };
   for (const key of Object.keys(env)) {
     if (key.startsWith("CLAUDECODE") || key.startsWith("CLAUDE_CODE")) {
@@ -107,7 +107,7 @@ export function spawnBackgroundClaude(opts: FireAIOptions): FireAIResult {
   // MCP config from session directory
   const mcpConfigPath = path.join(sessionDir, ".mcp.json");
   if (fs.existsSync(mcpConfigPath)) {
-    args.push("--mcp-config", mcpConfigPath);
+    args.push("--mcp-config", mcpConfigPath, "--strict-mcp-config");
   }
 
   // Build clean env
@@ -128,7 +128,13 @@ export function spawnBackgroundClaude(opts: FireAIOptions): FireAIResult {
     shell: false,
   });
 
-  const pid = proc.pid!;
+  if (!proc.pid) {
+    logStream.write(`--- spawn failed: no pid ---\n`);
+    logStream.end();
+    throw new Error("Failed to spawn background claude process");
+  }
+
+  const pid = proc.pid;
   activeProcesses.set(pid, proc);
 
   console.log(`[background-session] Spawned pid=${pid} in ${sessionDir}`);
