@@ -996,6 +996,40 @@ server.registerTool(
   }
 );
 
+// ── Background Session (fire-and-forget) ──────────────────────────
+server.registerTool(
+  "fire_ai",
+  {
+    description:
+      "Fire an independent AI session in the background. " +
+      "Spawns claude in one-shot mode with the current session's system prompt and MCP tools. " +
+      "Returns immediately without waiting for completion. " +
+      "Use for time-consuming content generation that shouldn't block the conversation.",
+    inputSchema: {
+      prompt: z.string().min(1).describe("The prompt/task to execute in the background session"),
+      model: z.string().optional().describe("Model override (e.g. sonnet, opus)"),
+      effort: z.string().optional().describe("Reasoning effort: low, medium, high"),
+      notify: z.boolean().optional().describe("Send completion event to this session when done (default: false)"),
+    },
+  },
+  async (input) => {
+    if (mode !== "session") {
+      return fail("fire_ai is only available in session mode");
+    }
+    try {
+      const result = await requestJson("POST", `/api/sessions/${sessionId}/fire-ai`, {
+        prompt: input.prompt,
+        model: input.model,
+        effort: input.effort,
+        notify: input.notify ?? false,
+      });
+      return ok(result);
+    } catch (error) {
+      return fail(error);
+    }
+  }
+);
+
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
