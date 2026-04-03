@@ -1,6 +1,8 @@
 import { spawn, ChildProcess, execSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
+import { getSessionManager } from "./session-registry";
+import { getSessionInstance } from "./session-registry";
 
 // ── Interfaces ──────────────────────────────────────────────
 
@@ -37,9 +39,6 @@ function buildCleanEnv(): NodeJS.ProcessEnv {
 
 /** Read session.json from the session directory and build the system prompt */
 function buildSystemPromptForSession(sessionDir: string): string {
-  // Lazy require to avoid circular dependency (this file → session-registry → session-manager → ...)
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { getSessionManager } = require("./session-registry") as typeof import("./session-registry");
   const sm = getSessionManager();
 
   // Read persona name from session.json
@@ -60,9 +59,6 @@ function buildSystemPromptForSession(sessionDir: string): string {
 /** Push a completion event to the caller session's pending-events.json */
 function pushCompletionEvent(callerSessionId: string, pid: number, exitCode: number | null): void {
   try {
-    // Lazy require to avoid circular dependency
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { getSessionInstance } = require("./session-registry") as typeof import("./session-registry");
     const instance = getSessionInstance(callerSessionId);
     if (instance) {
       instance.queueEvent(`[BACKGROUND_SESSION_COMPLETE] pid=${pid} exit_code=${exitCode ?? "null"}`);

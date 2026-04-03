@@ -368,6 +368,9 @@ export class PanelEngine {
     const popupQueue = this.variables.__popups as Array<{ template: string; duration?: number; vars?: Record<string, unknown> }> | undefined;
     if (!Array.isArray(popupQueue) || popupQueue.length === 0) return [];
 
+    // Clear __popups immediately to prevent duplicate rendering on rapid file changes
+    this.variables.__popups = [];
+
     const popupsDir = path.join(this.sessionDir, "popups");
     const result: Array<{ template: string; html: string; duration: number }> = [];
 

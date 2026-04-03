@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { NextResponse } from "next/server";
-import { getServices } from "@/lib/services";
+import { getServices, getSessionInstance } from "@/lib/services";
 
 const PROTECTED_FILES = new Set([
   "session.json", "builder-session.json", "layout.json",
@@ -153,6 +153,17 @@ export async function POST(
           const merged = { ...current, ...patch };
           fs.writeFileSync(filePath, JSON.stringify(merged, null, 2), "utf-8");
         } catch {}
+      }
+    }
+
+    // Auto-queue search_init_event from engine results
+    const toolResult = result?.result as Record<string, unknown> | undefined;
+    if (toolResult?.search_init_event && typeof toolResult.search_init_event === "string") {
+      const sessionId = decodeURIComponent(id);
+      const instance = getSessionInstance(sessionId);
+      if (instance) {
+        instance.queueEvent(toolResult.search_init_event);
+        instance.broadcast("event:pending", { headers: instance.getPendingEvents() });
       }
     }
 
