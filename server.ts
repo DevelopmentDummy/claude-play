@@ -16,6 +16,13 @@ const port = parseInt(process.env.PORT || "3340", 10);
 const ttsPort = parseInt(process.env.TTS_PORT || String(port + 1), 10);
 const GPU_MANAGER_PORT = parseInt(process.env.GPU_MANAGER_PORT || String(port + 2), 10);
 const GPU_MANAGER_PYTHON = process.env.GPU_MANAGER_PYTHON || "python";
+interface ServerGlobals extends Record<string, unknown> {
+  __ttsPid?: number;
+  __gpuManagerPid?: number;
+  __cleanupRegistered?: boolean;
+  __shuttingDown?: boolean;
+}
+const g = globalThis as ServerGlobals;
 
 /** Spawn standalone TTS server as a child process (killed when parent exits) */
 function spawnTtsServer(): ChildProcess | null {
@@ -35,7 +42,7 @@ function spawnTtsServer(): ChildProcess | null {
   child.stderr?.on("data", (d: Buffer) => process.stderr.write(d));
 
   child.on("exit", (code) => {
-    if (code !== null && code !== 0) {
+    if (!g.__shuttingDown && code !== null && code !== 0) {
       console.error(`[tts] TTS server exited with code ${code}`);
     }
   });
@@ -47,7 +54,11 @@ function spawnTtsServer(): ChildProcess | null {
 function killTtsServer(child: ChildProcess | null) {
   if (!child || child.killed || !child.pid) return;
   try {
-    execSync(`taskkill /T /F /PID ${child.pid}`, { stdio: "ignore" });
+    if (process.platform === "win32") {
+      execSync(`taskkill /T /F /PID ${child.pid}`, { stdio: "ignore" });
+    } else {
+      child.kill("SIGTERM");
+    }
   } catch {
     try { child.kill(); } catch {}
   }
@@ -86,6 +97,9 @@ function spawnGpuManager(): ChildProcess | null {
   child.stderr?.on("data", (d: Buffer) => process.stderr.write(d));
 
   child.on("exit", (code) => {
+    if (g.__shuttingDown) {
+      return;
+    }
     if (code !== null && code !== 0) {
       console.error(`[gpu-manager] exited with code ${code}`);
       if (gpuManagerRestarts < GPU_MANAGER_MAX_RESTARTS) {
@@ -158,8 +172,6 @@ function sendJson(res: ServerResponse, status: number, data: unknown) {
 
 // Spawn TTS server and GPU Manager, ensure cleanup on exit
 // Use globalThis PIDs to survive tsx watch hot-reloads
-const g = globalThis as Record<string, unknown>;
-
 /** Kill process by PID (Windows-safe, ignores errors) */
 function killPid(pid: number | undefined) {
   if (!pid) return;
@@ -198,9 +210,16 @@ function killProcessOnPort(p: number) {
   } catch { /* nothing listening */ }
 }
 
+function cleanupManagedProcesses(): void {
+  g.__shuttingDown = true;
+  killPid(g.__ttsPid);
+  killPid(g.__gpuManagerPid);
+  destroyAllBackgroundProcesses();
+}
+
 // Kill previous child processes from prior hot-reload cycle
-killPid(g.__ttsPid as number | undefined);
-killPid(g.__gpuManagerPid as number | undefined);
+killPid(g.__ttsPid);
+killPid(g.__gpuManagerPid);
 // Also kill anything still on GPU Manager port (fallback)
 killProcessOnPort(GPU_MANAGER_PORT);
 
@@ -208,13 +227,13 @@ const ttsProcess = spawnTtsServer();
 let gpuManagerProcess = spawnGpuManager();
 g.__ttsPid = ttsProcess?.pid;
 g.__gpuManagerPid = gpuManagerProcess?.pid;
+g.__shuttingDown = false;
 
-for (const sig of ["exit", "SIGINT", "SIGTERM", "SIGHUP"] as const) {
-  process.on(sig, () => {
-    killTtsServer(ttsProcess);
-    killGpuManager(gpuManagerProcess);
-    destroyAllBackgroundProcesses();
-  });
+if (!g.__cleanupRegistered) {
+  g.__cleanupRegistered = true;
+  for (const sig of ["exit", "SIGINT", "SIGTERM", "SIGHUP"] as const) {
+    process.on(sig, cleanupManagedProcesses);
+  }
 }
 
 app.prepare().then(async () => {

@@ -65,6 +65,7 @@ export default function ModalPanel({
   useEffect(() => {
     if (active) {
       setClosed(false);
+      setMinimizing(false);
       setVisible(false);
       requestAnimationFrame(() => setVisible(true));
       // Force shadow re-render when modal becomes active again

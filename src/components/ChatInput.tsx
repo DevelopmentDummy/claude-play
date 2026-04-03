@@ -52,6 +52,7 @@ export interface Choice {
   text: string;
   score: number;
   actions?: ChoiceAction[];
+  dry?: boolean;
 }
 
 /** Choice button with portal-based tooltip that escapes overflow clipping */
@@ -62,6 +63,8 @@ function ChoiceButton({ choice, busy, onChoice }: { choice: Choice; busy: boolea
 
   const actionLabel = choice.actions?.length ? choice.actions.map(a => {
     if (a.panel) {
+      if (a.action === "__open") return `${a.panel} 열기`;
+      if (a.action === "__close") return `${a.panel} 닫기`;
       const reg = getPanelActionRegistry();
       return reg.getLabel(a.panel, a.action) || reg.getLabelByAction(a.action) || a.action;
     }
@@ -90,18 +93,28 @@ function ChoiceButton({ choice, busy, onChoice }: { choice: Choice; busy: boolea
         onMouseEnter={() => setHover(true)}
         onMouseLeave={() => setHover(false)}
         className={`relative px-3.5 py-2 rounded-xl text-sm text-text bg-[rgba(15,15,26,0.6)]
-          border border-border/60 cursor-pointer
+          border cursor-pointer
           transition-all duration-fast
-          hover:border-accent hover:bg-[rgba(var(--accent-rgb),0.08)] hover:-translate-y-px
-          hover:shadow-[0_2px_12px_var(--accent-glow)]
           active:translate-y-0
+          ${choice.dry
+            ? "border-[rgba(var(--accent-rgb),0.35)] bg-[rgba(var(--accent-rgb),0.04)] hover:border-[rgba(var(--accent-rgb),0.6)] hover:bg-[rgba(var(--accent-rgb),0.10)] hover:-translate-y-px hover:shadow-[0_2px_12px_rgba(var(--accent-rgb),0.15)]"
+            : "border-border/60 hover:border-accent hover:bg-[rgba(var(--accent-rgb),0.08)] hover:-translate-y-px hover:shadow-[0_2px_12px_var(--accent-glow)]"
+          }
           ${choice.actions?.length ? "pr-7" : ""}
           ${busy ? "opacity-50 pointer-events-none" : ""}`}
       >
         {choice.text}
         {choice.actions && choice.actions.length > 0 && (
-          <span className="absolute -top-1.5 -right-1.5 flex items-center gap-px px-1 py-0.5 rounded-full text-[10px] leading-none bg-accent/20 text-accent border border-accent/30">
-            <svg className="w-2.5 h-2.5" viewBox="0 0 16 16" fill="currentColor"><path d="M9.405 1.05c-.413-1.4-2.397-1.4-2.81 0l-.1.34a1.464 1.464 0 0 1-2.105.872l-.31-.17c-1.283-.698-2.686.705-1.987 1.987l.169.311c.446.82.023 1.841-.872 2.105l-.34.1c-1.4.413-1.4 2.397 0 2.81l.34.1a1.464 1.464 0 0 1 .872 2.105l-.17.31c-.698 1.283.705 2.686 1.987 1.987l.311-.169a1.464 1.464 0 0 1 2.105.872l.1.34c.413 1.4 2.397 1.4 2.81 0l.1-.34a1.464 1.464 0 0 1 2.105-.872l.31.17c1.283.698 2.686-.705 1.987-1.987l-.169-.311a1.464 1.464 0 0 1 .872-2.105l.34-.1c1.4-.413 1.4-2.397 0-2.81l-.34-.1a1.464 1.464 0 0 1-.872-2.105l.17-.31c.698-1.283-.705-2.686-1.987-1.987l-.311.169a1.464 1.464 0 0 1-2.105-.872l-.1-.34zM8 10.93a2.929 2.929 0 1 1 0-5.86 2.929 2.929 0 0 1 0 5.858z"/></svg>
+          <span className={`absolute -top-1.5 -right-1.5 flex items-center gap-px px-1 py-0.5 rounded-full text-[10px] leading-none border ${
+            choice.dry
+              ? "bg-accent/30 text-accent border-accent/40"
+              : "bg-accent/20 text-accent border-accent/30"
+          }`}>
+            {choice.dry ? (
+              <svg className="w-2.5 h-2.5" viewBox="0 0 16 16" fill="currentColor"><path d="M2.5 1A1.5 1.5 0 0 0 1 2.5v11A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-11A1.5 1.5 0 0 0 13.5 1h-11zM3 3.5A.5.5 0 0 1 3.5 3h4a.5.5 0 0 1 0 1h-4A.5.5 0 0 1 3 3.5zM3 6a.5.5 0 0 1 .5-.5h9a.5.5 0 0 1 0 1h-9A.5.5 0 0 1 3 6zm0 2.5A.5.5 0 0 1 3.5 8h9a.5.5 0 0 1 0 1h-9A.5.5 0 0 1 3 8.5z"/></svg>
+            ) : (
+              <svg className="w-2.5 h-2.5" viewBox="0 0 16 16" fill="currentColor"><path d="M9.405 1.05c-.413-1.4-2.397-1.4-2.81 0l-.1.34a1.464 1.464 0 0 1-2.105.872l-.31-.17c-1.283-.698-2.686.705-1.987 1.987l.169.311c.446.82.023 1.841-.872 2.105l-.34.1c-1.4.413-1.4 2.397 0 2.81l.34.1a1.464 1.464 0 0 1 .872 2.105l-.17.31c-.698 1.283.705 2.686 1.987 1.987l.311-.169a1.464 1.464 0 0 1 2.105.872l.1.34c.413 1.4 2.397 1.4 2.81 0l.1-.34a1.464 1.464 0 0 1 2.105-.872l.31.17c1.283.698 2.686-.705 1.987-1.987l-.169-.311a1.464 1.464 0 0 1 .872-2.105l.34-.1c1.4-.413 1.4-2.397 0-2.81l-.34-.1a1.464 1.464 0 0 1-.872-2.105l.17-.31c.698-1.283-.705-2.686-1.987-1.987l-.311.169a1.464 1.464 0 0 1-2.105-.872l-.1-.34zM8 10.93a2.929 2.929 0 1 1 0-5.86 2.929 2.929 0 0 1 0 5.858z"/></svg>
+            )}
             {choice.actions.length > 1 && <span>{choice.actions.length}</span>}
           </span>
         )}
@@ -114,7 +127,7 @@ function ChoiceButton({ choice, busy, onChoice }: { choice: Choice; busy: boolea
             bg-[rgba(20,16,32,0.95)] text-[#e0e0e0] border border-[rgba(var(--accent-rgb),0.2)]
             shadow-[0_4px_16px_rgba(0,0,0,0.4)]"
         >
-          <span className="opacity-70 mr-1">⚙</span>{actionLabel}
+          <span className="opacity-70 mr-1">{choice.dry ? "◇" : "⚙"}</span>{actionLabel}
         </div>,
         document.body
       )}
@@ -229,131 +242,159 @@ function ChatInput({ disabled, onSend, sessionId, choices, pendingEvents, showOO
     }
   }, []);
 
-  const handleChoice = useCallback(async (choice: Choice) => {
-    if (!choice.actions?.length || !sessionId) {
-      onSend(choice.text);
-      return;
-    }
-    setChoiceBusy(true);
-    try {
-      const registry = getPanelActionRegistry();
-      const win = window as unknown as Record<string, unknown>;
-      let lastAvailable: Array<{ action: string; label: string; args_hint: string | null }> | null = null;
+  const executeChoiceActions = useCallback(async (choice: Choice, sessionId: string) => {
+    const registry = getPanelActionRegistry();
+    const win = window as unknown as Record<string, unknown>;
+    let lastAvailable: Array<{ action: string; label: string; args_hint: string | null }> | null = null;
 
-      const panelActions = choice.actions.filter(a => a.panel);
-      let panelActionIndex = 0;
+    for (const act of choice.actions!) {
+      if (act.panel) {
+        // ═══ Panel Action ═══
 
-      for (const act of choice.actions) {
-        if (act.panel) {
-          // ═══ Panel Action ═══
-          panelActionIndex++;
-
-          // Suppress handler's sendMessage — choice text will be sent via onSend instead
-          win.__panelActionSuppressSend = true;
-          // Signal panels that an action is about to execute
-          win.__panelActionExecuting = `${act.panel}.${act.action}`;
-          window.dispatchEvent(new CustomEvent("__panel_action_executing", {
-            detail: `${act.panel}.${act.action}`
-          }));
-
-          // 1. Check handler and UI requirements
-          const hasHandler = registry.hasHandler(act.panel, act.action);
-          const needsUI = registry.needsUI(act.panel, act.action); // defaults to true
-
-          // 2. Open modal if: (a) handler not registered yet, or (b) action needs_ui and modal isn't active
-          const modalsState = win.__panelModalsState as Record<string, boolean | string> | undefined;
-          const isActive = modalsState ? !!modalsState[act.panel] : false;
-          const needsOpen = !hasHandler || (needsUI && !isActive);
-          if (needsOpen) {
-            const layout = registry.getLayout() as Record<string, Record<string, string>> | null;
-            const placement = layout?.placement?.[act.panel];
-            const mode = placement === "modal-dismissible" ? "dismissible" : true;
-            await fetch(`/api/sessions/${sessionId}/modals`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ action: "open", name: act.panel, mode }),
-            });
-            // Brief delay for modal to become visible (UI animations need it)
-            if (needsUI) await new Promise(r => setTimeout(r, 150));
-          }
-
-          // 3. Wait for handler registration only if not already registered
-          if (!hasHandler) {
-            await registry.waitForHandler(act.panel, act.action, 8000);
-          }
-
-          // 3. Execute via registry (records to history + runs handler)
-          //    sendMessage inside handler is suppressed; queueEvent still works
-          const params = act.params || act.args;
-          await registry.execute(act.panel, act.action, params);
-          win.__panelActionExecuting = null;
-
-          // 4. If we opened the modal just for this action, close it after execution
-          if (needsOpen) {
-            await fetch(`/api/sessions/${sessionId}/modals`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ action: "close", name: act.panel }),
-            });
-          }
-
-        } else if (act.tool) {
-          // ═══ Legacy Tool Action ═══
-          const toolRes = await fetch(`/api/sessions/${sessionId}/tools/${encodeURIComponent(act.tool)}`, {
+        // Built-in __open / __close: directly control modal without handler
+        if (act.action === "__open" || act.action === "__close") {
+          await fetch(`/api/sessions/${sessionId}/modals`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ args: { action: act.action, ...(act.args || {}) } }),
+            body: JSON.stringify({
+              action: act.action === "__open" ? "open" : "close",
+              name: act.panel,
+              ...(act.action === "__open" ? { mode: "dismissible" } : {}),
+            }),
           });
-          if (!toolRes.ok) {
-            const err = await toolRes.json().catch(() => ({ error: "Action failed" }));
-            throw new Error(err.error || `Action ${act.action} failed`);
-          }
-          const toolData = await toolRes.json();
-          const hint = toolData.result?.hints?.narrative || toolData.result?.hints?.summary || "completed";
-          await fetch(`/api/sessions/${sessionId}/events`, {
+          continue;
+        }
+
+        // Suppress handler's sendMessage — choice text will be sent via onSend instead
+        win.__panelActionSuppressSend = true;
+        // Signal panels that an action is about to execute
+        win.__panelActionExecuting = `${act.panel}.${act.action}`;
+        window.dispatchEvent(new CustomEvent("__panel_action_executing", {
+          detail: `${act.panel}.${act.action}`
+        }));
+
+        // 1. Check handler and UI requirements
+        const hasHandler = registry.hasHandler(act.panel, act.action);
+        const needsUI = registry.needsUI(act.panel, act.action); // defaults to true
+
+        // 2. Open modal if: (a) handler not registered yet, or (b) action needs_ui and modal isn't active
+        const modalsState = win.__panelModalsState as Record<string, boolean | string> | undefined;
+        const isActive = modalsState ? !!modalsState[act.panel] : false;
+        const needsOpen = !hasHandler || (needsUI && !isActive);
+        if (needsOpen) {
+          const layout = registry.getLayout() as Record<string, Record<string, string>> | null;
+          const placement = layout?.placement?.[act.panel];
+          const mode = placement === "modal-dismissible" ? "dismissible" : true;
+          await fetch(`/api/sessions/${sessionId}/modals`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ header: `[${act.action}] ${hint}` }),
+            body: JSON.stringify({ action: "open", name: act.panel, mode }),
           });
-          if (toolData._available_actions?.length) {
-            lastAvailable = toolData._available_actions;
-          }
+          // Brief delay for modal to become visible (UI animations need it)
+          if (needsUI) await new Promise(r => setTimeout(r, 150));
+        }
+
+        // 3. Wait for handler registration only if not already registered
+        if (!hasHandler) {
+          await registry.waitForHandler(act.panel, act.action, 8000);
+        }
+
+        // 4. Execute via registry (records to history + runs handler)
+        //    sendMessage inside handler is suppressed; queueEvent still works
+        const params = act.params || act.args;
+        await registry.execute(act.panel, act.action, params);
+        win.__panelActionExecuting = null;
+
+        // 5. If we opened the modal just for this action, close it after execution
+        //    For dry choices, keep dismissible modals open (user likely wants to interact)
+        if (needsOpen && !choice.dry) {
+          await fetch(`/api/sessions/${sessionId}/modals`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "close", name: act.panel }),
+          });
+        }
+
+      } else if (act.tool) {
+        // ═══ Legacy Tool Action ═══
+        const toolRes = await fetch(`/api/sessions/${sessionId}/tools/${encodeURIComponent(act.tool)}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ args: { action: act.action, ...(act.args || {}) } }),
+        });
+        if (!toolRes.ok) {
+          const err = await toolRes.json().catch(() => ({ error: "Action failed" }));
+          throw new Error(err.error || `Action ${act.action} failed`);
+        }
+        const toolData = await toolRes.json();
+        const hint = toolData.result?.hints?.narrative || toolData.result?.hints?.summary || "completed";
+        await fetch(`/api/sessions/${sessionId}/events`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ header: `[${act.action}] ${hint}` }),
+        });
+        if (toolData._available_actions?.length) {
+          lastAvailable = toolData._available_actions;
         }
       }
+    }
 
-      // [AVAILABLE] header: prefer registry, fallback to legacy
-      const availableHeader = registry.buildAvailableHeader();
-      if (availableHeader) {
-        await fetch(`/api/sessions/${sessionId}/events`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ header: availableHeader }),
-        });
-      } else if (lastAvailable && lastAvailable.length > 0) {
-        const parts = lastAvailable.map((a: { action: string; label: string; args_hint: string | null }) =>
-          a.args_hint ? `${a.action}(${a.label} ${a.args_hint})` : `${a.action}(${a.label})`
-        );
-        await fetch(`/api/sessions/${sessionId}/events`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ header: `[AVAILABLE] ${parts.join(", ")}` }),
-        });
+    // [AVAILABLE] header: prefer registry, fallback to legacy
+    const availableHeader = registry.buildAvailableHeader();
+    if (availableHeader) {
+      await fetch(`/api/sessions/${sessionId}/events`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ header: availableHeader }),
+      });
+    } else if (lastAvailable && lastAvailable.length > 0) {
+      const parts = lastAvailable.map((a: { action: string; label: string; args_hint: string | null }) =>
+        a.args_hint ? `${a.action}(${a.label} ${a.args_hint})` : `${a.action}(${a.label})`
+      );
+      await fetch(`/api/sessions/${sessionId}/events`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ header: `[AVAILABLE] ${parts.join(", ")}` }),
+      });
+    }
+
+    return lastAvailable;
+  }, []);
+
+  const handleChoice = useCallback(async (choice: Choice) => {
+    // No actions and not dry: just send text
+    if (!choice.actions?.length || !sessionId) {
+      if (!choice.dry) {
+        onSend(choice.text);
       }
+      return;
+    }
 
-      // Clear suppress flag and send choice text as user message.
-      // Panel handler's sendMessage was suppressed; queued events (slot results etc.)
-      // will be picked up by onSend along with the choice text.
+    setChoiceBusy(true);
+    const win = window as unknown as Record<string, unknown>;
+    try {
+      await executeChoiceActions(choice, sessionId);
+
+      // Clear suppress flag
       win.__panelActionSuppressSend = false;
-      onSend(choice.text);
+
+      if (choice.dry) {
+        // Dry choice: actions executed, no message sent to AI
+        showToast(choice.text, 2000);
+      } else {
+        // Normal choice: send choice text as user message
+        onSend(choice.text);
+      }
 
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Action failed";
       console.error("[choice action]", msg);
       showToast(msg, 4000);
     } finally {
+      win.__panelActionSuppressSend = false;
       setChoiceBusy(false);
     }
-  }, [onSend, sessionId]);
+  }, [onSend, sessionId, executeChoiceActions]);
 
   const insertAtCursor = useCallback((text: string) => {
     const el = inputRef.current;

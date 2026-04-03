@@ -56,6 +56,7 @@ export interface Choice {
   text: string;
   score: number;
   actions?: ChoiceAction[];
+  dry?: boolean;
 }
 
 /** Extract choices from <choice> tags in raw content */
@@ -75,6 +76,7 @@ export function extractChoices(raw: string): Choice[] {
           text: c.text as string,
           score: typeof c.score === "number" ? c.score : 0,
           ...(Array.isArray(c.actions) && c.actions.length > 0 ? { actions: c.actions as ChoiceAction[] } : {}),
+          ...(c.dry === true ? { dry: true } : {}),
         }));
     }
   } catch { /* invalid JSON */ }

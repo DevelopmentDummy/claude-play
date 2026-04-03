@@ -81,6 +81,7 @@ export class PanelEngine {
   private onImageUpdate: ((filename: string) => void) | null = null;
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private imageDebounce = new Map<string, ReturnType<typeof setTimeout>>();
+  private imageWatcherActive = false;
 
   constructor(
     onUpdate: (update: PanelUpdate) => void,
@@ -144,26 +145,26 @@ export class PanelEngine {
     // Watch variables.json
     const varsPath = path.join(sessionDir, "variables.json");
     if (fs.existsSync(varsPath)) {
-      const watcher = fs.watch(varsPath, () => {
+      const watcher = this.safeWatch(varsPath, () => {
         this.loadVariables();
         this.scheduleRender();
       });
-      this.watchers.push(watcher);
+      if (watcher) this.watchers.push(watcher);
     }
 
     // Watch layout.json for real-time layout changes
     const layoutPath = path.join(sessionDir, "layout.json");
     if (fs.existsSync(layoutPath) && this.onLayoutUpdate) {
-      const layoutWatcher = fs.watch(layoutPath, () => {
+      const layoutWatcher = this.safeWatch(layoutPath, () => {
         this.broadcastLayout();
       });
-      this.watchers.push(layoutWatcher);
+      if (layoutWatcher) this.watchers.push(layoutWatcher);
     }
 
     // Watch panels/ directory
     const panelsDir = path.join(sessionDir, "panels");
     if (fs.existsSync(panelsDir)) {
-      const watcher = fs.watch(panelsDir, (_event, filename) => {
+      const watcher = this.safeWatch(panelsDir, (_event, filename) => {
         if (filename && filename.endsWith(".html")) {
           const rawName = filename.replace(/\.html$/, "");
           const name = rawName.replace(/^\d+-/, "");
@@ -173,20 +174,20 @@ export class PanelEngine {
         }
         this.scheduleRender();
       });
-      this.watchers.push(watcher);
+      if (watcher) this.watchers.push(watcher);
     }
 
     // Watch popups/ directory
     const popupsDir = path.join(sessionDir, "popups");
     if (fs.existsSync(popupsDir)) {
-      const watcher = fs.watch(popupsDir, (_event, filename) => {
+      const watcher = this.safeWatch(popupsDir, (_event, filename) => {
         if (filename && filename.endsWith(".html")) {
           const name = filename.replace(/\.html$/, "");
           this.templateCache.delete(`popup:${name}`);
         }
         this.scheduleRender();
       });
-      this.watchers.push(watcher);
+      if (watcher) this.watchers.push(watcher);
     }
 
     // Watch images/ directory for file changes (new or overwritten images)
@@ -196,7 +197,7 @@ export class PanelEngine {
     this.watchDataFiles();
 
     // Also watch session dir for NEW json files or images/ dir appearing
-    const dirWatcher = fs.watch(sessionDir, (_event, filename) => {
+    const dirWatcher = this.safeWatch(sessionDir, (_event, filename) => {
       if (filename === "layout.json") {
         this.broadcastLayout();
         return;
@@ -213,7 +214,7 @@ export class PanelEngine {
         this.scheduleRender();
       }
     });
-    this.watchers.push(dirWatcher);
+    if (dirWatcher) this.watchers.push(dirWatcher);
 
     // Initial render
     this.render();
@@ -328,7 +329,7 @@ export class PanelEngine {
   /** Stop watching */
   stop(): void {
     for (const w of this.watchers) {
-      w.close();
+      this.closeWatcher(w);
     }
     this.watchers = [];
     this.dataFileWatchers.clear();
@@ -407,22 +408,31 @@ export class PanelEngine {
   /** Watch individual data JSON files for reliable change detection */
   private watchDataFiles(): void {
     if (!this.sessionDir) return;
+    const activeFiles = new Set<string>();
     try {
       const entries = fs.readdirSync(this.sessionDir);
       for (const entry of entries) {
         if (!entry.endsWith(".json") || SYSTEM_JSON.has(entry)) continue;
+        activeFiles.add(entry);
         if (this.dataFileWatchers.has(entry)) continue;
         const filePath = path.join(this.sessionDir, entry);
         try {
           const stat = fs.statSync(filePath);
           if (!stat.isFile()) continue;
-          const watcher = fs.watch(filePath, () => {
+          const watcher = this.safeWatch(filePath, () => {
             this.loadDataFiles();
             this.scheduleRender();
           });
+          if (!watcher) continue;
           this.dataFileWatchers.set(entry, watcher);
           this.watchers.push(watcher);
         } catch { /* skip */ }
+      }
+      for (const [entry, watcher] of this.dataFileWatchers.entries()) {
+        if (activeFiles.has(entry)) continue;
+        this.closeWatcher(watcher);
+        this.dataFileWatchers.delete(entry);
+        this.watchers = this.watchers.filter((item) => item !== watcher);
       }
     } catch { /* ignore */ }
   }
@@ -433,6 +443,8 @@ export class PanelEngine {
     try {
       if (fs.existsSync(varsPath)) {
         this.variables = JSON.parse(fs.readFileSync(varsPath, "utf-8"));
+      } else {
+        this.variables = {};
       }
     } catch {
       // Malformed JSON — keep previous variables
@@ -441,7 +453,10 @@ export class PanelEngine {
 
   /** Scan session directory for custom JSON data files and load them */
   private loadDataFiles(): void {
-    if (!this.sessionDir) return;
+    if (!this.sessionDir) {
+      this.dataFiles = {};
+      return;
+    }
     const newData: Record<string, unknown> = {};
     try {
       const entries = fs.readdirSync(this.sessionDir);
@@ -465,26 +480,33 @@ export class PanelEngine {
     this.onLayoutUpdate();
   }
 
-  /** Track whether images/ watcher is already active */
-  private imageWatcherActive = false;
-
   /** Watch images/ directory for file changes, with lazy init */
   private watchImagesDir(sessionDir: string): void {
     if (!this.onImageUpdate || this.imageWatcherActive) return;
     const imagesDir = path.join(sessionDir, "images");
     if (!fs.existsSync(imagesDir)) return;
     this.imageWatcherActive = true;
-    const imgWatcher = fs.watch(imagesDir, (_event, filename) => {
-      if (!filename) return;
-      // Debounce per-file to coalesce rapid writes
-      const existing = this.imageDebounce.get(filename);
-      if (existing) clearTimeout(existing);
-      this.imageDebounce.set(filename, setTimeout(() => {
-        this.imageDebounce.delete(filename);
-        this.onImageUpdate?.(filename);
-      }, 300));
-    });
-    this.watchers.push(imgWatcher);
+    const imgWatcher = this.safeWatch(
+      imagesDir,
+      (_event, filename) => {
+        if (!filename) return;
+        // Debounce per-file to coalesce rapid writes
+        const existing = this.imageDebounce.get(filename);
+        if (existing) clearTimeout(existing);
+        this.imageDebounce.set(filename, setTimeout(() => {
+          this.imageDebounce.delete(filename);
+          this.onImageUpdate?.(filename);
+        }, 300));
+      },
+      () => {
+        this.imageWatcherActive = false;
+      }
+    );
+    if (imgWatcher) {
+      this.watchers.push(imgWatcher);
+    } else {
+      this.imageWatcherActive = false;
+    }
   }
 
   private render(): void {
@@ -492,5 +514,29 @@ export class PanelEngine {
     const result = this.getCurrentPanels();
     this.templateDirty.clear();
     this.onUpdate(result);
+  }
+
+  private safeWatch(
+    target: string,
+    listener: Parameters<typeof fs.watch>[1],
+    onError?: () => void,
+  ): fs.FSWatcher | null {
+    try {
+      const watcher = fs.watch(target, listener);
+      watcher.on("error", () => {
+        this.closeWatcher(watcher);
+        onError?.();
+      });
+      return watcher;
+    } catch {
+      onError?.();
+      return null;
+    }
+  }
+
+  private closeWatcher(watcher: fs.FSWatcher): void {
+    try {
+      watcher.close();
+    } catch { /* ignore */ }
   }
 }

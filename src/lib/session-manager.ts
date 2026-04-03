@@ -226,6 +226,37 @@ export class SessionManager {
     return path.join(this.dataDir, "sessions");
   }
 
+  private invalidChildPath(baseDir: string, rawValue: string): string {
+    const encoded = encodeURIComponent(rawValue || "invalid");
+    return path.join(baseDir, "__invalid__", encoded);
+  }
+
+  private sanitizePathSegment(value: string): string | null {
+    const trimmed = value.trim();
+    if (!trimmed || trimmed === "." || trimmed === "..") return null;
+    if (/[\\/]/.test(trimmed) || trimmed.includes("\0")) return null;
+    return trimmed;
+  }
+
+  private assertPathSegment(value: string, label: string): string {
+    const safe = this.sanitizePathSegment(value);
+    if (!safe) {
+      throw new Error(`Invalid ${label}`);
+    }
+    return safe;
+  }
+
+  private childDir(baseDir: string, rawValue: string): string {
+    const safe = this.sanitizePathSegment(rawValue);
+    return safe ? path.join(baseDir, safe) : this.invalidChildPath(baseDir, rawValue);
+  }
+
+  private profilePath(slug: string): string {
+    const safe = this.sanitizePathSegment(slug);
+    const fileName = safe ? `${safe}.json` : path.join("__invalid__", `${encodeURIComponent(slug || "invalid")}.json`);
+    return path.join(this.profilesDir(), fileName);
+  }
+
   // ── Persona ──────────────────────────────────────────────
 
   listPersonas(): PersonaInfo[] {
@@ -252,7 +283,7 @@ export class SessionManager {
   }
 
   getPersonaDir(name: string): string {
-    return path.join(this.personasDir(), name);
+    return this.childDir(this.personasDir(), name);
   }
 
   personaExists(name: string): boolean {
@@ -411,7 +442,12 @@ export class SessionManager {
   // ── Profile ──────────────────────────────────────────────
 
   private profileSlug(name: string): string {
-    return name.trim().replace(/\s+/g, "-");
+    const normalized = name
+      .trim()
+      .replace(/[\\/]/g, " ")
+      .replace(/\s+/g, "-")
+      .replace(/^-+|-+$/g, "");
+    return this.assertPathSegment(normalized, "profile name");
   }
 
   listProfiles(): ProfileInfo[] {
@@ -436,7 +472,7 @@ export class SessionManager {
   }
 
   getProfile(slug: string): Profile | null {
-    const filePath = path.join(this.profilesDir(), `${slug}.json`);
+    const filePath = this.profilePath(slug);
     if (!fs.existsSync(filePath)) return null;
     try {
       return JSON.parse(fs.readFileSync(filePath, "utf-8")) as Profile;
@@ -466,7 +502,7 @@ export class SessionManager {
       }
     }
     fs.writeFileSync(
-      path.join(this.profilesDir(), `${slug}.json`),
+      this.profilePath(slug),
       JSON.stringify(profile, null, 2),
       "utf-8"
     );
@@ -474,7 +510,7 @@ export class SessionManager {
   }
 
   deleteProfile(slug: string): void {
-    const filePath = path.join(this.profilesDir(), `${slug}.json`);
+    const filePath = this.profilePath(slug);
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
     }
@@ -483,13 +519,19 @@ export class SessionManager {
   // ── Session ──────────────────────────────────────────────
 
   createSession(personaName: string, title?: string, profile?: Profile): SessionInfo {
+    this.assertPathSegment(personaName, "persona name");
     if (!this.personaExists(personaName)) {
       throw new Error(`Persona "${personaName}" not found`);
     }
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-    const id = `${personaName}-${timestamp}`;
-    const sessionDir = path.join(this.sessionsDir(), id);
+    const baseId = `${personaName}-${timestamp}`;
+    let id = baseId;
+    let suffix = 2;
+    while (fs.existsSync(this.getSessionDir(id))) {
+      id = `${baseId}-${suffix++}`;
+    }
+    const sessionDir = this.getSessionDir(id);
 
     // Create session directory
     fs.mkdirSync(sessionDir, { recursive: true });
@@ -634,7 +676,7 @@ export class SessionManager {
   }
 
   getSessionDir(id: string): string {
-    return path.join(this.sessionsDir(), id);
+    return this.childDir(this.sessionsDir(), id);
   }
 
   /** Read opening.md and resolve Handlebars placeholders from variables.json + profile */
@@ -1465,6 +1507,7 @@ export class SessionManager {
 
   /** Create an empty persona directory for the builder session */
   createPersonaDir(name: string): string {
+    this.assertPathSegment(name, "persona name");
     const dir = this.getPersonaDir(name);
     if (fs.existsSync(dir)) {
       throw new Error(`Persona "${name}" already exists`);

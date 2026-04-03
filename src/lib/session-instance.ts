@@ -182,6 +182,7 @@ export class SessionInstance {
   private isCompacting = false;
   private isSlashCommand = false;
   private historyId = 0;
+  private destroyed = false;
 
   // TTS queue — serialize requests to avoid ENOBUFS
   private ttsQueue: Array<() => Promise<void>> = [];
@@ -235,6 +236,7 @@ export class SessionInstance {
 
   /** Broadcast scoped to this session */
   broadcast(event: string, data: unknown): void {
+    if (this.destroyed) return;
     if (this.isBuilder) {
       this.broadcastFn(event, data, { sessionId: this.id, isBuilder: true });
     } else {
@@ -546,6 +548,7 @@ export class SessionInstance {
     if (process.env.TTS_ENABLED === "false") return;
     if (this.isBuilder) return;
     if (!this.ttsAutoPlay) return;
+    if (this.destroyed) return;
 
     const dir = this.getDir();
     if (!dir) return;
@@ -568,6 +571,7 @@ export class SessionInstance {
 
     // Build the async job, then enqueue it
     const job = async (): Promise<void> => {
+      if (this.destroyed) return;
       if (provider === "edge") {
         const edgeVoice = voiceConfig.edgeVoice;
         if (!edgeVoice) return;
@@ -575,7 +579,9 @@ export class SessionInstance {
         broadcastRef("audio:status", { status: "queued", messageId, totalChunks });
 
         for (let i = 0; i < chunks.length; i++) {
+          if (this.destroyed) return;
           if (i > 0) await new Promise(r => setTimeout(r, chunkDelay));
+          if (this.destroyed) return;
 
           const timestamp = Date.now();
           const audioFilename = `tts-${timestamp}-${i}.mp3`;
@@ -618,7 +624,9 @@ export class SessionInstance {
         const TTS_BATCH_SIZE = 3;
 
         for (let batchStart = 0; batchStart < chunks.length; batchStart += TTS_BATCH_SIZE) {
+          if (this.destroyed) return;
           if (batchStart > 0) await new Promise(r => setTimeout(r, chunkDelay));
+          if (this.destroyed) return;
 
           const batch = chunks.slice(batchStart, batchStart + TTS_BATCH_SIZE);
 
@@ -670,6 +678,11 @@ export class SessionInstance {
 
   /** Process TTS queue sequentially — one job at a time. */
   private processTtsQueue(): void {
+    if (this.destroyed) {
+      this.ttsQueue = [];
+      this.ttsRunning = false;
+      return;
+    }
     if (this.ttsRunning) return;
     const job = this.ttsQueue.shift();
     if (!job) return;
@@ -849,6 +862,9 @@ export class SessionInstance {
   // --- Lifecycle ---
 
   destroy(): void {
+    this.destroyed = true;
+    this.ttsQueue = [];
+    this.ttsRunning = false;
     this._process.kill();
     this._process.removeAllListeners();
     this.panels.stop();

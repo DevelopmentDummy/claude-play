@@ -1,6 +1,7 @@
-import { Server as HTTPServer } from "http";
-import { WebSocketServer, WebSocket } from "ws";
+import { Server as HTTPServer, type IncomingMessage } from "http";
+import { WebSocketServer, WebSocket, type RawData } from "ws";
 import { parse } from "url";
+import type { Socket } from "net";
 import {
   getSessionInstance,
   scheduleSessionCleanup,
@@ -14,18 +15,84 @@ interface WSClient {
   isBuilder: boolean;
 }
 
+type UpgradeHandler = (req: IncomingMessage, socket: Socket, head: Buffer) => void;
+
 // Use globalThis to share state across module instances (server.ts vs Next.js routes)
 const WS_KEY = "__claude_play_ws__";
 interface WSGlobal {
   clients: Set<WSClient>;
+  server: HTTPServer | null;
+  wss: WebSocketServer | null;
+  upgradeHandler: UpgradeHandler | null;
 }
 
 function getWSState(): WSGlobal {
   const g = globalThis as unknown as Record<string, WSGlobal>;
   if (!g[WS_KEY]) {
-    g[WS_KEY] = { clients: new Set() };
+    g[WS_KEY] = {
+      clients: new Set(),
+      server: null,
+      wss: null,
+      upgradeHandler: null,
+    };
   }
   return g[WS_KEY];
+}
+
+function normalizeSessionId(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  try {
+    const decoded = decodeURIComponent(value).trim();
+    return decoded || null;
+  } catch {
+    return null;
+  }
+}
+
+function parseIncomingMessage(raw: RawData): { type: string; [key: string]: unknown } | null {
+  const text = typeof raw === "string"
+    ? raw
+    : Buffer.isBuffer(raw)
+      ? raw.toString("utf-8")
+      : Array.isArray(raw)
+        ? Buffer.concat(raw).toString("utf-8")
+        : Buffer.from(raw).toString("utf-8");
+  try {
+    const parsed = JSON.parse(text) as { type?: unknown } | null;
+    if (!parsed || typeof parsed !== "object" || typeof parsed.type !== "string") {
+      return null;
+    }
+    return parsed as { type: string; [key: string]: unknown };
+  } catch {
+    return null;
+  }
+}
+
+function detachClient(client: WSClient): void {
+  const { clients } = getWSState();
+  const closedSessionId = client.sessionId;
+  clients.delete(client);
+  client.sessionId = null;
+  if (closedSessionId && countSessionClients(closedSessionId) === 0) {
+    scheduleSessionCleanup(closedSessionId);
+  }
+}
+
+function cleanupWebSocketServer(): void {
+  const state = getWSState();
+  for (const client of state.clients) {
+    try {
+      client.ws.terminate();
+    } catch { /* ignore */ }
+  }
+  state.clients.clear();
+  if (state.server && state.upgradeHandler) {
+    state.server.off("upgrade", state.upgradeHandler);
+  }
+  state.upgradeHandler = null;
+  state.server = null;
+  state.wss?.close();
+  state.wss = null;
 }
 
 /** Broadcast to all connected clients */
@@ -46,7 +113,10 @@ export function wsBroadcast(
     try {
       client.ws.send(payload);
     } catch {
-      clients.delete(client);
+      detachClient(client);
+      try {
+        client.ws.terminate();
+      } catch { /* ignore */ }
     }
   }
 }
@@ -61,12 +131,17 @@ function countSessionClients(sessionId: string): number {
   return count;
 }
 
-
 export function setupWebSocket(server: HTTPServer): void {
-  const wss = new WebSocketServer({ noServer: true });
   const state = getWSState();
+  if (state.server === server && state.wss && state.upgradeHandler) {
+    return;
+  }
+  if (state.server && state.server !== server) {
+    cleanupWebSocketServer();
+  }
 
-  server.on("upgrade", (req, socket, head) => {
+  const wss = new WebSocketServer({ noServer: true });
+  const upgradeHandler: UpgradeHandler = (req, socket, head) => {
     const { pathname, query } = parse(req.url || "", true);
     if (pathname !== "/ws") {
       socket.destroy();
@@ -84,56 +159,63 @@ export function setupWebSocket(server: HTTPServer): void {
     }
 
     wss.handleUpgrade(req, socket, head, (ws) => {
-      const rawSessionId = (query.sessionId as string) || null;
-      const sessionId = rawSessionId ? decodeURIComponent(rawSessionId) : null;
+      const sessionId = normalizeSessionId(query.sessionId);
       const isBuilder = query.builder === "true";
 
       const client: WSClient = { ws, sessionId, isBuilder };
       state.clients.add(client);
 
-      // Cancel any pending cleanup for this session
       if (sessionId) {
         cancelSessionCleanup(sessionId);
       }
 
       ws.on("message", (raw) => {
-        try {
-          const msg = JSON.parse(raw.toString());
+        const msg = parseIncomingMessage(raw);
+        if (msg) {
           handleMessage(client, msg);
-        } catch {
-          // ignore malformed messages
         }
+      });
+
+      ws.on("error", () => {
+        detachClient(client);
       });
 
       ws.on("close", () => {
-        const closedSessionId = client.sessionId;
-        state.clients.delete(client);
-
-        // Schedule cleanup for the session this client was in (10min grace period)
-        if (closedSessionId && countSessionClients(closedSessionId) === 0) {
-          scheduleSessionCleanup(closedSessionId);
-        }
+        detachClient(client);
       });
 
-      // Send connection ack with session active state
       const instance = sessionId ? getSessionInstance(sessionId) : null;
       const sessionActive = instance ? instance.claude.isRunning() : false;
-      ws.send(JSON.stringify({
-        event: "connected",
-        data: { sessionId, isBuilder, sessionActive },
-      }));
+      try {
+        ws.send(JSON.stringify({
+          event: "connected",
+          data: { sessionId, isBuilder, sessionActive },
+        }));
 
-      // Send pending events if any
-      if (instance) {
-        const pendingHeaders = instance.getPendingEvents();
-        if (pendingHeaders.length > 0) {
-          ws.send(JSON.stringify({
-            event: "event:pending",
-            data: { headers: pendingHeaders },
-          }));
+        if (instance) {
+          const pendingHeaders = instance.getPendingEvents();
+          if (pendingHeaders.length > 0) {
+            ws.send(JSON.stringify({
+              event: "event:pending",
+              data: { headers: pendingHeaders },
+            }));
+          }
         }
+      } catch {
+        detachClient(client);
       }
     });
+  };
+
+  state.server = server;
+  state.wss = wss;
+  state.upgradeHandler = upgradeHandler;
+  server.on("upgrade", upgradeHandler);
+  server.once("close", () => {
+    const current = getWSState();
+    if (current.server === server) {
+      cleanupWebSocketServer();
+    }
   });
 }
 
@@ -210,8 +292,15 @@ function handleMessage(
     }
 
     case "session:bind": {
-      const rawId = (msg.sessionId as string) || null;
-      client.sessionId = rawId ? decodeURIComponent(rawId) : null;
+      const previousSessionId = client.sessionId;
+      const nextSessionId = normalizeSessionId(msg.sessionId);
+      if (previousSessionId && previousSessionId !== nextSessionId) {
+        client.sessionId = null;
+        if (countSessionClients(previousSessionId) === 0) {
+          scheduleSessionCleanup(previousSessionId);
+        }
+      }
+      client.sessionId = nextSessionId;
       client.isBuilder = !!(msg.isBuilder);
 
       // Cancel cleanup for the session being bound to

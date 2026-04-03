@@ -52,10 +52,15 @@ export function openSessionInstance(
   // If an instance already exists, check if provider matches
   const existing = reg.instances.get(id);
   if (existing) {
-    if (existing.provider !== provider) {
-      existing.switchProvider(provider);
+    if (existing.isBuilder !== isBuilder) {
+      existing.destroy();
+      reg.instances.delete(id);
+    } else {
+      if (existing.provider !== provider) {
+        existing.switchProvider(provider);
+      }
+      return existing;
     }
-    return existing;
   }
 
   // Create new instance
@@ -75,7 +80,11 @@ export function closeSessionInstance(id: string): void {
   cancelSessionCleanup(id);
   const instance = reg.instances.get(id);
   if (instance) {
-    instance.destroy();
+    try {
+      instance.destroy();
+    } catch (error) {
+      console.error(`[registry] Failed to destroy instance ${id}:`, error);
+    }
     reg.instances.delete(id);
     console.log(`[registry] Closed instance: ${id}`);
   }
@@ -89,6 +98,7 @@ export function scheduleSessionCleanup(id: string): void {
     reg.cleanupTimers.delete(id);
     closeSessionInstance(id);
   }, CLEANUP_GRACE_MS);
+  timer.unref?.();
   reg.cleanupTimers.set(id, timer);
 }
 
@@ -121,6 +131,10 @@ export function listActiveInstances(): Array<{
 /** Destroy all instances (server shutdown) */
 export function destroyAllInstances(): void {
   const reg = getRegistryState();
+  for (const timer of reg.cleanupTimers.values()) {
+    clearTimeout(timer);
+  }
+  reg.cleanupTimers.clear();
   for (const [id] of reg.instances) {
     closeSessionInstance(id);
   }
