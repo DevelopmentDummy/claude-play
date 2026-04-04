@@ -174,6 +174,7 @@ export class SessionInstance {
 
   // Accumulator for assistant turn
   private segments: string[] = [];
+  private assistantFullText: string | null = null; // full text from assistant message (for UTF-8 healing)
   private tools: Array<{ name: string; input: unknown }> = [];
 
   private seenToolKeys = new Set<string>();
@@ -743,21 +744,28 @@ export class SessionInstance {
       if (msg.type === "assistant") {
         const message = msg.message as Record<string, unknown> | undefined;
         if (!message) return;
+        // Always capture full text for UTF-8 healing comparison at result time
+        const fullTextParts: string[] = [];
         if (typeof message.content === "string") {
+          fullTextParts.push(message.content);
           if (!this.sawTextDelta) {
             this.segments.push(message.content);
           }
         } else if (Array.isArray(message.content)) {
           for (const block of message.content) {
             const b = block as Record<string, unknown>;
-            if (b.type === "text") {
-              if (!this.sawTextDelta && typeof b.text === "string") {
+            if (b.type === "text" && typeof b.text === "string") {
+              fullTextParts.push(b.text);
+              if (!this.sawTextDelta) {
                 this.segments.push(b.text);
               }
             } else if (b.type === "tool_use") {
               this.addToolUse(b.name as string, b.input);
             }
           }
+        }
+        if (fullTextParts.length > 0) {
+          this.assistantFullText = fullTextParts.join("");
         }
       }
 
@@ -775,7 +783,16 @@ export class SessionInstance {
           this.broadcast("command:result", { text: text || "" });
         } else {
           if (this.segments.length > 0 || this.tools.length > 0) {
-            const rawContent = this.segments.join("");
+            // UTF-8 healing: compare delta-accumulated text vs assistant full text,
+            // pick the one with fewer U+FFFD replacement characters
+            let rawContent = this.segments.join("");
+            if (this.assistantFullText && this.sawTextDelta) {
+              const deltaFffd = (rawContent.match(/\ufffd/g) || []).length;
+              const fullFffd = (this.assistantFullText.match(/\ufffd/g) || []).length;
+              if (fullFffd < deltaFffd) {
+                rawContent = this.assistantFullText;
+              }
+            }
             const dialogContent = isOOC ? rawContent : extractDialog(rawContent);
             if (dialogContent) {
               this.chatHistory.push({
@@ -802,18 +819,14 @@ export class SessionInstance {
             }
           }
           this.saveHistory();
-
-          const lastSaved = this.chatHistory[this.chatHistory.length - 1];
-          if (lastSaved) {
-            this.broadcast("claude:messageId", { messageId: lastSaved.id });
-          }
         }
 
         this.isOOC = false;
         this.isSlashCommand = false;
         this.segments = [];
+        this.assistantFullText = null;
         this.tools = [];
-    
+
         this.seenToolKeys.clear();
         this.sawTextDelta = false;
         this.currentBlockType = "text";
@@ -830,9 +843,15 @@ export class SessionInstance {
           }
         }
 
-        // Broadcast result AFTER TTS trigger so frontend gets
-        // audio:status (ttsPlaying=true) before result (isStreaming=false)
+        // Broadcast result FIRST so frontend finishes the stream-* message,
+        // THEN send messageId to rename it. Reversed order causes upsert to
+        // create a duplicate because stream-* was already renamed to hist-*.
         this.broadcast("claude:message", d);
+
+        const lastSaved = this.chatHistory[this.chatHistory.length - 1];
+        if (lastSaved) {
+          this.broadcast("claude:messageId", { messageId: lastSaved.id });
+        }
       }
     });
 

@@ -87,6 +87,10 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
         delete env[key];
       }
     }
+    // Force UTF-8 locale to mitigate CLI-side CJK buffer boundary corruption
+    env.LANG = env.LANG || "en_US.UTF-8";
+    env.LC_ALL = env.LC_ALL || "en_US.UTF-8";
+    env.PYTHONIOENCODING = "utf-8";
 
     const args = [
       "-p",

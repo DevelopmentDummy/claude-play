@@ -63,6 +63,7 @@ export function useChat(rawSessionId?: string) {
   const rawAssistantTextRef = useRef("");
   const displayAssistantTextRef = useRef("");
   const carryAssistantTextRef = useRef("");
+  const assistantFullTextRef = useRef<string | null>(null);
   const toolsRef = useRef<Array<{ name: string; input: unknown }>>([]);
 
   const seenToolKeysRef = useRef<Set<string>>(new Set());
@@ -142,9 +143,22 @@ export function useChat(rawSessionId?: string) {
 
   const finishAssistantTurn = useCallback(() => {
     flushAssistantText();
+
+    // UTF-8 healing: if assistant full text has fewer U+FFFD than delta-accumulated text, swap it in
+    const deltaText = rawAssistantTextRef.current;
+    const fullText = assistantFullTextRef.current;
+    if (fullText && deltaText && sawTextDeltaRef.current) {
+      const deltaFffd = (deltaText.match(/\ufffd/g) || []).length;
+      const fullFffd = (fullText.match(/\ufffd/g) || []).length;
+      if (fullFffd < deltaFffd) {
+        upsertAssistantMessage(fullText);
+      }
+    }
+
     rawAssistantTextRef.current = "";
     displayAssistantTextRef.current = "";
     carryAssistantTextRef.current = "";
+    assistantFullTextRef.current = null;
     toolsRef.current = [];
 
     seenToolKeysRef.current.clear();
@@ -152,7 +166,7 @@ export function useChat(rawSessionId?: string) {
     currentBlockTypeRef.current = "text";
     oocRef.current = false;
     setIsStreaming(false);
-  }, [flushAssistantText]);
+  }, [flushAssistantText, upsertAssistantMessage]);
 
   const handleClaudeMessage = useCallback(
     (data: unknown) => {
@@ -189,20 +203,27 @@ export function useChat(rawSessionId?: string) {
       if (type === "assistant") {
         const message = msg.message as Record<string, unknown> | undefined;
         if (!message) return;
+        // Always capture full text for UTF-8 healing at turn end
+        const fullParts: string[] = [];
         if (typeof message.content === "string") {
+          fullParts.push(message.content);
           if (!sawTextDeltaRef.current) {
             appendAssistantText(message.content);
           }
         } else if (Array.isArray(message.content)) {
           for (const block of message.content) {
             const b = block as Record<string, unknown>;
-            if (b.type === "text") {
-              if (!sawTextDeltaRef.current && typeof b.text === "string") {
+            if (b.type === "text" && typeof b.text === "string") {
+              fullParts.push(b.text);
+              if (!sawTextDeltaRef.current) {
                 appendAssistantText(b.text);
               }
             }
             else if (b.type === "tool_use") addToolUse(b.name as string, b.input);
           }
+        }
+        if (fullParts.length > 0) {
+          assistantFullTextRef.current = fullParts.join("");
         }
       }
 
@@ -233,6 +254,7 @@ export function useChat(rawSessionId?: string) {
       rawAssistantTextRef.current = "";
       displayAssistantTextRef.current = "";
       carryAssistantTextRef.current = "";
+      assistantFullTextRef.current = null;
       toolsRef.current = [];
       seenToolKeysRef.current.clear();
       sawTextDeltaRef.current = false;
@@ -258,6 +280,7 @@ export function useChat(rawSessionId?: string) {
         rawAssistantTextRef.current = "";
         displayAssistantTextRef.current = "";
         carryAssistantTextRef.current = "";
+        assistantFullTextRef.current = null;
         toolsRef.current = [];
         seenToolKeysRef.current.clear();
         sawTextDeltaRef.current = false;
@@ -278,6 +301,7 @@ export function useChat(rawSessionId?: string) {
     rawAssistantTextRef.current = "";
     displayAssistantTextRef.current = "";
     carryAssistantTextRef.current = "";
+    assistantFullTextRef.current = null;
     toolsRef.current = [];
 
     seenToolKeysRef.current.clear();

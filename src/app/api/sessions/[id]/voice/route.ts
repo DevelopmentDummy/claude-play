@@ -6,7 +6,8 @@ export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const id = decodeURIComponent(rawId);
   const { sessions } = getServices();
   const dir = sessions.getSessionDir(id);
   const config = sessions.readVoiceConfig(dir);
@@ -17,7 +18,8 @@ export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const id = decodeURIComponent(rawId);
   const body = await req.json();
   const { sessions } = getServices();
   const dir = sessions.getSessionDir(id);
@@ -27,6 +29,9 @@ export async function PATCH(
     const instance = getSessionInstance(id);
     if (instance) {
       instance.ttsAutoPlay = !!body.ttsAutoPlay;
+      console.log(`[voice] ttsAutoPlay=${instance.ttsAutoPlay} for ${id}`);
+    } else {
+      console.warn(`[voice] No active instance for ${id}, ttsAutoPlay not applied`);
     }
     // Don't persist ttsAutoPlay to voice.json — it's a runtime toggle
     delete body.ttsAutoPlay;

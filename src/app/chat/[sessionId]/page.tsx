@@ -509,12 +509,15 @@ export default function ChatPage() {
       clearMessages();
       resetLayout();
 
+      // Read stored TTS preference to pass to open (prevents race with separate PATCH)
+      const storedTts = localStorage.getItem("tts-autoplay");
+      const ttsAutoPlay = storedTts !== null ? storedTts !== "false" : undefined;
       const res = await fetch(
         `/api/sessions/${sessionId}/open`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ model: currentModel || undefined }),
+          body: JSON.stringify({ model: currentModel || undefined, ttsAutoPlay }),
         }
       );
 

@@ -9,8 +9,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const body = await req.json().catch(() => ({}));
-  const rawModel = (body as { model?: string }).model || undefined;
+  const body = (await req.json().catch(() => ({}))) as { model?: string; ttsAutoPlay?: boolean };
+  const rawModel = body.model || undefined;
   const { model, effort } = parseModelEffort(rawModel || "");
   const svc = getServices();
 
@@ -34,6 +34,11 @@ export async function POST(
 
   // Open (or reuse) session instance
   const instance = openSessionInstance(id, false, provider);
+
+  // Apply client TTS preference immediately (before any AI response can trigger TTS)
+  if (body.ttsAutoPlay !== undefined) {
+    instance.ttsAutoPlay = !!body.ttsAutoPlay;
+  }
 
   // Start panel watching
   instance.panels.watch(sessionDir);

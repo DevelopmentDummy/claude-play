@@ -90,6 +90,10 @@ export class CodexProcess extends EventEmitter<CodexProcessEvents> {
         delete (env as Record<string, string | undefined>)[key];
       }
     }
+    // Force UTF-8 locale to mitigate CLI-side CJK buffer boundary corruption
+    env.LANG = env.LANG || "en_US.UTF-8";
+    env.LC_ALL = env.LC_ALL || "en_US.UTF-8";
+    env.PYTHONIOENCODING = "utf-8";
 
     // Build app-server startup args
     const args: string[] = ["app-server"];
