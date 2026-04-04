@@ -1,6 +1,7 @@
 import { spawn, ChildProcess, execSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
+import { StringDecoder } from "string_decoder";
 import { getSessionManager } from "./session-registry";
 import { getSessionInstance } from "./session-registry";
 
@@ -136,13 +137,29 @@ export function spawnBackgroundClaude(opts: FireAIOptions): FireAIResult {
   console.log(`[background-session] Spawned pid=${pid} in ${sessionDir}`);
 
   // Pipe stdout/stderr to log file
+  const stderrDecoder = new StringDecoder("utf-8");
+  let stderrFlushed = false;
+  const flushStderr = () => {
+    if (stderrFlushed) return;
+    stderrFlushed = true;
+    const tail = stderrDecoder.end();
+    if (tail) {
+      logStream.write(`[stderr] ${tail}`);
+    }
+  };
+
   proc.stdout?.on("data", (chunk: Buffer) => {
     logStream.write(chunk);
   });
 
   proc.stderr?.on("data", (chunk: Buffer) => {
-    logStream.write(`[stderr] ${chunk.toString("utf-8")}`);
+    const text = stderrDecoder.write(chunk);
+    if (text) {
+      logStream.write(`[stderr] ${text}`);
+    }
   });
+  proc.stderr?.on("end", flushStderr);
+  proc.stderr?.on("close", flushStderr);
 
   // On exit: cleanup, log, optionally notify
   proc.on("exit", (code) => {

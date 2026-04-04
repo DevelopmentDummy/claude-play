@@ -1,5 +1,6 @@
 import { spawn, execSync, ChildProcess } from "child_process";
 import { EventEmitter } from "events";
+import { StringDecoder } from "string_decoder";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -39,6 +40,29 @@ export class GeminiProcess extends EventEmitter<GeminiProcessEvents> {
 
   // Track whether any delta events were received in the current turn
   private seenDeltaInTurn = false;
+
+  private parseOutputLine(line: string): void {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+
+    if (this.logStream) {
+      this.logStream.write(`[recv] ${trimmed}\n`);
+    }
+
+    try {
+      const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+      this.handleGeminiEvent(parsed);
+    } catch {
+      // Not valid JSON; ignore.
+    }
+  }
+
+  private flushStdoutBuffer(): void {
+    if (!this.buffer) return;
+    const trailing = this.buffer;
+    this.buffer = "";
+    this.parseOutputLine(trailing);
+  }
 
   /**
    * Prepare for a session. Does NOT spawn a process immediately.
@@ -158,24 +182,49 @@ export class GeminiProcess extends EventEmitter<GeminiProcessEvents> {
       this.proc.stdin.end();
     }
 
+    const stdoutDecoder = new StringDecoder("utf-8");
+    const stderrDecoder = new StringDecoder("utf-8");
+    let stdoutFlushed = false;
+    let stderrFlushed = false;
+    const flushStdout = () => {
+      if (stdoutFlushed) return;
+      stdoutFlushed = true;
+      const tail = stdoutDecoder.end();
+      if (tail) {
+        this.handleStdout(tail);
+      }
+      this.flushStdoutBuffer();
+    };
+    const flushStderr = () => {
+      if (stderrFlushed) return;
+      stderrFlushed = true;
+      const tail = stderrDecoder.end().trim();
+      if (tail && this.logStream) {
+        this.logStream.write(`[stderr] ${tail}\n`);
+      }
+    };
     this.proc.stdout!.on("data", (chunk: Buffer) => {
-      this.handleStdout(chunk.toString("utf-8"));
+      this.handleStdout(stdoutDecoder.write(chunk));
     });
+    this.proc.stdout!.on("end", flushStdout);
+    this.proc.stdout!.on("close", flushStdout);
 
     this.proc.stderr!.on("data", (chunk: Buffer) => {
-      const text = chunk.toString("utf-8").trim();
+      const text = stderrDecoder.write(chunk).trim();
       if (text) {
         if (this.logStream) this.logStream.write(`[stderr] ${text}\n`);
         // Gemini may log progress info to stderr — only surface real errors
       }
     });
+    this.proc.stderr!.on("end", flushStderr);
+    this.proc.stderr!.on("close", flushStderr);
 
     this.proc.on("error", (err) => {
       this.emit("error", `Failed to start gemini: ${err.message}`);
       this.emit("status", "disconnected");
     });
 
-    this.proc.on("exit", (code) => {
+    this.proc.on("close", (code) => {
       if (this.logStream) this.logStream.write(`[exit] code=${code}\n`);
       this.proc = null;
       this.buffer = "";

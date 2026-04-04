@@ -17,6 +17,18 @@ interface UseWebSocketOptions {
   onSessionLost?: () => void;
 }
 
+const wsTextDecoder = new TextDecoder("utf-8");
+
+function decodeWsMessage(data: string | ArrayBuffer | Blob): string | null {
+  if (typeof data === "string") {
+    return data;
+  }
+  if (data instanceof ArrayBuffer) {
+    return wsTextDecoder.decode(new Uint8Array(data));
+  }
+  return null;
+}
+
 export function useWebSocket({
   sessionId,
   isBuilder,
@@ -46,11 +58,14 @@ export function useWebSocket({
     const url = `${protocol}//${window.location.host}/ws?${params}`;
 
     const ws = new WebSocket(url);
+    ws.binaryType = "arraybuffer";
     wsRef.current = ws;
 
     ws.onmessage = (e) => {
       try {
-        const { event, data } = JSON.parse(e.data);
+        const rawText = decodeWsMessage(e.data);
+        if (!rawText) return;
+        const { event, data } = JSON.parse(rawText);
         // On reconnect, detect if session process is no longer running
         if (event === "connected" && !initialConnectRef.current) {
           const d = data as { sessionActive?: boolean };

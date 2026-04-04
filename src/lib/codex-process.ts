@@ -1,5 +1,6 @@
 import { spawn, execSync, ChildProcess } from "child_process";
 import { EventEmitter } from "events";
+import { StringDecoder } from "string_decoder";
 import * as fs from "fs";
 import * as path from "path";
 export interface CodexProcessEvents {
@@ -35,6 +36,29 @@ export class CodexProcess extends EventEmitter<CodexProcessEvents> {
 
   private initialized = false;
   private threadCreated = false;
+
+  private parseOutputLine(line: string): void {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+
+    if (this.logStream) {
+      this.logStream.write(`[recv] ${trimmed}\n`);
+    }
+
+    try {
+      const parsed = JSON.parse(trimmed);
+      this.handleJsonRpcMessage(parsed);
+    } catch {
+      // Not valid JSON; ignore.
+    }
+  }
+
+  private flushStdoutBuffer(): void {
+    if (!this.buffer) return;
+    const trailing = this.buffer;
+    this.buffer = "";
+    this.parseOutputLine(trailing);
+  }
 
   /**
    * Start the codex app-server process and perform the initialize handshake.
@@ -92,24 +116,49 @@ export class CodexProcess extends EventEmitter<CodexProcessEvents> {
 
     const proc = this.proc;
 
+    const stdoutDecoder = new StringDecoder("utf-8");
+    const stderrDecoder = new StringDecoder("utf-8");
+    let stdoutFlushed = false;
+    let stderrFlushed = false;
+    const flushStdout = () => {
+      if (stdoutFlushed) return;
+      stdoutFlushed = true;
+      const tail = stdoutDecoder.end();
+      if (tail) {
+        this.handleStdout(tail);
+      }
+      this.flushStdoutBuffer();
+    };
+    const flushStderr = () => {
+      if (stderrFlushed) return;
+      stderrFlushed = true;
+      const tail = stderrDecoder.end().trim();
+      if (tail && this.logStream) {
+        this.logStream.write(`[stderr] ${tail}\n`);
+      }
+    };
     proc.stdout!.on("data", (chunk: Buffer) => {
-      this.handleStdout(chunk.toString("utf-8"));
+      this.handleStdout(stdoutDecoder.write(chunk));
     });
+    proc.stdout!.on("end", flushStdout);
+    proc.stdout!.on("close", flushStdout);
 
     proc.stderr!.on("data", (chunk: Buffer) => {
-      const text = chunk.toString("utf-8").trim();
+      const text = stderrDecoder.write(chunk).trim();
       if (text) {
         if (this.logStream) this.logStream.write(`[stderr] ${text}\n`);
         // Don't emit all stderr as errors — app-server logs info to stderr
       }
     });
+    proc.stderr!.on("end", flushStderr);
+    proc.stderr!.on("close", flushStderr);
 
     proc.on("error", (err) => {
       this.emit("error", `Failed to start codex app-server: ${err.message}`);
       this.emit("status", "disconnected");
     });
 
-    proc.on("exit", (code) => {
+    proc.on("close", (code) => {
       if (this.logStream) this.logStream.write(`[exit] code=${code}\n`);
       this.proc = null;
       this.initialized = false;

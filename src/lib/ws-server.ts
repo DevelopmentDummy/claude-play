@@ -2,6 +2,7 @@ import { Server as HTTPServer, type IncomingMessage } from "http";
 import { WebSocketServer, WebSocket, type RawData } from "ws";
 import { parse } from "url";
 import type { Socket } from "net";
+import { TextDecoder } from "util";
 import {
   getSessionInstance,
   scheduleSessionCleanup,
@@ -16,6 +17,7 @@ interface WSClient {
 }
 
 type UpgradeHandler = (req: IncomingMessage, socket: Socket, head: Buffer) => void;
+const wsTextDecoder = new TextDecoder("utf-8");
 
 // Use globalThis to share state across module instances (server.ts vs Next.js routes)
 const WS_KEY = "__claude_play_ws__";
@@ -49,14 +51,21 @@ function normalizeSessionId(value: unknown): string | null {
   }
 }
 
+function decodeRawMessage(raw: RawData): string {
+  if (typeof raw === "string") {
+    return raw;
+  }
+  if (Buffer.isBuffer(raw)) {
+    return wsTextDecoder.decode(raw);
+  }
+  if (Array.isArray(raw)) {
+    return wsTextDecoder.decode(Buffer.concat(raw));
+  }
+  return wsTextDecoder.decode(Buffer.from(raw));
+}
+
 function parseIncomingMessage(raw: RawData): { type: string; [key: string]: unknown } | null {
-  const text = typeof raw === "string"
-    ? raw
-    : Buffer.isBuffer(raw)
-      ? raw.toString("utf-8")
-      : Array.isArray(raw)
-        ? Buffer.concat(raw).toString("utf-8")
-        : Buffer.from(raw).toString("utf-8");
+  const text = decodeRawMessage(raw);
   try {
     const parsed = JSON.parse(text) as { type?: unknown } | null;
     if (!parsed || typeof parsed !== "object" || typeof parsed.type !== "string") {
@@ -66,6 +75,10 @@ function parseIncomingMessage(raw: RawData): { type: string; [key: string]: unkn
   } catch {
     return null;
   }
+}
+
+function sendJson(ws: WebSocket, payload: unknown): void {
+  ws.send(JSON.stringify(payload), { binary: false });
 }
 
 function detachClient(client: WSClient): void {
@@ -102,7 +115,6 @@ export function wsBroadcast(
   filter?: { sessionId?: string; isBuilder?: boolean; exclude?: WSClient }
 ): void {
   const { clients } = getWSState();
-  const payload = JSON.stringify({ event, data });
   for (const client of clients) {
     if (client.ws.readyState !== WebSocket.OPEN) continue;
     if (filter) {
@@ -111,7 +123,7 @@ export function wsBroadcast(
       if (filter.isBuilder !== undefined && client.isBuilder !== filter.isBuilder) continue;
     }
     try {
-      client.ws.send(payload);
+      sendJson(client.ws, { event, data });
     } catch {
       detachClient(client);
       try {
@@ -187,18 +199,18 @@ export function setupWebSocket(server: HTTPServer): void {
       const instance = sessionId ? getSessionInstance(sessionId) : null;
       const sessionActive = instance ? instance.claude.isRunning() : false;
       try {
-        ws.send(JSON.stringify({
+        sendJson(ws, {
           event: "connected",
           data: { sessionId, isBuilder, sessionActive },
-        }));
+        });
 
         if (instance) {
           const pendingHeaders = instance.getPendingEvents();
           if (pendingHeaders.length > 0) {
-            ws.send(JSON.stringify({
+            sendJson(ws, {
               event: "event:pending",
               data: { headers: pendingHeaders },
-            }));
+            });
           }
         }
       } catch {

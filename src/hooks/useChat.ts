@@ -18,6 +18,39 @@ function toolUseKey(name: string, input: unknown): string {
   }
 }
 
+const graphemeSegmenter = typeof Intl !== "undefined" && typeof Intl.Segmenter === "function"
+  ? new Intl.Segmenter(undefined, { granularity: "grapheme" })
+  : null;
+
+function splitStreamingChunk(text: string): { stableText: string; carryText: string } {
+  if (!text) {
+    return { stableText: "", carryText: "" };
+  }
+
+  if (!graphemeSegmenter) {
+    const codePoints = Array.from(text);
+    if (codePoints.length <= 1) {
+      return { stableText: "", carryText: text };
+    }
+    const carryText = codePoints[codePoints.length - 1] || "";
+    return {
+      stableText: codePoints.slice(0, -1).join(""),
+      carryText,
+    };
+  }
+
+  const segments = Array.from(graphemeSegmenter.segment(text), (part) => part.segment);
+  if (segments.length <= 1) {
+    return { stableText: "", carryText: text };
+  }
+
+  const carryText = segments[segments.length - 1] || "";
+  return {
+    stableText: text.slice(0, text.length - carryText.length),
+    carryText,
+  };
+}
+
 
 export function useChat(rawSessionId?: string) {
   const sessionId = rawSessionId ? decodeURIComponent(rawSessionId) : undefined;
@@ -27,7 +60,9 @@ export function useChat(rawSessionId?: string) {
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
 
-  const segmentsRef = useRef<string[]>([]);
+  const rawAssistantTextRef = useRef("");
+  const displayAssistantTextRef = useRef("");
+  const carryAssistantTextRef = useRef("");
   const toolsRef = useRef<Array<{ name: string; input: unknown }>>([]);
 
   const seenToolKeysRef = useRef<Set<string>>(new Set());
@@ -43,9 +78,7 @@ export function useChat(rawSessionId?: string) {
     setMessages((prev) => [...prev, { id, role: "user", content: text, ooc: ooc || undefined }]);
   }, []);
 
-  const appendAssistantText = useCallback((text: string) => {
-    segmentsRef.current.push(text);
-    const fullText = segmentsRef.current.join("");
+  const upsertAssistantMessage = useCallback((content: string) => {
     const isOOC = oocRef.current;
 
     setMessages((prev) => {
@@ -53,16 +86,35 @@ export function useChat(rawSessionId?: string) {
       if (last && last.role === "assistant" && last.id.startsWith("stream-")) {
         return [
           ...prev.slice(0, -1),
-          { ...last, content: fullText, tools: [...toolsRef.current], ooc: isOOC || undefined },
+          { ...last, content, tools: [...toolsRef.current], ooc: isOOC || undefined },
         ];
       }
       const id = `stream-${++msgIdRef.current}`;
       return [
         ...prev,
-        { id, role: "assistant", content: fullText, tools: [...toolsRef.current], ooc: isOOC || undefined },
+        { id, role: "assistant", content, tools: [...toolsRef.current], ooc: isOOC || undefined },
       ];
     });
   }, []);
+
+  const appendAssistantText = useCallback((text: string) => {
+    rawAssistantTextRef.current += text;
+
+    const { stableText, carryText } = splitStreamingChunk(carryAssistantTextRef.current + text);
+    carryAssistantTextRef.current = carryText;
+
+    if (!stableText) return;
+
+    displayAssistantTextRef.current += stableText;
+    upsertAssistantMessage(displayAssistantTextRef.current);
+  }, [upsertAssistantMessage]);
+
+  const flushAssistantText = useCallback(() => {
+    if (!rawAssistantTextRef.current) return;
+    carryAssistantTextRef.current = "";
+    displayAssistantTextRef.current = rawAssistantTextRef.current;
+    upsertAssistantMessage(displayAssistantTextRef.current);
+  }, [upsertAssistantMessage]);
 
   const addToolUse = useCallback(
     (name: string, input: unknown) => {
@@ -71,26 +123,10 @@ export function useChat(rawSessionId?: string) {
       seenToolKeysRef.current.add(key);
       toolsRef.current.push({ name, input });
 
-      const fullText = segmentsRef.current.join("");
-      const isOOC = oocRef.current;
-
       // Trigger re-render with updated tools
-      setMessages((prev) => {
-        const last = prev[prev.length - 1];
-        if (last && last.role === "assistant" && last.id.startsWith("stream-")) {
-          return [
-            ...prev.slice(0, -1),
-            { ...last, content: fullText, tools: [...toolsRef.current], ooc: isOOC || undefined },
-          ];
-        }
-        const id = `stream-${++msgIdRef.current}`;
-        return [
-          ...prev,
-          { id, role: "assistant", content: fullText, tools: [...toolsRef.current], ooc: isOOC || undefined },
-        ];
-      });
+      upsertAssistantMessage(displayAssistantTextRef.current);
     },
-    []
+    [upsertAssistantMessage]
   );
 
   /** Replace last stream-* message ID with the backend's canonical ID */
@@ -105,7 +141,10 @@ export function useChat(rawSessionId?: string) {
   }, []);
 
   const finishAssistantTurn = useCallback(() => {
-    segmentsRef.current = [];
+    flushAssistantText();
+    rawAssistantTextRef.current = "";
+    displayAssistantTextRef.current = "";
+    carryAssistantTextRef.current = "";
     toolsRef.current = [];
 
     seenToolKeysRef.current.clear();
@@ -113,7 +152,7 @@ export function useChat(rawSessionId?: string) {
     currentBlockTypeRef.current = "text";
     oocRef.current = false;
     setIsStreaming(false);
-  }, []);
+  }, [flushAssistantText]);
 
   const handleClaudeMessage = useCallback(
     (data: unknown) => {
@@ -168,7 +207,7 @@ export function useChat(rawSessionId?: string) {
       }
 
       if (type === "result") {
-        if (segmentsRef.current.length === 0 && msg.result) {
+        if (!rawAssistantTextRef.current && msg.result) {
           const result = msg.result as Record<string, unknown>;
           const text =
             typeof result === "string"
@@ -191,7 +230,13 @@ export function useChat(rawSessionId?: string) {
     (text: string) => {
       const isOOC = text.startsWith("OOC:");
       oocRef.current = isOOC;
+      rawAssistantTextRef.current = "";
+      displayAssistantTextRef.current = "";
+      carryAssistantTextRef.current = "";
+      toolsRef.current = [];
+      seenToolKeysRef.current.clear();
       sawTextDeltaRef.current = false;
+      currentBlockTypeRef.current = "text";
       addUserMessage(text, isOOC);
       setIsStreaming(true);
       setError(null);
@@ -210,6 +255,12 @@ export function useChat(rawSessionId?: string) {
           body: JSON.stringify({ text, sessionId }),
         });
       } catch (err) {
+        rawAssistantTextRef.current = "";
+        displayAssistantTextRef.current = "";
+        carryAssistantTextRef.current = "";
+        toolsRef.current = [];
+        seenToolKeysRef.current.clear();
+        sawTextDeltaRef.current = false;
         setError(err instanceof Error ? err.message : "Failed to send");
         setIsStreaming(false);
       }
@@ -224,11 +275,15 @@ export function useChat(rawSessionId?: string) {
 
   const clearMessages = useCallback(() => {
     setMessages([]);
-    segmentsRef.current = [];
+    rawAssistantTextRef.current = "";
+    displayAssistantTextRef.current = "";
+    carryAssistantTextRef.current = "";
     toolsRef.current = [];
 
     seenToolKeysRef.current.clear();
     sawTextDeltaRef.current = false;
+    currentBlockTypeRef.current = "text";
+    oocRef.current = false;
   }, []);
 
   const loadHistory = useCallback(async (): Promise<number> => {

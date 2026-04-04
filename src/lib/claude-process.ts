@@ -1,5 +1,6 @@
 import { spawn, execSync, ChildProcess } from "child_process";
 import { EventEmitter } from "events";
+import { StringDecoder } from "string_decoder";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -15,7 +16,41 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
   private proc: ChildProcess | null = null;
   private buffer = "";
   private logStream: fs.WriteStream | null = null;
- 
+
+  private parseOutputLine(line: string): void {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+
+    try {
+      const parsed = JSON.parse(trimmed);
+
+      if (this.logStream && parsed?.type === "system") {
+        this.logStream.write(`[system] ${trimmed}\n`);
+      }
+
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        parsed.type === "system" &&
+        parsed.subtype === "init" &&
+        parsed.session_id
+      ) {
+        this.emit("sessionId", parsed.session_id);
+      }
+
+      this.emit("message", parsed);
+    } catch {
+      // Not valid JSON; ignore.
+    }
+  }
+
+  private flushStdoutBuffer(): void {
+    if (!this.buffer) return;
+    const trailing = this.buffer;
+    this.buffer = "";
+    this.parseOutputLine(trailing);
+  }
+
   private normalizeMcpConfig(mcpConfigPath: string): void {
     try {
       const raw = fs.readFileSync(mcpConfigPath, "utf-8");
@@ -101,23 +136,49 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
 
     this.emit("status", "connected");
 
+    const stdoutDecoder = new StringDecoder("utf-8");
+    const stderrDecoder = new StringDecoder("utf-8");
+    let stdoutFlushed = false;
+    let stderrFlushed = false;
+    const flushStdout = () => {
+      if (stdoutFlushed) return;
+      stdoutFlushed = true;
+      const tail = stdoutDecoder.end();
+      if (tail) {
+        this.handleStdout(tail);
+      }
+      this.flushStdoutBuffer();
+    };
+    const flushStderr = () => {
+      if (stderrFlushed) return;
+      stderrFlushed = true;
+      const tail = stderrDecoder.end().trim();
+      if (tail) {
+        this.emit("error", tail);
+      }
+    };
+
     this.proc.stdout!.on("data", (chunk: Buffer) => {
-      this.handleStdout(chunk.toString("utf-8"));
+      this.handleStdout(stdoutDecoder.write(chunk));
     });
+    this.proc.stdout!.on("end", flushStdout);
+    this.proc.stdout!.on("close", flushStdout);
 
     this.proc.stderr!.on("data", (chunk: Buffer) => {
-      const text = chunk.toString("utf-8").trim();
+      const text = stderrDecoder.write(chunk).trim();
       if (text) {
         this.emit("error", text);
       }
     });
+    this.proc.stderr!.on("end", flushStderr);
+    this.proc.stderr!.on("close", flushStderr);
 
     this.proc.on("error", (err) => {
       this.emit("error", `Failed to start claude: ${err.message}`);
       this.emit("status", "disconnected");
     });
 
-    this.proc.on("exit", (code) => {
+    this.proc.on("close", (code) => {
       this.proc = null;
       this.buffer = "";
 
@@ -148,31 +209,7 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
     this.buffer = lines.pop()!;
 
     for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-      try {
-        const parsed = JSON.parse(trimmed);
-
-        // Log system/init messages for debugging compaction behavior
-        if (this.logStream && parsed?.type === "system") {
-          this.logStream.write(`[system] ${trimmed}\n`);
-        }
-
-        // Capture session_id from init message
-        if (
-          parsed &&
-          typeof parsed === "object" &&
-          parsed.type === "system" &&
-          parsed.subtype === "init" &&
-          parsed.session_id
-        ) {
-          this.emit("sessionId", parsed.session_id);
-        }
-
-        this.emit("message", parsed);
-      } catch {
-        // Not valid JSON – ignore
-      }
+      this.parseOutputLine(line);
     }
   }
 
