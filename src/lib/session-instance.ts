@@ -11,6 +11,24 @@ import { buildHintSnapshotLine } from "./hint-snapshot";
 
 // --- Constants & helpers (extracted from services.ts) ---
 
+/** Character-level merge of two versions of the same text for UTF-8 healing. */
+function mergeUtf8Texts(a: string, b: string): string {
+  const charsA = Array.from(a);
+  const charsB = Array.from(b);
+  if (charsA.length !== charsB.length) {
+    const countA = charsA.filter(c => c === "\ufffd").length;
+    const countB = charsB.filter(c => c === "\ufffd").length;
+    return countB < countA ? b : a;
+  }
+  let merged = false;
+  const result = charsA.map((ca, i) => {
+    const cb = charsB[i];
+    if (ca === "\ufffd" && cb !== "\ufffd") { merged = true; return cb; }
+    return ca;
+  });
+  return merged ? result.join("") : a;
+}
+
 const DIALOG_OPEN = "<dialog_response>";
 const DIALOG_CLOSE = "</dialog_response>";
 const SPECIAL_TOKEN_REGEX = /\$(?:IMAGE|PANEL):[^$]+\$/g;
@@ -783,14 +801,12 @@ export class SessionInstance {
           this.broadcast("command:result", { text: text || "" });
         } else {
           if (this.segments.length > 0 || this.tools.length > 0) {
-            // UTF-8 healing: compare delta-accumulated text vs assistant full text,
-            // pick the one with fewer U+FFFD replacement characters
+            // UTF-8 healing: character-level merge of delta-accumulated vs assistant full text.
+            // Different 4KB boundaries corrupt different positions, so merging recovers most.
             let rawContent = this.segments.join("");
             if (this.assistantFullText && this.sawTextDelta) {
-              const deltaFffd = (rawContent.match(/\ufffd/g) || []).length;
-              const fullFffd = (this.assistantFullText.match(/\ufffd/g) || []).length;
-              if (fullFffd < deltaFffd) {
-                rawContent = this.assistantFullText;
+              if (rawContent.includes("\ufffd") || this.assistantFullText.includes("\ufffd")) {
+                rawContent = mergeUtf8Texts(rawContent, this.assistantFullText);
               }
             }
             const dialogContent = isOOC ? rawContent : extractDialog(rawContent);

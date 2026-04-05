@@ -51,6 +51,34 @@ function splitStreamingChunk(text: string): { stableText: string; carryText: str
   };
 }
 
+/**
+ * Character-level merge of two versions of the same text.
+ * Where one has U+FFFD and the other has a real character, prefer the real one.
+ * If lengths differ, fall back to whichever version has fewer U+FFFD overall.
+ */
+function mergeUtf8Texts(a: string, b: string): string {
+  const charsA = Array.from(a);
+  const charsB = Array.from(b);
+
+  // If lengths don't match, can't do character-level merge — pick the cleaner one
+  if (charsA.length !== charsB.length) {
+    const countA = charsA.filter(c => c === "\ufffd").length;
+    const countB = charsB.filter(c => c === "\ufffd").length;
+    return countB < countA ? b : a;
+  }
+
+  let merged = false;
+  const result = charsA.map((ca, i) => {
+    const cb = charsB[i];
+    if (ca === "\ufffd" && cb !== "\ufffd") {
+      merged = true;
+      return cb;
+    }
+    return ca;
+  });
+
+  return merged ? result.join("") : a;
+}
 
 export function useChat(rawSessionId?: string) {
   const sessionId = rawSessionId ? decodeURIComponent(rawSessionId) : undefined;
@@ -144,14 +172,19 @@ export function useChat(rawSessionId?: string) {
   const finishAssistantTurn = useCallback(() => {
     flushAssistantText();
 
-    // UTF-8 healing: if assistant full text has fewer U+FFFD than delta-accumulated text, swap it in
+    // UTF-8 healing: character-level merge of delta-accumulated vs assistant full text.
+    // The CLI may corrupt different positions in each version (different 4KB boundaries),
+    // so merging character-by-character recovers most U+FFFD replacements.
     const deltaText = rawAssistantTextRef.current;
     const fullText = assistantFullTextRef.current;
     if (fullText && deltaText && sawTextDeltaRef.current) {
-      const deltaFffd = (deltaText.match(/\ufffd/g) || []).length;
-      const fullFffd = (fullText.match(/\ufffd/g) || []).length;
-      if (fullFffd < deltaFffd) {
-        upsertAssistantMessage(fullText);
+      const deltaHasFffd = deltaText.includes("\ufffd");
+      const fullHasFffd = fullText.includes("\ufffd");
+      if (deltaHasFffd || fullHasFffd) {
+        const healed = mergeUtf8Texts(deltaText, fullText);
+        if (healed !== deltaText) {
+          upsertAssistantMessage(healed);
+        }
       }
     }
 
