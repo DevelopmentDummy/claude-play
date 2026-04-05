@@ -17,6 +17,83 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
   private buffer = "";
   private logStream: fs.WriteStream | null = null;
 
+  /**
+   * Detect and repair mojibake (Latin-1 mis-decoded UTF-8).
+   * If the text contains typical Korean mojibake patterns (e.g. ì, ë followed
+   * by continuation-range chars), try reversing: treat the string as Latin-1
+   * bytes and re-decode as UTF-8. Accept only if the result has more Hangul
+   * and no new U+FFFD.
+   */
+  private static repairMojibake(text: string): string {
+    if (!text) return text;
+    // Quick check: Korean mojibake typically contains ì (U+00EC), ë (U+00EB),
+    // í (U+00ED), ê (U+00EA) followed by chars in 0x80-0xBF range.
+    // Also check for Â (U+00C2) which appears in mojibake of UTF-8 2-byte sequences.
+    // Skip if text already contains Hangul (U+AC00-U+D7AF) — probably fine.
+    const hasHangul = /[\uAC00-\uD7AF]/.test(text);
+    const hasMojibake = /[\u00C2-\u00C3\u00E0-\u00EF][\u0080-\u00BF]/.test(text);
+    if (hasHangul || !hasMojibake) return text;
+
+    try {
+      const fixed = Buffer.from(text, "latin1").toString("utf8");
+      // Accept only if result has Hangul and no new FFFD
+      const fixedHasHangul = /[\uAC00-\uD7AF]/.test(fixed);
+      const fixedHasFffd = fixed.includes("\ufffd");
+      const origHasFffd = text.includes("\ufffd");
+      if (fixedHasHangul && (!fixedHasFffd || origHasFffd)) {
+        return fixed;
+      }
+    } catch {
+      // Reversal failed; return original.
+    }
+    return text;
+  }
+
+  /** Walk a parsed CLI message and repair mojibake in all text fields in-place. */
+  private static healMessage(msg: Record<string, unknown>): void {
+    const repair = ClaudeProcess.repairMojibake;
+
+    // stream_event > event > delta > text
+    if (msg.type === "stream_event") {
+      const event = msg.event as Record<string, unknown> | undefined;
+      if (event) {
+        const delta = event.delta as Record<string, unknown> | undefined;
+        if (delta && typeof delta.text === "string") {
+          delta.text = repair(delta.text);
+        }
+      }
+    }
+
+    // assistant > message > content (string or array of blocks)
+    if (msg.type === "assistant") {
+      const message = msg.message as Record<string, unknown> | undefined;
+      if (message) {
+        if (typeof message.content === "string") {
+          message.content = repair(message.content);
+        } else if (Array.isArray(message.content)) {
+          for (const block of message.content) {
+            const b = block as Record<string, unknown>;
+            if (b.type === "text" && typeof b.text === "string") {
+              b.text = repair(b.text);
+            }
+          }
+        }
+      }
+    }
+
+    // result (string or { text: string })
+    if (msg.type === "result") {
+      if (typeof msg.result === "string") {
+        msg.result = repair(msg.result);
+      } else if (msg.result && typeof msg.result === "object") {
+        const r = msg.result as Record<string, unknown>;
+        if (typeof r.text === "string") {
+          r.text = repair(r.text);
+        }
+      }
+    }
+  }
+
   private parseOutputLine(line: string): void {
     const trimmed = line.trim();
     if (!trimmed) return;
@@ -24,8 +101,13 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
     try {
       const parsed = JSON.parse(trimmed);
 
-      if (this.logStream && parsed?.type === "system") {
-        this.logStream.write(`[system] ${trimmed}\n`);
+      if (this.logStream) {
+        if (parsed?.type === "system") {
+          this.logStream.write(`[system] ${trimmed}\n`);
+        } else if (parsed?.type === "stream_event" || parsed?.type === "assistant" || parsed?.type === "result") {
+          // Log raw line for UTF-8 diagnostics (truncate to 2000 chars)
+          this.logStream.write(`[${parsed.type}] ${trimmed.length > 2000 ? trimmed.slice(0, 2000) + "..." : trimmed}\n`);
+        }
       }
 
       if (
@@ -36,6 +118,11 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
         parsed.session_id
       ) {
         this.emit("sessionId", parsed.session_id);
+      }
+
+      // Repair mojibake in text fields before emitting
+      if (parsed && typeof parsed === "object") {
+        ClaudeProcess.healMessage(parsed as Record<string, unknown>);
       }
 
       this.emit("message", parsed);
