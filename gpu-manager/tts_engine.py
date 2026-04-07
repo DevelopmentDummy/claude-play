@@ -21,6 +21,10 @@ MODEL_NAMES = {
     "1.7B": "Qwen/Qwen3-TTS-12Hz-1.7B-Base",
 }
 
+# Specialized model variants for voice creation
+VOICE_DESIGN_MODEL = "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign"
+CUSTOM_VOICE_MODEL = "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice"
+
 
 class TTSEngine:
     def __init__(self, model_path: str | None = None) -> None:

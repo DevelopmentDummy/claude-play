@@ -23,11 +23,10 @@ class VoiceCreator:
         language = payload.get("language", "ko")
 
         async with self._engine._lock:
-            await self._engine.load_model(model_size)
-
             loop = asyncio.get_event_loop()
 
             if mode == "reference":
+                await self._engine.load_model(model_size)
                 result = await loop.run_in_executor(
                     None,
                     self._create_from_reference,
@@ -37,6 +36,9 @@ class VoiceCreator:
                     output_path,
                 )
             elif mode == "design":
+                # Design mode loads VoiceDesign model itself,
+                # so unload any existing Base model first to free VRAM
+                await self._engine.unload_model()
                 result = await loop.run_in_executor(
                     None,
                     self._create_from_design,
@@ -87,10 +89,10 @@ class VoiceCreator:
     def _create_from_design(
         self, design_prompt: str, language: str, output_path: str,
     ) -> dict:
-        """Create voice via design prompt: generate sample audio, then extract voice clone prompt.
+        """Create voice via design prompt using the VoiceDesign model.
 
-        Uses the CustomVoice model's generate_custom_voice with instruct param
-        to produce a reference clip, then creates a voice clone prompt from it.
+        Loads the dedicated VoiceDesign model, generates a reference clip,
+        then extracts a voice clone prompt from it for reuse with the Base model.
         """
         import torch
         import soundfile as sf
@@ -100,7 +102,7 @@ class VoiceCreator:
         t0 = time.monotonic()
         logger.info("Creating voice from design: %s...", design_prompt[:60])
 
-        from tts_engine import _LANGUAGE_MAP
+        from tts_engine import _LANGUAGE_MAP, VOICE_DESIGN_MODEL
         lang = _LANGUAGE_MAP.get(language, "Korean")
 
         sample_texts = {
@@ -111,23 +113,34 @@ class VoiceCreator:
         }
         sample_text = sample_texts.get(language, sample_texts["ko"])
 
-        # Generate a reference clip using custom voice with design instruct
-        # This requires the CustomVoice model variant
-        wavs, sr = self._engine._model.generate_custom_voice(
+        # Load VoiceDesign model temporarily (different from Base model)
+        logger.info("Loading VoiceDesign model for voice creation...")
+        design_model = self._load_voice_design_model(VOICE_DESIGN_MODEL)
+
+        # Generate a reference clip using voice design with instruct prompt
+        wavs, sr = design_model.generate_voice_design(
             text=sample_text,
-            language=lang,
-            speaker="Vivian",  # base speaker, instruct overrides characteristics
             instruct=design_prompt,
+            language=lang,
         )
 
-        # Save to temp file for voice clone prompt extraction
+        # Unload design model to free VRAM
+        del design_model
+        torch.cuda.empty_cache()
+        logger.info("VoiceDesign model unloaded")
+
+        # Save generated audio to temp file
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
             tmp_path = tmp.name
             audio_np = wavs[0] if isinstance(wavs[0], np.ndarray) else wavs[0].cpu().numpy()
             sf.write(tmp_path, audio_np, sr)
 
         try:
-            # Extract voice clone prompt from the generated sample
+            # Re-load Base model to extract voice clone prompt
+            # (we're in executor thread, so call sync load directly)
+            self._engine._model = self._engine._load_model_sync("1.7B")
+            self._engine._loaded_size = "1.7B"
+
             prompt_items = self._engine.create_voice_clone_prompt(
                 ref_audio=tmp_path,
                 ref_text=sample_text,
@@ -139,7 +152,7 @@ class VoiceCreator:
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         torch.save(prompt_items, output_path)
 
-        # Generate another sample for preview using the saved prompt
+        # Generate sample for preview using the saved prompt
         sample_audio = self._generate_sample(prompt_items, language)
 
         elapsed = time.monotonic() - t0
@@ -150,6 +163,25 @@ class VoiceCreator:
             "voice_file": output_path,
             "sample_audio": base64.b64encode(sample_audio).decode("ascii"),
         }
+
+    @staticmethod
+    def _load_voice_design_model(model_name: str):
+        """Load the VoiceDesign model variant."""
+        import torch
+        from qwen_tts import Qwen3TTSModel
+
+        try:
+            import flash_attn  # noqa: F401
+            attn_impl = "flash_attention_2"
+        except ImportError:
+            attn_impl = "sdpa"
+
+        return Qwen3TTSModel.from_pretrained(
+            model_name,
+            device_map="cuda:0",
+            dtype=torch.bfloat16,
+            attn_implementation=attn_impl,
+        )
 
     def _generate_sample(self, voice_clone_prompt, language: str) -> bytes:
         """Generate a short sample audio to preview the voice."""
