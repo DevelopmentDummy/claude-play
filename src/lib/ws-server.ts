@@ -252,7 +252,8 @@ function handleMessage(
         const eventHeaders = instance.flushEvents();
         const hintSnapshot = instance.buildHintSnapshot();
         const actionHistory = instance.flushActions();
-        const parts = [eventHeaders, hintSnapshot, actionHistory, text].filter(Boolean);
+        const jsonLint = instance.buildJsonLint();
+        const parts = [eventHeaders, jsonLint, hintSnapshot, actionHistory, text].filter(Boolean);
         instance.claude.send(parts.join("\n"));
         break;
       }
@@ -271,8 +272,9 @@ function handleMessage(
       const eventHeaders = isOOC ? "" : instance.flushEvents();
       const hintSnapshot = isOOC ? "" : instance.buildHintSnapshot();
       const actionHistory = isOOC ? "" : instance.flushActions();
+      const jsonLint = instance.buildJsonLint();
       const oocHint = isOOC ? "[OOC 메시지입니다. RP 응답(dialog_response)을 포함하지 마세요. 메타/시스템 수준으로만 응답하세요.]\n" : "";
-      const parts = [oocHint, eventHeaders, hintSnapshot, actionHistory, text].filter(Boolean);
+      const parts = [oocHint, eventHeaders, jsonLint, hintSnapshot, actionHistory, text].filter(Boolean);
       instance.claude.send(parts.join("\n"));
 
       // Broadcast user message to other clients in same session (sender already has it locally)

@@ -579,7 +579,7 @@ export default function ChatMessages({
         )}
         {messages.map((msg, idx) => {
         const isLastAssistant =
-          isStreaming && idx === lastIdx && msg.role === "assistant";
+          isStreaming && idx === lastIdx && msg.role === "assistant" && !msg.id.startsWith("opening-");
 
         // OOC messages: show raw content (no dialog_response extraction)
         // Normal RP messages: extract <dialog_response> content only, strip <choice> tags
@@ -697,7 +697,7 @@ export default function ChatMessages({
           </div>
         );
         })}
-        {isStreaming && messages[lastIdx]?.role !== "assistant" && (
+        {isStreaming && (messages[lastIdx]?.role !== "assistant" || messages[lastIdx]?.id.startsWith("opening-")) && (
           <ThinkingIndicator />
         )}
         {/* Floating dock panel — sticky at bottom, overlaps messages like CSS float */}

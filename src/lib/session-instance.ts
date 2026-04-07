@@ -381,6 +381,33 @@ export class SessionInstance {
     return buildHintSnapshotLine(dir);
   }
 
+  /** Lint all non-system JSON files in session dir. Returns warning string or empty. */
+  buildJsonLint(): string {
+    const dir = this.getDir();
+    if (!dir) return "";
+    const SYSTEM_JSON = new Set([
+      "session.json", "builder-session.json", "layout.json",
+      "chat-history.json", "pending-events.json", "pending-actions.json",
+      "package.json", "tsconfig.json", "chat-options.json",
+    ]);
+    const errors: string[] = [];
+    try {
+      for (const f of fs.readdirSync(dir)) {
+        if (!f.endsWith(".json") || SYSTEM_JSON.has(f)) continue;
+        const fp = path.join(dir, f);
+        try {
+          const raw = fs.readFileSync(fp, "utf-8");
+          JSON.parse(raw);
+        } catch (e) {
+          const msg = e instanceof SyntaxError ? e.message : String(e);
+          errors.push(`${f}: ${msg}`);
+        }
+      }
+    } catch { /* dir read error — skip */ }
+    if (errors.length === 0) return "";
+    return `[JSON_LINT] 다음 JSON 파일에 구문 오류가 있습니다. 즉시 수정하세요:\n${errors.map(e => `  - ${e}`).join("\n")}`;
+  }
+
   /**
    * Run session hooks/on-message.js if it exists.
    * Called before building hint snapshot so hooks can massage data.
@@ -809,12 +836,11 @@ export class SessionInstance {
                 rawContent = mergeUtf8Texts(rawContent, this.assistantFullText);
               }
             }
-            const dialogContent = isOOC ? rawContent : extractDialog(rawContent);
-            if (dialogContent) {
+            if (rawContent) {
               this.chatHistory.push({
                 id: `hist-a-${++this.historyId}`,
                 role: "assistant",
-                content: dialogContent,
+                content: rawContent,
                 tools: this.tools.length > 0 ? [...this.tools] : undefined,
                 ooc: isOOC || undefined,
               });

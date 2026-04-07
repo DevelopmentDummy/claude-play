@@ -18,7 +18,8 @@ export async function POST(req: Request) {
   const eventHeaders = isOOC ? "" : instance.flushEvents();
   const hintSnapshot = isOOC ? "" : instance.buildHintSnapshot();
   const actionHistory = isOOC ? "" : instance.flushActions();
-  const parts = [eventHeaders, hintSnapshot, actionHistory, text].filter(Boolean);
+  const jsonLint = instance.buildJsonLint();
+  const parts = [eventHeaders, jsonLint, hintSnapshot, actionHistory, text].filter(Boolean);
   instance.claude.send(parts.join("\n"));
   return NextResponse.json({ ok: true });
 }
