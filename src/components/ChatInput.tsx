@@ -317,17 +317,24 @@ function ChatInput({ disabled, onSend, sessionId, choices, pendingEvents, showOO
 
       } else if (act.tool) {
         // ═══ Legacy Tool Action ═══
+        const toolBody = { args: { action: act.action, ...(act.params || act.args || {}) } };
+        console.log("[choice tool action] sending:", JSON.stringify(toolBody));
         const toolRes = await fetch(`/api/sessions/${sessionId}/tools/${encodeURIComponent(act.tool)}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ args: { action: act.action, ...(act.args || {}) } }),
+          body: JSON.stringify(toolBody),
         });
         if (!toolRes.ok) {
           const err = await toolRes.json().catch(() => ({ error: "Action failed" }));
+          console.error("[choice tool action] error:", err);
           throw new Error(err.error || `Action ${act.action} failed`);
         }
         const toolData = await toolRes.json();
-        const hint = toolData.result?.hints?.narrative || toolData.result?.hints?.summary || "completed";
+        console.log("[choice tool action] response:", JSON.stringify(toolData));
+        const r = toolData.result;
+        const hint = r?.hints?.narrative || r?.hints?.summary
+          || (Array.isArray(r?.hints) && r.hints.length > 0 ? r.hints[0] : null)
+          || r?.reason || r?.message || "completed";
         await fetch(`/api/sessions/${sessionId}/events`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },

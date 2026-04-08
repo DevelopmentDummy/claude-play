@@ -40,6 +40,16 @@ export async function POST(
   try {
     const body = await req.json();
     args = typeof body?.args === "object" && body.args !== null ? body.args : {};
+
+    // Choice tool actions send { action, ...flat params } but engine scripts
+    // expect { action, params: {...} }. Auto-wrap if params is missing.
+    if (args.action && !args.params) {
+      const { action, ...rest } = args;
+      if (Object.keys(rest).length > 0) {
+        args = { action, params: rest };
+      }
+    }
+    console.log(`[tools/${name}] args received:`, JSON.stringify(args));
   } catch {
     // empty args is fine
   }
