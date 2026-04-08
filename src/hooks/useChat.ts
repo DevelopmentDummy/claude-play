@@ -207,6 +207,18 @@ export function useChat(rawSessionId?: string) {
       const msg = data as Record<string, unknown>;
       const type = msg.type;
 
+      // Gemini: tool_use after text causes full re-stream; reset accumulated text
+      if (type === "content_reset") {
+        rawAssistantTextRef.current = "";
+        displayAssistantTextRef.current = "";
+        carryAssistantTextRef.current = "";
+        assistantFullTextRef.current = null;
+        toolsRef.current = [];
+        seenToolKeysRef.current.clear();
+        upsertAssistantMessage("");
+        return;
+      }
+
       if (type === "stream_event") {
         const event = msg.event as Record<string, unknown> | undefined;
         if (!event) return;

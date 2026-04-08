@@ -754,6 +754,14 @@ export class SessionInstance {
         this.broadcast("claude:message", d);
       }
 
+      // Gemini: tool_use after text causes full re-stream; reset accumulated segments
+      if (msg.type === "content_reset") {
+        this.segments = [];
+        this.assistantFullText = null;
+        this.broadcast("claude:message", d);
+        return;
+      }
+
       if (msg.type === "system" && msg.subtype === "status" && msg.status === "compacting") {
         this.isCompacting = true;
         this.broadcast("claude:status", "compacting");

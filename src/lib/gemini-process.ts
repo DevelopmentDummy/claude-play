@@ -36,10 +36,11 @@ export class GeminiProcess extends EventEmitter<GeminiProcessEvents> {
   // Session state
   private savedSessionId: string | null = null;
   private pendingFirstMessage = false;
-  private initialResumeId: string | undefined;
 
   // Track whether any delta events were received in the current turn
   private seenDeltaInTurn = false;
+  // Track whether tool_use occurred after text deltas (Gemini re-streams full content after tools)
+  private hadToolAfterText = false;
 
   private parseOutputLine(line: string): void {
     const trimmed = line.trim();
@@ -84,7 +85,6 @@ export class GeminiProcess extends EventEmitter<GeminiProcessEvents> {
 
     this.spawnCwd = cwd;
     this.spawnModel = model;
-    this.initialResumeId = resumeId;
     this.savedSessionId = resumeId || null;
     this.pendingFirstMessage = true;
     this.seenDeltaInTurn = false;
@@ -133,12 +133,9 @@ export class GeminiProcess extends EventEmitter<GeminiProcessEvents> {
   private spawnProcess(prompt: string, resumeId: string | undefined): void {
     const cmd = process.platform === "win32" ? "gemini.cmd" : "gemini";
 
-    // Resume mode: -p and --resume cannot be combined.
-    // Use stdin to send the prompt when resuming.
+    // Always pipe prompt via stdin to avoid Windows shell quoting issues with -p.
+    // --output-format stream-json implies non-interactive (headless) mode.
     const args: string[] = [];
-    if (!resumeId) {
-      args.push("-p", prompt);
-    }
     args.push("--output-format", "stream-json", "--yolo");
 
     if (this.spawnModel) {
@@ -170,18 +167,15 @@ export class GeminiProcess extends EventEmitter<GeminiProcessEvents> {
     this.buffer = "";
     this.seenDeltaInTurn = false;
 
-    // When resuming, stdin must be "pipe" to send the prompt
-    const stdinMode = resumeId ? "pipe" as const : "ignore" as const;
-
     this.proc = spawn(cmd, args, {
       env,
       cwd: this.spawnCwd,
-      stdio: [stdinMode, "pipe", "pipe"],
+      stdio: ["pipe", "pipe", "pipe"],
       shell: process.platform === "win32",
     });
 
-    // For resume mode, pipe the prompt via stdin then close
-    if (resumeId && this.proc.stdin) {
+    // Always pipe prompt via stdin to avoid Windows shell quoting issues
+    if (this.proc.stdin) {
       this.proc.stdin.write(prompt);
       this.proc.stdin.end();
     }
@@ -291,6 +285,12 @@ export class GeminiProcess extends EventEmitter<GeminiProcessEvents> {
         if (!content) break;
 
         if (event.delta === true) {
+          // Gemini re-streams the full response after tool execution.
+          // Detect this and emit a content_reset so backend/frontend clear accumulated text.
+          if (this.hadToolAfterText) {
+            this.hadToolAfterText = false;
+            this.emit("message", { type: "content_reset" });
+          }
           // Streaming delta
           this.seenDeltaInTurn = true;
           this.emit("message", {
@@ -318,6 +318,9 @@ export class GeminiProcess extends EventEmitter<GeminiProcessEvents> {
       }
 
       case "tool_use": {
+        if (this.seenDeltaInTurn) {
+          this.hadToolAfterText = true;
+        }
         const toolName = event.tool_name as string | undefined;
         const parameters = (event.parameters ?? {}) as unknown;
         this.emit("message", {
@@ -338,6 +341,7 @@ export class GeminiProcess extends EventEmitter<GeminiProcessEvents> {
 
       case "result": {
         this.seenDeltaInTurn = false;
+        this.hadToolAfterText = false;
         this.emit("message", { type: "result" });
         break;
       }
