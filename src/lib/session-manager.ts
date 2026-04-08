@@ -970,6 +970,7 @@ export class SessionManager {
         path.join(sessionDir, "skills"),
         path.join(sessionDir, ".claude", "skills"),
         path.join(sessionDir, ".agents", "skills"),
+        path.join(sessionDir, ".gemini", "skills"),
       ];
       if (fs.existsSync(personaSkills)) {
         for (const targetDir of targets) {
