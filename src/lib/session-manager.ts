@@ -1688,10 +1688,13 @@ export class SessionManager {
   refreshToolSkills(sessionDir: string): void {
     const claudeSkillsDest = path.join(sessionDir, ".claude", "skills");
     const agentsSkillsDest = path.join(sessionDir, ".agents", "skills");
+    const geminiSkillsDest = path.join(sessionDir, ".gemini", "skills");
     fs.mkdirSync(claudeSkillsDest, { recursive: true });
     fs.mkdirSync(agentsSkillsDest, { recursive: true });
+    fs.mkdirSync(geminiSkillsDest, { recursive: true });
     this.copyToolSkills(claudeSkillsDest);
     this.copyToolSkills(agentsSkillsDest);
+    this.copyToolSkills(geminiSkillsDest);
   }
 
   /** Copy global shared skills (data/skills/) and tool-specific skills (data/tools/X/skills/) into the session skills dir */
