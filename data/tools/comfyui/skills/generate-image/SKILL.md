@@ -93,10 +93,26 @@ cat character-tags.json
 순서: `identity, accessories, outfit 태그, 감정/표정, 포즈, 장면 묘사`
 (quality/style/trigger 태그는 서버가 comfyui-config.json에서 자동 삽입한다)
 
+**1인 장면** (`portrait`, `scene`, `scene-real`, `profile`):
+```
+{identity}, {accessories}, {outfit 태그}, {감정/표정}, {포즈}, {장면 묘사}
+```
+
 예시:
 ```
 1girl, elf, long pointy ears, silver white hair, long hair, deep blue eyes, gold-framed semi-rimless glasses, thin silver chain necklace with blue gem pendant, black leather corset with silver buckles, white off-shoulder blouse with lace trim, gentle smile, looking at viewer, indoor, warm lighting
 ```
+
+**2인 장면** (`scene-couple`):
+`scene-couple`은 인자가 `prompt`가 아니라 `prompt_left`/`prompt_right`이다. 각 영역에 해당 캐릭터의 태그를 분배한다.
+```
+prompt_left:  {인물수}, 1girl|1boy, {캐릭터A identity + accessories + outfit}, {감정/표정}, {포즈}, {장면 묘사}
+prompt_right: {인물수}, 1girl|1boy, {캐릭터B identity + accessories + outfit}, {감정/표정}, {포즈}, {장면 묘사}
+```
+- `{인물수}` (예: `2girls`)는 양쪽 프롬프트에 동일하게 포함한다
+- 공통 배경/장소 태그도 양쪽에 동일하게 포함한다
+- `character-tags.json`에서 각 캐릭터의 `identity` + `accessories` + 해당 `outfit_*`을 가져온다
+- 사용자가 등장하면 `memory.md`의 사용자 외형 태그를 한쪽에 적용한다
 
 ### 3단계: 이미지 생성 요청
 

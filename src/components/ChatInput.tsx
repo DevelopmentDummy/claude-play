@@ -346,24 +346,7 @@ function ChatInput({ disabled, onSend, sessionId, choices, pendingEvents, showOO
       }
     }
 
-    // [AVAILABLE] header: prefer registry, fallback to legacy
-    const availableHeader = registry.buildAvailableHeader();
-    if (availableHeader) {
-      await fetch(`/api/sessions/${sessionId}/events`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ header: availableHeader }),
-      });
-    } else if (lastAvailable && lastAvailable.length > 0) {
-      const parts = lastAvailable.map((a: { action: string; label: string; args_hint: string | null }) =>
-        a.args_hint ? `${a.action}(${a.label} ${a.args_hint})` : `${a.action}(${a.label})`
-      );
-      await fetch(`/api/sessions/${sessionId}/events`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ header: `[AVAILABLE] ${parts.join(", ")}` }),
-      });
-    }
+    // [AVAILABLE] header is already queued in sendMessage — skip here to avoid duplicates
 
     return lastAvailable;
   }, []);
@@ -680,7 +663,7 @@ function ChatInput({ disabled, onSend, sessionId, choices, pendingEvents, showOO
         </div>
       )}
       {pendingEvents && pendingEvents.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 px-4 pt-2 pb-1">
+        <div className="flex flex-wrap gap-1.5 px-4 pt-2 pb-1 max-h-[100px] overflow-y-auto">
           {pendingEvents.map((header, i) => (
             <span
               key={i}
