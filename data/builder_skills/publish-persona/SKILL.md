@@ -20,9 +20,15 @@ ls -la .git 2>/dev/null || echo "NO_GIT"
 **`.git`이 없는 경우** (대부분의 첫 퍼블리시):
 ```bash
 git init
+git config user.name "Claude Play"
+git config user.email "bridge@local"
 ```
 
-**`.git`이 있는 경우**: 이미 독립 리포가 있으므로 그대로 진행.
+**`.git`이 있는 경우**: 이미 독립 리포가 있으므로 그대로 진행. 단, author 설정 확인:
+```bash
+git config user.name "Claude Play"
+git config user.email "bridge@local"
+```
 
 **주의**: `git status`를 실행했을 때 상위 메인 리포의 파일(`../../../server.ts` 등)이 보이면 독립 `.git`이 없다는 뜻이다. 반드시 `git init`부터 실행할 것.
 
