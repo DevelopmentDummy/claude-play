@@ -118,7 +118,7 @@ export default function PersonaCard({
         {importMeta && (
           <div className="flex items-center gap-1.5 mt-1">
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent/10 text-accent border border-accent/20">
-              imported
+              외부
             </span>
             {onCheckUpdate && (
               <button
@@ -126,9 +126,9 @@ export default function PersonaCard({
                 className="text-[10px] px-1.5 py-0.5 rounded bg-surface-light text-text-dim hover:text-text border border-border/30 transition-colors"
               >
                 {updateStatus === "checking" ? "..." :
-                 updateStatus === "update-available" ? `${behindCount} updates` :
-                 updateStatus === "up-to-date" ? "up to date" :
-                 "check update"}
+                 updateStatus === "update-available" ? `${behindCount}개 업데이트` :
+                 updateStatus === "up-to-date" ? "최신" :
+                 "업데이트 확인"}
               </button>
             )}
           </div>
@@ -139,7 +139,7 @@ export default function PersonaCard({
             onClick={(e) => { e.stopPropagation(); onUpdate(); }}
             className="text-[10px] px-1.5 py-0.5 rounded bg-accent/20 text-accent border border-accent/30 hover:bg-accent/30 transition-colors"
           >
-            Update in Builder
+            빌더에서 업데이트
           </button>
         )}
       </div>

@@ -381,13 +381,13 @@ export default function LobbyPage() {
                 <span className="text-sm text-text-dim">New Persona</span>
               </div>
 
-              {/* Import from GitHub card */}
+              {/* GitHub에서 가져오기 card */}
               <div
                 onClick={() => setImportOpen(true)}
                 className="flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-border/50 hover:border-accent/50 cursor-pointer transition-all duration-fast min-h-[140px] text-text-dim hover:text-accent"
               >
                 <span className="text-2xl">&darr;</span>
-                <span className="text-sm">Import from GitHub</span>
+                <span className="text-sm">GitHub에서 가져오기</span>
               </div>
             </div>
           </div>

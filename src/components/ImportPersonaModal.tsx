@@ -102,7 +102,7 @@ export default function ImportPersonaModal({ open, onClose, onImported, onOpenBu
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div className="bg-surface border border-border rounded-2xl w-full max-w-lg p-6 space-y-4 animate-[slideUp_0.25s_ease-out]">
-        <h2 className="text-lg font-semibold text-text">Import Persona from GitHub</h2>
+        <h2 className="text-lg font-semibold text-text">GitHub에서 페르소나 가져오기</h2>
 
         {/* Post-install state */}
         {installed ? (
@@ -113,21 +113,21 @@ export default function ImportPersonaModal({ open, onClose, onImported, onOpenBu
                   <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                 </svg>
               </div>
-              <p className="text-text text-sm">Persona installed successfully!</p>
+              <p className="text-text text-sm">페르소나가 설치되었습니다!</p>
             </div>
-            <p className="text-text-dim text-sm text-center">Run security review?</p>
+            <p className="text-text-dim text-sm text-center">보안 점검을 진행할까요?</p>
             <div className="flex gap-2 justify-end">
               <button
                 className="px-4 py-2 rounded-lg bg-transparent border border-border text-text-dim hover:bg-surface-light transition-all duration-fast"
                 onClick={onClose}
               >
-                Skip
+                건너뛰기
               </button>
               <button
                 className="px-4 py-2.5 rounded-xl bg-accent text-white border border-accent hover:bg-accent-hover disabled:opacity-50 transition-all duration-fast"
                 onClick={() => onOpenBuilder(folderName, SECURITY_REVIEW_MESSAGE)}
               >
-                Open Builder for Review
+                빌더에서 점검하기
               </button>
             </div>
           </div>
@@ -148,7 +148,7 @@ export default function ImportPersonaModal({ open, onClose, onImported, onOpenBu
                 disabled={loading || !url}
                 className="px-4 py-2.5 rounded-xl bg-accent text-white border border-accent hover:bg-accent-hover disabled:opacity-50 transition-all duration-fast"
               >
-                {loading ? "Loading..." : "Preview"}
+                {loading ? "불러오는 중..." : "미리보기"}
               </button>
             </div>
 
@@ -198,9 +198,9 @@ export default function ImportPersonaModal({ open, onClose, onImported, onOpenBu
                   </div>
                 )}
 
-                {/* Folder name input */}
+                {/* 폴더 이름 input */}
                 <div className="space-y-1">
-                  <label className="text-text-dim text-xs">Folder name</label>
+                  <label className="text-text-dim text-xs">폴더 이름</label>
                   <input
                     type="text"
                     value={folderName}
@@ -214,7 +214,7 @@ export default function ImportPersonaModal({ open, onClose, onImported, onOpenBu
                   disabled={installing || !folderName}
                   className="w-full px-4 py-2.5 rounded-xl bg-accent text-white border border-accent hover:bg-accent-hover disabled:opacity-50 transition-all duration-fast"
                 >
-                  {installing ? "Installing..." : "Install"}
+                  {installing ? "설치 중..." : "설치"}
                 </button>
               </div>
             )}

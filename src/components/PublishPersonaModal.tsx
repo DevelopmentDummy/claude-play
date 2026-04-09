@@ -64,11 +64,11 @@ export default function PublishPersonaModal({ open, personaName, onClose, onOpen
     >
       <div className="bg-surface border border-border rounded-2xl w-full max-w-md p-6 space-y-5 animate-[slideUp_0.25s_ease-out]">
         {/* Header */}
-        <h3 className="text-sm font-semibold text-text">Publish to GitHub</h3>
+        <h3 className="text-sm font-semibold text-text">GitHub에 퍼블리시</h3>
 
         {/* Option A: URL direct input */}
         <div className="space-y-2">
-          <label className="text-xs text-text-dim">Repository URL</label>
+          <label className="text-xs text-text-dim">리포지토리 URL</label>
           <div className="flex gap-2">
             <input
               type="text"
@@ -87,7 +87,7 @@ export default function PublishPersonaModal({ open, personaName, onClose, onOpen
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                 </svg>
-                Done
+                완료
               </button>
             ) : (
               <button
@@ -95,7 +95,7 @@ export default function PublishPersonaModal({ open, personaName, onClose, onOpen
                 disabled={!url.trim() || publishing}
                 className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium disabled:opacity-40 cursor-pointer hover:bg-accent/80 transition-colors"
               >
-                {publishing ? "Pushing..." : "Push"}
+                {publishing ? "전송 중..." : "Push"}
               </button>
             )}
           </div>
@@ -107,7 +107,7 @@ export default function PublishPersonaModal({ open, personaName, onClose, onOpen
         {/* Divider */}
         <div className="flex items-center gap-3">
           <div className="flex-1 h-px bg-border" />
-          <span className="text-xs text-text-dim">or</span>
+          <span className="text-xs text-text-dim">또는</span>
           <div className="flex-1 h-px bg-border" />
         </div>
 
@@ -116,8 +116,8 @@ export default function PublishPersonaModal({ open, personaName, onClose, onOpen
           onClick={handleBuilder}
           className="w-full px-4 py-3 rounded-xl border border-border text-text hover:bg-surface-light transition-all duration-fast text-left cursor-pointer"
         >
-          <div className="text-sm font-medium">Builder session</div>
-          <div className="text-xs text-text-dim mt-0.5">AI handles repo creation, setup &amp; push</div>
+          <div className="text-sm font-medium">빌더 세션으로 진행</div>
+          <div className="text-xs text-text-dim mt-0.5">AI가 리포 생성, 설정, push까지 처리합니다</div>
         </button>
       </div>
     </div>

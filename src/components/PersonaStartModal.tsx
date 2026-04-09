@@ -315,7 +315,7 @@ export default function PersonaStartModal({
                   className="p-2.5 rounded-xl border border-border/60 text-text-dim
                     hover:text-accent hover:border-accent/40 hover:bg-accent/5
                     transition-all duration-fast cursor-pointer"
-                  title="Publish to GitHub"
+                  title="GitHub에 퍼블리시"
                 >
                   <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8" />
