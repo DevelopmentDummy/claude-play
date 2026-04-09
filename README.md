@@ -61,7 +61,7 @@ CLI 기반 AI 런타임(Claude Code, Codex, Gemini)을 서브프로세스로 스
 
 ```bash
 # 1. Clone
-git clone https://github.com/anthropics/claude-play.git
+git clone https://github.com/DevelopmentDummy/claude-play.git
 cd claude-play
 
 # 2. Setup wizard (deps 설치, 데이터 디렉토리 초기화)
