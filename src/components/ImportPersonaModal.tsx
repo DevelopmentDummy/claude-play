@@ -78,7 +78,7 @@ export default function ImportPersonaModal({ open, onClose, onImported, onOpenBu
     setError("");
     setInstalling(true);
     try {
-      const res = await fetch("/api/personas/import/install", {
+      const res = await fetch("/api/personas/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url, folderName }),
