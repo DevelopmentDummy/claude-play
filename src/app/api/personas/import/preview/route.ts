@@ -25,7 +25,7 @@ async function fetchRaw(
   path: string
 ): Promise<Response> {
   const url = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path}`;
-  return fetch(url);
+  return fetch(url, { signal: AbortSignal.timeout(10_000) });
 }
 
 async function tryFetchFile(
@@ -47,11 +47,14 @@ async function tryFetchBinary(
   repo: string,
   branch: string,
   path: string
-): Promise<Buffer | null> {
+): Promise<{ buffer: Buffer; mime: string } | null> {
   const res = await fetchRaw(owner, repo, branch, path);
   if (!res.ok) return null;
+  const contentLength = res.headers.get("content-length");
+  if (contentLength && parseInt(contentLength) > 512_000) return null;
+  const mime = res.headers.get("content-type") || "image/png";
   const arrayBuffer = await res.arrayBuffer();
-  return Buffer.from(arrayBuffer);
+  return { buffer: Buffer.from(arrayBuffer), mime };
 }
 
 export async function POST(req: NextRequest) {
@@ -98,7 +101,8 @@ export async function POST(req: NextRequest) {
       // Try persona.md
       const mdResult = await tryFetchFile(owner, repo, "persona.md");
       if (mdResult) {
-        branch = mdResult.branch;
+        // Only use the branch from persona.md if persona.json didn't already set it
+        if (!jsonResult) branch = mdResult.branch;
         const firstLine = mdResult.body.split("\n")[0]?.trim() || "";
         displayName = firstLine.replace(/^#\s*/, "");
       }
@@ -113,14 +117,14 @@ export async function POST(req: NextRequest) {
 
     // Fetch icon
     let icon: string | null = null;
-    const iconBuffer = await tryFetchBinary(
+    const iconResult = await tryFetchBinary(
       owner,
       repo,
       branch,
       "images/icon.png"
     );
-    if (iconBuffer) {
-      icon = `data:image/png;base64,${iconBuffer.toString("base64")}`;
+    if (iconResult) {
+      icon = `data:${iconResult.mime};base64,${iconResult.buffer.toString("base64")}`;
     }
 
     const defaultFolderName = `${repo}-${randomChars(4)}`;
