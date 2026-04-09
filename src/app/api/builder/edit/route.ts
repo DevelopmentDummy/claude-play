@@ -52,6 +52,25 @@ export async function POST(req: Request) {
     }
   }
 
+  // Copy builder-only skills
+  const builderSkillsSrc = path.join(process.cwd(), "data", "builder_skills");
+  if (fs.existsSync(builderSkillsSrc)) {
+    const claudeSkillsDir = path.join(personaDir, ".claude", "skills");
+    fs.mkdirSync(claudeSkillsDir, { recursive: true });
+    for (const skillDir of fs.readdirSync(builderSkillsSrc, { withFileTypes: true })) {
+      if (skillDir.isDirectory()) {
+        const dest = path.join(claudeSkillsDir, skillDir.name);
+        fs.mkdirSync(dest, { recursive: true });
+        for (const file of fs.readdirSync(path.join(builderSkillsSrc, skillDir.name))) {
+          fs.copyFileSync(
+            path.join(builderSkillsSrc, skillDir.name, file),
+            path.join(dest, file)
+          );
+        }
+      }
+    }
+  }
+
   // Determine provider: explicit service > explicit model > saved provider > current instance provider > default
   const savedProvider = svc.sessions.getBuilderProvider(name);
   const existingInstance = getSessionInstance(name);
