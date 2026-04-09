@@ -50,6 +50,7 @@ export default function BuilderPage() {
   const [optionsModalOpen, setOptionsModalOpen] = useState(false);
   const isMobile = useIsMobile();
   const initRef = useRef(false);
+  const initialMsgSent = useRef(false);
 
   // WebSocket connection — only connect after init completes
   const { sendChat, send: wsSend } = useWebSocket({
@@ -133,6 +134,15 @@ export default function BuilderPage() {
 
     init();
   }, [mode, decodedName, setError, setStatus, addOpeningMessage]);
+
+  // Auto-send initialMessage query param (e.g. from persona sharing flow)
+  useEffect(() => {
+    const msg = searchParams.get("initialMessage");
+    if (msg && !initialMsgSent.current && wsEnabled && !isStreaming) {
+      initialMsgSent.current = true;
+      setTimeout(() => sendMessage(decodeURIComponent(msg)), 500);
+    }
+  }, [searchParams, wsEnabled, isStreaming, sendMessage]);
 
   const handleCompact = useCallback(() => {
     wsSend("command:send", { command: "compact" });
