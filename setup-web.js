@@ -23,6 +23,12 @@ function log(msg) { console.log(`  ${msg}`); }
 function pollJson(url) {
   return new Promise((resolve) => {
     const req = http.get(url, (res) => {
+      // 401 = setup complete (auth now required), treat as done
+      if (res.statusCode === 401) {
+        res.resume();
+        resolve({ setupComplete: true, _authRequired: true });
+        return;
+      }
       let body = "";
       res.on("data", (chunk) => { body += chunk; });
       res.on("end", () => {
