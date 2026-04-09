@@ -20,6 +20,17 @@ interface PersonaCardProps {
   onSelect: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  importMeta?: {
+    source: string;
+    url: string;
+    installedAt: string;
+    installedCommit: string;
+  };
+  onCheckUpdate?: () => void;
+  updateStatus?: string | null;
+  behindCount?: number;
+  onUpdate?: () => void;
+  onPublish?: () => void;
 }
 
 export default function PersonaCard({
@@ -31,6 +42,12 @@ export default function PersonaCard({
   onSelect,
   onEdit,
   onDelete,
+  importMeta,
+  onCheckUpdate,
+  updateStatus,
+  behindCount,
+  onUpdate,
+  onPublish,
 }: PersonaCardProps) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -99,11 +116,48 @@ export default function PersonaCard({
           <div className="text-[11px] text-text-dim opacity-50 mb-0.5 font-mono truncate">{name}</div>
         )}
         <div className="text-xs text-text-dim opacity-70">Start new session</div>
+
+        {importMeta && (
+          <div className="flex items-center gap-1.5 mt-1">
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent/10 text-accent border border-accent/20">
+              imported
+            </span>
+            {onCheckUpdate && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onCheckUpdate(); }}
+                className="text-[10px] px-1.5 py-0.5 rounded bg-surface-light text-text-dim hover:text-text border border-border/30 transition-colors"
+              >
+                {updateStatus === "checking" ? "..." :
+                 updateStatus === "update-available" ? `${behindCount} updates` :
+                 updateStatus === "up-to-date" ? "up to date" :
+                 "check update"}
+              </button>
+            )}
+          </div>
+        )}
+
+        {updateStatus === "update-available" && onUpdate && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onUpdate(); }}
+            className="text-[10px] px-1.5 py-0.5 rounded bg-accent/20 text-accent border border-accent/30 hover:bg-accent/30 transition-colors"
+          >
+            Update in Builder
+          </button>
+        )}
       </div>
 
       {/* action buttons */}
       <div className="absolute top-3.5 right-3.5 flex items-center gap-1.5
         opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-all duration-fast">
+        {onPublish && !importMeta && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onPublish(); }}
+            className="opacity-100 md:opacity-0 md:group-hover:opacity-100 p-1.5 rounded-lg text-text-dim hover:text-accent hover:bg-accent/10 transition-all duration-fast"
+            title="Publish to GitHub"
+          >
+            &uarr;
+          </button>
+        )}
         <button
           className="px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer
             text-text-dim/70 bg-transparent border border-transparent

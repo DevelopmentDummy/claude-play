@@ -8,6 +8,8 @@ import ProfileCard from "@/components/ProfileCard";
 import NewPersonaDialog from "@/components/NewPersonaDialog";
 import NewProfileDialog from "@/components/NewProfileDialog";
 import PersonaStartModal from "@/components/PersonaStartModal";
+import ImportPersonaModal from "@/components/ImportPersonaModal";
+import PublishPersonaModal from "@/components/PublishPersonaModal";
 
 const PERSONA_ACCENTS = [
   "var(--accent)",
@@ -22,6 +24,12 @@ interface Persona {
   name: string;
   displayName: string;
   hasIcon?: boolean;
+  importMeta?: {
+    source: string;
+    url: string;
+    installedAt: string;
+    installedCommit: string;
+  };
 }
 
 interface Session {
@@ -57,6 +65,9 @@ export default function LobbyPage() {
   useEffect(() => {
     if (window.innerWidth < 768) setSidebarOpen(false);
   }, []);
+  const [importOpen, setImportOpen] = useState(false);
+  const [publishTarget, setPublishTarget] = useState<string | null>(null);
+  const [updateStatuses, setUpdateStatuses] = useState<Record<string, { status: string; behindCount?: number }>>({});
   const [startModal, setStartModal] = useState<{
     open: boolean;
     personaName: string;
@@ -187,6 +198,34 @@ export default function LobbyPage() {
     await fetch(`/api/personas/${encodeURIComponent(name)}`, { method: "DELETE" });
     loadLobby();
   };
+
+  const handleImported = useCallback((_name: string) => {
+    loadLobby();
+  }, [loadLobby]);
+
+  const handleOpenBuilder = useCallback((name: string, initialMessage: string) => {
+    router.push(`/builder/${encodeURIComponent(name)}?mode=edit&initialMessage=${encodeURIComponent(initialMessage)}`);
+  }, [router]);
+
+  const handleCheckUpdate = useCallback(async (name: string) => {
+    setUpdateStatuses((prev) => ({ ...prev, [name]: { status: "checking" } }));
+    try {
+      const res = await fetch(`/api/personas/${encodeURIComponent(name)}/check-update`, { method: "POST" });
+      const data = await res.json();
+      if (data.upToDate) {
+        setUpdateStatuses((prev) => ({ ...prev, [name]: { status: "up-to-date" } }));
+      } else {
+        setUpdateStatuses((prev) => ({ ...prev, [name]: { status: "update-available", behindCount: data.behindCount } }));
+      }
+    } catch {
+      setUpdateStatuses((prev) => ({ ...prev, [name]: { status: "error" } }));
+    }
+  }, []);
+
+  const handleUpdate = useCallback((name: string) => {
+    const msg = "이 페르소나는 외부에서 가져온 것이며 원본 리포에 업데이트가 있습니다. origin에서 최신 변경사항을 pull 받아주세요. 완료 후 보안 점검도 진행할까요?";
+    router.push(`/builder/${encodeURIComponent(name)}?mode=edit&initialMessage=${encodeURIComponent(msg)}`);
+  }, [router]);
 
   const sessionCountByPersona = (name: string) =>
     sessions.filter((s) => s.persona === name).length;
@@ -321,6 +360,12 @@ export default function LobbyPage() {
                   onSelect={() => handlePersonaClick(p.name, p.displayName, i)}
                   onEdit={() => editPersona(p.name)}
                   onDelete={() => deletePersona(p.name)}
+                  importMeta={p.importMeta}
+                  onCheckUpdate={p.importMeta ? () => handleCheckUpdate(p.name) : undefined}
+                  updateStatus={updateStatuses[p.name]?.status ?? null}
+                  behindCount={updateStatuses[p.name]?.behindCount}
+                  onUpdate={updateStatuses[p.name]?.status === "update-available" ? () => handleUpdate(p.name) : undefined}
+                  onPublish={() => setPublishTarget(p.name)}
                 />
               ))}
 
@@ -335,6 +380,15 @@ export default function LobbyPage() {
                   <span className="text-accent text-xl font-light">+</span>
                 </div>
                 <span className="text-sm text-text-dim">New Persona</span>
+              </div>
+
+              {/* Import from GitHub card */}
+              <div
+                onClick={() => setImportOpen(true)}
+                className="flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-border/50 hover:border-accent/50 cursor-pointer transition-all duration-fast min-h-[140px] text-text-dim hover:text-accent"
+              >
+                <span className="text-2xl">&darr;</span>
+                <span className="text-sm">Import from GitHub</span>
               </div>
             </div>
           </div>
@@ -372,6 +426,19 @@ export default function LobbyPage() {
           setStartModal({ open: false, personaName: "", personaDisplayName: "", accentColor: "" });
           startSession(pName, profileSlug, model);
         }}
+      />
+
+      <ImportPersonaModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImported={handleImported}
+        onOpenBuilder={handleOpenBuilder}
+      />
+      <PublishPersonaModal
+        open={!!publishTarget}
+        personaName={publishTarget || ""}
+        onClose={() => setPublishTarget(null)}
+        onOpenBuilder={handleOpenBuilder}
       />
     </div>
   );
