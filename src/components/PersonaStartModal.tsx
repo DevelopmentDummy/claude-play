@@ -245,24 +245,6 @@ export default function PersonaStartModal({
               </>
             )}
 
-            {/* Publish to GitHub */}
-            {onPublish && !isImported && (
-              <button
-                onClick={(e) => { e.stopPropagation(); onPublish(); }}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-border/40 text-left
-                  hover:bg-surface-light/50 hover:border-border transition-all duration-fast group/pub"
-              >
-                <svg className="w-5 h-5 text-text-dim group-hover/pub:text-accent transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8" />
-                  <polyline points="16 6 12 2 8 6" />
-                  <line x1="12" y1="2" x2="12" y2="15" />
-                </svg>
-                <div>
-                  <div className="text-sm font-medium text-text">Publish to GitHub</div>
-                  <div className="text-[11px] text-text-dim">Share this persona via GitHub repository</div>
-                </div>
-              </button>
-            )}
           </div>
         </div>
 
@@ -326,7 +308,22 @@ export default function PersonaStartModal({
               </select>
             </div>
 
-            <div className="pt-5">
+            <div className="pt-5 flex items-center gap-2">
+              {onPublish && !isImported && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onPublish(); }}
+                  className="p-2.5 rounded-xl border border-border/60 text-text-dim
+                    hover:text-accent hover:border-accent/40 hover:bg-accent/5
+                    transition-all duration-fast cursor-pointer"
+                  title="Publish to GitHub"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8" />
+                    <polyline points="16 6 12 2 8 6" />
+                    <line x1="12" y1="2" x2="12" y2="15" />
+                  </svg>
+                </button>
+              )}
               <button
                 disabled={selectedProfile === "__none__"}
                 onClick={() => onStart(selectedProfile, selectedModel || undefined)}
