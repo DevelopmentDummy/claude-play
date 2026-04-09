@@ -365,7 +365,6 @@ export default function LobbyPage() {
                   updateStatus={updateStatuses[p.name]?.status ?? null}
                   behindCount={updateStatuses[p.name]?.behindCount}
                   onUpdate={updateStatuses[p.name]?.status === "update-available" ? () => handleUpdate(p.name) : undefined}
-                  onPublish={() => setPublishTarget(p.name)}
                 />
               ))}
 
@@ -426,6 +425,12 @@ export default function LobbyPage() {
           setStartModal({ open: false, personaName: "", personaDisplayName: "", accentColor: "" });
           startSession(pName, profileSlug, model);
         }}
+        onPublish={() => {
+          const pName = startModal.personaName;
+          setStartModal({ open: false, personaName: "", personaDisplayName: "", accentColor: "" });
+          setPublishTarget(pName);
+        }}
+        isImported={!!personas.find(p => p.name === startModal.personaName)?.importMeta}
       />
 
       <ImportPersonaModal

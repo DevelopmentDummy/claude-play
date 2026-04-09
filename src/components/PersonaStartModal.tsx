@@ -29,6 +29,8 @@ interface PersonaStartModalProps {
   profiles: ProfileOption[];
   onClose: () => void;
   onStart: (profileSlug?: string, model?: string) => void;
+  onPublish?: () => void;
+  isImported?: boolean;
 }
 
 function stripPanelPrefix(name: string): string {
@@ -43,6 +45,8 @@ export default function PersonaStartModal({
   profiles,
   onClose,
   onStart,
+  onPublish,
+  isImported,
 }: PersonaStartModalProps) {
   const [overview, setOverview] = useState<PersonaOverview | null>(null);
   const [loading, setLoading] = useState(false);
@@ -239,6 +243,21 @@ export default function PersonaStartModal({
                 )}
 
               </>
+            )}
+
+            {/* Publish to GitHub */}
+            {onPublish && !isImported && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onPublish(); }}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-border/40 text-left
+                  hover:bg-surface-light/50 hover:border-border transition-all duration-fast group/pub"
+              >
+                <span className="text-lg text-text-dim group-hover/pub:text-accent transition-colors">&#8613;</span>
+                <div>
+                  <div className="text-sm font-medium text-text">Publish to GitHub</div>
+                  <div className="text-[11px] text-text-dim">Share this persona via GitHub repository</div>
+                </div>
+              </button>
             )}
           </div>
         </div>
