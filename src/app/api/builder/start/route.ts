@@ -48,6 +48,14 @@ export async function POST(req: Request) {
     fs.copyFileSync(panelSpecSrc, path.join(personaDir, "panel-spec.md"));
   }
 
+  // Copy guide docs
+  for (const guideFile of ["publish-guide.md", "security-review-guide.md"]) {
+    const guideSrc = path.join(getAppRoot(), guideFile);
+    if (fs.existsSync(guideSrc)) {
+      fs.copyFileSync(guideSrc, path.join(personaDir, guideFile));
+    }
+  }
+
   instance.panels.watch(personaDir);
 
   const runtimeSystemPrompt = svc.sessions.buildBuilderSystemPrompt(name);

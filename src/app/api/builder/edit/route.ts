@@ -44,6 +44,14 @@ export async function POST(req: Request) {
     fs.copyFileSync(panelSpecSrc, path.join(personaDir, "panel-spec.md"));
   }
 
+  // Copy guide docs
+  for (const guideFile of ["publish-guide.md", "security-review-guide.md"]) {
+    const guideSrc = path.join(getAppRoot(), guideFile);
+    if (fs.existsSync(guideSrc)) {
+      fs.copyFileSync(guideSrc, path.join(personaDir, guideFile));
+    }
+  }
+
   // Determine provider: explicit service > explicit model > saved provider > current instance provider > default
   const savedProvider = svc.sessions.getBuilderProvider(name);
   const existingInstance = getSessionInstance(name);

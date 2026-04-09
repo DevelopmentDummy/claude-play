@@ -11,6 +11,8 @@
 | `session-primer-gemini.yaml` | Session AI (Gemini) | Gemini용 RP 세션 시스템 프롬프트 | 세션 Open 시 → `GEMINI.md`에 병합 |
 | `session-shared.md` | Session AI (all) | 공용 세션 가이드 (응답 형식, OOC, STT, 이미지 생성, 선택지 시스템) | 세션 Open 시 primer와 결합 → AI 런타임 시스템 프롬프트로 전달 |
 | `panel-spec.md` | Builder/Session AI | 패널 시스템 기술 레퍼런스 (Handlebars, panelBridge, placement, tools 등) | 빌더 세션 시작 및 RP 세션 Open 시 → 작업 디렉토리로 복사 (매번 최신본으로 갱신) |
+| `publish-guide.md` | Builder AI | GitHub 퍼블리시 절차 (persona.json, .gitignore, git remote, push) | 빌더 세션 시작/편집 시 → 페르소나 디렉토리로 복사 |
+| `security-review-guide.md` | Builder AI | 임포트 페르소나 보안 검토 절차 (tools, hooks, panels, session-instructions 점검) | 빌더 세션 시작/편집 시 → 페르소나 디렉토리로 복사 |
 
 ## Document Assembly Flow
 
@@ -19,6 +21,8 @@
 builder-prompt.md → 페르소나 디렉토리 CLAUDE.md / AGENTS.md / GEMINI.md
 builder-primer.yaml → AI 런타임 시스템 프롬프트
 panel-spec.md → 페르소나 디렉토리에 복사 (참조용)
+publish-guide.md → 페르소나 디렉토리에 복사 (참조용)
+security-review-guide.md → 페르소나 디렉토리에 복사 (참조용)
 ```
 
 **RP 세션 생성** (`POST /api/sessions`):
