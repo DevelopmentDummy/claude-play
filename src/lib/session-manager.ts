@@ -62,6 +62,12 @@ export interface PersonaInfo {
   name: string; // directory name
   displayName: string; // from persona.md first line or name
   hasIcon?: boolean;
+  importMeta?: {
+    source: string;
+    url: string;
+    installedAt: string;
+    installedCommit: string;
+  };
 }
 
 export interface ProfileInfo {
@@ -278,7 +284,14 @@ export class SessionManager {
           if (firstLine) displayName = firstLine;
         }
         const hasIcon = fs.existsSync(path.join(dir, d.name, "images", "icon.png"));
-        return { name: d.name, displayName, hasIcon };
+        let importMeta: PersonaInfo["importMeta"];
+        const importMetaPath = path.join(dir, d.name, "import-meta.json");
+        if (fs.existsSync(importMetaPath)) {
+          try {
+            importMeta = JSON.parse(fs.readFileSync(importMetaPath, "utf-8"));
+          } catch { /* ignore */ }
+        }
+        return { name: d.name, displayName, hasIcon, importMeta };
       });
   }
 
