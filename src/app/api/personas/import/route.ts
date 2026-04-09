@@ -17,8 +17,21 @@ export async function POST(req: Request) {
     );
   }
 
-  // Reject path traversal
-  if (/[/\\]|\.\./.test(folderName)) {
+  if (typeof url !== "string" || typeof folderName !== "string") {
+    return NextResponse.json(
+      { error: "url and folderName must be strings" },
+      { status: 400 }
+    );
+  }
+
+  // Validate GitHub HTTPS URL
+  const githubMatch = url.match(/^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\.git)?$/);
+  if (!githubMatch) {
+    return NextResponse.json({ error: "Only GitHub HTTPS URLs are supported" }, { status: 400 });
+  }
+
+  // Reject path traversal, empty names, null bytes, and bare dot
+  if (/[/\\]|\.\./.test(folderName) || !folderName.trim() || folderName.includes("\0") || folderName.trim() === ".") {
     return NextResponse.json(
       { error: "Invalid folderName: path traversal not allowed" },
       { status: 400 }
@@ -47,7 +60,7 @@ export async function POST(req: Request) {
     const { stdout: commitHash } = await execFileAsync(
       "git",
       ["rev-parse", "HEAD"],
-      { cwd: personaDir, windowsHide: true }
+      { cwd: personaDir, windowsHide: true, timeout: 10_000 }
     );
 
     // Write import metadata
