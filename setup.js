@@ -379,32 +379,66 @@ async function main() {
   }
 
   header("Setup Complete!");
-  const url = `http://localhost:${port}/setup`;
-  info("Starting server and opening web setup wizard...");
   rl.close();
 
-  // Poll until server is ready, then open browser (once)
+  if (AUTO_YES) {
+    // Non-interactive mode: don't start server (caller manages the process)
+    info("To start the server, run: npm run dev");
+    info(`Then open http://localhost:${port}/setup in your browser to complete web setup.`);
+    return;
+  }
+
+  const url = `http://localhost:${port}/setup`;
+  info("Starting server and opening web setup wizard...");
+
+  // Poll until server is ready, then open browser and watch for setup completion
   const http = require("http");
   let opened = false;
-  function waitAndOpen() {
-    if (opened) return;
-    const req = http.get(`http://127.0.0.1:${port}/api/setup/status`, (res) => {
-      res.resume(); // drain response body
-      if (opened) return;
-      if (res.statusCode === 200) {
-        opened = true;
-        info(`Server ready — opening ${url}`);
-        const openCmd = os.platform() === "win32" ? `start "" "${url}"`
-          : os.platform() === "darwin" ? `open "${url}"`
-          : `xdg-open "${url}"`;
-        run(openCmd, { silent: true });
-      } else {
-        setTimeout(waitAndOpen, 1000);
-      }
+  let setupDone = false;
+
+  function pollJson(urlStr, cb) {
+    const req = http.get(urlStr, (res) => {
+      let body = "";
+      res.on("data", (chunk) => { body += chunk; });
+      res.on("end", () => { try { cb(null, JSON.parse(body)); } catch { cb(null, null); } });
     });
-    req.on("error", () => { if (!opened) setTimeout(waitAndOpen, 1000); });
+    req.on("error", (err) => cb(err, null));
     req.setTimeout(2000, () => { req.destroy(); });
   }
+
+  function waitAndOpen() {
+    if (opened) return;
+    pollJson(`http://127.0.0.1:${port}/api/setup/status`, (err, data) => {
+      if (err || !data) { setTimeout(waitAndOpen, 1000); return; }
+      opened = true;
+      info(`Server ready — opening ${url}`);
+      const openCmd = os.platform() === "win32" ? `start "" "${url}"`
+        : os.platform() === "darwin" ? `open "${url}"`
+        : `xdg-open "${url}"`;
+      run(openCmd, { silent: true });
+      if (!data.setupComplete) setTimeout(waitForSetup, 3000);
+    });
+  }
+
+  function waitForSetup() {
+    if (setupDone) return;
+    pollJson(`http://127.0.0.1:${port}/api/setup/status`, (err, data) => {
+      if (err || !data) { setTimeout(waitForSetup, 3000); return; }
+      if (data.setupComplete) {
+        setupDone = true;
+        console.log("");
+        header("Web setup complete!");
+        info("To start the server:");
+        info("  - Double-click start.bat, or");
+        info("  - Run: npm run start");
+        info(`  - Then open http://localhost:${port}`);
+        process.exit(0);
+      } else {
+        setTimeout(waitForSetup, 3000);
+      }
+    });
+  }
+
   setTimeout(waitAndOpen, 2000);
 
   // Start server (this blocks — keeps process alive)
