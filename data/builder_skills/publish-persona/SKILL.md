@@ -6,6 +6,26 @@ allowed-tools: Read, Edit, Write, Bash, Glob
 
 # Publish Persona to GitHub
 
+## 중요: 현재 작업 디렉토리 확인
+
+빌더 세션의 cwd는 페르소나 디렉토리 자체이다 (예: `data/personas/탐정/`).
+이 디렉토리에 **독립 `.git`이 없을 수 있다** — 메인 서비스 리포(`C:/repository/claude bridge/.git`)만 존재하는 상태.
+
+### `.git` 존재 여부 확인
+```bash
+# 현재 디렉토리에 .git이 있는지 확인
+ls -la .git 2>/dev/null || echo "NO_GIT"
+```
+
+**`.git`이 없는 경우** (대부분의 첫 퍼블리시):
+```bash
+git init
+```
+
+**`.git`이 있는 경우**: 이미 독립 리포가 있으므로 그대로 진행.
+
+**주의**: `git status`를 실행했을 때 상위 메인 리포의 파일(`../../../server.ts` 등)이 보이면 독립 `.git`이 없다는 뜻이다. 반드시 `git init`부터 실행할 것.
+
 ## 절차
 
 ### 1. persona.json 확인/생성
