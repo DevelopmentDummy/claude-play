@@ -94,13 +94,14 @@ GEMINI.md
 ### 흐름
 
 1. **URL 입력** — 로비에서 Import 버튼 → GitHub URL 입력
-2. **미리보기** — `persona.json` + `images/icon.png`를 GitHub Raw API로 fetch
-   - 표시: 이름, 설명, 태그, 아이콘
+2. **리포 검증** — `persona.json` + `persona.md` 존재 여부 확인. 둘 다 없으면 "유효한 페르소나 리포가 아닙니다" 에러
+3. **미리보기** — `persona.json` + `images/icon.png`를 GitHub Raw API로 fetch
+   - 표시: 이름, 설명, 태그, 아이콘, **설치 폴더명 입력란**
    - `persona.json` 없는 리포: `persona.md` 첫 줄에서 이름 추출, 아이콘만 표시
-3. **설치** — "설치" 버튼 → `git clone <url> data/personas/<name>/`
-   - 폴더명은 리포 이름에서 추출 (예: `persona-miku` → `persona-miku`)
-   - 동일 이름이 이미 존재하면 설치 차단 및 안내
-4. **보안 점검 제안** — 설치 완료 후:
+   - 설치 폴더명 기본값은 리포 이름 + 랜덤 해시 4자리 (예: `persona-miku-a3f2`), 유저가 변경 가능
+   - 해시 덕분에 충돌 없이 바로 설치 가능. 동일 이름 존재 시에도 경고 표시
+4. **설치** — "설치" 버튼 → `git clone <url> data/personas/<folderName>/`
+5. **보안 점검 제안** — 설치 완료 후:
    > "외부 페르소나의 보안 점검을 진행하시겠습니까?"
    - **Yes** → 빌더 세션 열기 + 보안 점검 skill 자동 실행
    - **No** → 바로 사용 가능
