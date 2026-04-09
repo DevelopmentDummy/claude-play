@@ -28,7 +28,16 @@ export async function POST(_req: NextRequest, { params }: Params) {
     );
   }
 
-  const gitOpts = { cwd: personaDir, timeout: 30_000 };
+  // Verify the persona directory is a git repo before running any git commands
+  const gitDir = path.join(personaDir, ".git");
+  if (!fs.existsSync(gitDir)) {
+    return NextResponse.json(
+      { error: "Persona directory is not a git repository (.git not found)" },
+      { status: 400 }
+    );
+  }
+
+  const gitOpts = { cwd: personaDir, timeout: 30_000, windowsHide: true };
 
   try {
     // Fetch latest from remote
@@ -60,6 +69,14 @@ export async function POST(_req: NextRequest, { params }: Params) {
       remoteHead = r.trim();
     }
 
+    // Validate remoteHead is a well-formed SHA-1
+    if (!/^[a-f0-9]{40}$/.test(remoteHead)) {
+      return NextResponse.json(
+        { error: `Invalid remote HEAD SHA: ${remoteHead}` },
+        { status: 500 }
+      );
+    }
+
     if (localHead === remoteHead) {
       return NextResponse.json({
         upToDate: true,
@@ -76,6 +93,13 @@ export async function POST(_req: NextRequest, { params }: Params) {
       gitOpts
     );
     const behindCount = parseInt(countRaw.trim(), 10);
+
+    if (isNaN(behindCount)) {
+      return NextResponse.json(
+        { error: "Failed to parse commit count from git rev-list output" },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json({
       upToDate: false,
