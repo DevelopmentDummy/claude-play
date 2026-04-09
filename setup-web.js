@@ -56,8 +56,9 @@ async function waitForServer() {
   }
 }
 
-async function waitForSetupComplete() {
+async function waitForSetupComplete(isServerExited) {
   while (true) {
+    if (isServerExited()) return;
     const data = await pollJson(`${baseUrl}/api/setup/status`);
     if (data && data.setupComplete) return;
     await new Promise((r) => setTimeout(r, 3000));
@@ -83,6 +84,9 @@ async function main() {
     } catch {}
   };
 
+  let serverExited = false;
+  server.on("exit", () => { serverExited = true; });
+
   process.on("exit", cleanup);
   process.on("SIGINT", () => { cleanup(); process.exit(0); });
   process.on("SIGTERM", () => { cleanup(); process.exit(0); });
@@ -100,7 +104,7 @@ async function main() {
   openBrowser(setupUrl);
 
   log("Waiting for web setup to complete... (user is configuring in browser)");
-  await waitForSetupComplete();
+  await waitForSetupComplete(() => serverExited);
 
   cleanup();
   console.log("");
