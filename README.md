@@ -1,157 +1,158 @@
 # Claude Play
 
-A Next.js web application that bridges interactive roleplay (RP) chat sessions with the [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) (and optionally [Codex CLI](https://github.com/openai/codex)). Create rich personas with dynamic state panels, then conduct immersive sessions powered by AI.
+[![Node.js 18+](https://img.shields.io/badge/Node.js-18%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![Next.js 15](https://img.shields.io/badge/Next.js-15-black?logo=next.js)](https://nextjs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+**AI 캐릭터와 몰입형 롤플레이 세션을 즐기는 웹 앱.**
+[Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code), [Codex CLI](https://github.com/openai/codex), [Gemini CLI](https://github.com/google-gemini/gemini-cli)를 브릿지합니다.
+
+> [!NOTE]
+> This is a community project and is not affiliated with, endorsed by, or sponsored by Anthropic, OpenAI, or Google.
+
+## What is Claude Play?
+
+Claude Play는 AI 캐릭터 페르소나를 만들고, 대화형 롤플레이 세션을 진행하는 웹 애플리케이션입니다. HP, 인벤토리, 지도 같은 실시간 상태 패널이 AI 응답에 따라 동적으로 업데이트되며, 이미지 생성과 TTS 음성까지 지원합니다.
+
+CLI 기반 AI 런타임(Claude Code, Codex, Gemini)을 서브프로세스로 스폰하고, WebSocket을 통해 브라우저와 실시간 스트리밍으로 연결합니다. 모든 데이터는 파일 기반으로 저장되어 데이터베이스가 필요 없습니다.
 
 ## Features
 
-- **Persona Builder** — Create and edit character personas with an AI-assisted builder UI
-- **Live RP Sessions** — Chat with Claude/Codex in-character with automatic session management
-- **Dynamic Panels** — Handlebars-templated HTML panels (side, modal, dock) that update in real-time
-- **Session Resume** — Sessions persist and can be resumed across browser reloads
-- **Custom Themes** — Per-persona layout and color themes via `layout.json`
-- **User Profiles** — Multiple user profiles injectable into sessions
-- **Image Generation** — Optional ComfyUI and Gemini integrations for in-session image generation
-- **TTS Voice** — Edge TTS (cloud) and Qwen3-TTS (local GPU, voice cloning)
-- **MCP Integration** — Each session runs its own MCP server, giving AI tools to interact with the bridge
-- **Admin Auth** — Optional password authentication with HMAC-SHA256 tokens
-- **GPU Manager** — Serial GPU task queue preventing VRAM conflicts between image gen and TTS
-- **File-Based Storage** — No database required; all data lives in the `data/` directory
+### Core
 
-## Prerequisites
+- **Persona Builder** — AI 어시스턴트가 가이드하는 캐릭터 페르소나 제작
+- **Live RP Sessions** — 캐릭터와 대화하며 몰입형 세션 진행, 세션 persist & resume 지원
+- **Dynamic Panels** — Handlebars 템플릿 기반 HTML 패널 (side, modal, dock), AI 응답에 따라 실시간 업데이트
+- **Custom Themes** — 페르소나별 레이아웃, 컬러 테마, UI 커스터마이징
 
-- [Node.js](https://nodejs.org/) 18+
-- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and authenticated
-- Python 3.10+ (optional — for GPU Manager, local TTS)
-- NVIDIA GPU with 8GB+ VRAM (optional — for ComfyUI, local TTS)
+### AI Providers
+
+| Provider | Command | Communication |
+|----------|---------|---------------|
+| Claude Code | `claude -p` | NDJSON streams |
+| Codex | `codex app-server` | JSON-RPC 2.0 over stdin/stdout |
+| Gemini | `gemini --resume` | NDJSON streams |
+
+세션 생성 시 모델을 선택하면, 해당 프로바이더가 세션 수명 동안 고정됩니다.
+
+### Media
+
+- **Image Generation** — ComfyUI (로컬 GPU), Gemini, OpenAI 통합
+- **TTS Voice** — Edge TTS (클라우드, 무료) + Qwen3-TTS (로컬 GPU, 음성 클로닝)
+- **GPU Manager** — Python FastAPI 기반 직렬 GPU 큐, VRAM 충돌 방지
+
+### Developer
+
+- **MCP Integration** — 세션별 MCP 서버 (11+ tools)로 AI가 브릿지와 상호작용
+- **Custom Tools & Skills** — 페르소나별 도구 스크립트와 AI 스킬 확장
+- **File-Based Storage** — DB 불필요, `data/` 디렉토리에 모든 데이터 저장
 
 ## Quick Start
 
+### Prerequisites
+
+- [Node.js](https://nodejs.org/) 18+
+- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) (또는 [Codex CLI](https://github.com/openai/codex), [Gemini CLI](https://github.com/google-gemini/gemini-cli)) 설치 및 인증 완료
+- Python 3.10+ *(선택 — GPU Manager, 로컬 TTS용)*
+- NVIDIA GPU 8GB+ VRAM *(선택 — ComfyUI, 로컬 TTS용)*
+
+### Setup
+
 ```bash
-# 1. Run the setup wizard
+# 1. Clone
+git clone https://github.com/anthropics/claude-play.git
+cd claude-play
+
+# 2. Setup wizard (deps 설치, 데이터 디렉토리 초기화)
 node setup.js
 
-# 2. Start the server
+# 3. Start
 npm run dev
 
-# 3. Open http://localhost:3340 in your browser
-#    Complete the web setup wizard on first visit
+# 4. Open http://localhost:3340
 ```
 
-For non-interactive setup (AI agents):
-```bash
-node setup.js --yes
-```
+> AI 에이전트용 비대화형 모드: `node setup.js --yes`
 
-See [SETUP.md](SETUP.md) for detailed setup instructions including API-based configuration.
+자세한 설치 과정은 [SETUP.md](SETUP.md)를 참고하세요.
 
 ## Usage
 
-1. **Create a Persona** — Click "New Persona" on the home page. The builder AI will guide you through creating character files.
-2. **Start a Session** — Select a persona and click "New Session". Optionally choose a user profile.
-3. **Chat** — The session opens with the persona's opening message. Type to interact.
-4. **Panels** — Dynamic panels show game state (stats, inventory, maps, etc.) updated by AI during play.
+1. **페르소나 생성** — 홈에서 "New Persona" 클릭. AI 빌더가 캐릭터 파일 생성을 가이드합니다.
+2. **세션 시작** — 페르소나 선택 후 "New Session". 유저 프로필을 선택할 수 있습니다.
+3. **채팅** — 페르소나의 오프닝 메시지와 함께 세션이 시작됩니다.
+4. **패널** — 게임 상태(스탯, 인벤토리, 지도 등)가 AI 플레이에 따라 실시간으로 업데이트됩니다.
+
+## How It Works
+
+```
+Persona ──clone──▶ Session Dir ──spawn──▶ AI Process (Claude/Codex/Gemini)
+                                              │
+Browser ◀──WebSocket──▶ server.ts ◀──NDJSON/JSON-RPC──┘
+                            │
+                     Panel Engine ──watch──▶ variables.json → re-render HTML panels
+```
+
+1. 페르소나 디렉토리를 새 세션 디렉토리로 클론
+2. `session-instructions.md`가 세션의 `CLAUDE.md` / `AGENTS.md`로 적용
+3. 세션별 MCP 설정과 권한 샌드박스로 AI 프로세스 스폰
+4. 사용자 메시지: Browser → WebSocket → AI stdin
+5. AI 응답: stdout → stream parser → WebSocket → Browser
+6. 패널 엔진이 `variables.json`과 커스텀 데이터 파일을 감시, 변경 시 Handlebars 템플릿 재렌더링
+
+## Configuration
+
+핵심 환경변수 (`.env.local`에 설정):
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | `3340` | 메인 서버 포트 (TTS=PORT+1, GPU Manager=PORT+2) |
+| `DATA_DIR` | `./data` | 데이터 디렉토리 경로 |
+| `ADMIN_PASSWORD` | — | 관리자 비밀번호 (비워두면 인증 비활성화) |
+| `COMFYUI_HOST` | `127.0.0.1` | ComfyUI 호스트 |
+| `COMFYUI_PORT` | `8188` | ComfyUI 포트 |
+| `GEMINI_API_KEY` | — | Gemini 이미지 생성 API 키 |
+| `TTS_ENABLED` | `true` | TTS 전역 활성화/비활성화 |
+
+전체 목록은 [`.env.example`](.env.example)을 참고하세요.
 
 ## Project Structure
 
 ```
-setup.js                           # CLI setup wizard (pure JS, zero deps)
-server.ts                          # Custom HTTP + WebSocket server
-gpu-manager/                       # Python FastAPI GPU task queue
+setup.js               # CLI 셋업 위자드 (pure JS, zero deps)
+server.ts              # Custom HTTP + WebSocket 서버
+gpu-manager/           # Python FastAPI GPU 태스크 큐
 src/
-├── app/
-│   ├── page.tsx                   # Home (persona list, sessions, profiles)
-│   ├── setup/page.tsx             # Web setup wizard
-│   ├── login/page.tsx             # Admin login
-│   ├── builder/[name]/page.tsx    # Persona builder UI
-│   ├── chat/[sessionId]/page.tsx  # Session chat UI
-│   └── api/                       # REST API routes
-│       ├── auth/                  # Login/logout
-│       ├── setup/                 # Setup wizard API
-│       ├── personas/              # Persona CRUD
-│       ├── sessions/              # Session CRUD + open/sync
-│       ├── profiles/              # User profile CRUD
-│       ├── chat/                  # Chat send + history
-│       ├── builder/               # Builder start/edit/cancel
-│       └── tools/                 # ComfyUI + Gemini image generation
-├── lib/
-│   ├── services.ts                # Global singleton, chat history, stream processing
-│   ├── claude-process.ts          # Claude CLI subprocess management
-│   ├── codex-process.ts           # Codex CLI subprocess management
-│   ├── session-manager.ts         # Persona/session/profile file operations
-│   ├── panel-engine.ts            # Handlebars panel rendering + file watching
-│   ├── ws-server.ts               # WebSocket server for real-time communication
-│   ├── comfyui-client.ts          # ComfyUI integration (image gen, LoRA management)
-│   ├── tts-handler.ts             # TTS request routing (Edge TTS / GPU Manager)
-│   ├── gemini-image.ts            # Gemini image generation
-│   ├── auth.ts                    # Admin auth + MCP internal token
-│   ├── setup-guard.ts             # Setup completion check + redirect
-│   ├── env-file.ts                # .env.local read/write utility
-│   └── data-dir.ts                # Data directory resolution
-├── mcp/
-│   └── claude-play-mcp-server.mjs  # Per-session MCP server
-├── components/                    # React components
-└── hooks/                         # React hooks
-data/                              # File-based storage (gitignored)
-├── personas/                      # Persona templates
-├── sessions/                      # Session instances
-├── profiles/                      # User profiles
-└── tools/                         # Global tool skills + workflows
+├── app/               # Next.js App Router (pages + API routes)
+├── lib/               # 핵심 라이브러리 (세션, 패널 엔진, AI 프로세스, TTS 등)
+├── mcp/               # 세션별 MCP 서버
+├── components/        # React 컴포넌트
+└── hooks/             # React 훅
+data/                  # 파일 기반 스토리지 (gitignored)
+├── personas/          # 페르소나 템플릿
+├── sessions/          # 세션 인스턴스
+├── profiles/          # 유저 프로필
+└── tools/             # 글로벌 도구 스킬 & 워크플로우
 ```
 
-## How It Works
+## Documentation
 
-Claude Play spawns `claude -p` (or `codex app-server`) as a subprocess for each session, communicating via NDJSON (or JSON-RPC) streams. The web UI connects over WebSocket for real-time message streaming.
-
-**Session lifecycle:**
-1. Persona directory is cloned to a new session directory
-2. `session-instructions.md` becomes the session's `CLAUDE.md` / `AGENTS.md`
-3. AI process is spawned with session-specific MCP config and permission sandbox
-4. User messages flow: Browser → WebSocket → AI stdin
-5. AI responses flow: stdout → parsed by services.ts → WebSocket → Browser
-6. Panel engine watches `variables.json` and custom data files, re-renders templates on change
-
-## Persona Structure
-
-Each persona is a directory under `data/personas/` containing:
-
-| File | Purpose |
-|------|---------|
-| `persona.md` | Character definition (first line = display name) |
-| `worldview.md` | World and setting description |
-| `variables.json` | Template data for panels |
-| `opening.md` | Opening message shown at session start |
-| `session-instructions.md` | Becomes `CLAUDE.md` for sessions |
-| `layout.json` | UI layout, panel placement, theme colors |
-| `panels/*.html` | Handlebars panel templates (prefix number = sort order) |
-| `skills/` | AI skills available in session |
-| `tools/` | Custom server-side tool scripts |
-| `voice.json` | TTS voice configuration |
-| `images/` | `icon.png`, `profile.png`, generated images |
-
-## Configuration
-
-### Environment Variables
-
-See [`.env.example`](.env.example) for all available variables. Key settings:
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PORT` | `3340` | Main server port (TTS=PORT+1, GPU Manager=PORT+2) |
-| `DATA_DIR` | `./data` | Data directory path |
-| `ADMIN_PASSWORD` | — | Admin login password (empty = auth disabled) |
-| `COMFYUI_HOST` | `127.0.0.1` | ComfyUI host |
-| `COMFYUI_PORT` | `8188` | ComfyUI port |
-| `GEMINI_API_KEY` | — | Gemini image generation API key |
-| `GEMINI_IMAGE_MODEL` | `gemini-3.1-flash-image-preview` | Gemini model |
-| `TTS_ENABLED` | `true` | Enable/disable TTS globally |
-
-### Production Build
-
-```bash
-npm run build
-npm run start
-```
+| Document | Contents |
+|----------|----------|
+| [Architecture](docs/architecture.md) | 스택, 서버, GPU Manager, 핵심 라이브러리, MCP |
+| [API Routes](docs/api-routes.md) | 전체 API 라우트 (50+ endpoints) |
+| [Frontend](docs/frontend.md) | 페이지 (5) 및 컴포넌트 (30+) |
+| [Data Model](docs/data-model.md) | 파일 기반 데이터 디렉토리 구조 |
+| [Session Lifecycle](docs/session-lifecycle.md) | 세션 라이프사이클, Triple Runtime |
+| [Change Propagation](docs/change-propagation.md) | 변경 시 업데이트 가이드 |
+| [Infrastructure](docs/infrastructure.md) | 컨벤션, 환경변수 전체 목록 |
 
 ## License
 
-Private project.
+[MIT](LICENSE)
+
+---
+
+> This is a community project and is not affiliated with, endorsed by, or sponsored by Anthropic, OpenAI, or Google.
+> "Claude" is a trademark of Anthropic. "Codex" is a trademark of OpenAI. "Gemini" is a trademark of Google.
