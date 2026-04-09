@@ -73,7 +73,7 @@ npm run dev
 # 4. Open http://localhost:3340
 ```
 
-> AI 에이전트용 비대화형 모드: `node setup.js --yes`
+> **AI 에이전트** (Claude Code, Codex 등): `docs/ai-setup-guide.md`를 읽고 따라하세요.
 
 자세한 설치 과정은 [SETUP.md](SETUP.md)를 참고하세요.
 

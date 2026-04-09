@@ -1,7 +1,7 @@
 # Claude Play Setup Guide
 
 > This guide is designed for both humans and AI agents.
-> AI agents: use `node setup.js --yes` for non-interactive mode, then call the setup APIs directly.
+> AI agents: see [AI Agent Setup Flow](#ai-agent-setup-flow) for the recommended non-interactive workflow.
 
 ## Prerequisites
 
@@ -114,6 +114,43 @@ Expected: `{"ok":true}` or `{"ok":false,"error":"..."}`
 curl http://localhost:3340/api/setup/status
 ```
 Expected: `{"setupComplete":true,...}`
+
+## AI Agent Setup Flow
+
+For AI agents (Claude Code, Codex, etc.) setting up a fresh install:
+
+### Step 1: CLI Setup
+
+```bash
+node setup.js --yes
+```
+
+This installs dependencies, builds the project, and exits. **It does not start the server.**
+
+### Step 2: Web Setup
+
+```bash
+node setup-web.js
+```
+
+This script:
+1. Starts the production server in the background
+2. Opens the browser to the setup wizard (`/setup`)
+3. Waits for the user to complete web configuration (admin password, API keys, etc.)
+4. Shuts down the server and exits with a completion message
+
+**Wait for this script to finish before proceeding.** The output will tell you setup is complete and how to start the server.
+
+### Step 3: Guide the User
+
+Once `setup-web.js` exits, tell the user:
+- Double-click `start.bat` to start the server, or run `npm run start`
+- For development: `npm run dev`
+
+### Notes
+- Do NOT chain steps 1 and 2 in a single command — report step 1 results to the user first
+- `setup-web.js` blocks until web setup completes, so run it and wait for its output
+- If setup was already completed, `setup-web.js` detects this and exits immediately
 
 ## Health Checks
 
