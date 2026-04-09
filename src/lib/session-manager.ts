@@ -1530,6 +1530,22 @@ export class SessionManager {
     fs.mkdirSync(path.join(dir, "panels"), { recursive: true });
     fs.mkdirSync(path.join(dir, "skills"), { recursive: true });
 
+    const gitignoreContent = [
+      "# Excluded from publish",
+      "chat-history.json",
+      "memory.md",
+      "builder-session.json",
+      "CLAUDE.md",
+      "AGENTS.md",
+      "GEMINI.md",
+      ".claude/",
+      ".agents/",
+      ".gemini/",
+      ".codex/",
+      "",
+    ].join("\n");
+    fs.writeFileSync(path.join(dir, ".gitignore"), gitignoreContent, "utf-8");
+
     // Copy global comfyui-config.json as default if it exists
     const globalComfyConfig = path.join(this.appRoot, "data", "tools", "comfyui", "comfyui-config.json");
     if (fs.existsSync(globalComfyConfig)) {
