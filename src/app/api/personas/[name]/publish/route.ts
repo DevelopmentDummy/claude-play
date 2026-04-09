@@ -34,6 +34,7 @@ async function git(cwd: string, args: string[]): Promise<string> {
       GIT_COMMITTER_EMAIL: "bridge@local",
     },
     windowsHide: true,
+    timeout: 30_000,
   });
   return stdout.trim();
 }
@@ -99,6 +100,11 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Missing url" }, { status: 400 });
   }
 
+  const ALLOWED_URL_RE = /^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(\.git)?$/;
+  if (!ALLOWED_URL_RE.test(url)) {
+    return NextResponse.json({ error: "Only GitHub HTTPS URLs are supported" }, { status: 400 });
+  }
+
   const personaDir = sessions.getPersonaDir(decoded);
   const displayName = sessions.getPersonaDisplayName(decoded);
 
@@ -116,8 +122,9 @@ export async function POST(req: NextRequest, { params }: Params) {
     await git(personaDir, ["add", "-A"]);
     try {
       await git(personaDir, ["commit", "-m", "Prepare for publish"]);
-    } catch {
-      // nothing to commit — that's fine
+    } catch (err: unknown) {
+      const msg = String(err);
+      if (!msg.includes("nothing to commit") && !msg.includes("nothing added")) throw err;
     }
 
     // 5. Set remote origin
@@ -129,7 +136,8 @@ export async function POST(req: NextRequest, { params }: Params) {
     await git(personaDir, ["remote", "add", "origin", url]);
 
     // 6. Push
-    await git(personaDir, ["push", "-u", "origin", "master"]);
+    const branch = await git(personaDir, ["rev-parse", "--abbrev-ref", "HEAD"]).catch(() => "main");
+    await git(personaDir, ["push", "-u", "origin", branch]);
 
     return NextResponse.json({ ok: true });
   } catch (err) {
