@@ -1127,6 +1127,28 @@ return {
 </div>
 ```
 
+### 팝업 템플릿 작성 규칙
+
+**중요: PopupEffect 컴포넌트가 외부 카드를 자동 제공한다.** 팝업 HTML은 카드 내부 콘텐츠만 작성하라.
+
+컴포넌트가 자동으로 감싸주는 것:
+- 딤 배경 오버레이 (`position: fixed`, 화면 전체)
+- 카드 컨테이너 (`maxWidth: 480px`, `width: 90vw`, `padding: 24px`, `border-radius: 16px`)
+- 테마 기반 gradient 배경, box-shadow, glow
+- 진입/퇴장 애니메이션 (scale + opacity)
+- Shadow DOM 격리
+
+**팝업 HTML에서 하지 말 것:**
+- ❌ `position: fixed` 또는 풀스크린 래퍼 — 컴포넌트가 이미 처리함
+- ❌ 자체 배경/카드 컨테이너 — 이중 카드가 되어 레이아웃 깨짐
+- ❌ `width: 100vw`, `height: 100vh` 등 뷰포트 크기 참조 — Shadow DOM 안에서 의도대로 동작하지 않음
+
+**팝업 HTML에서 해야 할 것:**
+- ✅ 콘텐츠만 작성 (아이콘, 제목, 설명 등)
+- ✅ `text-align: center` + flex column 레이아웃 권장
+- ✅ CSS 변수 `--popup-primary`, `--popup-glow` 활용
+- ✅ 애니메이션은 개별 요소 단위로 (카드 전체 애니메이션은 컴포넌트가 처리)
+
 ### 주의사항
 
 - 팝업 표시 중 배경은 클릭할 수 없다 (딤 오버레이가 입력을 차단)

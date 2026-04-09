@@ -23,3 +23,5 @@ data/tools/comfyui/skills/generate-image/lora-cheatsheet.md
 comfyui_submodule/models/
 comfyui_submodule/output/
 comfyui_submodule/input/
+.mcp.json
+*.lnk

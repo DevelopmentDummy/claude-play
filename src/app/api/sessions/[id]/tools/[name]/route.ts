@@ -166,13 +166,25 @@ export async function POST(
       }
     }
 
-    // Auto-queue search_init_event from engine results
+    // Auto-queue events from engine results
     const toolResult = result?.result as Record<string, unknown> | undefined;
+    console.log(`[tools/${name}] queue_events check:`, toolResult?.queue_events, `| instance:`, !!getSessionInstance(decodeURIComponent(id)));
     if (toolResult?.search_init_event && typeof toolResult.search_init_event === "string") {
       const sessionId = decodeURIComponent(id);
       const instance = getSessionInstance(sessionId);
       if (instance) {
         instance.queueEvent(toolResult.search_init_event);
+        instance.broadcast("event:pending", { headers: instance.getPendingEvents() });
+      }
+    }
+    // Auto-queue result events (e.g. milking results, purchase confirmations)
+    if (toolResult?.queue_events && Array.isArray(toolResult.queue_events)) {
+      const sessionId = decodeURIComponent(id);
+      const instance = getSessionInstance(sessionId);
+      if (instance) {
+        for (const header of toolResult.queue_events) {
+          if (typeof header === "string") instance.queueEvent(header);
+        }
         instance.broadcast("event:pending", { headers: instance.getPendingEvents() });
       }
     }
