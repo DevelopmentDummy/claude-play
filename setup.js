@@ -304,9 +304,17 @@ async function stepPortCheck(port) {
 
 // Default sample personas to install on first run (git clone from GitHub)
 const SAMPLE_PERSONAS = [
+  { url: "https://github.com/DevelopmentDummy/quiz-hana", folderName: "quiz-hana" },
   { url: "", folderName: "princessmaker" },
   { url: "", folderName: "글쓰기도우미" },
 ];
+
+function randomChars(n) {
+  const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+  let result = "";
+  for (let i = 0; i < n; i++) result += chars[Math.floor(Math.random() * chars.length)];
+  return result;
+}
 
 function clonePersona(url, destDir) {
   execSync(`git clone "${url}" "${destDir}"`, { timeout: 60_000, windowsHide: true, stdio: "pipe" });
@@ -336,13 +344,14 @@ async function stepDataDir() {
     const toInstall = SAMPLE_PERSONAS.filter(s => s.url);
     let installed = 0;
     for (const { url, folderName } of toInstall) {
-      const destDir = path.join(personasDir, folderName);
+      const actualName = `${folderName}-${randomChars(4)}`;
+      const destDir = path.join(personasDir, actualName);
       try {
         clonePersona(url, destDir);
         installed++;
-        info(`Sample persona installed: ${folderName}`);
+        info(`Sample persona installed: ${actualName}`);
       } catch (e) {
-        warn(`Failed to install sample persona "${folderName}": ${e.message}`);
+        warn(`Failed to install sample persona "${actualName}": ${e.message}`);
         if (fs.existsSync(destDir)) fs.rmSync(destDir, { recursive: true, force: true });
       }
     }

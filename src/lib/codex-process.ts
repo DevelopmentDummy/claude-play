@@ -3,6 +3,7 @@ import { EventEmitter } from "events";
 import { StringDecoder } from "string_decoder";
 import * as fs from "fs";
 import * as path from "path";
+import * as os from "os";
 export interface CodexProcessEvents {
   message: [data: unknown];
   error: [err: string];
@@ -36,6 +37,30 @@ export class CodexProcess extends EventEmitter<CodexProcessEvents> {
 
   private initialized = false;
   private threadCreated = false;
+
+  /**
+   * Ensure a directory is registered as a trusted project in ~/.codex/config.toml.
+   * Codex ignores project-level config.toml (MCP servers, instructions) for untrusted dirs.
+   */
+  private ensureCodexTrust(dir: string): void {
+    const globalConfig = path.join(os.homedir(), ".codex", "config.toml");
+    // Codex uses \\?\ prefix on Windows for trust keys
+    const trustKey = process.platform === "win32"
+      ? `'\\\\?\\${dir.replace(/\//g, "\\")}'`
+      : `'${dir}'`;
+    const sectionHeader = `[projects.${trustKey}]`;
+
+    let content = "";
+    if (fs.existsSync(globalConfig)) {
+      content = fs.readFileSync(globalConfig, "utf-8");
+      // Already trusted — skip
+      if (content.includes(sectionHeader)) return;
+    }
+
+    // Append trust entry
+    const entry = `\n${sectionHeader}\ntrust_level = "trusted"\n`;
+    fs.appendFileSync(globalConfig, entry, "utf-8");
+  }
 
   private parseOutputLine(line: string): void {
     const trimmed = line.trim();
@@ -98,12 +123,15 @@ export class CodexProcess extends EventEmitter<CodexProcessEvents> {
     // Build app-server startup args
     const args: string[] = ["app-server"];
 
-    // Codex app-server auto-reads .codex/config.toml from cwd for MCP config.
-    // No need to pass -c flags — just set cwd correctly.
     // Sandbox: full access
     args.push("-c", 'sandbox="danger-full-access"');
     const reasoningEffort = this.effort || "medium";
     args.push("-c", `model_reasoning_effort="${reasoningEffort}"`);
+
+    // Ensure cwd is registered as a trusted project in global ~/.codex/config.toml.
+    // Codex ignores project .codex/config.toml (including MCP settings) unless the
+    // directory is explicitly trusted. We add it automatically before each spawn.
+    this.ensureCodexTrust(cwd);
 
     if (this.logStream) {
       this.logStream.write(`[start] args: codex ${args.join(" ")}\n`);

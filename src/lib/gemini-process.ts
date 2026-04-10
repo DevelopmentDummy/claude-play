@@ -3,6 +3,7 @@ import { EventEmitter } from "events";
 import { StringDecoder } from "string_decoder";
 import * as fs from "fs";
 import * as path from "path";
+import * as os from "os";
 
 export interface GeminiProcessEvents {
   message: [data: unknown];
@@ -41,6 +42,28 @@ export class GeminiProcess extends EventEmitter<GeminiProcessEvents> {
   private seenDeltaInTurn = false;
   // Track whether tool_use occurred after text deltas (Gemini re-streams full content after tools)
   private hadToolAfterText = false;
+
+  /**
+   * Ensure a directory is registered as trusted in ~/.gemini/trustedFolders.json.
+   * Gemini CLI ignores .gemini/settings.json (including MCP servers) for untrusted dirs.
+   */
+  private ensureGeminiTrust(dir: string): void {
+    const trustFile = path.join(os.homedir(), ".gemini", "trustedFolders.json");
+    let trusted: Record<string, string> = {};
+    if (fs.existsSync(trustFile)) {
+      try { trusted = JSON.parse(fs.readFileSync(trustFile, "utf-8")); } catch { /* ignore */ }
+    }
+    const normalizedDir = dir.replace(/\//g, "\\");
+    // Check if already trusted (exact match or parent directory is trusted)
+    for (const [folder, level] of Object.entries(trusted)) {
+      if (level !== "TRUST_FOLDER") continue;
+      const normalizedFolder = folder.replace(/\//g, "\\");
+      if (normalizedDir === normalizedFolder || normalizedDir.startsWith(normalizedFolder + "\\")) return;
+    }
+    trusted[normalizedDir] = "TRUST_FOLDER";
+    fs.mkdirSync(path.dirname(trustFile), { recursive: true });
+    fs.writeFileSync(trustFile, JSON.stringify(trusted, null, 2), "utf-8");
+  }
 
   private parseOutputLine(line: string): void {
     const trimmed = line.trim();
@@ -88,6 +111,9 @@ export class GeminiProcess extends EventEmitter<GeminiProcessEvents> {
     this.savedSessionId = resumeId || null;
     this.pendingFirstMessage = true;
     this.seenDeltaInTurn = false;
+
+    // Ensure cwd is trusted so Gemini loads .gemini/settings.json (MCP config)
+    this.ensureGeminiTrust(cwd);
 
     // Start log stream
     if (this.logStream) { try { this.logStream.end(); } catch { /* */ } }

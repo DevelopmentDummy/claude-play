@@ -78,8 +78,8 @@ export async function POST(req: Request) {
   } else if (provider === "gemini") {
     svc.sessions.writeGeminiInstructions(personaDir, runtimeSystemPrompt);
   }
-  // Builder default effort: highest for each provider
-  const effectiveEffort = effort || (provider === "codex" ? "xhigh" : provider === "gemini" ? undefined : "high");
+  // Builder default effort
+  const effectiveEffort = effort || (provider === "codex" ? "xhigh" : provider === "gemini" ? undefined : "medium");
   instance.claude.spawn(personaDir, undefined, model || undefined, runtimeSystemPrompt, effectiveEffort);
 
   const displayName = svc.sessions.getPersonaDisplayName(name);

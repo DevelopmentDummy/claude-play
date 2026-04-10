@@ -88,8 +88,8 @@ export async function POST(req: Request) {
   const resumeId = providerChanged ? undefined : svc.sessions.getBuilderSessionId(name, provider);
   // If no model specified and provider is codex, use default codex model
   const effectiveModel = model || (provider === "codex" ? "gpt-5.4" : provider === "gemini" ? "gemini-3.1-pro-preview" : undefined);
-  // Builder default effort: highest for each provider
-  const effectiveEffort = effort || (provider === "codex" ? "xhigh" : provider === "gemini" ? undefined : "high");
+  // Builder default effort
+  const effectiveEffort = effort || (provider === "codex" ? "xhigh" : provider === "gemini" ? undefined : "medium");
 
   // Only spawn if process is not running or provider changed
   if (!instance.claude.isRunning() || providerChanged) {
