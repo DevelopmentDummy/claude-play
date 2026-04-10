@@ -691,21 +691,27 @@ return { noActionLog: true, variables: { ... } };
 **`active_preset`을 변경하면 체크포인트, 워크플로 템플릿, 품질/스타일/네거티브 태그가 모두 자동 전환된다.**
 
 **절차:**
-1. 기존 `comfyui-config.json`을 읽어 현재 프리셋 구성을 확인한다
-2. 사용자에게 이 페르소나의 **주력 아트 스타일**을 물어본다:
+1. 먼저 ComfyUI 연결 상태를 확인한다:
+```bash
+curl -s http://localhost:{{PORT}}/api/tools/comfyui/health
+```
+응답의 `comfyui.status`가 `"connected"`가 아니면 이 단계와 이후 이미지 생성 단계를 모두 건너뛴다.
+
+2. 기존 `comfyui-config.json`을 읽어 현재 프리셋 구성을 확인한다
+3. 사용자에게 이 페르소나의 **주력 아트 스타일**을 물어본다:
    - **애니메풍**: 대부분의 경우 기본 프리셋(`anime`)을 그대로 사용하면 된다. 사용자에게 "기본 애니메풍 프리셋이 이미 설정되어 있는데, 이대로 사용할까요?"라고 제안하라
    - **반실사**: 기본 프리셋(`semi-real`)이 이미 설정되어 있다. `active_preset`만 변경하면 된다
    - **커스텀**: 사용자가 특별한 화풍을 원하면, 새 프리셋을 추가하거나 기존 프리셋의 태그를 수정한다
-3. 체크포인트를 변경하려면 ComfyUI 모델 목록을 조회한다:
+4. 체크포인트를 변경하려면 ComfyUI 모델 목록을 조회한다:
 ```bash
-curl -s http://localhost:3340/api/tools/comfyui/models
+curl -s http://localhost:{{PORT}}/api/tools/comfyui/models
 ```
-4. 변경사항이 있으면 `comfyui-config.json`을 업데이트한다. 변경이 없으면 기본값을 그대로 유지한다
+5. 변경사항이 있으면 `comfyui-config.json`을 업데이트한다. 변경이 없으면 기본값을 그대로 유지한다
 
 **참고:**
 - 글로벌 기본 프리셋이 이미 잘 튜닝되어 있으므로, 대부분의 경우 변경 없이 진행하는 것을 권장한다
 - `active_preset` 값을 바꾸는 것만으로 스타일 전환이 가능하다 — 세션 중에도 전환할 수 있다
-- ComfyUI가 연결되지 않은 환경에서는 이 단계와 이후 이미지 생성 단계를 건너뛴다
+- ComfyUI 연결 여부는 반드시 `/api/tools/comfyui/health` 응답으로 판단한다. 연결되지 않으면 이 단계와 이후 이미지 생성 단계를 건너뛴다
 - **프리셋의 `style_tags`와 `quality_tags`는 대화 세션에서 이미지 생성 시 프롬프트에 자동 삽입된다.** `session-instructions.md`에 이미지 생성 시 `comfyui-config.json`을 참조하라는 지시를 포함하라
 
 ### `profile.png` + `icon.png` — 캐릭터 프로필 이미지 & 아이콘

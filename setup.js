@@ -302,16 +302,22 @@ async function stepPortCheck(port) {
   }
 }
 
-const COPY_SKIP = new Set([".git", ".claude", ".codex", ".mcp.json"]);
-function copyDirRecursive(src, dst) {
-  fs.mkdirSync(dst, { recursive: true });
-  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
-    if (COPY_SKIP.has(entry.name)) continue;
-    const s = path.join(src, entry.name);
-    const d = path.join(dst, entry.name);
-    if (entry.isDirectory()) copyDirRecursive(s, d);
-    else fs.copyFileSync(s, d);
-  }
+// Default sample personas to install on first run (git clone from GitHub)
+const SAMPLE_PERSONAS = [
+  { url: "", folderName: "princessmaker" },
+  { url: "", folderName: "글쓰기도우미" },
+];
+
+function clonePersona(url, destDir) {
+  execSync(`git clone "${url}" "${destDir}"`, { timeout: 60_000, windowsHide: true, stdio: "pipe" });
+  const commitHash = execSync("git rev-parse HEAD", { cwd: destDir, timeout: 10_000, encoding: "utf-8" }).trim();
+  const importMeta = {
+    source: "github",
+    url,
+    installedAt: new Date().toISOString(),
+    installedCommit: commitHash,
+  };
+  fs.writeFileSync(path.join(destDir, "import-meta.json"), JSON.stringify(importMeta, null, 2));
 }
 
 async function stepDataDir() {
@@ -323,20 +329,25 @@ async function stepDataDir() {
   }
   info("data/ directory initialized");
 
-  // Copy sample personas if personas dir is empty
+  // Install sample personas from GitHub if personas dir is empty
   const personasDir = path.join(dataDir, "personas");
   const existing = fs.readdirSync(personasDir).filter(f => !f.startsWith("."));
   if (existing.length === 0) {
-    const samplesDir = path.join(dataDir, "sample-personas");
-    if (fs.existsSync(samplesDir)) {
-      const samples = fs.readdirSync(samplesDir).filter(f => !f.startsWith("."));
-      for (const name of samples) {
-        copyDirRecursive(path.join(samplesDir, name), path.join(personasDir, name));
-      }
-      if (samples.length > 0) {
-        info(`${samples.length} sample persona(s) installed`);
+    const toInstall = SAMPLE_PERSONAS.filter(s => s.url);
+    let installed = 0;
+    for (const { url, folderName } of toInstall) {
+      const destDir = path.join(personasDir, folderName);
+      try {
+        clonePersona(url, destDir);
+        installed++;
+        info(`Sample persona installed: ${folderName}`);
+      } catch (e) {
+        warn(`Failed to install sample persona "${folderName}": ${e.message}`);
+        if (fs.existsSync(destDir)) fs.rmSync(destDir, { recursive: true, force: true });
       }
     }
+    if (installed > 0) info(`${installed} sample persona(s) installed`);
+    else if (toInstall.length > 0) warn("No sample personas could be installed (network issue?)");
   }
 
   // Copy example files to real files if they don't exist

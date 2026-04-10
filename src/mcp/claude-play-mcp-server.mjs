@@ -353,6 +353,23 @@ server.registerTool(
 );
 
 server.registerTool(
+  "comfyui_health",
+  {
+    description:
+      "Check ComfyUI and GPU Manager connection status. Returns connectivity and system stats for each service.",
+    inputSchema: {},
+  },
+  async () => {
+    try {
+      const data = await requestJson("GET", "/api/tools/comfyui/health");
+      return ok(data);
+    } catch (error) {
+      return fail(error);
+    }
+  }
+);
+
+server.registerTool(
   "comfyui_models",
   {
     description: "List available ComfyUI checkpoints/models through Claude Play API.",
