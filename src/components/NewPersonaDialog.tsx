@@ -1,11 +1,12 @@
 "use client";
 
-import { useRef, useCallback } from "react";
+import { useRef, useState, useCallback } from "react";
+import { MODEL_GROUPS } from "@/lib/ai-provider";
 
 interface NewPersonaDialogProps {
   open: boolean;
   onClose: () => void;
-  onCreate: (name: string) => void;
+  onCreate: (name: string, model?: string) => void;
 }
 
 export default function NewPersonaDialog({
@@ -14,6 +15,7 @@ export default function NewPersonaDialog({
   onCreate,
 }: NewPersonaDialogProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [selectedModel, setSelectedModel] = useState("opus[1m]:medium");
 
   const handleOk = useCallback(() => {
     const name = inputRef.current?.value
@@ -21,9 +23,9 @@ export default function NewPersonaDialog({
       .toLowerCase()
       .replace(/\s+/g, "-");
     if (!name) return;
-    onCreate(name);
+    onCreate(name, selectedModel || undefined);
     onClose();
-  }, [onCreate, onClose]);
+  }, [onCreate, onClose, selectedModel]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -47,6 +49,21 @@ export default function NewPersonaDialog({
           onKeyDown={handleKeyDown}
           autoFocus
         />
+        <select
+          value={selectedModel}
+          onChange={(e) => setSelectedModel(e.target.value)}
+          className="px-3.5 py-2.5 border border-border rounded-[10px] bg-[rgba(15,15,26,0.6)] text-text font-[inherit] text-sm outline-none transition-all duration-fast focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-glow)] cursor-pointer"
+        >
+          {MODEL_GROUPS.map((group) => (
+            <optgroup key={group.label} label={group.label}>
+              {group.options.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
         <div className="flex justify-end gap-2">
           <button
             onClick={onClose}

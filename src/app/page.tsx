@@ -179,8 +179,10 @@ export default function LobbyPage() {
     loadLobby();
   };
 
-  const startBuilder = (name: string) => {
-    router.push(`/builder/${encodeURIComponent(name)}?mode=new`);
+  const startBuilder = (name: string, model?: string) => {
+    const params = new URLSearchParams({ mode: "new" });
+    if (model) params.set("model", model);
+    router.push(`/builder/${encodeURIComponent(name)}?${params}`);
   };
 
   const editPersona = (name: string) => {

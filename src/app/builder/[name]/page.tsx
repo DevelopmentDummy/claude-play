@@ -93,10 +93,11 @@ export default function BuilderPage() {
     const init = async () => {
       const endpoint =
         mode === "new" ? "/api/builder/start" : "/api/builder/edit";
+      const initModel = searchParams.get("model") || undefined;
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: decodedName }),
+        body: JSON.stringify({ name: decodedName, ...(initModel ? { model: initModel } : {}) }),
       });
 
       if (!res.ok) {

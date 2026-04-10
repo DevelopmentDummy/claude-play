@@ -165,7 +165,9 @@ export class GeminiProcess extends EventEmitter<GeminiProcessEvents> {
     args.push("--output-format", "stream-json", "--yolo");
 
     if (this.spawnModel) {
-      args.push("--model", this.spawnModel);
+      // "gemini-auto" → pass "auto" to let Gemini CLI pick the best model
+      const model = this.spawnModel === "gemini-auto" ? "auto" : this.spawnModel;
+      args.push("--model", model);
     }
 
     if (resumeId) {

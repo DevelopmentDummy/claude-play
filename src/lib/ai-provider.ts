@@ -73,6 +73,7 @@ export const MODEL_GROUPS: ModelGroup[] = [
     label: "Gemini",
     provider: "gemini" as AIProvider,
     options: [
+      { value: "gemini-auto", label: "Gemini Auto" },
       { value: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro" },
       { value: "gemini-3-flash-preview", label: "Gemini 3 Flash" },
     ],

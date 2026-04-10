@@ -14,15 +14,24 @@ interface SessionCardProps {
   onDelete: () => void;
 }
 
-/** Determine provider label from model string */
-function providerLabel(model?: string): string | null {
+/** Determine provider info from model string */
+function providerInfo(model?: string): { label: string; bg: string; text: string; border: string } | null {
   if (!model) return null;
   const lower = model.split(":")[0].toLowerCase();
-  const codexModels = ["gpt-5", "codex-mini"];
-  for (const prefix of codexModels) {
-    if (lower === prefix || lower.startsWith(prefix)) return "Codex";
+  const codexPrefixes = ["gpt-5", "codex-mini", "o3", "o4"];
+  for (const prefix of codexPrefixes) {
+    if (lower === prefix || lower.startsWith(prefix))
+      return { label: "Codex", bg: "bg-[#2a5a3a]/60", text: "text-[#4dff91]/80", border: "border-[#4dff91]/15" };
   }
-  return null; // Claude is default, no label needed
+  const geminiPrefixes = ["gemini-", "gemini"];
+  for (const prefix of geminiPrefixes) {
+    if (lower === prefix || lower.startsWith(prefix))
+      return { label: "Gemini", bg: "bg-[#1a3a5c]/60", text: "text-[#64b5f6]/80", border: "border-[#64b5f6]/15" };
+  }
+  // Claude — show badge for explicit models
+  if (lower.includes("sonnet") || lower.includes("opus") || lower.includes("haiku") || lower.includes("claude"))
+    return { label: "Claude", bg: "bg-[#4a2a1a]/60", text: "text-[#ff9f43]/80", border: "border-[#ff9f43]/15" };
+  return null;
 }
 
 export default function SessionCard({
@@ -80,16 +89,20 @@ export default function SessionCard({
         <div className="text-sm text-text truncate leading-snug">{title}</div>
         <div className="text-xs text-text-dim/60 mt-1 flex items-center gap-1.5">
           <span>{persona} &middot; {timeStr}</span>
-          {providerLabel(model) && (
-            <span className="inline-flex items-center px-1.5 py-0 rounded text-[9px] font-semibold tracking-wide bg-[#2a5a3a]/60 text-[#4dff91]/80 border border-[#4dff91]/15">
-              {providerLabel(model)}
-            </span>
-          )}
-          {model && !providerLabel(model) && model !== "" && (
-            <span className="inline-flex items-center px-1.5 py-0 rounded text-[9px] font-medium tracking-wide text-text-dim/40">
-              {model}
-            </span>
-          )}
+          {(() => {
+            const info = providerInfo(model);
+            if (info) return (
+              <span className={`inline-flex items-center px-1.5 py-0 rounded text-[9px] font-semibold tracking-wide border ${info.bg} ${info.text} ${info.border}`}>
+                {info.label}
+              </span>
+            );
+            if (model && model !== "") return (
+              <span className="inline-flex items-center px-1.5 py-0 rounded text-[9px] font-medium tracking-wide text-text-dim/40">
+                {model}
+              </span>
+            );
+            return null;
+          })()}
         </div>
       </div>
 
