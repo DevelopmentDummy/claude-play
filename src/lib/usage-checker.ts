@@ -240,6 +240,29 @@ function readGeminiAccessToken(): string | null {
   }
 }
 
+function readGeminiProjectId(): string | null {
+  try {
+    const projPath = path.join(os.homedir(), ".gemini", "projects.json");
+    const raw = fs.readFileSync(projPath, "utf-8");
+    const data = JSON.parse(raw);
+    // projects는 { "dir": "projectId" } 형태. 첫 번째 값 사용
+    const projects = data?.projects;
+    if (!projects || typeof projects !== "object") return null;
+    const values = Object.values(projects) as string[];
+    return values[0] || null;
+  } catch {
+    return null;
+  }
+}
+
+/** 모델 ID에서 티어를 추출 (flash-lite / flash / pro) */
+function getModelTier(modelId: string): string {
+  if (modelId.includes("flash-lite")) return "Flash Lite";
+  if (modelId.includes("flash")) return "Flash";
+  if (modelId.includes("pro")) return "Pro";
+  return modelId;
+}
+
 export async function getGeminiUsage(): Promise<UsageResponse> {
   const cached = getCached("gemini");
   if (cached) return cached;
@@ -249,6 +272,8 @@ export async function getGeminiUsage(): Promise<UsageResponse> {
     return { provider: "gemini", windows: [], error: "Gemini OAuth 토큰을 찾을 수 없습니다" };
   }
 
+  const projectId = readGeminiProjectId();
+
   try {
     const res = await fetch("https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota", {
       method: "POST",
@@ -256,7 +281,7 @@ export async function getGeminiUsage(): Promise<UsageResponse> {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
       },
-      body: "{}",
+      body: JSON.stringify(projectId ? { project: projectId } : {}),
     });
 
     if (!res.ok) {
@@ -271,19 +296,24 @@ export async function getGeminiUsage(): Promise<UsageResponse> {
       return { provider: "gemini", windows: [], error: "사용량 데이터 없음" };
     }
 
-    // 모델별로 그룹화 — REQUESTS 타입만 표시
-    const windows: UsageWindow[] = [];
+    // 티어별로 그룹화 (같은 티어는 사용량 공유이므로 하나만 표시)
+    const tierMap = new Map<string, GeminiQuotaBucket>();
     for (const b of raw.buckets) {
       if (b.tokenType !== "REQUESTS") continue;
+      const tier = getModelTier(b.modelId);
+      if (!tierMap.has(tier)) {
+        tierMap.set(tier, b);
+      }
+    }
 
-      const utilization = Math.round((1 - b.remainingFraction) * 100);
-      const resetTime = new Date(b.resetTime);
-      // Gemini은 일 단위 리셋 (24시간 윈도우)
-      const durationMs = 24 * 60 * 60 * 1000;
+    const windows: UsageWindow[] = [];
+    // Gemini은 일 단위 리셋 (24시간 윈도우)
+    const durationMs = 24 * 60 * 60 * 1000;
 
+    for (const [tier, b] of tierMap) {
       windows.push({
-        name: b.modelId,
-        utilization,
+        name: tier,
+        utilization: Math.round((1 - b.remainingFraction) * 100),
         resetsAt: b.resetTime,
         timeProgress: computeTimeProgress(b.resetTime, durationMs),
       });
