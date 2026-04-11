@@ -169,8 +169,13 @@ function ChatInput({ disabled, onSend, sessionId, choices, pendingEvents, showOO
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [oocMode, setOocMode] = useState(false);
   const [choiceBusy, setChoiceBusy] = useState(false);
+  // Track consumed dry choices to remove them from UI after click
+  const [consumedDryTexts, setConsumedDryTexts] = useState<Set<string>>(new Set());
   const oocModeRef = useRef(oocMode);
   oocModeRef.current = oocMode;
+  // Reset consumed dry choices when choices prop changes (new message / new choices)
+  const choicesKey = choices?.map(c => c.text).join("\0");
+  useEffect(() => { setConsumedDryTexts(new Set()); }, [choicesKey]);
   const composingRef = useRef(false);
   const sttSuppressRef = useRef(false); // suppress STT onresult after send
 
@@ -375,8 +380,9 @@ function ChatInput({ disabled, onSend, sessionId, choices, pendingEvents, showOO
       win.__panelActionSuppressSend = false;
 
       if (choice.dry) {
-        // Dry choice: actions executed, no message sent to AI
+        // Dry choice: actions executed, no message sent to AI — remove from UI
         showToast(choice.text, 2000);
+        setConsumedDryTexts(prev => new Set(prev).add(choice.text));
       } else {
         // Normal choice: send choice text as user message
         onSend(choice.text);
@@ -661,13 +667,16 @@ function ChatInput({ disabled, onSend, sessionId, choices, pendingEvents, showOO
 
   return (
     <footer className="flex flex-col bg-surface backdrop-blur-[16px] border-t border-border shrink-0">
-      {choices && choices.length > 0 && !disabled && (
-        <div className="flex flex-wrap gap-2 px-4 pt-3 pb-1">
-          {choices.map((c, i) => (
-            <ChoiceButton key={i} choice={c} busy={choiceBusy} onChoice={handleChoice} />
-          ))}
-        </div>
-      )}
+      {choices && choices.length > 0 && !disabled && (() => {
+        const visible = choices.filter(c => !(c.dry && consumedDryTexts.has(c.text)));
+        return visible.length > 0 ? (
+          <div className="flex flex-wrap gap-2 px-4 pt-3 pb-1">
+            {visible.map((c, i) => (
+              <ChoiceButton key={i} choice={c} busy={choiceBusy} onChoice={handleChoice} />
+            ))}
+          </div>
+        ) : null;
+      })()}
       {pendingEvents && pendingEvents.length > 0 && (
         <div className="flex flex-wrap gap-1.5 px-4 pt-2 pb-1 max-h-[100px] overflow-y-auto">
           {pendingEvents.map((header, i) => (

@@ -66,7 +66,7 @@ function shortLabel(name: string, provider: string): string {
   return name.slice(0, 3);
 }
 
-const REFRESH_COOLDOWN_MS = 60_000; // 1분 쿨다운
+const REFRESH_COOLDOWN_MS = 300_000; // 5분 쿨다운
 
 interface UsageIndicatorProps {
   provider: "claude" | "codex" | "gemini";
