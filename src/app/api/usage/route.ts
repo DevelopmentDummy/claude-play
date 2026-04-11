@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getClaudeUsage, getCodexUsage } from "@/lib/usage-checker";
+import { getClaudeUsage, getCodexUsage, getGeminiUsage } from "@/lib/usage-checker";
 import { getSessionInstance } from "@/lib/session-registry";
 import { CodexProcess } from "@/lib/codex-process";
 
@@ -26,6 +26,10 @@ export async function GET(req: Request) {
     }
     const process = instance.claude as unknown as CodexProcess;
     return NextResponse.json(await getCodexUsage(process));
+  }
+
+  if (provider === "gemini") {
+    return NextResponse.json(await getGeminiUsage());
   }
 
   return NextResponse.json(

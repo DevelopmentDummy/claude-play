@@ -215,3 +215,86 @@ export async function getCodexUsage(process: CodexProcess): Promise<UsageRespons
     };
   }
 }
+
+// ── Gemini ─────────────────────────────────────────────────
+
+interface GeminiQuotaBucket {
+  resetTime: string;
+  tokenType: string;
+  modelId: string;
+  remainingFraction: number;
+}
+
+interface GeminiQuotaResponse {
+  buckets?: GeminiQuotaBucket[];
+}
+
+function readGeminiAccessToken(): string | null {
+  try {
+    const credPath = path.join(os.homedir(), ".gemini", "oauth_creds.json");
+    const raw = fs.readFileSync(credPath, "utf-8");
+    const creds = JSON.parse(raw);
+    return creds?.access_token ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function getGeminiUsage(): Promise<UsageResponse> {
+  const cached = getCached("gemini");
+  if (cached) return cached;
+
+  const token = readGeminiAccessToken();
+  if (!token) {
+    return { provider: "gemini", windows: [], error: "Gemini OAuth 토큰을 찾을 수 없습니다" };
+  }
+
+  try {
+    const res = await fetch("https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: "{}",
+    });
+
+    if (!res.ok) {
+      const msg = res.status === 401
+        ? "Gemini 토큰 만료 (CLI에서 재인증 필요)"
+        : `API 오류 (${res.status})`;
+      return { provider: "gemini", windows: [], error: msg };
+    }
+
+    const raw: GeminiQuotaResponse = await res.json();
+    if (!raw.buckets?.length) {
+      return { provider: "gemini", windows: [], error: "사용량 데이터 없음" };
+    }
+
+    // 모델별로 그룹화 — REQUESTS 타입만 표시
+    const windows: UsageWindow[] = [];
+    for (const b of raw.buckets) {
+      if (b.tokenType !== "REQUESTS") continue;
+
+      const utilization = Math.round((1 - b.remainingFraction) * 100);
+      const resetTime = new Date(b.resetTime);
+      // Gemini은 일 단위 리셋 (24시간 윈도우)
+      const durationMs = 24 * 60 * 60 * 1000;
+
+      windows.push({
+        name: b.modelId,
+        utilization,
+        resetsAt: b.resetTime,
+        timeProgress: computeTimeProgress(b.resetTime, durationMs),
+      });
+    }
+
+    return setCache("gemini", { provider: "gemini", windows });
+  } catch (err) {
+    return {
+      provider: "gemini",
+      windows: [],
+      error: `Gemini 조회 실패: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+}
