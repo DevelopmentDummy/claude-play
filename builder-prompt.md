@@ -472,8 +472,9 @@ module.exports = async function(context, args) {
 **세션 AI의 호출 방식:**
 세션 AI는 `mcp__claude_play__run_tool` MCP 도구로 호출한다 (curl 불필요):
 ```
-mcp__claude_play__run_tool({ tool: "engine", args: { action: "milking", params: {} } })
+mcp__claude_play__run_tool({ tool: "engine", args: { action: "milking" } })
 ```
+엔진은 flat 방식(`{ action, key: val }`)과 wrapped 방식(`{ action, params: { key: val } }`) 모두 지원한다. flat 방식을 권장한다.
 
 **설계 원칙:**
 - result에 `changes` (변경 전/후), `hints` (서사 힌트), `warnings` (경고)를 포함하면 AI가 서사에 반영하기 쉽다

@@ -274,9 +274,10 @@ mcp__claude_play__run_tool({
 
 2. **툴 액션** — UI 없이 엔진을 직접 호출하는 단순 조작
    - `{"tool": "engine", "action": "액션명", "args": {추가파라미터}}`
-   - `tool`: 도구 이름 (예: `"engine"`), `action`: 실행할 액션명, `args`: 추가 파라미터 (선택)
+   - `tool`: 도구 이름 (예: `"engine"`), `action`: 실행할 액션명, `args`: 추가 파라미터 (선택, flat 방식)
    - 패널을 거치지 않고 엔진에 직접 요청한다
    - 예: 골드 차감, 아이템 사용, NPC 선물 등 간단한 상태 변경
+   - 엔진은 flat(`{ action, key: val }`)과 wrapped(`{ action, params: {...} }`) 모두 지원하지만, 선택지에서는 flat 방식을 사용한다
 
 두 유형을 한 `actions` 배열에 섞어서 **체인**할 수 있다:
 ```
