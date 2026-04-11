@@ -61,19 +61,21 @@ function UsageGauge({ window: w }: { window: UsageWindow }) {
           {Math.round(w.utilization)}%
         </span>
       </div>
-      {/* Overlapping gauge bar */}
+      {/* Gauge bar */}
       <div className="relative h-5 rounded-full bg-surface-light overflow-hidden">
-        {/* Back: time progress (semi-transparent) */}
-        <div
-          className={`absolute inset-y-0 left-0 rounded-full ${colors.bg} transition-all duration-500`}
-          style={{ width: `${Math.min(w.timeProgress, 100)}%` }}
-        />
-        {/* Front: actual usage (opaque) */}
+        {/* Danger zone: time marker 뒤쪽을 붉게 */}
+        {w.timeProgress > 0 && w.timeProgress < 100 && (
+          <div
+            className="absolute inset-y-0 right-0 rounded-r-full bg-red-900/25"
+            style={{ width: `${100 - w.timeProgress}%` }}
+          />
+        )}
+        {/* Usage bar */}
         <div
           className={`absolute inset-y-0 left-0 rounded-full ${colors.bar} transition-all duration-500`}
           style={{ width: `${Math.min(w.utilization, 100)}%`, opacity: 0.85 }}
         />
-        {/* Time progress boundary line */}
+        {/* Time progress boundary */}
         {w.timeProgress > 0 && w.timeProgress < 100 && (
           <div
             className="absolute inset-y-0 w-0.5 bg-white/40"
