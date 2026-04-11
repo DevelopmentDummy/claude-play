@@ -36,6 +36,8 @@ interface StatusBarProps {
   onVersionSave?: () => void;
   onVersionHistory?: () => void;
   versionSaving?: boolean;
+  /** Usage modal */
+  onUsage?: () => void;
   /** Force chat input visible */
   forceInput?: boolean;
   onForceInputToggle?: () => void;
@@ -81,6 +83,7 @@ export default function StatusBar({
   onVersionSave,
   onVersionHistory,
   versionSaving,
+  onUsage,
   forceInput,
   onForceInputToggle,
 }: StatusBarProps) {
@@ -121,7 +124,7 @@ export default function StatusBar({
     disconnected: "Disconnected",
   };
 
-  const hasDebugItems = onCompact || onContext || onReinit || (!isBuilderMode && onSync) || onForceInputToggle;
+  const hasDebugItems = onUsage || onCompact || onContext || onReinit || (!isBuilderMode && onSync) || onForceInputToggle;
 
   return (
     <header className="flex flex-wrap items-center gap-2 px-4 py-2 bg-surface backdrop-blur-[16px] border-b border-border shrink-0">
@@ -206,6 +209,14 @@ export default function StatusBar({
                   rounded-lg border border-border/60 bg-[rgba(20,16,32,0.97)]
                   shadow-[0_8px_32px_rgba(0,0,0,0.5)] z-[9999]"
               >
+                {onUsage && (
+                  <button
+                    onClick={() => { onUsage(); setDebugOpen(false); }}
+                    className={menuBtnClass}
+                  >
+                    Usage
+                  </button>
+                )}
                 {onForceInputToggle && (
                   <button
                     onClick={() => { onForceInputToggle(); setDebugOpen(false); }}

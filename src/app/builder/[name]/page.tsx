@@ -13,6 +13,7 @@ import BuilderOverview from "@/components/BuilderOverview";
 import VersionHistoryModal from "@/components/VersionHistoryModal";
 import ChatOptionsModal from "@/components/ChatOptionsModal";
 import ToastEffect from "@/components/ToastEffect";
+import UsageModal from "@/components/UsageModal";
 
 export default function BuilderPage() {
   const { name } = useParams<{ name: string }>();
@@ -48,6 +49,7 @@ export default function BuilderPage() {
   const [chatOptions, setChatOptions] = useState<Record<string, unknown>>({});
   const [chatOptionsSchema, setChatOptionsSchema] = useState<Record<string, unknown>[]>([]);
   const [optionsModalOpen, setOptionsModalOpen] = useState(false);
+  const [showUsage, setShowUsage] = useState(false);
   const isMobile = useIsMobile();
   const initRef = useRef(false);
   const initialMsgSent = useRef(false);
@@ -250,6 +252,7 @@ export default function BuilderPage() {
         onVersionHistory={() => setShowVersionHistory(true)}
         versionSaving={versionSaving}
         onSettings={() => setOptionsModalOpen(true)}
+        onUsage={() => setShowUsage(true)}
       />
       <ErrorBanner error={error} onDismiss={() => setError(null)} />
       <div className="flex-1 flex min-h-0">
@@ -294,6 +297,7 @@ export default function BuilderPage() {
           onClose={() => setOptionsModalOpen(false)}
         />
       )}
+      {showUsage && <UsageModal onClose={() => setShowUsage(false)} />}
       <ToastEffect />
     </div>
   );

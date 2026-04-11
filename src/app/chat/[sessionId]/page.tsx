@@ -21,6 +21,7 @@ import ChatOptionsModal from "@/components/ChatOptionsModal";
 import SteeringPresetsModal from "@/components/SteeringPresetsModal";
 import PopupEffect from "@/components/PopupEffect";
 import ToastEffect from "@/components/ToastEffect";
+import UsageModal from "@/components/UsageModal";
 import { dispatchBridgeEvent } from "@/lib/use-panel-bridge";
 import { buildAutoplayMessage, calculateAutoplayDelay, getSelectedPreset, type SteeringPreset } from "@/lib/autoplay";
 import { getPanelActionRegistry, parsePanelActions } from "@/lib/panel-action-registry";
@@ -99,6 +100,7 @@ export default function ChatPage() {
   const [steeringPreset, setSteeringPreset] = useState<SteeringPreset | null>(null);
   const [steeringModalOpen, setSteeringModalOpen] = useState(false);
   const [forceInput, setForceInput] = useState(false);
+  const [showUsage, setShowUsage] = useState(false);
   const autoplayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastAssistantTextRef = useRef("");
   const isMobile = useIsMobile();
@@ -924,6 +926,7 @@ export default function ChatPage() {
         onVoiceChatToggle={() => setVoiceChat((v) => !v)}
         onSettings={() => setOptionsModalOpen(true)}
         forceInput={forceInput}
+        onUsage={() => setShowUsage(true)}
         onForceInputToggle={() => setForceInput((v) => !v)}
       />
       <ErrorBanner error={error} onDismiss={() => setError(null)} />
@@ -1112,6 +1115,7 @@ export default function ChatPage() {
         onClose={() => setSteeringModalOpen(false)}
         onPresetChange={setSteeringPreset}
       />
+      {showUsage && <UsageModal onClose={() => setShowUsage(false)} />}
     </div>
   );
 }
