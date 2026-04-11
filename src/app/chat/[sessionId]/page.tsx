@@ -1115,7 +1115,7 @@ export default function ChatPage() {
         onClose={() => setSteeringModalOpen(false)}
         onPresetChange={setSteeringPreset}
       />
-      {showUsage && <UsageModal onClose={() => setShowUsage(false)} />}
+      {showUsage && <UsageModal onClose={() => setShowUsage(false)} provider={currentProvider} sessionId={sessionId} />}
     </div>
   );
 }

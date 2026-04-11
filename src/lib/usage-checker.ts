@@ -1,7 +1,7 @@
-// src/lib/usage-checker.ts
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
+import { CodexProcess } from "./codex-process";
 
 // ── 공통 인터페이스 (서비스 불문) ──────────────────────────
 export interface UsageWindow {
@@ -25,8 +25,7 @@ export interface UsageResponse {
 
 // ── 캐시 ──────────────────────────────────────────────────
 const CACHE_TTL_MS = 30_000;
-let cachedResult: UsageResponse | null = null;
-let cachedAt = 0;
+const cache: Record<string, { result: UsageResponse; at: number }> = {};
 
 // ── Anthropic raw 응답 타입 ────────────────────────────────
 interface RawWindow {
@@ -77,10 +76,20 @@ function readAccessToken(): string | null {
   }
 }
 
+function getCached(key: string): UsageResponse | null {
+  const entry = cache[key];
+  if (entry && Date.now() - entry.at < CACHE_TTL_MS) return entry.result;
+  return null;
+}
+
+function setCache(key: string, result: UsageResponse): UsageResponse {
+  cache[key] = { result, at: Date.now() };
+  return result;
+}
+
 export async function getClaudeUsage(): Promise<UsageResponse> {
-  if (cachedResult && Date.now() - cachedAt < CACHE_TTL_MS) {
-    return cachedResult;
-  }
+  const cached = getCached("claude");
+  if (cached) return cached;
 
   const token = readAccessToken();
   if (!token) {
@@ -127,14 +136,65 @@ export async function getClaudeUsage(): Promise<UsageResponse> {
       };
     }
 
-    cachedResult = result;
-    cachedAt = Date.now();
-    return result;
+    return setCache("claude", result);
   } catch (err) {
     return {
       provider: "claude",
       windows: [],
       error: `네트워크 오류: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+}
+
+// ── Codex ──────────────────────────────────────────────────
+
+interface CodexRateLimitBucket {
+  limitId: string;
+  limitName: string | null;
+  primary: { usedPercent: number; windowDurationMins: number; resetsAt: number } | null;
+  secondary: { usedPercent: number; windowDurationMins: number; resetsAt: number } | null;
+}
+
+interface CodexRateLimitsResult {
+  rateLimitsByLimitId?: Record<string, CodexRateLimitBucket>;
+}
+
+export async function getCodexUsage(process: CodexProcess): Promise<UsageResponse> {
+  const cached = getCached("codex");
+  if (cached) return cached;
+
+  if (!process.isRunning()) {
+    return { provider: "codex", windows: [], error: "Codex 세션이 실행 중이 아닙니다" };
+  }
+
+  try {
+    const raw = await process.getRateLimits() as CodexRateLimitsResult | null;
+    if (!raw?.rateLimitsByLimitId) {
+      return { provider: "codex", windows: [], error: "사용량 데이터를 가져올 수 없습니다" };
+    }
+
+    const windows: UsageWindow[] = [];
+    for (const [, bucket] of Object.entries(raw.rateLimitsByLimitId)) {
+      const p = bucket.primary;
+      if (!p || p.usedPercent == null) continue;
+
+      const durationMs = p.windowDurationMins * 60 * 1000;
+      const resetsAt = new Date(p.resetsAt * 1000).toISOString();
+
+      windows.push({
+        name: bucket.limitName || bucket.limitId,
+        utilization: p.usedPercent,
+        resetsAt,
+        timeProgress: computeTimeProgress(resetsAt, durationMs),
+      });
+    }
+
+    return setCache("codex", { provider: "codex", windows });
+  } catch (err) {
+    return {
+      provider: "codex",
+      windows: [],
+      error: `Codex 조회 실패: ${err instanceof Error ? err.message : String(err)}`,
     };
   }
 }

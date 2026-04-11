@@ -95,17 +95,53 @@ function UsageGauge({ window: w }: { window: UsageWindow }) {
   );
 }
 
-export default function UsageModal({ onClose }: { onClose: () => void }) {
-  const [data, setData] = useState<UsageData | null>(null);
+const PROVIDER_COLORS: Record<string, string> = {
+  claude: "#ff9f43",
+  codex: "#4dff91",
+  gemini: "#64b5f6",
+};
+
+const PROVIDER_LABELS: Record<string, string> = {
+  claude: "Claude",
+  codex: "Codex",
+  gemini: "Gemini",
+};
+
+interface UsageModalProps {
+  onClose: () => void;
+  provider?: "claude" | "codex" | "gemini";
+  sessionId?: string;
+}
+
+export default function UsageModal({ onClose, provider = "claude", sessionId }: UsageModalProps) {
+  const [results, setResults] = useState<UsageData[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/usage?provider=claude")
-      .then((r) => r.json())
-      .then((d) => setData(d))
-      .catch(() => setData({ provider: "claude", windows: [], error: "요청 실패" }))
+    const providers = provider === "claude"
+      ? [{ p: "claude", sid: "" }]
+      : provider === "codex"
+        ? [{ p: "codex", sid: sessionId || "" }]
+        : [{ p: provider, sid: sessionId || "" }];
+
+    // Always fetch Claude + current provider (if different)
+    const fetches: Array<{ p: string; sid: string }> = [{ p: "claude", sid: "" }];
+    if (provider !== "claude") {
+      fetches.push({ p: provider, sid: sessionId || "" });
+    }
+
+    Promise.all(
+      fetches.map(({ p, sid }) => {
+        const params = new URLSearchParams({ provider: p });
+        if (sid) params.set("sessionId", sid);
+        return fetch(`/api/usage?${params}`)
+          .then((r) => r.json())
+          .catch(() => ({ provider: p, windows: [], error: "요청 실패" }));
+      })
+    )
+      .then((all) => setResults(all))
       .finally(() => setLoading(false));
-  }, []);
+  }, [provider, sessionId]);
 
   return createPortal(
     <div
@@ -128,23 +164,29 @@ export default function UsageModal({ onClose }: { onClose: () => void }) {
           <div className="text-center py-8 text-text-dim text-xs">로딩 중...</div>
         )}
 
-        {!loading && data?.error && (
-          <div className="text-center py-8 text-red-400 text-xs">{data.error}</div>
-        )}
-
-        {!loading && data && !data.error && (
-          <>
-            <div className="flex items-center gap-2 mb-4">
-              <span className="inline-block w-2 h-2 rounded-full bg-[#ff9f43]" />
-              <span className="text-xs text-text-dim">Claude</span>
+        {!loading && results.map((data) => (
+          <div key={data.provider} className="mb-5 last:mb-0">
+            {/* Provider badge */}
+            <div className="flex items-center gap-2 mb-3">
+              <span
+                className="inline-block w-2 h-2 rounded-full"
+                style={{ backgroundColor: PROVIDER_COLORS[data.provider] || "#888" }}
+              />
+              <span className="text-xs text-text-dim">
+                {PROVIDER_LABELS[data.provider] || data.provider}
+              </span>
             </div>
 
-            {data.windows.map((w) => (
-              <UsageGauge key={w.name} window={w} />
+            {data.error && (
+              <div className="text-xs text-red-400 mb-2">{data.error}</div>
+            )}
+
+            {!data.error && data.windows.map((w) => (
+              <UsageGauge key={`${data.provider}-${w.name}`} window={w} />
             ))}
 
             {data.extraUsage?.isEnabled && (
-              <div className="mt-4 pt-3 border-t border-border/40">
+              <div className="mt-2 pt-2 border-t border-border/40">
                 <div className="flex items-baseline justify-between">
                   <span className="text-xs text-text-dim">추가 사용</span>
                   <span className="text-xs font-mono text-text-dim">
@@ -153,8 +195,8 @@ export default function UsageModal({ onClose }: { onClose: () => void }) {
                 </div>
               </div>
             )}
-          </>
-        )}
+          </div>
+        ))}
       </div>
     </div>,
     document.body

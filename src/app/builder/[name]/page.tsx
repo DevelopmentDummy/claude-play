@@ -297,7 +297,7 @@ export default function BuilderPage() {
           onClose={() => setOptionsModalOpen(false)}
         />
       )}
-      {showUsage && <UsageModal onClose={() => setShowUsage(false)} />}
+      {showUsage && <UsageModal onClose={() => setShowUsage(false)} provider={builderService} sessionId={`builder:${decodedName}`} />}
       <ToastEffect />
     </div>
   );

@@ -566,4 +566,14 @@ export class CodexProcess extends EventEmitter<CodexProcessEvents> {
   getThreadId(): string | null {
     return this.threadId;
   }
+
+  /** Query account rate limits via JSON-RPC */
+  async getRateLimits(): Promise<unknown> {
+    if (!this.isRunning()) return null;
+    try {
+      return await this.sendRequest("account/rateLimits/read", {}, 10000);
+    } catch {
+      return null;
+    }
+  }
 }
