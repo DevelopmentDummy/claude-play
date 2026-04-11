@@ -15,17 +15,33 @@ interface UsageData {
   error?: string;
 }
 
-/** 미니 게이지 바 */
+/** 미니 배터리 게이지 (잔여량 표시) */
 function MiniGauge({ utilization, timeProgress }: { utilization: number; timeProgress: number }) {
-  const ratio = timeProgress > 0 ? utilization / timeProgress : (utilization > 0 ? 2 : 0);
-  const barColor = ratio > 1.2 ? "bg-red-400" : ratio > 0.8 ? "bg-yellow-400" : "bg-emerald-400";
+  const remain = 100 - utilization;        // 남은 %
+  const expectedRemain = 100 - timeProgress; // 시간 기준 기대 잔여
+
+  let barColor: string;
+  if (remain < expectedRemain) {
+    // 기대보다 적게 남음 → 과소비
+    barColor = remain < expectedRemain - 10 ? "bg-red-400" : "bg-yellow-400";
+  } else {
+    barColor = "bg-emerald-400";
+  }
 
   return (
-    <span className="inline-flex items-center w-[28px] h-[8px] rounded-sm bg-surface-light overflow-hidden">
+    <span className="inline-flex items-center w-[28px] h-[10px] rounded-sm bg-surface-light overflow-hidden relative">
+      {/* 잔여량 바 (왼쪽부터 채움, 줄어들수록 위험) */}
       <span
-        className={`h-full rounded-sm ${barColor}`}
-        style={{ width: `${Math.min(utilization, 100)}%` }}
+        className={`absolute inset-y-0 left-0 rounded-sm ${barColor}`}
+        style={{ width: `${Math.max(remain, 0)}%` }}
       />
+      {/* 타임 레퍼런스 마커 (기대 잔여 위치) */}
+      {expectedRemain > 0 && expectedRemain < 100 && (
+        <span
+          className="absolute top-0 bottom-0 z-10 bg-white"
+          style={{ left: `${expectedRemain}%`, width: "2px", marginLeft: "-1px" }}
+        />
+      )}
     </span>
   );
 }
@@ -60,29 +76,36 @@ export default function UsageIndicator({ provider, sessionId, refreshTrigger, on
   const [data, setData] = useState<UsageData | null>(null);
   const lastFetchRef = useRef(0);
 
-  const fetchUsage = useCallback(() => {
-    const now = Date.now();
-    if (now - lastFetchRef.current < REFRESH_COOLDOWN_MS) return;
-    lastFetchRef.current = now;
+  const doFetch = useCallback((force = false) => {
+    if (!force && Date.now() - lastFetchRef.current < REFRESH_COOLDOWN_MS) return;
+    lastFetchRef.current = Date.now();
 
     const params = new URLSearchParams({ provider });
     if (sessionId) params.set("sessionId", sessionId);
 
     fetch(`/api/usage?${params}`)
       .then((r) => r.json())
-      .then((d) => setData(d))
-      .catch(() => null);
+      .then((d) => {
+        setData(d);
+        // 에러 응답이면 쿨다운 리셋 → 다음 트리거 때 재시도
+        if (d.error) lastFetchRef.current = 0;
+      })
+      .catch(() => { lastFetchRef.current = 0; });
   }, [provider, sessionId]);
 
-  // 초기 로드
-  useEffect(() => { fetchUsage(); }, [fetchUsage]);
+  // provider 변경 시 데이터 리셋 + 강제 갱신
+  useEffect(() => {
+    setData(null);
+    lastFetchRef.current = 0;
+    doFetch(true);
+  }, [provider]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 대화 종료 시 갱신 (refreshTrigger 변경)
+  // 대화 종료 시 갱신 (refreshTrigger 변경, 쿨다운 적용)
   useEffect(() => {
     if (refreshTrigger !== undefined && refreshTrigger > 0) {
-      fetchUsage();
+      doFetch();
     }
-  }, [refreshTrigger, fetchUsage]);
+  }, [refreshTrigger, doFetch]);
 
   if (!data || data.error || !data.windows.length) return null;
 

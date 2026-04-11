@@ -35,57 +35,56 @@ function formatRemaining(resetsAt: string): string {
   return h > 0 ? `${h}시간 ${m}분 후 리셋` : `${m}분 후 리셋`;
 }
 
-function gaugeColor(utilization: number, timeProgress: number): {
+function gaugeColor(remain: number, expectedRemain: number): {
   bar: string;
-  bg: string;
   label: string;
 } {
-  const ratio = timeProgress > 0 ? utilization / timeProgress : (utilization > 0 ? 2 : 0);
-  if (ratio > 1.2) {
-    return { bar: "bg-red-500", bg: "bg-red-400/20", label: "text-red-400" };
+  if (remain < expectedRemain) {
+    // 기대보다 적게 남음
+    return remain < expectedRemain - 10
+      ? { bar: "bg-red-500", label: "text-red-400" }
+      : { bar: "bg-yellow-500", label: "text-yellow-400" };
   }
-  if (ratio > 0.8) {
-    return { bar: "bg-yellow-500", bg: "bg-yellow-400/20", label: "text-yellow-400" };
-  }
-  return { bar: "bg-emerald-500", bg: "bg-emerald-400/20", label: "text-emerald-400" };
+  return { bar: "bg-emerald-500", label: "text-emerald-400" };
 }
 
 function UsageGauge({ window: w }: { window: UsageWindow }) {
-  const colors = gaugeColor(w.utilization, w.timeProgress);
+  const remain = 100 - w.utilization;
+  const expectedRemain = 100 - w.timeProgress;
+  const colors = gaugeColor(remain, expectedRemain);
 
   return (
     <div className="mb-4">
       <div className="flex items-baseline justify-between mb-1.5">
         <span className="text-xs font-medium text-text">{w.name}</span>
         <span className={`text-xs font-mono ${colors.label}`}>
-          {Math.round(w.utilization)}%
+          {Math.round(remain)}% 남음
         </span>
       </div>
-      {/* Gauge bar */}
+      {/* Gauge bar — 배터리 스타일 (잔여량) */}
       <div className="relative h-5 rounded-full bg-surface-light overflow-hidden">
-        {/* Danger zone: time marker 뒤쪽을 붉게 */}
-        {w.timeProgress > 0 && w.timeProgress < 100 && (
-          <div
-            className="absolute inset-y-0 right-0 rounded-r-full bg-red-900/25"
-            style={{ width: `${100 - w.timeProgress}%` }}
-          />
-        )}
-        {/* Usage bar */}
+        {/* 잔여량 바 */}
         <div
           className={`absolute inset-y-0 left-0 rounded-full ${colors.bar} transition-all duration-500`}
-          style={{ width: `${Math.min(w.utilization, 100)}%`, opacity: 0.85 }}
+          style={{ width: `${Math.max(remain, 0)}%`, opacity: 0.85 }}
         />
-        {/* Time progress boundary */}
-        {w.timeProgress > 0 && w.timeProgress < 100 && (
-          <div
-            className="absolute inset-y-0 w-0.5 bg-white/40"
-            style={{ left: `${w.timeProgress}%` }}
-          />
+        {/* 타임 레퍼런스 오버레이 (마커 왼쪽 = 위험 구간) */}
+        {expectedRemain > 0 && expectedRemain < 100 && (
+          <>
+            <div
+              className="absolute inset-y-0 left-0 bg-red-500/15 z-10"
+              style={{ width: `${expectedRemain}%` }}
+            />
+            <div
+              className="absolute inset-y-0 w-0.5 bg-white/50 z-10"
+              style={{ left: `${expectedRemain}%` }}
+            />
+          </>
         )}
       </div>
       <div className="flex justify-between mt-1">
         <span className="text-[10px] text-text-dim">
-          시간 {Math.round(w.timeProgress)}%
+          사용 {Math.round(w.utilization)}%
         </span>
         <span className="text-[10px] text-text-dim">
           {formatRemaining(w.resetsAt)}

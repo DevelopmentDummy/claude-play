@@ -297,6 +297,7 @@ export async function getGeminiUsage(): Promise<UsageResponse> {
     }
 
     // 티어별로 그룹화 (같은 티어는 사용량 공유이므로 하나만 표시)
+    const TIER_ORDER = ["Flash Lite", "Flash", "Pro"];
     const tierMap = new Map<string, GeminiQuotaBucket>();
     for (const b of raw.buckets) {
       if (b.tokenType !== "REQUESTS") continue;
@@ -307,10 +308,15 @@ export async function getGeminiUsage(): Promise<UsageResponse> {
     }
 
     const windows: UsageWindow[] = [];
-    // Gemini은 일 단위 리셋 (24시간 윈도우)
     const durationMs = 24 * 60 * 60 * 1000;
 
-    for (const [tier, b] of tierMap) {
+    const sortedTiers = [...tierMap.entries()].sort((a, b) => {
+      const ai = TIER_ORDER.indexOf(a[0]);
+      const bi = TIER_ORDER.indexOf(b[0]);
+      return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+    });
+
+    for (const [tier, b] of sortedTiers) {
       windows.push({
         name: tier,
         utilization: Math.round((1 - b.remainingFraction) * 100),
