@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSessionManager, getSessionInstance } from "@/lib/services";
+import { providerFromModel, parseModelEffort } from "@/lib/ai-provider";
 
 /** GET: Compare persona vs session to show diff */
 export async function GET(
@@ -52,5 +53,28 @@ export async function POST(
     }
   }
 
-  return NextResponse.json({ ok: true });
+  // Restart AI process if skills or instructions were synced (Claude CLI loads skills at startup only)
+  let restarted = false;
+  const instance = getSessionInstance(id);
+  if ((elements.skills || elements.instructions) && instance && instance.claude.running) {
+    instance.claude.kill();
+
+    const sessionDir = sm.getSessionDir(id);
+    const resolvedOptions = sm.resolveOptions(sessionDir);
+    const savedModel = sm.getSessionModel(id) || "";
+    const { model, effort } = parseModelEffort(savedModel);
+    const provider = providerFromModel(model);
+
+    const resumeId = provider === "codex"
+      ? sm.getCodexThreadId(id)
+      : sm.getClaudeSessionId(id);
+
+    const profile = info.profileSlug ? sm.getProfile(info.profileSlug) : undefined;
+    const runtimeSystemPrompt = sm.buildServiceSystemPrompt(info.persona, provider, resolvedOptions, profile?.name);
+    const skipPerms = resolvedOptions.skipPermissions !== false;
+    instance.claude.spawn(sessionDir, resumeId, model || undefined, runtimeSystemPrompt, effort, skipPerms);
+    restarted = true;
+  }
+
+  return NextResponse.json({ ok: true, restarted });
 }

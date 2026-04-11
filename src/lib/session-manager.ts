@@ -68,6 +68,9 @@ export interface PersonaInfo {
     installedAt: string;
     installedCommit: string;
   };
+  publishMeta?: {
+    url: string;
+  };
 }
 
 export interface ProfileInfo {
@@ -291,7 +294,20 @@ export class SessionManager {
             importMeta = JSON.parse(fs.readFileSync(importMetaPath, "utf-8"));
           } catch { /* ignore */ }
         }
-        return { name: d.name, displayName, hasIcon, importMeta };
+        let publishMeta: PersonaInfo["publishMeta"];
+        if (!importMeta) {
+          const gitConfigPath = path.join(dir, d.name, ".git", "config");
+          if (fs.existsSync(gitConfigPath)) {
+            try {
+              const gitConfig = fs.readFileSync(gitConfigPath, "utf-8");
+              const urlMatch = gitConfig.match(/\[remote "origin"\][^\[]*url\s*=\s*(.+)/);
+              if (urlMatch) {
+                publishMeta = { url: urlMatch[1].trim() };
+              }
+            } catch { /* ignore */ }
+          }
+        }
+        return { name: d.name, displayName, hasIcon, importMeta, publishMeta };
       });
   }
 
@@ -976,11 +992,10 @@ export class SessionManager {
       }
     }
 
-    // Sync skills/ directory (raw copy + both CLI skill dirs)
+    // Sync skills/ directory to all CLI skill dirs
     if (elements.skills) {
       const personaSkills = path.join(personaDir, "skills");
       const targets = [
-        path.join(sessionDir, "skills"),
         path.join(sessionDir, ".claude", "skills"),
         path.join(sessionDir, ".agents", "skills"),
         path.join(sessionDir, ".gemini", "skills"),
@@ -1065,10 +1080,14 @@ export class SessionManager {
     // Check tools (custom panel tools — *.js files only)
     result.push({ key: "tools", label: "툴 (tools/)", hasChanges: this.toolsDiffer(path.join(personaDir, "tools"), path.join(sessionDir, "tools")) });
 
-    // Check skills
-    const pSkills = path.join(personaDir, "skills");
-    const sSkills = path.join(sessionDir, "skills");
-    result.push({ key: "skills", label: "스킬 (skills/)", hasChanges: this.dirDiffers(pSkills, sSkills) });
+    // Check skills — compare persona skills against the provider-specific CLI skill dir
+    {
+      const provider = meta.model ? providerFromModel(meta.model) : "claude";
+      const cliSkillDir = provider === "codex" ? ".agents" : provider === "gemini" ? ".gemini" : ".claude";
+      const pSkills = path.join(personaDir, "skills");
+      const sSkills = path.join(sessionDir, cliSkillDir, "skills");
+      result.push({ key: "skills", label: "스킬 (skills/)", hasChanges: this.personaSkillsDiffer(pSkills, sSkills) });
+    }
 
     // Check instructions — compare persona's raw file vs session's live CLAUDE.md/AGENTS.md (stripped)
     {
@@ -1150,10 +1169,14 @@ export class SessionManager {
     // Check tools (reverse direction)
     result.push({ key: "tools", label: "툴 (tools/)", hasChanges: this.toolsDiffer(path.join(sessionDir, "tools"), path.join(personaDir, "tools")) });
 
-    // Check skills
-    const sSkills = path.join(sessionDir, "skills");
-    const pSkills = path.join(personaDir, "skills");
-    result.push({ key: "skills", label: "스킬 (skills/)", hasChanges: this.dirDiffers(sSkills, pSkills) });
+    // Check skills — compare session's CLI skill dir against persona skills
+    {
+      const provider = meta.model ? providerFromModel(meta.model) : "claude";
+      const cliSkillDir = provider === "codex" ? ".agents" : provider === "gemini" ? ".gemini" : ".claude";
+      const sSkills = path.join(sessionDir, cliSkillDir, "skills");
+      const pSkills = path.join(personaDir, "skills");
+      result.push({ key: "skills", label: "스킬 (skills/)", hasChanges: this.personaSkillsDiffer(sSkills, pSkills) });
+    }
 
     // Check instructions — compare live CLAUDE.md/AGENTS.md (stripped of assembled sections) vs persona's raw file
     const instrDst = path.join(personaDir, "session-instructions.md");
@@ -1309,19 +1332,20 @@ export class SessionManager {
       }
     }
 
-    // Sync skills/ (session → persona)
+    // Sync skills (session CLI skill dir → persona, persona skills only — exclude global tool skills)
     if (elements.skills) {
-      const sessionSkills = path.join(sessionDir, "skills");
+      const provider = meta.model ? providerFromModel(meta.model) : "claude";
+      const cliSkillDir = provider === "codex" ? ".agents" : provider === "gemini" ? ".gemini" : ".claude";
+      const sessionSkills = path.join(sessionDir, cliSkillDir, "skills");
       const personaSkills = path.join(personaDir, "skills");
-      if (fs.existsSync(sessionSkills)) {
-        if (!fs.existsSync(personaSkills)) fs.mkdirSync(personaSkills, { recursive: true });
-        for (const entry of fs.readdirSync(sessionSkills, { withFileTypes: true })) {
+      // Only sync skills that exist in the persona (don't copy global tool skills back)
+      if (fs.existsSync(personaSkills) && fs.existsSync(sessionSkills)) {
+        for (const entry of fs.readdirSync(personaSkills, { withFileTypes: true })) {
+          if (!entry.isDirectory()) continue;
           const src = path.join(sessionSkills, entry.name);
           const dst = path.join(personaSkills, entry.name);
-          if (entry.isDirectory()) {
+          if (fs.existsSync(src)) {
             this.copyDirRecursive(src, dst);
-          } else {
-            fs.copyFileSync(src, dst);
           }
         }
       }
@@ -1335,11 +1359,8 @@ export class SessionManager {
       const src = path.join(sessionDir, liveFile);
       const dst = path.join(personaDir, "session-instructions.md");
       if (fs.existsSync(src)) {
-        let content = fs.readFileSync(src, "utf-8");
-        // Remove auto-assembled sections (appended during session creation / refresh)
-        content = content.replace(/\n\n## __사용자 정보__\n[\s\S]*?(?=\n\n## |\s*$)/, "");
-        content = content.replace(/\n\n## __오프닝 메시지__\n[\s\S]*$/, "");
-        fs.writeFileSync(dst, content.trimEnd() + "\n", "utf-8");
+        const content = this.stripAssembledSections(fs.readFileSync(src, "utf-8"));
+        fs.writeFileSync(dst, content, "utf-8");
       }
     }
 
@@ -1370,6 +1391,22 @@ export class SessionManager {
       const a = fs.readFileSync(src);
       const b = fs.readFileSync(dst);
       return !a.equals(b);
+    } catch { return true; }
+  }
+
+  /** Compare only persona skill subdirs against their counterparts in a CLI skill dir (ignoring global tool skills) */
+  private personaSkillsDiffer(src: string, dst: string): boolean {
+    if (!fs.existsSync(src)) return false;
+    if (!fs.existsSync(dst)) return true;
+    try {
+      const srcEntries = fs.readdirSync(src, { withFileTypes: true }).filter(e => e.isDirectory());
+      for (const entry of srcEntries) {
+        const srcSkill = path.join(src, entry.name);
+        const dstSkill = path.join(dst, entry.name);
+        if (!fs.existsSync(dstSkill)) return true;
+        if (this.dirDiffers(srcSkill, dstSkill)) return true;
+      }
+      return false;
     } catch { return true; }
   }
 
@@ -1413,16 +1450,25 @@ export class SessionManager {
     } catch { return false; }
   }
 
+  /** Strip assembled sections (user info, opening, writing style) that are injected at session creation */
+  private stripAssembledSections(text: string): string {
+    let s = text;
+    // Remove all occurrences of assembled sections (may be duplicated from bad syncs)
+    s = s.replace(/\n\n## __문체 \(Writing Style\)__\n[\s\S]*?(?=\n\n## __|\s*$)/g, "");
+    s = s.replace(/\n\n## __사용자 정보__\n[\s\S]*?(?=\n\n## __|\s*$)/g, "");
+    s = s.replace(/\n\n## __오프닝 메시지__\n[\s\S]*?(?=\n\n## __|\s*$)/g, "");
+    // Final pass: if __오프닝 메시지__ is the last section, the above won't catch it
+    s = s.replace(/\n\n## __오프닝 메시지__\n[\s\S]*$/g, "");
+    return s.trimEnd() + "\n";
+  }
+
   /** Compare live instruction file (with assembled sections stripped) against raw persona file */
   private liveInstructionsDiffer(livePath: string, rawPath: string): boolean {
     if (!fs.existsSync(livePath)) return false;
     if (!fs.existsSync(rawPath)) return true;
     try {
-      let live = fs.readFileSync(livePath, "utf-8");
-      live = live.replace(/\n\n## __사용자 정보__\n[\s\S]*?(?=\n\n## |\s*$)/, "");
-      live = live.replace(/\n\n## __오프닝 메시지__\n[\s\S]*$/, "");
-      live = live.trimEnd() + "\n";
-      const raw = fs.readFileSync(rawPath, "utf-8");
+      const live = this.stripAssembledSections(fs.readFileSync(livePath, "utf-8"));
+      const raw = this.stripAssembledSections(fs.readFileSync(rawPath, "utf-8"));
       return live !== raw;
     } catch { return true; }
   }
