@@ -198,10 +198,16 @@ export class SessionInstance {
   private seenToolKeys = new Set<string>();
   private sawTextDelta = false;
   private currentBlockType = "text";
+  private lastAssistantMsgId: string | null = null;
   private isCompacting = false;
   private isSlashCommand = false;
   private historyId = 0;
   private destroyed = false;
+
+  // Subagent task tracking: hold result until all spawned tasks complete
+  private pendingTaskCount = 0;
+  private heldResultMsg: unknown = null;
+  private resultFinalizeTimer: ReturnType<typeof setTimeout> | null = null;
 
   // TTS queue — serialize requests to avoid ENOBUFS
   private ttsQueue: Array<() => Promise<void>> = [];
@@ -531,6 +537,9 @@ export class SessionInstance {
 
     this.seenToolKeys.clear();
     this.sawTextDelta = false;
+    if (this.resultFinalizeTimer) { clearTimeout(this.resultFinalizeTimer); this.resultFinalizeTimer = null; }
+    this.heldResultMsg = null;
+    this.pendingTaskCount = 0;
     const dir = this.getDir();
     if (dir) {
       const fp = path.join(dir, HISTORY_FILE);
@@ -742,6 +751,100 @@ export class SessionInstance {
       });
   }
 
+  // --- Subagent result merging ---
+
+  /** Fallback: finalize held result when no more result messages arrive */
+  private finalizeHeldResult(): void {
+    this.resultFinalizeTimer = null;
+    if (!this.heldResultMsg) return;
+    const held = this.heldResultMsg;
+    this.heldResultMsg = null;
+    this.pendingTaskCount = 0;
+    this.processResult(held);
+  }
+
+  /** Process a result message — save history, broadcast, reset state. */
+  private processResult(d: unknown): void {
+    const msg = d as Record<string, unknown>;
+    const isSlash = this.isSlashCommand;
+    const isOOC = this.isOOC;
+
+    if (isSlash) {
+      const result = msg.result as Record<string, unknown> | string | undefined;
+      const text =
+        typeof result === "string" ? result
+        : result && typeof result.text === "string" ? result.text
+        : this.segments.join("") || null;
+      this.broadcast("command:result", { text: text || "" });
+    } else {
+      if (this.segments.length > 0 || this.tools.length > 0) {
+        let rawContent = this.segments.join("");
+        if (this.assistantFullText && this.sawTextDelta) {
+          if (rawContent.includes("\ufffd") || this.assistantFullText.includes("\ufffd")) {
+            rawContent = mergeUtf8Texts(rawContent, this.assistantFullText);
+          }
+        }
+        if (rawContent) {
+          this.chatHistory.push({
+            id: `hist-a-${++this.historyId}`,
+            role: "assistant",
+            content: rawContent,
+            tools: this.tools.length > 0 ? [...this.tools] : undefined,
+            ooc: isOOC || undefined,
+          });
+        }
+      } else if (msg.result) {
+        const result = msg.result as Record<string, unknown>;
+        const text =
+          typeof result === "string" ? result
+          : typeof result.text === "string" ? result.text
+          : null;
+        if (text) {
+          this.chatHistory.push({
+            id: `hist-a-${++this.historyId}`,
+            role: "assistant",
+            content: text as string,
+            ooc: isOOC || undefined,
+          });
+        }
+      }
+      this.saveHistory();
+    }
+
+    this.isOOC = false;
+    this.isSlashCommand = false;
+    this.segments = [];
+    this.assistantFullText = null;
+    this.tools = [];
+
+    this.seenToolKeys.clear();
+    this.sawTextDelta = false;
+    this.currentBlockType = "text";
+    this.lastAssistantMsgId = null;
+    this.isCompacting = false;
+
+    if (!isSlash) {
+      this.panels.reload();
+    }
+
+    if (!isSlash && !isOOC && this.chatHistory.length > 0) {
+      const lastMsg = this.chatHistory[this.chatHistory.length - 1];
+      if (lastMsg.role === "assistant" && lastMsg.content) {
+        this.triggerTts(lastMsg.content);
+      }
+    }
+
+    // Broadcast result FIRST so frontend finishes the stream-* message,
+    // THEN send messageId to rename it. Reversed order causes upsert to
+    // create a duplicate because stream-* was already renamed to hist-*.
+    this.broadcast("claude:message", d);
+
+    const lastSaved = this.chatHistory[this.chatHistory.length - 1];
+    if (lastSaved) {
+      this.broadcast("claude:messageId", { messageId: lastSaved.id });
+    }
+  }
+
   // --- Process event binding ---
 
   private bindProcessEvents(p: AIProcess): void {
@@ -765,6 +868,23 @@ export class SessionInstance {
       if (msg.type === "system" && msg.subtype === "status" && msg.status === "compacting") {
         this.isCompacting = true;
         this.broadcast("claude:status", "compacting");
+      }
+
+      // Track subagent tasks for result merging
+      if (msg.type === "system") {
+        const subtype = msg.subtype as string;
+        if (subtype === "task_started") {
+          this.pendingTaskCount++;
+        } else if (subtype === "task_notification") {
+          this.pendingTaskCount = Math.max(0, this.pendingTaskCount - 1);
+          // If all tasks done but we're holding a result, set a fallback timer
+          if (this.pendingTaskCount === 0 && this.heldResultMsg) {
+            if (this.resultFinalizeTimer) clearTimeout(this.resultFinalizeTimer);
+            this.resultFinalizeTimer = setTimeout(() => {
+              this.finalizeHeldResult();
+            }, 5000);
+          }
+        }
       }
 
       if (msg.type === "stream_event") {
@@ -797,11 +917,18 @@ export class SessionInstance {
       if (msg.type === "assistant") {
         const message = msg.message as Record<string, unknown> | undefined;
         if (!message) return;
+
+        // Guard: same msg ID emitted multiple times (one per content block completion).
+        // Skip text from repeat emissions to prevent duplication; still process tool_use.
+        const assistantMsgId = message.id as string | undefined;
+        const isRepeatMsg = !!(assistantMsgId && assistantMsgId === this.lastAssistantMsgId);
+        if (assistantMsgId) this.lastAssistantMsgId = assistantMsgId;
+
         // Always capture full text for UTF-8 healing comparison at result time
         const fullTextParts: string[] = [];
         if (typeof message.content === "string") {
           fullTextParts.push(message.content);
-          if (!this.sawTextDelta) {
+          if (!this.sawTextDelta && !isRepeatMsg) {
             this.segments.push(message.content);
           }
         } else if (Array.isArray(message.content)) {
@@ -809,7 +936,7 @@ export class SessionInstance {
             const b = block as Record<string, unknown>;
             if (b.type === "text" && typeof b.text === "string") {
               fullTextParts.push(b.text);
-              if (!this.sawTextDelta) {
+              if (!this.sawTextDelta && !isRepeatMsg) {
                 this.segments.push(b.text);
               }
             } else if (b.type === "tool_use") {
@@ -823,85 +950,23 @@ export class SessionInstance {
       }
 
       if (msg.type === "result") {
-        const isSlash = this.isSlashCommand;
-        const isOOC = this.isOOC;
-
-        if (isSlash) {
-          // Slash command result — broadcast as command:result, skip history & TTS
-          const result = msg.result as Record<string, unknown> | string | undefined;
-          const text =
-            typeof result === "string" ? result
-            : result && typeof result.text === "string" ? result.text
-            : this.segments.join("") || null;
-          this.broadcast("command:result", { text: text || "" });
-        } else {
-          if (this.segments.length > 0 || this.tools.length > 0) {
-            // UTF-8 healing: character-level merge of delta-accumulated vs assistant full text.
-            // Different 4KB boundaries corrupt different positions, so merging recovers most.
-            let rawContent = this.segments.join("");
-            if (this.assistantFullText && this.sawTextDelta) {
-              if (rawContent.includes("\ufffd") || this.assistantFullText.includes("\ufffd")) {
-                rawContent = mergeUtf8Texts(rawContent, this.assistantFullText);
-              }
-            }
-            if (rawContent) {
-              this.chatHistory.push({
-                id: `hist-a-${++this.historyId}`,
-                role: "assistant",
-                content: rawContent,
-                tools: this.tools.length > 0 ? [...this.tools] : undefined,
-                ooc: isOOC || undefined,
-              });
-            }
-          } else if (msg.result) {
-            const result = msg.result as Record<string, unknown>;
-            const text =
-              typeof result === "string" ? result
-              : typeof result.text === "string" ? result.text
-              : null;
-            if (text) {
-              this.chatHistory.push({
-                id: `hist-a-${++this.historyId}`,
-                role: "assistant",
-                content: text as string,
-                ooc: isOOC || undefined,
-              });
-            }
-          }
-          this.saveHistory();
+        // Subagent pattern: when tasks are pending, hold the result and keep
+        // accumulating text from subsequent assistant messages.  Only process
+        // once the last subagent result arrives (pendingTaskCount == 0).
+        if (this.pendingTaskCount > 0) {
+          if (!this.heldResultMsg) this.heldResultMsg = d;
+          return;
         }
-
-        this.isOOC = false;
-        this.isSlashCommand = false;
-        this.segments = [];
-        this.assistantFullText = null;
-        this.tools = [];
-
-        this.seenToolKeys.clear();
-        this.sawTextDelta = false;
-        this.currentBlockType = "text";
-        this.isCompacting = false;
-
-        if (!isSlash) {
-          this.panels.reload();
+        if (this.heldResultMsg) {
+          // All tasks done — use the original (main) result payload
+          if (this.resultFinalizeTimer) { clearTimeout(this.resultFinalizeTimer); this.resultFinalizeTimer = null; }
+          const held = this.heldResultMsg;
+          this.heldResultMsg = null;
+          this.pendingTaskCount = 0;
+          this.processResult(held);
+          return;
         }
-
-        if (!isSlash && !isOOC && this.chatHistory.length > 0) {
-          const lastMsg = this.chatHistory[this.chatHistory.length - 1];
-          if (lastMsg.role === "assistant" && lastMsg.content) {
-            this.triggerTts(lastMsg.content);
-          }
-        }
-
-        // Broadcast result FIRST so frontend finishes the stream-* message,
-        // THEN send messageId to rename it. Reversed order causes upsert to
-        // create a duplicate because stream-* was already renamed to hist-*.
-        this.broadcast("claude:message", d);
-
-        const lastSaved = this.chatHistory[this.chatHistory.length - 1];
-        if (lastSaved) {
-          this.broadcast("claude:messageId", { messageId: lastSaved.id });
-        }
+        this.processResult(d);
       }
     });
 
@@ -934,6 +999,9 @@ export class SessionInstance {
     this.destroyed = true;
     this.ttsQueue = [];
     this.ttsRunning = false;
+    if (this.resultFinalizeTimer) { clearTimeout(this.resultFinalizeTimer); this.resultFinalizeTimer = null; }
+    this.heldResultMsg = null;
+    this.pendingTaskCount = 0;
     this._process.kill();
     this._process.removeAllListeners();
     this.panels.stop();
