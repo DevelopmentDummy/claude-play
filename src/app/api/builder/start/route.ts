@@ -3,19 +3,18 @@ import * as fs from "fs";
 import * as path from "path";
 import { getServices, openSessionInstance, closeSessionInstance } from "@/lib/services";
 import { getAppRoot } from "@/lib/data-dir";
-import { providerFromModel, parseModelEffort } from "@/lib/ai-provider";
+import { resolveBuilderModel } from "@/lib/ai-provider";
 
 export async function POST(req: Request) {
   const body = (await req.json()) as { name: string; model?: string };
   const { name } = body;
-  const { model, effort } = parseModelEffort(body.model || "");
+  const resolved = resolveBuilderModel(body.model);
   const svc = getServices();
 
   // Close any existing builder instance for this persona
   closeSessionInstance(name);
 
-  const provider = providerFromModel(model || "");
-  const instance = openSessionInstance(name, true, provider);
+  const instance = openSessionInstance(name, true, resolved.provider);
   instance.clearHistory();
 
   // Add builder opening message
@@ -72,16 +71,13 @@ export async function POST(req: Request) {
   instance.panels.watch(personaDir);
 
   const runtimeSystemPrompt = svc.sessions.buildBuilderSystemPrompt(name);
-  // For Codex: write instructions file (file-based prompt delivery via model_instructions_file)
-  if (provider === "codex") {
+  if (resolved.provider === "codex") {
     svc.sessions.writeCodexInstructions(personaDir, runtimeSystemPrompt);
-  } else if (provider === "gemini") {
+  } else if (resolved.provider === "gemini") {
     svc.sessions.writeGeminiInstructions(personaDir, runtimeSystemPrompt);
   }
-  // Builder default effort
-  const effectiveEffort = effort || (provider === "codex" ? "xhigh" : provider === "gemini" ? undefined : "medium");
-  instance.claude.spawn(personaDir, undefined, model || undefined, runtimeSystemPrompt, effectiveEffort);
+  instance.claude.spawn(personaDir, undefined, resolved.model, runtimeSystemPrompt, resolved.effort);
 
   const displayName = svc.sessions.getPersonaDisplayName(name);
-  return NextResponse.json({ name, displayName, dir: personaDir, provider, opening });
+  return NextResponse.json({ name, displayName, dir: personaDir, provider: resolved.provider, model: resolved.combined, opening });
 }

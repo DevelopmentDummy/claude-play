@@ -14,6 +14,7 @@ import VersionHistoryModal from "@/components/VersionHistoryModal";
 import ChatOptionsModal from "@/components/ChatOptionsModal";
 import ToastEffect from "@/components/ToastEffect";
 import UsageModal from "@/components/UsageModal";
+import { providerFromModel } from "@/lib/ai-provider";
 
 export default function BuilderPage() {
   const { name } = useParams<{ name: string }>();
@@ -40,7 +41,7 @@ export default function BuilderPage() {
 
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [wsEnabled, setWsEnabled] = useState(false);
-  const [builderService, setBuilderService] = useState<"claude" | "codex" | "gemini">("claude");
+  const [builderModel, setBuilderModel] = useState("opus[1m]:medium");
   const [displayName, setDisplayName] = useState(decodedName);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [voiceChat, setVoiceChat] = useState(false);
@@ -116,7 +117,8 @@ export default function BuilderPage() {
       }
 
       const data = await res.json();
-      if (data.provider) setBuilderService(data.provider);
+      if (data.model) setBuilderModel(data.model);
+      else if (data.provider) setBuilderModel(data.provider === "codex" ? "gpt-5.4:medium" : data.provider === "gemini" ? "gemini-auto" : "opus[1m]:medium");
       if (data.displayName) setDisplayName(data.displayName);
 
       // Load chat options schema + persona defaults
@@ -175,7 +177,7 @@ export default function BuilderPage() {
     const res = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: decodedName, model: builderService === "codex" ? "gpt-5.4" : undefined }),
+      body: JSON.stringify({ name: decodedName, model: builderModel }),
     });
     if (res.ok) {
       const data = await res.json();
@@ -185,30 +187,31 @@ export default function BuilderPage() {
     } else {
       setError("Failed to reinitialize builder");
     }
-  }, [mode, decodedName, builderService, setStatus, setError]);
+  }, [mode, decodedName, builderModel, setStatus, setError]);
 
-  // Service switch: fresh session with cleared history
-  const handleServiceChange = useCallback(async (newService: "claude" | "codex" | "gemini") => {
-    setBuilderService(newService);
+  // Model switch: clear history only if provider changes
+  const handleBuilderModelChange = useCallback(async (newModel: string) => {
+    const oldProvider = providerFromModel(builderModel);
+    const newProvider = providerFromModel(newModel);
+    const providerChanged = oldProvider !== newProvider;
+
+    setBuilderModel(newModel);
     setStatus("disconnected");
-
-    // Pick a default model for the provider
-    const model = newService === "codex" ? "gpt-5.4" : undefined;
 
     const res = await fetch("/api/builder/edit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: decodedName, model, service: newService }),
+      body: JSON.stringify({ name: decodedName, model: newModel, ...(providerChanged ? { service: newProvider } : {}) }),
     });
     if (res.ok) {
-      clearMessages();
+      if (providerChanged) clearMessages();
       await loadHistory();
       setStatus("connected");
       setRefreshTrigger((n) => n + 1);
     } else {
-      setError("Failed to switch service");
+      setError("Failed to switch model");
     }
-  }, [decodedName, setStatus, setError, clearMessages, loadHistory]);
+  }, [decodedName, builderModel, setStatus, setError, clearMessages, loadHistory]);
 
   const handleOptionsApply = useCallback(async (values: Record<string, unknown>) => {
     setOptionsModalOpen(false);
@@ -248,10 +251,10 @@ export default function BuilderPage() {
         isBuilderMode={true}
         onBack={handleBack}
         onReinit={handleReinit}
-        onCompact={builderService === "claude" ? handleCompact : undefined}
-        onContext={builderService === "claude" ? handleContext : undefined}
-        service={builderService}
-        onServiceChange={handleServiceChange}
+        onCompact={providerFromModel(builderModel) === "claude" ? handleCompact : undefined}
+        onContext={providerFromModel(builderModel) === "claude" ? handleContext : undefined}
+        builderModel={builderModel}
+        onBuilderModelChange={handleBuilderModelChange}
         showPanelButton={isMobile}
         onPanelToggle={() => setDrawerOpen((v) => !v)}
         voiceChat={voiceChat}
@@ -284,7 +287,7 @@ export default function BuilderPage() {
             disabled={isStreaming}
             onSend={sendMessage}
             voiceChat={voiceChat}
-            usageProvider={builderService}
+            usageProvider={providerFromModel(builderModel)}
             usageSessionId={name}
             usageRefreshTrigger={usageTrigger}
             onUsageClick={() => setShowUsage(true)}
@@ -315,7 +318,7 @@ export default function BuilderPage() {
           onClose={() => setOptionsModalOpen(false)}
         />
       )}
-      {showUsage && <UsageModal onClose={() => setShowUsage(false)} provider={builderService} sessionId={name} />}
+      {showUsage && <UsageModal onClose={() => setShowUsage(false)} provider={providerFromModel(builderModel)} sessionId={name} />}
       <ToastEffect />
     </div>
   );

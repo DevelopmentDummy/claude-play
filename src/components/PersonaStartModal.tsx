@@ -56,7 +56,7 @@ export default function PersonaStartModal({
   const [personaContent, setPersonaContent] = useState<string | null>(null);
   const [openingContent, setOpeningContent] = useState<string | null>(null);
   const [hasProfileImage, setHasProfileImage] = useState(false);
-  const [selectedModel, setSelectedModel] = useState<string>("opus[1m]:high");
+  const [selectedModel, setSelectedModel] = useState<string>("opus[1m]:medium");
 
   useEffect(() => {
     if (open) {

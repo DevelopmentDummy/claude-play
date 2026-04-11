@@ -44,6 +44,34 @@ export interface ModelGroup {
   options: ModelOption[];
 }
 
+/** Default model per provider (used when no model is specified) */
+const DEFAULT_MODELS: Record<AIProvider, string> = {
+  claude: "opus[1m]",
+  codex: "gpt-5.4",
+  gemini: "gemini-3.1-pro-preview",
+};
+
+/** Default effort per provider (used when no effort is specified) */
+const DEFAULT_EFFORTS: Record<AIProvider, string | undefined> = {
+  claude: "medium",
+  codex: "medium",
+  gemini: undefined,
+};
+
+/**
+ * Resolve effective model, effort, and combined model string for a provider.
+ * Accepts raw model string (e.g. "opus:high", "gpt-5.4", "") and optional provider override.
+ * Returns { model, effort, provider, combined } where combined = "model:effort" or just "model".
+ */
+export function resolveBuilderModel(rawModel?: string, providerOverride?: AIProvider) {
+  const { model: parsed, effort: parsedEffort } = parseModelEffort(rawModel || "");
+  const provider = providerOverride || (parsed ? providerFromModel(parsed) : "claude");
+  const model = parsed || DEFAULT_MODELS[provider];
+  const effort = parsedEffort || DEFAULT_EFFORTS[provider];
+  const combined = effort ? `${model}:${effort}` : model;
+  return { model, effort, provider, combined };
+}
+
 export const MODEL_GROUPS: ModelGroup[] = [
   {
     label: "Claude",

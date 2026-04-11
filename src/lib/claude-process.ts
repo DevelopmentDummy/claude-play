@@ -258,6 +258,11 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
     this.proc.stderr!.on("data", (chunk: Buffer) => {
       const text = stderrDecoder.write(chunk).trim();
       if (text) {
+        // Suppress resume-failure errors — they trigger auto-retry via the close handler
+        if (resumeId && /No conversation found|session.*not found/i.test(text)) {
+          console.log("[claude-process] Resume error (will retry):", text);
+          return;
+        }
         this.emit("error", text);
       }
     });

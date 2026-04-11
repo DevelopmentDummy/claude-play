@@ -305,8 +305,7 @@ async function stepPortCheck(port) {
 // Default sample personas to install on first run (git clone from GitHub)
 const SAMPLE_PERSONAS = [
   { url: "https://github.com/DevelopmentDummy/quiz-hana", folderName: "quiz-hana" },
-  { url: "", folderName: "princessmaker" },
-  { url: "", folderName: "글쓰기도우미" },
+  { url: "https://github.com/DevelopmentDummy/princessmaker", folderName: "princessmaker" }
 ];
 
 function randomChars(n) {

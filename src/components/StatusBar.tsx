@@ -16,9 +16,9 @@ interface StatusBarProps {
   model?: string;
   provider?: "claude" | "codex" | "gemini";
   onModelChange?: (model: string) => void;
-  /** Builder mode: service (provider) selector */
-  service?: "claude" | "codex" | "gemini";
-  onServiceChange?: (service: "claude" | "codex" | "gemini") => void;
+  /** Builder mode: model selector (full list) */
+  builderModel?: string;
+  onBuilderModelChange?: (model: string) => void;
   /** Persona sync */
   onSync?: () => void;
   /** TTS auto-play */
@@ -74,8 +74,8 @@ export default function StatusBar({
   model,
   provider,
   onModelChange,
-  service,
-  onServiceChange,
+  builderModel,
+  onBuilderModelChange,
   onSync,
   autoPlay,
   onAutoPlayToggle,
@@ -271,17 +271,23 @@ export default function StatusBar({
           </>
         )}
 
-        {/* Builder: service (provider) selector */}
-        {isBuilderMode && onServiceChange && (
+        {/* Builder: full model selector */}
+        {isBuilderMode && onBuilderModelChange && (
           <select
-            value={service || "claude"}
-            onChange={(e) => onServiceChange(e.target.value as "claude" | "codex" | "gemini")}
+            value={builderModel || ""}
+            onChange={(e) => onBuilderModelChange(e.target.value)}
             className={selectClass}
             style={selectStyle}
           >
-            <option value="claude" className={optClass}>Claude</option>
-            <option value="codex" className={optClass}>Codex</option>
-            <option value="gemini" className={optClass}>Gemini</option>
+            {MODEL_GROUPS.map((g) => (
+              <optgroup key={g.label} label={g.label}>
+                {g.options.map((o) => (
+                  <option key={o.value} value={o.value} className={optClass}>
+                    {o.label}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
           </select>
         )}
 
