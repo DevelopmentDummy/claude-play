@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { MODEL_GROUPS } from "@/lib/ai-provider";
+import UsageIndicator from "./UsageIndicator";
 
 interface StatusBarProps {
   title: string;
@@ -38,6 +39,10 @@ interface StatusBarProps {
   versionSaving?: boolean;
   /** Usage modal */
   onUsage?: () => void;
+  /** Usage indicator refresh trigger (increment on each turn end) */
+  usageRefreshTrigger?: number;
+  /** Session ID for Codex usage */
+  sessionId?: string;
   /** Force chat input visible */
   forceInput?: boolean;
   onForceInputToggle?: () => void;
@@ -84,6 +89,8 @@ export default function StatusBar({
   onVersionHistory,
   versionSaving,
   onUsage,
+  usageRefreshTrigger,
+  sessionId,
   forceInput,
   onForceInputToggle,
 }: StatusBarProps) {
@@ -135,6 +142,12 @@ export default function StatusBar({
         &larr;
       </button>
       <span className="font-medium text-[13px] min-w-0 truncate">{title}</span>
+      <UsageIndicator
+        provider={(isBuilderMode ? service : provider) || "claude"}
+        sessionId={sessionId}
+        refreshTrigger={usageRefreshTrigger}
+        onClick={onUsage}
+      />
       {showPanelButton && onPanelToggle && (
         <button
           onClick={onPanelToggle}

@@ -50,6 +50,14 @@ export default function BuilderPage() {
   const [chatOptionsSchema, setChatOptionsSchema] = useState<Record<string, unknown>[]>([]);
   const [optionsModalOpen, setOptionsModalOpen] = useState(false);
   const [showUsage, setShowUsage] = useState(false);
+  const [usageTrigger, setUsageTrigger] = useState(0);
+  const prevStreamingRef = useRef(false);
+  useEffect(() => {
+    if (prevStreamingRef.current && !isStreaming) {
+      setUsageTrigger((n) => n + 1);
+    }
+    prevStreamingRef.current = isStreaming;
+  }, [isStreaming]);
   const isMobile = useIsMobile();
   const initRef = useRef(false);
   const initialMsgSent = useRef(false);
@@ -253,6 +261,8 @@ export default function BuilderPage() {
         versionSaving={versionSaving}
         onSettings={() => setOptionsModalOpen(true)}
         onUsage={() => setShowUsage(true)}
+        usageRefreshTrigger={usageTrigger}
+        sessionId={name}
       />
       <ErrorBanner error={error} onDismiss={() => setError(null)} />
       <div className="flex-1 flex min-h-0">

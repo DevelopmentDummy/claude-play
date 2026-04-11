@@ -72,6 +72,7 @@ export default function ChatPage() {
   const [currentModel, setCurrentModel] = useState(searchParams.get("model") || "");
   const [currentProvider, setCurrentProvider] = useState<"claude" | "codex" | "gemini">("claude");
   const [showOOC, setShowOOC] = useState(false);
+  const [usageTrigger, setUsageTrigger] = useState(0);
   const [syncModalOpen, setSyncModalOpen] = useState(false);
   const [autoPlay, setAutoPlay] = useState(true);
   useEffect(() => {
@@ -812,6 +813,7 @@ export default function ChatPage() {
       dispatchBridgeEvent("turnStart");
     } else if (!isStreaming && prevStreamingRef.current) {
       dispatchBridgeEvent("turnEnd");
+      setUsageTrigger((n) => n + 1);
 
       // Autoplay: streaming just ended
       if (autoplayOnRef.current) {
@@ -927,6 +929,8 @@ export default function ChatPage() {
         onSettings={() => setOptionsModalOpen(true)}
         forceInput={forceInput}
         onUsage={() => setShowUsage(true)}
+        usageRefreshTrigger={usageTrigger}
+        sessionId={sessionId}
         onForceInputToggle={() => setForceInput((v) => !v)}
       />
       <ErrorBanner error={error} onDismiss={() => setError(null)} />
