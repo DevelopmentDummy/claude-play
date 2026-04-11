@@ -175,18 +175,35 @@ export async function getCodexUsage(process: CodexProcess): Promise<UsageRespons
 
     const windows: UsageWindow[] = [];
     for (const [, bucket] of Object.entries(raw.rateLimitsByLimitId)) {
+      const label = bucket.limitName || bucket.limitId;
+
+      // Primary window (5시간)
       const p = bucket.primary;
-      if (!p || p.usedPercent == null) continue;
+      if (p && p.usedPercent != null) {
+        const durationMs = p.windowDurationMins * 60 * 1000;
+        const resetsAt = new Date(p.resetsAt * 1000).toISOString();
+        const h = Math.round(p.windowDurationMins / 60);
+        windows.push({
+          name: `${h}시간`,
+          utilization: p.usedPercent,
+          resetsAt,
+          timeProgress: computeTimeProgress(resetsAt, durationMs),
+        });
+      }
 
-      const durationMs = p.windowDurationMins * 60 * 1000;
-      const resetsAt = new Date(p.resetsAt * 1000).toISOString();
-
-      windows.push({
-        name: bucket.limitName || bucket.limitId,
-        utilization: p.usedPercent,
-        resetsAt,
-        timeProgress: computeTimeProgress(resetsAt, durationMs),
-      });
+      // Secondary window (7일)
+      const s = bucket.secondary;
+      if (s && s.usedPercent != null) {
+        const durationMs = s.windowDurationMins * 60 * 1000;
+        const resetsAt = new Date(s.resetsAt * 1000).toISOString();
+        const d = Math.round(s.windowDurationMins / 60 / 24);
+        windows.push({
+          name: `${d}일`,
+          utilization: s.usedPercent,
+          resetsAt,
+          timeProgress: computeTimeProgress(resetsAt, durationMs),
+        });
+      }
     }
 
     return setCache("codex", { provider: "codex", windows });

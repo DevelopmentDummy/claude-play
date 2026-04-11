@@ -118,28 +118,13 @@ export default function UsageModal({ onClose, provider = "claude", sessionId }: 
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const providers = provider === "claude"
-      ? [{ p: "claude", sid: "" }]
-      : provider === "codex"
-        ? [{ p: "codex", sid: sessionId || "" }]
-        : [{ p: provider, sid: sessionId || "" }];
+    const params = new URLSearchParams({ provider });
+    if (sessionId) params.set("sessionId", sessionId);
 
-    // Always fetch Claude + current provider (if different)
-    const fetches: Array<{ p: string; sid: string }> = [{ p: "claude", sid: "" }];
-    if (provider !== "claude") {
-      fetches.push({ p: provider, sid: sessionId || "" });
-    }
-
-    Promise.all(
-      fetches.map(({ p, sid }) => {
-        const params = new URLSearchParams({ provider: p });
-        if (sid) params.set("sessionId", sid);
-        return fetch(`/api/usage?${params}`)
-          .then((r) => r.json())
-          .catch(() => ({ provider: p, windows: [], error: "요청 실패" }));
-      })
-    )
-      .then((all) => setResults(all))
+    fetch(`/api/usage?${params}`)
+      .then((r) => r.json())
+      .then((d) => setResults([d]))
+      .catch(() => setResults([{ provider, windows: [], error: "요청 실패" }]))
       .finally(() => setLoading(false));
   }, [provider, sessionId]);
 
