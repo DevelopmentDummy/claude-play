@@ -68,7 +68,7 @@ export default function PublishPersonaModal({ open, personaName, onClose, onOpen
 
         {/* Option A: URL direct input */}
         <div className="space-y-2">
-          <label className="text-xs text-text-dim">리포지토리 URL</label>
+          <label className="text-xs text-text-dim">직접 생성한 GitHub 리포지토리 URL을 입력하면 즉시 커밋 & 푸시합니다</label>
           <div className="flex gap-2">
             <input
               type="text"
@@ -117,7 +117,7 @@ export default function PublishPersonaModal({ open, personaName, onClose, onOpen
           className="w-full px-4 py-3 rounded-xl border border-border text-text hover:bg-surface-light transition-all duration-fast text-left cursor-pointer"
         >
           <div className="text-sm font-medium">빌더 세션으로 진행</div>
-          <div className="text-xs text-text-dim mt-0.5">AI가 리포 생성, 설정, push까지 처리합니다</div>
+          <div className="text-xs text-text-dim mt-0.5">AI가 리포 생성부터 설정, push까지 대화형으로 처리합니다 (GitHub CLI 또는 GitHub MCP가 있으면 리포 생성까지 자동화)</div>
         </button>
       </div>
     </div>
