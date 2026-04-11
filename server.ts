@@ -65,6 +65,8 @@ function killTtsServer(child: ChildProcess | null) {
 }
 
 /** Spawn GPU Manager Python process (killed when parent exits) */
+let gpuManagerWaiting = false;
+const gpuManagerBuffered: Buffer[] = [];
 let gpuManagerRestarts = 0;
 const GPU_MANAGER_MAX_RESTARTS = 3;
 
@@ -93,8 +95,14 @@ function spawnGpuManager(): ChildProcess | null {
     windowsHide: true,
   });
 
-  child.stdout?.on("data", (d: Buffer) => process.stdout.write(d));
-  child.stderr?.on("data", (d: Buffer) => process.stderr.write(d));
+  child.stdout?.on("data", (d: Buffer) => {
+    if (gpuManagerWaiting) gpuManagerBuffered.push(d);
+    else process.stdout.write(d);
+  });
+  child.stderr?.on("data", (d: Buffer) => {
+    if (gpuManagerWaiting) gpuManagerBuffered.push(d);
+    else process.stderr.write(d);
+  });
 
   child.on("exit", (code) => {
     if (g.__shuttingDown) {
@@ -137,14 +145,25 @@ function killGpuManager(child: ChildProcess | null) {
 async function waitForGpuManager(maxWaitMs = 30_000): Promise<boolean> {
   const url = `http://127.0.0.1:${GPU_MANAGER_PORT}/health`;
   const deadline = Date.now() + maxWaitMs;
-  while (Date.now() < deadline) {
-    try {
-      const res = await fetch(url);
-      if (res.ok) return true;
-    } catch { /* not ready yet */ }
-    await new Promise(r => setTimeout(r, 1000));
+  const dotInterval = setInterval(() => process.stdout.write("."), 1000);
+  gpuManagerWaiting = true;
+  process.stdout.write("[gpu-manager] waiting");
+  try {
+    while (Date.now() < deadline) {
+      try {
+        const res = await fetch(url);
+        if (res.ok) { process.stdout.write("\n"); return true; }
+      } catch { /* not ready yet */ }
+      await new Promise(r => setTimeout(r, 1000));
+    }
+    process.stdout.write("\n");
+    return false;
+  } finally {
+    clearInterval(dotInterval);
+    gpuManagerWaiting = false;
+    for (const buf of gpuManagerBuffered) process.stderr.write(buf);
+    gpuManagerBuffered.length = 0;
   }
-  return false;
 }
 
 const app = next({ dev, hostname, port });

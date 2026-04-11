@@ -49,6 +49,7 @@ export default function NewPersonaDialog({
           onKeyDown={handleKeyDown}
           autoFocus
         />
+        <label className="text-xs text-text-dim ml-1">빌더 모델</label>
         <select
           value={selectedModel}
           onChange={(e) => setSelectedModel(e.target.value)}
