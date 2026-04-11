@@ -20,20 +20,24 @@ function MiniGauge({ utilization, timeProgress }: { utilization: number; timePro
   const remain = 100 - utilization;        // 남은 %
   const expectedRemain = 100 - timeProgress; // 시간 기준 기대 잔여
 
-  let barColor: string;
+  // 악센트 컬러 기반: 상태에 따라 투명도로 위험도 표현
+  let barOpacity: number;
   if (remain < expectedRemain) {
-    // 기대보다 적게 남음 → 과소비
-    barColor = remain < expectedRemain - 10 ? "bg-red-400" : "bg-yellow-400";
+    barOpacity = remain < expectedRemain - 10 ? 0.25 : 0.5;
   } else {
-    barColor = "bg-emerald-400";
+    barOpacity = 1;
   }
 
   return (
     <span className="inline-flex items-center w-[28px] h-[10px] rounded-sm bg-surface-light overflow-hidden relative">
       {/* 잔여량 바 (왼쪽부터 채움, 줄어들수록 위험) */}
       <span
-        className={`absolute inset-y-0 left-0 rounded-sm ${barColor}`}
-        style={{ width: `${Math.max(remain, 0)}%` }}
+        className="absolute inset-y-0 left-0 rounded-sm"
+        style={{
+          backgroundColor: "var(--accent, #34d399)",
+          opacity: barOpacity,
+          width: `${Math.max(remain, 0)}%`,
+        }}
       />
       {/* 타임 레퍼런스 마커 (기대 잔여 위치) */}
       {expectedRemain > 0 && expectedRemain < 100 && (

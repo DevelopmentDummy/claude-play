@@ -36,16 +36,16 @@ function formatRemaining(resetsAt: string): string {
 }
 
 function gaugeColor(remain: number, expectedRemain: number): {
-  bar: string;
-  label: string;
+  barOpacity: number;
+  labelOpacity: number;
 } {
   if (remain < expectedRemain) {
-    // 기대보다 적게 남음
+    // 기대보다 적게 남음 → 투명도로 위험도 표현
     return remain < expectedRemain - 10
-      ? { bar: "bg-red-500", label: "text-red-400" }
-      : { bar: "bg-yellow-500", label: "text-yellow-400" };
+      ? { barOpacity: 0.25, labelOpacity: 0.4 }
+      : { barOpacity: 0.5, labelOpacity: 0.65 };
   }
-  return { bar: "bg-emerald-500", label: "text-emerald-400" };
+  return { barOpacity: 0.85, labelOpacity: 1 };
 }
 
 function UsageGauge({ window: w }: { window: UsageWindow }) {
@@ -57,7 +57,10 @@ function UsageGauge({ window: w }: { window: UsageWindow }) {
     <div className="mb-4">
       <div className="flex items-baseline justify-between mb-1.5">
         <span className="text-xs font-medium text-text">{w.name}</span>
-        <span className={`text-xs font-mono ${colors.label}`}>
+        <span
+          className="text-xs font-mono"
+          style={{ color: "var(--accent, #34d399)", opacity: colors.labelOpacity }}
+        >
           {Math.round(remain)}% 남음
         </span>
       </div>
@@ -65,8 +68,12 @@ function UsageGauge({ window: w }: { window: UsageWindow }) {
       <div className="relative h-5 rounded-full bg-surface-light overflow-hidden">
         {/* 잔여량 바 */}
         <div
-          className={`absolute inset-y-0 left-0 rounded-full ${colors.bar} transition-all duration-500`}
-          style={{ width: `${Math.max(remain, 0)}%`, opacity: 0.85 }}
+          className="absolute inset-y-0 left-0 rounded-full transition-all duration-500"
+          style={{
+            backgroundColor: "var(--accent, #22c55e)",
+            opacity: colors.barOpacity,
+            width: `${Math.max(remain, 0)}%`,
+          }}
         />
         {/* 타임 레퍼런스 오버레이 (마커 왼쪽 = 위험 구간) */}
         {expectedRemain > 0 && expectedRemain < 100 && (
@@ -94,6 +101,7 @@ function UsageGauge({ window: w }: { window: UsageWindow }) {
   );
 }
 
+// Provider별 고유 컬러 (배지 식별용, 테마와 무관)
 const PROVIDER_COLORS: Record<string, string> = {
   claude: "#ff9f43",
   codex: "#4dff91",
@@ -132,7 +140,7 @@ export default function UsageModal({ onClose, provider = "claude", sessionId }: 
       className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="w-[380px] max-h-[80vh] overflow-y-auto rounded-xl border border-border/60 bg-[rgba(20,16,32,0.97)] shadow-[0_8px_32px_rgba(0,0,0,0.5)] p-5">
+      <div className="w-[380px] max-h-[80vh] overflow-y-auto rounded-xl border border-border/60 bg-surface shadow-[0_8px_32px_rgba(0,0,0,0.5)] p-5">
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-semibold text-text">사용량</h2>
