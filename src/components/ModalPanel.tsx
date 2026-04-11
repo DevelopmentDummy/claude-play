@@ -165,6 +165,18 @@ export default function ModalPanel({
       `<style>:host{display:block;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:14px;line-height:1.6;color:#e0e0e0;}img{cursor:zoom-in;}</style>` +
       stripPanelActions(html);
 
+    // Default: host element gets maxWidth so panels without explicit width have a canvas
+    // Then auto-detect: if panel content root has explicit width/max-width, shrink to fit
+    const hostEl = shadow.host as HTMLElement;
+    const firstEl = shadow.querySelector(":host > :not(style):not(script)") as HTMLElement | null;
+    const hasExplicitWidth = firstEl && (firstEl.style.width || firstEl.style.maxWidth);
+    if (hasExplicitWidth) {
+      hostEl.style.width = "fit-content";
+    } else {
+      hostEl.style.width = maxWidth;
+    }
+    hostEl.style.maxWidth = "100%";
+
     installImagePolling(shadow);
 
     // Parse <panel-actions> and register metadata
@@ -193,7 +205,7 @@ export default function ModalPanel({
 
     // Clear panel name context
     delete (window as unknown as Record<string, unknown>).__currentPanelName;
-  }, [html, name, renderEpoch]);
+  }, [html, name, renderEpoch, maxWidth]);
 
   // No clearPanel on unmount — modal panels stay mounted (hidden via display:none)
   // so that panel action handlers remain alive for choice actions.
