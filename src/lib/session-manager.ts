@@ -1982,38 +1982,40 @@ export class SessionManager {
     }
   }
 
-  buildServiceSystemPrompt(personaName?: string, provider?: "claude" | "codex" | "gemini", options?: Record<string, unknown>): string {
+  buildServiceSystemPrompt(personaName?: string, provider?: "claude" | "codex" | "gemini", options?: Record<string, unknown>, userName?: string): string {
     const files = provider === "codex"
       ? SERVICE_SESSION_GUIDE_FILES_CODEX
       : provider === "gemini"
       ? SERVICE_SESSION_GUIDE_FILES_GEMINI
       : SERVICE_SESSION_GUIDE_FILES_CLAUDE;
-    return this.buildPromptFromGuideFiles(files, personaName, options);
+    return this.buildPromptFromGuideFiles(files, personaName, options, userName);
   }
 
   buildBuilderSystemPrompt(personaName?: string, options?: Record<string, unknown>): string {
     return this.buildPromptFromGuideFiles(BUILDER_GUIDE_FILES, personaName, options);
   }
 
-  private buildPromptFromGuideFiles(files: readonly string[], personaName?: string, options?: Record<string, unknown>): string {
+  private buildPromptFromGuideFiles(files: readonly string[], personaName?: string, options?: Record<string, unknown>, userName?: string): string {
     const sections: string[] = [];
     for (const filename of files) {
       const guidePath = path.join(this.appRoot, filename);
       if (!fs.existsSync(guidePath)) continue;
-      const content = this.readGuideContent(guidePath, personaName, options);
+      const content = this.readGuideContent(guidePath, personaName, options, userName);
       if (content) sections.push(content);
     }
     return sections.join("\n\n").trim();
   }
 
-  private readGuideContent(guidePath: string, personaName?: string, options?: Record<string, unknown>): string {
+  private readGuideContent(guidePath: string, personaName?: string, options?: Record<string, unknown>, userName?: string): string {
     const raw = fs.readFileSync(guidePath, "utf-8");
     const ext = path.extname(guidePath).toLowerCase();
     let base = ext === ".yaml" || ext === ".yml"
       ? this.extractActiveSystemPrompt(raw) || raw
       : raw;
     const actorName = personaName || "the current persona";
-    base = base.replace(/\{agent_name\}/g, actorName).trim();
+    base = base.replace(/\{agent_name\}/g, actorName);
+    const resolvedUserName = userName || "the user";
+    base = base.replace(/\{user_name\}/g, resolvedUserName).trim();
 
     // Compile Handlebars for .md files when options are provided
     if (options && ext === ".md") {

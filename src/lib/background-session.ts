@@ -42,19 +42,24 @@ function buildCleanEnv(): NodeJS.ProcessEnv {
 function buildSystemPromptForSession(sessionDir: string): string {
   const sm = getSessionManager();
 
-  // Read persona name from session.json
+  // Read persona name and profile from session.json
   const metaPath = path.join(sessionDir, "session.json");
   let personaName: string | undefined;
+  let userName: string | undefined;
   try {
     const meta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
     personaName = meta.persona;
+    if (meta.profileSlug) {
+      const profile = sm.getProfile(meta.profileSlug);
+      userName = profile?.name;
+    }
   } catch { /* ignore — will build prompt without persona */ }
 
   // Resolve options (schema defaults → persona overrides → session overrides)
   const resolvedOptions = sm.resolveOptions(sessionDir);
 
   // Build the same system prompt pipeline as normal sessions
-  return sm.buildServiceSystemPrompt(personaName, "claude", resolvedOptions);
+  return sm.buildServiceSystemPrompt(personaName, "claude", resolvedOptions, userName);
 }
 
 /** Push a completion event to the caller session's pending-events.json */

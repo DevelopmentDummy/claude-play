@@ -81,7 +81,8 @@ export async function POST(
   // Force respawn if user explicitly changed model
   const resolvedOptions = svc.sessions.resolveOptions(sessionDir);
   if (!instance.claude.isRunning() || rawModel) {
-    const runtimeSystemPrompt = svc.sessions.buildServiceSystemPrompt(info.persona, provider, resolvedOptions);
+    const profile = info.profileSlug ? svc.sessions.getProfile(info.profileSlug) : undefined;
+    const runtimeSystemPrompt = svc.sessions.buildServiceSystemPrompt(info.persona, provider, resolvedOptions, profile?.name);
     // For Codex: write instructions file (file-based prompt delivery via model_instructions_file)
     if (provider === "codex") {
       svc.sessions.writeCodexInstructions(sessionDir, runtimeSystemPrompt);

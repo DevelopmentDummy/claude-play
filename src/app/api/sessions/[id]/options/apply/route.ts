@@ -53,7 +53,8 @@ export async function POST(
       ? sm.getCodexThreadId(id)
       : sm.getClaudeSessionId(id);
 
-    const runtimeSystemPrompt = sm.buildServiceSystemPrompt(info.persona, provider, resolvedOptions);
+    const profile = info.profileSlug ? sm.getProfile(info.profileSlug) : undefined;
+    const runtimeSystemPrompt = sm.buildServiceSystemPrompt(info.persona, provider, resolvedOptions, profile?.name);
     const skipPerms = resolvedOptions.skipPermissions !== false;
     instance.claude.spawn(sessionDir, resumeId, model || undefined, runtimeSystemPrompt, effort, skipPerms);
 

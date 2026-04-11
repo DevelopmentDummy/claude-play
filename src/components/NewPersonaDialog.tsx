@@ -52,12 +52,22 @@ export default function NewPersonaDialog({
         <select
           value={selectedModel}
           onChange={(e) => setSelectedModel(e.target.value)}
-          className="px-3.5 py-2.5 border border-border rounded-[10px] bg-[rgba(15,15,26,0.6)] text-text font-[inherit] text-sm outline-none transition-all duration-fast focus:border-accent focus:shadow-[0_0_0_3px_var(--accent-glow)] cursor-pointer"
+          className="w-full px-3.5 py-2.5 rounded-xl text-sm text-text bg-[rgba(15,15,26,0.6)]
+            border border-border/60 outline-none cursor-pointer appearance-none
+            transition-all duration-fast
+            focus:border-[var(--accent)] focus:shadow-[0_0_0_3px_var(--accent-glow)]
+            hover:border-border"
+          style={{
+            backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M3 5l3 3 3-3'/%3E%3C/svg%3E")`,
+            backgroundRepeat: "no-repeat",
+            backgroundPosition: "right 12px center",
+            paddingRight: "32px",
+          }}
         >
           {MODEL_GROUPS.map((group) => (
-            <optgroup key={group.label} label={group.label}>
+            <optgroup key={group.label} label={group.label} className="bg-[#1a1a2e] text-[#ccc]">
               {group.options.map((opt) => (
-                <option key={opt.value} value={opt.value}>
+                <option key={opt.value} value={opt.value} className="bg-[#1a1a2e] text-[#ccc]">
                   {opt.label}
                 </option>
               ))}
