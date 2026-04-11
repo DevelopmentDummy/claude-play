@@ -26,6 +26,9 @@ interface PersonaCardProps {
     installedAt: string;
     installedCommit: string;
   };
+  publishMeta?: {
+    url: string;
+  };
   onCheckUpdate?: () => void;
   updateStatus?: string | null;
   behindCount?: number;
@@ -42,6 +45,7 @@ export default function PersonaCard({
   onEdit,
   onDelete,
   importMeta,
+  publishMeta,
   onCheckUpdate,
   updateStatus,
   behindCount,
@@ -115,11 +119,20 @@ export default function PersonaCard({
         )}
         <div className="text-xs text-text-dim opacity-70">Start new session</div>
 
-        {importMeta && (
-          <div className="flex items-center gap-1.5 mt-1">
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent/10 text-accent border border-accent/20">
-              외부
-            </span>
+        {/* Source badge */}
+        {(importMeta || publishMeta) && (
+          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+            {importMeta ? (
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-400 border border-sky-500/20"
+                title={importMeta.url}>
+                &#8595; 외부
+              </span>
+            ) : publishMeta ? (
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                title={publishMeta.url}>
+                &#8593; 업로드됨
+              </span>
+            ) : null}
             {onCheckUpdate && (
               <button
                 onClick={(e) => { e.stopPropagation(); onCheckUpdate(); }}

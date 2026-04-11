@@ -30,6 +30,9 @@ interface Persona {
     installedAt: string;
     installedCommit: string;
   };
+  publishMeta?: {
+    url: string;
+  };
 }
 
 interface Session {
@@ -363,6 +366,7 @@ export default function LobbyPage() {
                   onEdit={() => editPersona(p.name)}
                   onDelete={() => deletePersona(p.name)}
                   importMeta={p.importMeta}
+                  publishMeta={p.publishMeta}
                   onCheckUpdate={p.importMeta ? () => handleCheckUpdate(p.name) : undefined}
                   updateStatus={updateStatuses[p.name]?.status ?? null}
                   behindCount={updateStatuses[p.name]?.behindCount}
@@ -433,6 +437,7 @@ export default function LobbyPage() {
           setPublishTarget(pName);
         }}
         isImported={!!personas.find(p => p.name === startModal.personaName)?.importMeta}
+        isPublished={!!personas.find(p => p.name === startModal.personaName)?.publishMeta}
       />
 
       <ImportPersonaModal

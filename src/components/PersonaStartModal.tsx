@@ -31,6 +31,7 @@ interface PersonaStartModalProps {
   onStart: (profileSlug?: string, model?: string) => void;
   onPublish?: () => void;
   isImported?: boolean;
+  isPublished?: boolean;
 }
 
 function stripPanelPrefix(name: string): string {
@@ -47,6 +48,7 @@ export default function PersonaStartModal({
   onStart,
   onPublish,
   isImported,
+  isPublished,
 }: PersonaStartModalProps) {
   const [overview, setOverview] = useState<PersonaOverview | null>(null);
   const [loading, setLoading] = useState(false);
@@ -309,7 +311,7 @@ export default function PersonaStartModal({
             </div>
 
             <div className="pt-5 flex items-center gap-2">
-              {onPublish && !isImported && (
+              {onPublish && !isImported && !isPublished && (
                 <button
                   onClick={(e) => { e.stopPropagation(); onPublish(); }}
                   className="p-2.5 rounded-xl border border-border/60 text-text-dim
