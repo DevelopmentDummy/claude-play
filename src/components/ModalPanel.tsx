@@ -231,7 +231,7 @@ export default function ModalPanel({
         }}
       >
         <div
-          className="relative pointer-events-auto w-full"
+          className="relative pointer-events-auto w-fit max-w-full"
           style={{
             maxWidth,
             maxHeight,
