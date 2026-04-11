@@ -62,6 +62,18 @@ curl -s http://localhost:3340/api/tools/comfyui/models
 - **머리/눈 색상 구체화**: 톤까지 기술하라. `silver hair` → `silver white hair`, `blue eyes` → `deep blue eyes`, `pink eyes` → `light pink eyes`
 - **디자인 디테일 포함**: 의상의 포인트 장식을 태그에 포함한다. `blouse` → `white off-shoulder blouse with lace trim`, `skirt` → `black pencil skirt with deep slit`
 
+**⚠ 색상 오염 방지 — 매우 중요.** 악세서리/소품의 색상 형용사가 인접한 신체 부위(hair, eyes 등)를 오염시킬 수 있다. `blue hair ribbon`이라고 쓰면 모델이 `blue hair` + `ribbon`으로 파싱하여 머리색이 파란색으로 렌더링된다.
+
+- **`{색상} hair {소품}` 패턴을 절대 쓰지 마라.** 색상을 소품 쪽에만 붙여라:
+  - ❌ `blue hair ribbon` → 모델이 `blue hair`로 해석
+  - ✅ `hair ribbon, blue ribbon` — 색상이 ribbon에만 적용
+  - ❌ `red hair band` → `red hair`로 오염
+  - ✅ `hair band, red band`
+  - ❌ `green eye patch` → `green eye`로 오염
+  - ✅ `eye patch, green patch`
+- **일반 규칙**: `{색상}`과 `{신체부위}` 사이에 소품 명사가 끼면 색상이 신체에 달라붙는다. **색상 형용사는 신체 부위 태그와 분리하라.**
+- **character-tags.json 작성 시 이 규칙을 반드시 적용하라.** `identity`의 머리색/눈색과 `accessories`의 색상 소품이 충돌하지 않도록 태그를 분리한다.
+
 **BAD 예시** (색상/디테일 누락 → 매번 다른 결과):
 ```
 corset, blouse, skirt, gloves, thighhighs, glasses, necklace
