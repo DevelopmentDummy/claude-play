@@ -44,7 +44,6 @@ export async function POST(
     // Args are passed through as-is to the tool function.
     // Engine dispatchers handle both flat ({ action, key: val }) and
     // wrapped ({ action, params: { key: val } }) styles internally.
-    console.log(`[tools/${name}] args received:`, JSON.stringify(args));
   } catch {
     // empty args is fine
   }
@@ -163,7 +162,6 @@ export async function POST(
 
     // Auto-queue events from engine results
     const toolResult = result?.result as Record<string, unknown> | undefined;
-    console.log(`[tools/${name}] queue_events check:`, toolResult?.queue_events, `| instance:`, !!getSessionInstance(decodeURIComponent(id)));
     if (toolResult?.search_init_event && typeof toolResult.search_init_event === "string") {
       const sessionId = decodeURIComponent(id);
       const instance = getSessionInstance(sessionId);

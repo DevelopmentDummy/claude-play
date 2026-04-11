@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 interface UsageWindow {
   name: string;
@@ -67,6 +67,7 @@ function shortLabel(name: string, provider: string): string {
 }
 
 const REFRESH_COOLDOWN_MS = 300_000; // 5분 쿨다운
+let globalLastFetch = 0; // 페이지 네비게이션에도 유지되는 글로벌 쿨다운
 
 interface UsageIndicatorProps {
   provider: "claude" | "codex" | "gemini";
@@ -78,11 +79,10 @@ interface UsageIndicatorProps {
 
 export default function UsageIndicator({ provider, sessionId, refreshTrigger, onClick }: UsageIndicatorProps) {
   const [data, setData] = useState<UsageData | null>(null);
-  const lastFetchRef = useRef(0);
 
   const doFetch = useCallback((force = false) => {
-    if (!force && Date.now() - lastFetchRef.current < REFRESH_COOLDOWN_MS) return;
-    lastFetchRef.current = Date.now();
+    if (!force && Date.now() - globalLastFetch < REFRESH_COOLDOWN_MS) return;
+    globalLastFetch = Date.now();
 
     const params = new URLSearchParams({ provider });
     if (sessionId) params.set("sessionId", sessionId);
@@ -92,16 +92,15 @@ export default function UsageIndicator({ provider, sessionId, refreshTrigger, on
       .then((d) => {
         setData(d);
         // 에러 응답이면 쿨다운 리셋 → 다음 트리거 때 재시도
-        if (d.error) lastFetchRef.current = 0;
+        if (d.error) globalLastFetch = 0;
       })
-      .catch(() => { lastFetchRef.current = 0; });
+      .catch(() => { globalLastFetch = 0; });
   }, [provider, sessionId]);
 
   // provider 변경 시 데이터 리셋 + 강제 갱신
   useEffect(() => {
     setData(null);
-    lastFetchRef.current = 0;
-    doFetch(true);
+    doFetch();
   }, [provider]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 대화 종료 시 갱신 (refreshTrigger 변경, 쿨다운 적용)
