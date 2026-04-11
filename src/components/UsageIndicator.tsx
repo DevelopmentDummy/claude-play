@@ -15,21 +15,17 @@ interface UsageData {
   error?: string;
 }
 
-/** 5단계 배터리 바 렌더링 */
-function BatteryBar({ utilization, timeProgress }: { utilization: number; timeProgress: number }) {
-  const blocks = 5;
-  const filled = Math.round((utilization / 100) * blocks);
-
-  // 색상: 사용량 vs 시간 비율
+/** 미니 게이지 바 */
+function MiniGauge({ utilization, timeProgress }: { utilization: number; timeProgress: number }) {
   const ratio = timeProgress > 0 ? utilization / timeProgress : (utilization > 0 ? 2 : 0);
-  const color = ratio > 1.2 ? "text-red-400" : ratio > 0.8 ? "text-yellow-400" : "text-emerald-400";
-  const dimColor = "text-text-dim/20";
+  const barColor = ratio > 1.2 ? "bg-red-400" : ratio > 0.8 ? "bg-yellow-400" : "bg-emerald-400";
 
   return (
-    <span className="font-mono text-[10px] tracking-tight">
-      {Array.from({ length: blocks }, (_, i) => (
-        <span key={i} className={i < filled ? color : dimColor}>▮</span>
-      ))}
+    <span className="inline-flex items-center w-[28px] h-[8px] rounded-sm bg-surface-light overflow-hidden">
+      <span
+        className={`h-full rounded-sm ${barColor}`}
+        style={{ width: `${Math.min(utilization, 100)}%` }}
+      />
     </span>
   );
 }
@@ -99,7 +95,7 @@ export default function UsageIndicator({ provider, sessionId, refreshTrigger, on
       {data.windows.map((w) => (
         <span key={w.name} className="flex items-center gap-0.5">
           <span className="opacity-60">{shortLabel(w.name, data.provider)}</span>
-          <BatteryBar utilization={w.utilization} timeProgress={w.timeProgress} />
+          <MiniGauge utilization={w.utilization} timeProgress={w.timeProgress} />
         </span>
       ))}
     </button>

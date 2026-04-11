@@ -1010,6 +1010,10 @@ export default function ChatPage() {
               onAutoplayToggle={handleAutoplayToggle}
               steeringPresetName={steeringPreset?.name}
               onSteeringEdit={() => setSteeringModalOpen(true)}
+              usageProvider={currentProvider}
+              usageSessionId={sessionId}
+              usageRefreshTrigger={usageTrigger}
+              onUsageClick={() => setShowUsage(true)}
             />
           </div>
         </div>

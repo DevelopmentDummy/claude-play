@@ -280,7 +280,15 @@ export default function BuilderPage() {
             onLoadMore={loadMore}
             personaName={decodedName}
           />
-          <ChatInput disabled={isStreaming} onSend={sendMessage} voiceChat={voiceChat} />
+          <ChatInput
+            disabled={isStreaming}
+            onSend={sendMessage}
+            voiceChat={voiceChat}
+            usageProvider={builderService}
+            usageSessionId={name}
+            usageRefreshTrigger={usageTrigger}
+            onUsageClick={() => setShowUsage(true)}
+          />
         </div>
       </div>
       {/* Mobile: slide-over drawer for BuilderOverview */}

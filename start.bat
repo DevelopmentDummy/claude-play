@@ -11,12 +11,5 @@ if exist "comfyui_submodule\main.py" (
   )
 )
 
-echo Building...
-call npm run build
-if errorlevel 1 (
-  echo Build failed!
-  pause
-  exit /b 1
-)
 echo Starting production server...
 npm run start

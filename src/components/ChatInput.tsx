@@ -4,6 +4,7 @@ import { useState, useRef, useCallback, useEffect, memo } from "react";
 import { createPortal } from "react-dom";
 import { showToast } from "./ToastEffect";
 import { getPanelActionRegistry } from "@/lib/panel-action-registry";
+import UsageIndicator from "./UsageIndicator";
 
 // Web Speech API type shim (not in default DOM lib)
 interface SpeechRecognitionEvent extends Event {
@@ -157,9 +158,14 @@ interface ChatInputProps {
   steeringPresetName?: string | null;
   /** Open steering preset editor */
   onSteeringEdit?: () => void;
+  /** Usage indicator */
+  usageProvider?: "claude" | "codex" | "gemini";
+  usageSessionId?: string;
+  usageRefreshTrigger?: number;
+  onUsageClick?: () => void;
 }
 
-function ChatInput({ disabled, onSend, sessionId, choices, pendingEvents, showOOC, onOOCToggle, voiceChat, ttsPlaying, autoSendDelay = 3000, autoplayActive, onAutoplayToggle, steeringPresetName, onSteeringEdit }: ChatInputProps) {
+function ChatInput({ disabled, onSend, sessionId, choices, pendingEvents, showOOC, onOOCToggle, voiceChat, ttsPlaying, autoSendDelay = 3000, autoplayActive, onAutoplayToggle, steeringPresetName, onSteeringEdit, usageProvider, usageSessionId, usageRefreshTrigger, onUsageClick }: ChatInputProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [oocMode, setOocMode] = useState(false);
   const [choiceBusy, setChoiceBusy] = useState(false);
@@ -795,19 +801,33 @@ function ChatInput({ disabled, onSend, sessionId, choices, pendingEvents, showOO
           )}
         </button>
       </div>
-      {/* Steering preset indicator — always visible so user can set direction before starting autoplay */}
-      <div className="flex items-center gap-2 px-4 pb-2 -mt-1">
-        <span className="text-[11px] text-text-dim/50">스티어링:</span>
-        <button
-          onClick={onSteeringEdit}
-          className={`text-[11px] truncate max-w-[200px] transition-colors ${
-            steeringPresetName
-              ? "text-blue-400/70 hover:text-blue-300"
-              : "text-text-dim/50 hover:text-text-dim/80"
-          }`}
-        >
-          {steeringPresetName || "없음"}
-        </button>
+      {/* Bottom bar: usage (left) + steering (right) */}
+      <div className="flex items-center justify-between px-4 pb-2 -mt-1">
+        {/* Usage indicator (left) */}
+        <div className="flex items-center">
+          {usageProvider && (
+            <UsageIndicator
+              provider={usageProvider}
+              sessionId={usageSessionId}
+              refreshTrigger={usageRefreshTrigger}
+              onClick={onUsageClick}
+            />
+          )}
+        </div>
+        {/* Steering preset (right) */}
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] text-text-dim/50">스티어링:</span>
+          <button
+            onClick={onSteeringEdit}
+            className={`text-[11px] truncate max-w-[200px] transition-colors ${
+              steeringPresetName
+                ? "text-blue-400/70 hover:text-blue-300"
+                : "text-text-dim/50 hover:text-text-dim/80"
+            }`}
+          >
+            {steeringPresetName || "없음"}
+          </button>
+        </div>
       </div>
     </footer>
   );
