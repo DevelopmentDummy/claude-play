@@ -203,13 +203,9 @@ curl -s -X POST http://localhost:3340/api/tools/comfyui/update-profile \
 
 ## 워크플로우 템플릿
 
-템플릿 파일은 `./workflows/` 디렉토리에 있다. 구조를 이해하거나 raw 모드로 커스텀할 때 참조하라.
-- `./workflows/portrait.json` — 캐릭터 초상 (832x1216 세로)
-- `./workflows/scene.json` — 배경/CG 장면 (1216x832 가로, 애니메)
-- `./workflows/scene-real.json` — 배경/CG 장면 (1216x832 가로, 반실사)
-- `./workflows/scene-couple.json` — 2인 장면 (1216x832 가로, Attention Couple 영역 분리)
-- `./workflows/profile.json` — 프로필 + 얼굴 아이콘 (portrait 기반 + YOLO 크롭)
-- `./workflows/face-crop.json` — 기존 이미지에서 얼굴 크롭 (256x256 아이콘 전용)
+워크플로우는 `./workflows/` 디렉토리에 패키지 단위로 관리된다. 각 패키지는 `{name}/workflow.json` + `{name}/params.json` 구조이다. 사용 가능한 워크플로우 목록은 `comfyui_workflow` 도구의 `list` action으로 조회할 수 있다.
+
+**기본 내장 워크플로우** (이 외에도 커스텀 워크플로우가 있을 수 있다):
 
 | 워크플로우 | 해상도 | 용도 | 샘플러 설정 |
 |---|---|---|---|
