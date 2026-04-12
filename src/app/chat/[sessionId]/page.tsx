@@ -958,6 +958,7 @@ export default function ChatPage() {
             hasMore={hasMore}
             onLoadMore={loadMore}
             onToggleOOC={toggleMessageOOC}
+            showOOC={showOOC}
             dockLeft={activeDockLeft.length > 0 ? activeDockLeft : undefined}
             dockRight={activeDockRight.length > 0 ? activeDockRight : undefined}
             dockMaxSize={dockMaxHeight}

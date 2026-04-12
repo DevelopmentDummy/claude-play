@@ -26,6 +26,7 @@ interface ChatMessagesProps {
   hasMore?: boolean;
   onLoadMore?: () => Promise<number>;
   onToggleOOC?: (id: string, ooc: boolean) => void;
+  showOOC?: boolean;
   dockLeft?: DockPanelEntry[];
   dockRight?: DockPanelEntry[];
   dockMaxSize?: number;
@@ -348,6 +349,7 @@ export default function ChatMessages({
   hasMore,
   onLoadMore,
   onToggleOOC,
+  showOOC,
   dockLeft,
   dockRight,
   dockMaxSize,
@@ -581,15 +583,16 @@ export default function ChatMessages({
         const isLastAssistant =
           isStreaming && idx === lastIdx && msg.role === "assistant" && !msg.id.startsWith("opening-");
 
+        // showOOC: bypass all filters, show raw content for every message
         // OOC messages: show raw content (no dialog_response extraction)
         // Normal RP messages: extract <dialog_response> content only, strip <choice> tags
         const rawDisplay =
-          msg.ooc
+          showOOC || msg.ooc
             ? msg.content
             : hideTools && msg.role === "assistant"
               ? (isLastAssistant ? extractDialogResponseLive(msg.content) : extractDialogResponse(msg.content))
               : msg.content;
-        const displayContent = stripChoiceTags(rawDisplay);
+        const displayContent = showOOC ? rawDisplay : stripChoiceTags(rawDisplay);
 
         // Skip empty assistant messages in RP mode (e.g. tool-only turns),
         // but keep the live streaming turn visible so users can see progress.
