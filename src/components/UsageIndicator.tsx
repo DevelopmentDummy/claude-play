@@ -67,7 +67,9 @@ function shortLabel(name: string, provider: string): string {
 }
 
 const REFRESH_COOLDOWN_MS = 300_000; // 5분 쿨다운
-let globalLastFetch = 0; // 페이지 네비게이션에도 유지되는 글로벌 쿨다운
+
+// Provider별 글로벌 캐시 — 세션 이동해도 데이터 유지, 쿨다운 공유
+const globalCache = new Map<string, { data: UsageData; fetchedAt: number }>();
 
 interface UsageIndicatorProps {
   provider: "claude" | "codex" | "gemini";
@@ -78,29 +80,38 @@ interface UsageIndicatorProps {
 }
 
 export default function UsageIndicator({ provider, sessionId, refreshTrigger, onClick }: UsageIndicatorProps) {
-  const [data, setData] = useState<UsageData | null>(null);
+  const cached = globalCache.get(provider);
+  const [data, setData] = useState<UsageData | null>(cached?.data ?? null);
 
   const doFetch = useCallback((force = false) => {
-    if (!force && Date.now() - globalLastFetch < REFRESH_COOLDOWN_MS) return;
-    globalLastFetch = Date.now();
+    const entry = globalCache.get(provider);
+    if (!force && entry && Date.now() - entry.fetchedAt < REFRESH_COOLDOWN_MS) return;
 
     const params = new URLSearchParams({ provider });
     if (sessionId) params.set("sessionId", sessionId);
 
     fetch(`/api/usage?${params}`)
       .then((r) => r.json())
-      .then((d) => {
+      .then((d: UsageData) => {
+        if (d.error) {
+          globalCache.delete(provider);
+        } else {
+          globalCache.set(provider, { data: d, fetchedAt: Date.now() });
+        }
         setData(d);
-        // 에러 응답이면 쿨다운 리셋 → 다음 트리거 때 재시도
-        if (d.error) globalLastFetch = 0;
       })
-      .catch(() => { globalLastFetch = 0; });
+      .catch(() => { globalCache.delete(provider); });
   }, [provider, sessionId]);
 
-  // provider 변경 시 데이터 리셋 + 강제 갱신
+  // 마운트 시 캐시 있으면 그대로 사용, 없거나 만료면 fetch
   useEffect(() => {
-    setData(null);
-    doFetch();
+    const entry = globalCache.get(provider);
+    if (entry) {
+      setData(entry.data);
+      if (Date.now() - entry.fetchedAt >= REFRESH_COOLDOWN_MS) doFetch(true);
+    } else {
+      doFetch(true);
+    }
   }, [provider]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 대화 종료 시 갱신 (refreshTrigger 변경, 쿨다운 적용)
