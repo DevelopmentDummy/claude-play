@@ -149,7 +149,7 @@ function applyDefaultResolve(
 async function loadCustomResolver(resolverPath: string): Promise<ResolverFn> {
   const stat = fs.statSync(resolverPath);
   const url = `${pathToFileURL(resolverPath)}?t=${stat.mtimeMs}`;
-  const mod = await import(url);
+  const mod = await import(/* webpackIgnore: true */ url);
   if (typeof mod.default !== "function") {
     throw new Error(`resolver.mjs at ${resolverPath} does not export a default function`);
   }
