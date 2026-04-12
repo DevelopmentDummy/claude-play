@@ -484,7 +484,6 @@
       "title": "anus-detailer"
     }
   },
-
   "49": {
     "class_type": "CLIPTextEncode",
     "inputs": {
@@ -524,7 +523,6 @@
       "title": "region-right"
     }
   },
-
   "52": {
     "class_type": "SolidMask",
     "inputs": {
@@ -547,7 +545,6 @@
       "title": "mask-half (left region solid)"
     }
   },
-
   "54": {
     "class_type": "MaskComposite",
     "inputs": {
@@ -586,7 +583,6 @@
       "title": "compose-right-mask"
     }
   },
-
   "56": {
     "class_type": "ConditioningSetMask",
     "inputs": {
@@ -623,7 +619,6 @@
       "title": "cond-mask-right"
     }
   },
-
   "58": {
     "class_type": "ConditioningCombine",
     "inputs": {
@@ -640,7 +635,6 @@
       "title": "combine-regions"
     }
   },
-
   "59": {
     "class_type": "Attention couple",
     "inputs": {
@@ -660,87 +654,6 @@
     },
     "_meta": {
       "title": "attention-couple"
-    }
-  },
-
-  "_meta": {
-    "description": "2인 장면 (1216x832) — Attention Couple 좌/우 분리 + FaceDetailer + 4x Upscale",
-    "params": {
-      "prompt_left": {
-        "node": "50",
-        "field": "text",
-        "required": true
-      },
-      "prompt_right": {
-        "node": "51",
-        "field": "text",
-        "required": true
-      },
-      "negative_prompt": {
-        "node": "3",
-        "field": "text",
-        "default": "bad quality, worst quality, worst detail, sketch, censored, watermark, signature, extra fingers, mutated hands, bad anatomy"
-      },
-      "width": {
-        "node": "4",
-        "field": "width",
-        "default": 832
-      },
-      "height": {
-        "node": "4",
-        "field": "height",
-        "default": 1216
-      },
-      "mask_base_width": {
-        "node": "52",
-        "field": "width",
-        "default": 832
-      },
-      "mask_base_height": {
-        "node": "52",
-        "field": "height",
-        "default": 1216
-      },
-      "mask_region_width": {
-        "node": "53",
-        "field": "width",
-        "default": 416
-      },
-      "mask_region_height": {
-        "node": "53",
-        "field": "height",
-        "default": 1216
-      },
-      "mask_left_y": {
-        "node": "54",
-        "field": "y",
-        "default": 0
-      },
-      "mask_right_x": {
-        "node": "55",
-        "field": "x",
-        "default": 416
-      },
-      "mask_right_y": {
-        "node": "55",
-        "field": "y",
-        "default": 0
-      },
-      "steps": {
-        "node": "5",
-        "field": "steps",
-        "default": 35
-      },
-      "cfg": {
-        "node": "5",
-        "field": "cfg",
-        "default": 6
-      },
-      "seed": {
-        "node": "5",
-        "field": "seed",
-        "default": -1
-      }
     }
   }
 }

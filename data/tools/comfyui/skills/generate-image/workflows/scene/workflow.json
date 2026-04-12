@@ -496,45 +496,5 @@
     "_meta": {
       "title": "anus-detailer"
     }
-  },
-  "_meta": {
-    "description": "배경/CG 장면 (1216x832 가로) — LoRA x8 + FaceDetailer + 4x Upscale",
-    "params": {
-      "prompt": {
-        "node": "2",
-        "field": "text",
-        "required": true
-      },
-      "negative_prompt": {
-        "node": "3",
-        "field": "text",
-        "default": "bad quality, worst quality, worst detail, sketch, censored, watermark, signature, extra fingers, mutated hands, bad anatomy"
-      },
-      "width": {
-        "node": "4",
-        "field": "width",
-        "default": 1216
-      },
-      "height": {
-        "node": "4",
-        "field": "height",
-        "default": 832
-      },
-      "steps": {
-        "node": "5",
-        "field": "steps",
-        "default": 35
-      },
-      "cfg": {
-        "node": "5",
-        "field": "cfg",
-        "default": 6
-      },
-      "seed": {
-        "node": "5",
-        "field": "seed",
-        "default": -1
-      }
-    }
   }
 }

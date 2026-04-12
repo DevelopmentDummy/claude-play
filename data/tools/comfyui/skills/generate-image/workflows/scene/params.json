@@ -1,0 +1,54 @@
+{
+  "description": "배경/CG 장면 (1216x832 가로) — LoRA x8 + FaceDetailer + 4x Upscale",
+  "features": {
+    "checkpoint_auto": true,
+    "lora_injection": true,
+    "lora_couple_branches": false,
+    "seed_randomize": true,
+    "trigger_tags": true
+  },
+  "params": {
+    "prompt": {
+      "node": "2",
+      "field": "text",
+      "type": "string",
+      "required": true
+    },
+    "negative_prompt": {
+      "node": "3",
+      "field": "text",
+      "type": "string",
+      "default": "bad quality, worst quality, worst detail, sketch, censored, watermark, signature, extra fingers, mutated hands, bad anatomy"
+    },
+    "width": {
+      "node": "4",
+      "field": "width",
+      "type": "number",
+      "default": 1216
+    },
+    "height": {
+      "node": "4",
+      "field": "height",
+      "type": "number",
+      "default": 832
+    },
+    "steps": {
+      "node": "5",
+      "field": "steps",
+      "type": "number",
+      "default": 35
+    },
+    "cfg": {
+      "node": "5",
+      "field": "cfg",
+      "type": "number",
+      "default": 6
+    },
+    "seed": {
+      "node": "5",
+      "field": "seed",
+      "type": "number",
+      "default": -1
+    }
+  }
+}

@@ -8,6 +8,19 @@
       "title": "ckpt"
     }
   },
+  "2": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "",
+      "clip": [
+        "1",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "pos"
+    }
+  },
   "3": {
     "class_type": "CLIPTextEncode",
     "inputs": {
@@ -24,8 +37,8 @@
   "4": {
     "class_type": "EmptyLatentImage",
     "inputs": {
-      "width": 1216,
-      "height": 832,
+      "width": 832,
+      "height": 1216,
       "batch_size": 1
     },
     "_meta": {
@@ -36,22 +49,22 @@
     "class_type": "KSampler",
     "inputs": {
       "seed": 0,
-      "steps": 35,
-      "cfg": 6,
+      "steps": 24,
+      "cfg": 6.5,
       "sampler_name": "euler_ancestral",
       "scheduler": "karras",
       "denoise": 1,
       "model": [
-        "59",
+        "1",
         0
       ],
       "positive": [
-        "59",
-        1
+        "2",
+        0
       ],
       "negative": [
-        "59",
-        2
+        "3",
+        0
       ],
       "latent_image": [
         "4",
@@ -81,14 +94,14 @@
   "7": {
     "class_type": "SaveImage",
     "inputs": {
-      "filename_prefix": "scene-couple",
+      "filename_prefix": "profile",
       "images": [
         "32",
         0
       ]
     },
     "_meta": {
-      "title": "save"
+      "title": "save-profile"
     }
   },
   "20": {
@@ -120,7 +133,7 @@
         2
       ],
       "positive": [
-        "49",
+        "2",
         0
       ],
       "negative": [
@@ -258,7 +271,7 @@
   "26": {
     "class_type": "CLIPTextEncode",
     "inputs": {
-      "text": "detailed pussy, detailed vulva, labia, clitoris, anatomically correct, fair skin, matte skin, consistent skin texture",
+      "text": "detailed pussy, detailed vulva, labia, clitoris, anatomically correct",
       "clip": [
         "1",
         1
@@ -326,16 +339,16 @@
       "cfg": 6,
       "sampler_name": "euler_ancestral",
       "scheduler": "karras",
-      "denoise": 0.3,
+      "denoise": 0.5,
       "guide_size": 512,
       "guide_size_for": true,
       "max_size": 1024,
-      "feather": 15,
+      "feather": 5,
       "noise_mask": true,
       "force_inpaint": true,
       "bbox_threshold": 0.45,
       "bbox_dilation": 20,
-      "bbox_crop_factor": 5,
+      "bbox_crop_factor": 3,
       "sam_detection_hint": "center-1",
       "sam_dilation": 0,
       "sam_threshold": 0.93,
@@ -358,7 +371,7 @@
         0
       ],
       "image": [
-        "43",
+        "47",
         0
       ]
     },
@@ -390,9 +403,75 @@
     }
   },
   "40": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": [
+        "43",
+        0
+      ],
+      "width": 256,
+      "height": 256,
+      "upscale_method": "lanczos",
+      "crop": "center"
+    },
+    "_meta": {
+      "title": "face-crop-resize (256x256)"
+    }
+  },
+  "41": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "icon",
+      "images": [
+        "40",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "save-icon"
+    }
+  },
+  "42": {
+    "class_type": "BboxDetectorSEGS",
+    "inputs": {
+      "bbox_detector": [
+        "20",
+        0
+      ],
+      "image": [
+        "32",
+        0
+      ],
+      "threshold": 0.5,
+      "dilation": 0,
+      "crop_factor": 1.3,
+      "drop_size": 10,
+      "labels": "all"
+    },
+    "_meta": {
+      "title": "face-detect-for-icon"
+    }
+  },
+  "43": {
+    "class_type": "SEGSToImageList",
+    "inputs": {
+      "segs": [
+        "42",
+        0
+      ],
+      "fallback_image_opt": [
+        "32",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "face-crop-extract"
+    }
+  },
+  "44": {
     "class_type": "CLIPTextEncode",
     "inputs": {
-      "text": "detailed anus, anatomically correct, fair skin, matte skin, consistent skin texture, soft shading",
+      "text": "detailed anus, anatomically correct, skin texture, consistent color tone, soft shading",
       "clip": [
         "1",
         1
@@ -402,7 +481,7 @@
       "title": "anus-pos"
     }
   },
-  "41": {
+  "45": {
     "class_type": "CLIPTextEncode",
     "inputs": {
       "text": "eyes, face, fingers, bad anatomy, censored, mosaic censoring, dark spot, black spot, discoloration",
@@ -415,7 +494,7 @@
       "title": "anus-neg"
     }
   },
-  "42": {
+  "46": {
     "class_type": "UltralyticsDetectorProvider",
     "inputs": {
       "model_name": "bbox/anus_v4.pt"
@@ -424,7 +503,7 @@
       "title": "anus-detector"
     }
   },
-  "43": {
+  "47": {
     "class_type": "FaceDetailer",
     "inputs": {
       "image": [
@@ -444,15 +523,15 @@
         2
       ],
       "positive": [
-        "40",
+        "44",
         0
       ],
       "negative": [
-        "41",
+        "45",
         0
       ],
       "bbox_detector": [
-        "42",
+        "46",
         0
       ],
       "seed": 0,
@@ -460,7 +539,7 @@
       "cfg": 6,
       "sampler_name": "euler_ancestral",
       "scheduler": "karras",
-      "denoise": 0.2,
+      "denoise": 0.25,
       "guide_size": 768,
       "guide_size_for": true,
       "max_size": 1024,
@@ -482,265 +561,6 @@
     },
     "_meta": {
       "title": "anus-detailer"
-    }
-  },
-
-  "49": {
-    "class_type": "CLIPTextEncode",
-    "inputs": {
-      "text": "1girl, detailed face, beautiful eyes, natural skin, detailed features",
-      "clip": [
-        "1",
-        1
-      ]
-    },
-    "_meta": {
-      "title": "face-detail-pos (generic for all characters)"
-    }
-  },
-  "50": {
-    "class_type": "CLIPTextEncode",
-    "inputs": {
-      "text": "",
-      "clip": [
-        "1",
-        1
-      ]
-    },
-    "_meta": {
-      "title": "region-left"
-    }
-  },
-  "51": {
-    "class_type": "CLIPTextEncode",
-    "inputs": {
-      "text": "",
-      "clip": [
-        "1",
-        1
-      ]
-    },
-    "_meta": {
-      "title": "region-right"
-    }
-  },
-
-  "52": {
-    "class_type": "SolidMask",
-    "inputs": {
-      "value": 0,
-      "width": 1216,
-      "height": 832
-    },
-    "_meta": {
-      "title": "mask-base (empty canvas)"
-    }
-  },
-  "53": {
-    "class_type": "SolidMask",
-    "inputs": {
-      "value": 1,
-      "width": 608,
-      "height": 832
-    },
-    "_meta": {
-      "title": "mask-half (left region solid)"
-    }
-  },
-
-  "54": {
-    "class_type": "MaskComposite",
-    "inputs": {
-      "destination": [
-        "52",
-        0
-      ],
-      "source": [
-        "53",
-        0
-      ],
-      "x": 0,
-      "y": 0,
-      "operation": "add"
-    },
-    "_meta": {
-      "title": "compose-left-mask"
-    }
-  },
-  "55": {
-    "class_type": "MaskComposite",
-    "inputs": {
-      "destination": [
-        "52",
-        0
-      ],
-      "source": [
-        "53",
-        0
-      ],
-      "x": 608,
-      "y": 0,
-      "operation": "add"
-    },
-    "_meta": {
-      "title": "compose-right-mask"
-    }
-  },
-
-  "56": {
-    "class_type": "ConditioningSetMask",
-    "inputs": {
-      "conditioning": [
-        "50",
-        0
-      ],
-      "mask": [
-        "54",
-        0
-      ],
-      "strength": 1,
-      "set_cond_area": "default"
-    },
-    "_meta": {
-      "title": "cond-mask-left"
-    }
-  },
-  "57": {
-    "class_type": "ConditioningSetMask",
-    "inputs": {
-      "conditioning": [
-        "51",
-        0
-      ],
-      "mask": [
-        "55",
-        0
-      ],
-      "strength": 1,
-      "set_cond_area": "default"
-    },
-    "_meta": {
-      "title": "cond-mask-right"
-    }
-  },
-
-  "58": {
-    "class_type": "ConditioningCombine",
-    "inputs": {
-      "conditioning_1": [
-        "56",
-        0
-      ],
-      "conditioning_2": [
-        "57",
-        0
-      ]
-    },
-    "_meta": {
-      "title": "combine-regions"
-    }
-  },
-
-  "59": {
-    "class_type": "Attention couple",
-    "inputs": {
-      "model": [
-        "1",
-        0
-      ],
-      "positive": [
-        "58",
-        0
-      ],
-      "negative": [
-        "3",
-        0
-      ],
-      "mode": "Attention"
-    },
-    "_meta": {
-      "title": "attention-couple"
-    }
-  },
-
-  "_meta": {
-    "description": "2인 장면 (1216x832) — Attention Couple 좌/우 분리 + FaceDetailer + 4x Upscale",
-    "params": {
-      "prompt_left": {
-        "node": "50",
-        "field": "text",
-        "required": true
-      },
-      "prompt_right": {
-        "node": "51",
-        "field": "text",
-        "required": true
-      },
-      "negative_prompt": {
-        "node": "3",
-        "field": "text",
-        "default": "bad quality, worst quality, worst detail, sketch, censored, watermark, signature, extra fingers, mutated hands, bad anatomy"
-      },
-      "width": {
-        "node": "4",
-        "field": "width",
-        "default": 1216
-      },
-      "height": {
-        "node": "4",
-        "field": "height",
-        "default": 832
-      },
-      "mask_base_width": {
-        "node": "52",
-        "field": "width",
-        "default": 1216
-      },
-      "mask_base_height": {
-        "node": "52",
-        "field": "height",
-        "default": 832
-      },
-      "mask_region_width": {
-        "node": "53",
-        "field": "width",
-        "default": 608
-      },
-      "mask_region_height": {
-        "node": "53",
-        "field": "height",
-        "default": 832
-      },
-      "mask_left_y": {
-        "node": "54",
-        "field": "y",
-        "default": 0
-      },
-      "mask_right_x": {
-        "node": "55",
-        "field": "x",
-        "default": 608
-      },
-      "mask_right_y": {
-        "node": "55",
-        "field": "y",
-        "default": 0
-      },
-      "steps": {
-        "node": "5",
-        "field": "steps",
-        "default": 35
-      },
-      "cfg": {
-        "node": "5",
-        "field": "cfg",
-        "default": 6
-      },
-      "seed": {
-        "node": "5",
-        "field": "seed",
-        "default": -1
-      }
     }
   }
 }

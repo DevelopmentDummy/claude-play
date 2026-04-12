@@ -1,0 +1,102 @@
+{
+  "description": "2인 장면 (1216x832) — Attention Couple 좌/우 분리 + FaceDetailer + 4x Upscale",
+  "features": {
+    "checkpoint_auto": true,
+    "lora_injection": true,
+    "lora_couple_branches": true,
+    "seed_randomize": true,
+    "trigger_tags": true
+  },
+  "params": {
+    "prompt_left": {
+      "node": "50",
+      "field": "text",
+      "type": "string",
+      "required": true
+    },
+    "prompt_right": {
+      "node": "51",
+      "field": "text",
+      "type": "string",
+      "required": true
+    },
+    "negative_prompt": {
+      "node": "3",
+      "field": "text",
+      "type": "string",
+      "default": "bad quality, worst quality, worst detail, sketch, censored, watermark, signature, extra fingers, mutated hands, bad anatomy"
+    },
+    "width": {
+      "node": "4",
+      "field": "width",
+      "type": "number",
+      "default": 832
+    },
+    "height": {
+      "node": "4",
+      "field": "height",
+      "type": "number",
+      "default": 1216
+    },
+    "mask_base_width": {
+      "node": "52",
+      "field": "width",
+      "type": "number",
+      "default": 832
+    },
+    "mask_base_height": {
+      "node": "52",
+      "field": "height",
+      "type": "number",
+      "default": 1216
+    },
+    "mask_region_width": {
+      "node": "53",
+      "field": "width",
+      "type": "number",
+      "default": 416
+    },
+    "mask_region_height": {
+      "node": "53",
+      "field": "height",
+      "type": "number",
+      "default": 1216
+    },
+    "mask_left_y": {
+      "node": "54",
+      "field": "y",
+      "type": "number",
+      "default": 0
+    },
+    "mask_right_x": {
+      "node": "55",
+      "field": "x",
+      "type": "number",
+      "default": 416
+    },
+    "mask_right_y": {
+      "node": "55",
+      "field": "y",
+      "type": "number",
+      "default": 0
+    },
+    "steps": {
+      "node": "5",
+      "field": "steps",
+      "type": "number",
+      "default": 35
+    },
+    "cfg": {
+      "node": "5",
+      "field": "cfg",
+      "type": "number",
+      "default": 6
+    },
+    "seed": {
+      "node": "5",
+      "field": "seed",
+      "type": "number",
+      "default": -1
+    }
+  }
+}
