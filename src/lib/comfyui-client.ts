@@ -1,5 +1,12 @@
 import * as fs from "fs";
 import * as path from "path";
+import {
+  loadPackage,
+  resolveWorkflow,
+  validateParams,
+  type WorkflowPackageMeta,
+  type WorkflowFeatures,
+} from "./workflow-resolver";
 
 /** Sanitize a relative file path: preserve subdirectories but prevent traversal */
 function safePath(filePath: string): string {
@@ -46,17 +53,6 @@ interface TranscribeResult {
   error?: string;
 }
 
-interface WorkflowMeta {
-  params: Record<
-    string,
-    {
-      node: string;
-      field: string;
-      required?: boolean;
-      default?: unknown;
-    }
-  >;
-}
 
 interface RetryOptions {
   attempts?: number;
@@ -524,7 +520,7 @@ export class ComfyUIClient {
   /** Auto-inject trigger tags for active LoRAs into the prompt text, with deduplication */
   private injectTriggerTags(
     prompt: Record<string, unknown>,
-    meta: WorkflowMeta,
+    meta: WorkflowPackageMeta,
     triggerTable: Record<string, string>,
     activeLoRAs: string[]
   ): void {
@@ -602,262 +598,248 @@ export class ComfyUIClient {
     lorasLeft?: Array<{ name: string; strength: number }>,
     lorasRight?: Array<{ name: string; strength: number }>
   ): Promise<object> {
-    const workflowPath = path.join(
-      this.workflowsDir,
-      `${workflowName}.json`
-    );
+    // === Phase 1: Package Load ===
+    const pkg = loadPackage(this.workflowsDir, workflowName);
+    const features: WorkflowFeatures = pkg.meta.features || {
+      checkpoint_auto: true,
+      lora_injection: true,
+      lora_couple_branches: false,
+      seed_randomize: true,
+      trigger_tags: true,
+    };
 
-    if (!fs.existsSync(workflowPath)) {
-      throw new Error(`Workflow "${workflowName}" not found at ${workflowPath}`);
+    // === Phase 2: Parameter Validation ===
+    const validation = validateParams(params, pkg.meta.params);
+    if (!validation.valid) {
+      throw new Error(`Parameter validation failed: ${validation.errors.join("; ")}`);
     }
 
-    const workflow = JSON.parse(fs.readFileSync(workflowPath, "utf-8"));
-    const meta: WorkflowMeta | undefined = workflow._meta;
-
-    if (!meta?.params) {
-      throw new Error(`Workflow "${workflowName}" has no _meta.params`);
-    }
-
-    // Build a copy without _meta
-    const prompt: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(workflow)) {
-      if (key === "_meta") continue;
-      prompt[key] = JSON.parse(JSON.stringify(value));
-    }
-
-    // Query available models and auto-fix incompatibilities
+    // === Phase 3: Resolver (parameter substitution) ===
     const models = await this.getAvailableModels();
+    const prompt = await resolveWorkflow(pkg, params, {
+      sessionDir,
+      config: sessionDir ? this.readDirConfig(sessionDir) as Record<string, unknown> : undefined,
+      models,
+    });
 
-    // Auto-inject best available checkpoint
-    const resolvedCkpt = this.resolveCheckpoint(models.checkpoints, sessionDir);
-    for (const node of Object.values(prompt)) {
-      const n = node as Record<string, unknown>;
-      if (n.class_type === "CheckpointLoaderSimple") {
-        const inputs = n.inputs as Record<string, unknown>;
-        if (inputs) inputs.ckpt_name = resolvedCkpt;
-      }
-    }
+    // === Phase 4: Runtime Transforms (gated by features flags) ===
 
-    // Inject base LoRAs from comfyui-config.json (if any)
-    if (sessionDir) {
-      const dirConfig = this.readDirConfig(sessionDir);
-      if (dirConfig.baseLoras && dirConfig.baseLoras.length > 0) {
-        // Find anchor: CheckpointLoaderSimple node
-        const ckptId = Object.entries(prompt)
-          .find(([, n]) => (n as Record<string, unknown>).class_type === "CheckpointLoaderSimple")
-          ?.[0];
-        if (ckptId) {
-          let prevId = ckptId;
-          const baseStartId = 100;
-          for (let i = 0; i < dirConfig.baseLoras.length; i++) {
-            const bl = dirConfig.baseLoras[i];
-            const nodeId = String(baseStartId + i);
-            prompt[nodeId] = {
-              class_type: "LoraLoader",
-              inputs: {
-                lora_name: bl.name,
-                strength_model: bl.strength,
-                strength_clip: bl.strength,
-                model: [prevId, 0],
-                clip: [prevId, 1],
-              },
-              _meta: { title: `base-lora-${i}` },
-            };
-            prevId = nodeId;
-          }
-          // Rewire downstream nodes that reference the checkpoint
-          const lastBaseId = String(baseStartId + dirConfig.baseLoras.length - 1);
-          for (const [id, node] of Object.entries(prompt)) {
-            if (id === ckptId || id.startsWith(String(baseStartId))) continue;
-            const n = node as Record<string, unknown>;
-            const inputs = n.inputs as Record<string, unknown> | undefined;
-            if (!inputs) continue;
-            for (const [field, val] of Object.entries(inputs)) {
-              if (Array.isArray(val) && val[0] === ckptId && (val[1] === 0 || val[1] === 1)) {
-                inputs[field] = [lastBaseId, val[1]];
-              }
-            }
-          }
-          console.log(`[comfyui] Injected ${dirConfig.baseLoras.length} base LoRAs from config`);
-        }
-      }
-    }
-
-    // Remove unavailable LoRAs and rewire the chain
-    this.pruneUnavailableLoRAs(prompt, models.loras);
-
-    // LoRA overrides & dynamic injection
-    if (loras && loras.length > 0) {
-      // Build lookup of requested LoRA overrides by name
-      const loraByName = new Map(loras.map(l => [l.name, l]));
-
-      // Phase 1: Override/remove existing base LoRAs
-      const baseLoraNodes: Array<{ id: string; loraName: string }> = [];
-      for (const [id, node] of Object.entries(prompt)) {
+    // 4a: checkpoint_auto
+    if (features.checkpoint_auto) {
+      const resolvedCkpt = this.resolveCheckpoint(models.checkpoints, sessionDir);
+      for (const node of Object.values(prompt)) {
         const n = node as Record<string, unknown>;
-        if (n.class_type === "LoraLoader") {
+        if (n.class_type === "CheckpointLoaderSimple") {
           const inputs = n.inputs as Record<string, unknown>;
-          baseLoraNodes.push({ id, loraName: inputs.lora_name as string });
+          if (inputs) inputs.ckpt_name = resolvedCkpt;
         }
-      }
-
-      const overridden = new Set<string>();
-      for (const base of baseLoraNodes) {
-        const override = loraByName.get(base.loraName);
-        if (!override) continue;
-        overridden.add(base.loraName);
-
-        if (override.strength === 0) {
-          // Remove this base LoRA node and rewire references
-          const node = prompt[base.id] as Record<string, unknown>;
-          const inputs = node.inputs as Record<string, unknown>;
-          const modelSource = inputs.model as [string, number] | undefined;
-          const sourceId = modelSource ? modelSource[0] : null;
-
-          delete prompt[base.id];
-
-          // Rewire downstream references to this removed node
-          if (sourceId) {
-            for (const [, n] of Object.entries(prompt)) {
-              const ni = (n as Record<string, unknown>).inputs as Record<string, unknown> | undefined;
-              if (!ni) continue;
-              for (const [key, value] of Object.entries(ni)) {
-                if (Array.isArray(value) && value.length === 2 && value[0] === base.id) {
-                  ni[key] = [sourceId, value[1]];
-                }
-              }
-            }
-          }
-          console.log(`[comfyui] Removed base LoRA: ${base.loraName} (node ${base.id})`);
-        } else {
-          // Override strength
-          const node = prompt[base.id] as Record<string, unknown>;
-          const inputs = node.inputs as Record<string, unknown>;
-          inputs.strength_model = override.strength;
-          inputs.strength_clip = override.strength;
-          console.log(`[comfyui] Override base LoRA: ${base.loraName} strength → ${override.strength}`);
-        }
-      }
-
-      // Phase 2: Dynamic injection of non-base LoRAs
-      const newLoras = loras.filter(l => !overridden.has(l.name) && l.strength !== 0);
-      const validNewLoras = models.loras.length === 0
-        ? newLoras
-        : newLoras.filter(l => models.loras.includes(l.name));
-
-      if (validNewLoras.length > 0) {
-        // Find anchor: last remaining LoraLoader or CheckpointLoaderSimple
-        const remainingLoraIds = Object.entries(prompt)
-          .filter(([, n]) => (n as Record<string, unknown>).class_type === "LoraLoader")
-          .map(([id]) => id)
-          .sort((a, b) => Number(a) - Number(b));
-
-        let anchorId = remainingLoraIds.length > 0 ? remainingLoraIds[remainingLoraIds.length - 1] : null;
-        if (!anchorId) {
-          anchorId = Object.entries(prompt)
-            .find(([, n]) => (n as Record<string, unknown>).class_type === "CheckpointLoaderSimple")
-            ?.[0] ?? null;
-        }
-
-        if (anchorId) {
-          let prevId = anchorId;
-          const maxExistingId = Math.max(...Object.keys(prompt).map(Number).filter(n => !isNaN(n)));
-          const dynamicStartId = Math.max(200, maxExistingId + 1);
-          const injectedIds = new Set<string>();
-
-          for (let i = 0; i < validNewLoras.length; i++) {
-            const nodeId = String(dynamicStartId + i);
-            injectedIds.add(nodeId);
-            prompt[nodeId] = {
-              class_type: "LoraLoader",
-              inputs: {
-                lora_name: validNewLoras[i].name,
-                strength_model: validNewLoras[i].strength,
-                strength_clip: validNewLoras[i].strength,
-                model: [prevId, 0],
-                clip: [prevId, 1],
-              },
-              _meta: { title: `dynamic-lora-${i}` },
-            };
-            prevId = nodeId;
-          }
-
-          // Rewire downstream nodes to new chain end
-          // Only rewire model (slot 0) and clip (slot 1) references.
-          // VAE (slot 2) must stay on the original checkpoint node since LoraLoader has no VAE output.
-          const newLastId = prevId;
-          for (const [nodeId, node] of Object.entries(prompt)) {
-            if (injectedIds.has(nodeId)) continue;
-            const n = node as Record<string, unknown>;
-            const inputs = n.inputs as Record<string, unknown> | undefined;
-            if (!inputs) continue;
-            for (const [key, value] of Object.entries(inputs)) {
-              if (Array.isArray(value) && value.length === 2 && value[0] === anchorId && (value[1] === 0 || value[1] === 1)) {
-                inputs[key] = [newLastId, value[1]];
-              }
-            }
-          }
-          console.log(`[comfyui] Injected ${validNewLoras.length} dynamic LoRAs after node ${anchorId}`);
-        } else {
-          console.warn(`[comfyui] No LoraLoader or Checkpoint nodes — cannot inject dynamic LoRAs`);
-        }
-      }
-
-      const skippedCount = newLoras.length - validNewLoras.length;
-      if (skippedCount > 0) {
-        const skippedNames = newLoras
-          .filter(l => !validNewLoras.some(v => v.name === l.name))
-          .map(l => l.name);
-        console.log(`[comfyui] Skipped ${skippedCount} unavailable dynamic LoRAs: ${skippedNames.join(", ")}`);
       }
     }
 
-    // Inject params from request
-    for (const [paramName, paramDef] of Object.entries(meta.params)) {
-      const value =
-        params[paramName] !== undefined ? params[paramName] : paramDef.default;
-
-      if (value === undefined && paramDef.required) {
-        throw new Error(`Required parameter "${paramName}" not provided`);
+    // 4b: lora_injection (base LoRAs + dynamic LoRAs + pruning)
+    if (features.lora_injection) {
+      if (sessionDir) {
+        const dirConfig = this.readDirConfig(sessionDir);
+        if (dirConfig.baseLoras && dirConfig.baseLoras.length > 0) {
+          this.injectBaseLoRAs(prompt, dirConfig.baseLoras);
+        }
       }
-
-      if (value === undefined) continue;
-
-      const node = prompt[paramDef.node] as Record<string, unknown> | undefined;
-      if (!node) continue;
-
-      const inputs = node.inputs as Record<string, unknown> | undefined;
-      if (!inputs) {
-        node.inputs = { [paramDef.field]: value };
-      } else {
-        inputs[paramDef.field] = value;
+      this.pruneUnavailableLoRAs(prompt, models.loras);
+      if (loras && loras.length > 0) {
+        this.applyDynamicLoRAs(prompt, loras, models.loras);
       }
     }
 
-    // Phase 3: scene-couple CLIP branch LoRA injection
-    if ((lorasLeft?.length || lorasRight?.length) && workflowName === "scene-couple") {
+    // 4c: lora_couple_branches
+    if (features.lora_couple_branches && (lorasLeft?.length || lorasRight?.length)) {
       this.injectCoupleBranchLoras(prompt, models.loras, lorasLeft, lorasRight);
     }
 
-    // Auto-inject LoRA trigger tags into prompt text (after param injection so prompt text exists)
-    const triggerTable = this.loadLoraTriggers();
-    const activeLoRAs = this.collectActiveLoRAs(prompt);
-    this.injectTriggerTags(prompt, meta, triggerTable, activeLoRAs);
+    // 4d: trigger_tags
+    if (features.trigger_tags) {
+      const triggerTable = this.loadLoraTriggers();
+      const activeLoRAs = this.collectActiveLoRAs(prompt);
+      this.injectTriggerTags(prompt, pkg.meta, triggerTable, activeLoRAs);
+    }
 
-
-    // Handle random seed (-1 means random)
-    for (const [, paramDef] of Object.entries(meta.params)) {
-      if (paramDef.field === "seed") {
-        const node = prompt[paramDef.node] as Record<string, unknown> | undefined;
-        if (!node) continue;
-        const inputs = node.inputs as Record<string, unknown>;
-        if (inputs && inputs.seed === -1) {
-          inputs.seed = Math.floor(Math.random() * 2 ** 32);
+    // 4e: seed_randomize
+    if (features.seed_randomize) {
+      for (const [, paramDef] of Object.entries(pkg.meta.params)) {
+        if (paramDef.field === "seed") {
+          const node = prompt[paramDef.node] as Record<string, unknown> | undefined;
+          if (!node) continue;
+          const inputs = node.inputs as Record<string, unknown>;
+          if (inputs && inputs.seed === -1) {
+            inputs.seed = Math.floor(Math.random() * 2 ** 32);
+          }
         }
       }
     }
 
     return prompt;
+  }
+
+  /** Inject base LoRAs from comfyui-config into the workflow */
+  private injectBaseLoRAs(
+    prompt: Record<string, unknown>,
+    baseLoras: Array<{ name: string; strength: number }>
+  ): void {
+    const ckptId = Object.entries(prompt)
+      .find(([, n]) => (n as Record<string, unknown>).class_type === "CheckpointLoaderSimple")
+      ?.[0];
+    if (!ckptId) return;
+
+    let prevId = ckptId;
+    const baseStartId = 100;
+    for (let i = 0; i < baseLoras.length; i++) {
+      const bl = baseLoras[i];
+      const nodeId = String(baseStartId + i);
+      prompt[nodeId] = {
+        class_type: "LoraLoader",
+        inputs: {
+          lora_name: bl.name,
+          strength_model: bl.strength,
+          strength_clip: bl.strength,
+          model: [prevId, 0],
+          clip: [prevId, 1],
+        },
+        _meta: { title: `base-lora-${i}` },
+      };
+      prevId = nodeId;
+    }
+    const lastBaseId = String(baseStartId + baseLoras.length - 1);
+    for (const [id, node] of Object.entries(prompt)) {
+      if (id === ckptId || id.startsWith(String(baseStartId))) continue;
+      const n = node as Record<string, unknown>;
+      const inputs = n.inputs as Record<string, unknown> | undefined;
+      if (!inputs) continue;
+      for (const [field, val] of Object.entries(inputs)) {
+        if (Array.isArray(val) && val[0] === ckptId && (val[1] === 0 || val[1] === 1)) {
+          inputs[field] = [lastBaseId, val[1]];
+        }
+      }
+    }
+    console.log(`[comfyui] Injected ${baseLoras.length} base LoRAs from config`);
+  }
+
+  /** Apply dynamic LoRA overrides and injections */
+  private applyDynamicLoRAs(
+    prompt: Record<string, unknown>,
+    loras: Array<{ name: string; strength: number }>,
+    availableLoRAs: string[]
+  ): void {
+    const loraByName = new Map(loras.map(l => [l.name, l]));
+
+    // Phase 1: Override/remove existing base LoRAs
+    const baseLoraNodes: Array<{ id: string; loraName: string }> = [];
+    for (const [id, node] of Object.entries(prompt)) {
+      const n = node as Record<string, unknown>;
+      if (n.class_type === "LoraLoader") {
+        const inputs = n.inputs as Record<string, unknown>;
+        baseLoraNodes.push({ id, loraName: inputs.lora_name as string });
+      }
+    }
+
+    const overridden = new Set<string>();
+    for (const base of baseLoraNodes) {
+      const override = loraByName.get(base.loraName);
+      if (!override) continue;
+      overridden.add(base.loraName);
+
+      if (override.strength === 0) {
+        const node = prompt[base.id] as Record<string, unknown>;
+        const inputs = node.inputs as Record<string, unknown>;
+        const modelSource = inputs.model as [string, number] | undefined;
+        const sourceId = modelSource ? modelSource[0] : null;
+        delete prompt[base.id];
+        if (sourceId) {
+          for (const [, n] of Object.entries(prompt)) {
+            const ni = (n as Record<string, unknown>).inputs as Record<string, unknown> | undefined;
+            if (!ni) continue;
+            for (const [key, value] of Object.entries(ni)) {
+              if (Array.isArray(value) && value.length === 2 && value[0] === base.id) {
+                ni[key] = [sourceId, value[1]];
+              }
+            }
+          }
+        }
+        console.log(`[comfyui] Removed base LoRA: ${base.loraName} (node ${base.id})`);
+      } else {
+        const node = prompt[base.id] as Record<string, unknown>;
+        const inputs = node.inputs as Record<string, unknown>;
+        inputs.strength_model = override.strength;
+        inputs.strength_clip = override.strength;
+        console.log(`[comfyui] Override base LoRA: ${base.loraName} strength → ${override.strength}`);
+      }
+    }
+
+    // Phase 2: Dynamic injection of non-base LoRAs
+    const newLoras = loras.filter(l => !overridden.has(l.name) && l.strength !== 0);
+    const validNewLoras = availableLoRAs.length === 0
+      ? newLoras
+      : newLoras.filter(l => availableLoRAs.includes(l.name));
+
+    if (validNewLoras.length > 0) {
+      const remainingLoraIds = Object.entries(prompt)
+        .filter(([, n]) => (n as Record<string, unknown>).class_type === "LoraLoader")
+        .map(([id]) => id)
+        .sort((a, b) => Number(a) - Number(b));
+
+      let anchorId = remainingLoraIds.length > 0 ? remainingLoraIds[remainingLoraIds.length - 1] : null;
+      if (!anchorId) {
+        anchorId = Object.entries(prompt)
+          .find(([, n]) => (n as Record<string, unknown>).class_type === "CheckpointLoaderSimple")
+          ?.[0] ?? null;
+      }
+
+      if (anchorId) {
+        let prevId = anchorId;
+        const maxExistingId = Math.max(...Object.keys(prompt).map(Number).filter(n => !isNaN(n)));
+        const dynamicStartId = Math.max(200, maxExistingId + 1);
+        const injectedIds = new Set<string>();
+
+        for (let i = 0; i < validNewLoras.length; i++) {
+          const nodeId = String(dynamicStartId + i);
+          injectedIds.add(nodeId);
+          prompt[nodeId] = {
+            class_type: "LoraLoader",
+            inputs: {
+              lora_name: validNewLoras[i].name,
+              strength_model: validNewLoras[i].strength,
+              strength_clip: validNewLoras[i].strength,
+              model: [prevId, 0],
+              clip: [prevId, 1],
+            },
+            _meta: { title: `dynamic-lora-${i}` },
+          };
+          prevId = nodeId;
+        }
+
+        const newLastId = prevId;
+        for (const [nodeId, node] of Object.entries(prompt)) {
+          if (injectedIds.has(nodeId)) continue;
+          const n = node as Record<string, unknown>;
+          const inputs = n.inputs as Record<string, unknown> | undefined;
+          if (!inputs) continue;
+          for (const [key, value] of Object.entries(inputs)) {
+            if (Array.isArray(value) && value.length === 2 && value[0] === anchorId && (value[1] === 0 || value[1] === 1)) {
+              inputs[key] = [newLastId, value[1]];
+            }
+          }
+        }
+        console.log(`[comfyui] Injected ${validNewLoras.length} dynamic LoRAs after node ${anchorId}`);
+      } else {
+        console.warn(`[comfyui] No LoraLoader or Checkpoint nodes — cannot inject dynamic LoRAs`);
+      }
+    }
+
+    const skippedCount = newLoras.length - validNewLoras.length;
+    if (skippedCount > 0) {
+      const skippedNames = newLoras
+        .filter(l => !validNewLoras.some(v => v.name === l.name))
+        .map(l => l.name);
+      console.log(`[comfyui] Skipped ${skippedCount} unavailable dynamic LoRAs: ${skippedNames.join(", ")}`);
+    }
   }
 
   private async pollHistory(
