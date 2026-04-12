@@ -10,6 +10,7 @@ import NewProfileDialog from "@/components/NewProfileDialog";
 import PersonaStartModal from "@/components/PersonaStartModal";
 import ImportPersonaModal from "@/components/ImportPersonaModal";
 import PublishPersonaModal from "@/components/PublishPersonaModal";
+import ClonePersonaDialog from "@/components/ClonePersonaDialog";
 
 const PERSONA_ACCENTS = [
   "var(--accent)",
@@ -71,6 +72,7 @@ export default function LobbyPage() {
   const [importOpen, setImportOpen] = useState(false);
   const [publishTarget, setPublishTarget] = useState<string | null>(null);
   const [updateStatuses, setUpdateStatuses] = useState<Record<string, { status: string; behindCount?: number }>>({});
+  const [cloneTarget, setCloneTarget] = useState<string | null>(null);
   const [startModal, setStartModal] = useState<{
     open: boolean;
     personaName: string;
@@ -365,6 +367,7 @@ export default function LobbyPage() {
                   onSelect={() => handlePersonaClick(p.name, p.displayName, i)}
                   onEdit={() => editPersona(p.name)}
                   onDelete={() => deletePersona(p.name)}
+                  onClone={() => setCloneTarget(p.name)}
                   importMeta={p.importMeta}
                   publishMeta={p.publishMeta}
                   onCheckUpdate={p.importMeta ? () => handleCheckUpdate(p.name) : undefined}
@@ -451,6 +454,12 @@ export default function LobbyPage() {
         personaName={publishTarget || ""}
         onClose={() => setPublishTarget(null)}
         onOpenBuilder={handleOpenBuilder}
+      />
+      <ClonePersonaDialog
+        open={!!cloneTarget}
+        sourceName={cloneTarget || ""}
+        onClose={() => setCloneTarget(null)}
+        onCloned={() => loadLobby()}
       />
     </div>
   );

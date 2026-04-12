@@ -20,6 +20,7 @@ interface PersonaCardProps {
   onSelect: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onClone: () => void;
   importMeta?: {
     source: string;
     url: string;
@@ -44,6 +45,7 @@ export default function PersonaCard({
   onSelect,
   onEdit,
   onDelete,
+  onClone,
   importMeta,
   publishMeta,
   onCheckUpdate,
@@ -160,6 +162,19 @@ export default function PersonaCard({
       {/* action buttons */}
       <div className="absolute top-3.5 right-3.5 flex items-center gap-1.5
         opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-all duration-fast">
+        <button
+          className="px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer
+            text-text-dim/70 bg-transparent border border-transparent
+            transition-all duration-fast
+            hover:bg-surface-light hover:text-text hover:border-border/40"
+          onClick={(e) => {
+            e.stopPropagation();
+            onClone();
+          }}
+          title="복제"
+        >
+          Clone
+        </button>
         <button
           className="px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer
             text-text-dim/70 bg-transparent border border-transparent
