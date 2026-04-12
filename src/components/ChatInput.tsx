@@ -138,7 +138,9 @@ function ChoiceButton({ choice, busy, onChoice }: { choice: Choice; busy: boolea
 
 interface ChatInputProps {
   disabled: boolean;
+  isStreaming?: boolean;
   onSend: (text: string) => void;
+  onCancel?: () => void;
   sessionId?: string;
   choices?: Choice[];
   pendingEvents?: string[];
@@ -165,7 +167,7 @@ interface ChatInputProps {
   onUsageClick?: () => void;
 }
 
-function ChatInput({ disabled, onSend, sessionId, choices, pendingEvents, showOOC, onOOCToggle, voiceChat, ttsPlaying, autoSendDelay = 3000, autoplayActive, onAutoplayToggle, steeringPresetName, onSteeringEdit, usageProvider, usageSessionId, usageRefreshTrigger, onUsageClick }: ChatInputProps) {
+function ChatInput({ disabled, isStreaming, onSend, onCancel, sessionId, choices, pendingEvents, showOOC, onOOCToggle, voiceChat, ttsPlaying, autoSendDelay = 3000, autoplayActive, onAutoplayToggle, steeringPresetName, onSteeringEdit, usageProvider, usageSessionId, usageRefreshTrigger, onUsageClick }: ChatInputProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [oocMode, setOocMode] = useState(false);
   const [choiceBusy, setChoiceBusy] = useState(false);
@@ -781,13 +783,22 @@ function ChatInput({ disabled, onSend, sessionId, choices, pendingEvents, showOO
           onCompositionEnd={() => { composingRef.current = false; }}
           autoFocus
         />
-        <button
-          disabled={disabled}
-          onClick={handleSend}
-          className="px-5 py-2.5 border-none rounded-xl bg-accent text-white cursor-pointer text-sm font-medium shrink-0 shadow-[0_2px_12px_var(--accent-glow)] transition-all duration-fast hover:bg-accent-hover hover:-translate-y-px hover:shadow-[0_4px_20px_var(--accent-glow)] disabled:opacity-50 disabled:cursor-not-allowed disabled:translate-y-0 disabled:shadow-none"
-        >
-          Send
-        </button>
+        {isStreaming && onCancel ? (
+          <button
+            onClick={onCancel}
+            className="px-5 py-2.5 border border-error/60 rounded-xl bg-error/15 text-error cursor-pointer text-sm font-medium shrink-0 transition-all duration-fast hover:bg-error/25 hover:-translate-y-px"
+          >
+            Stop
+          </button>
+        ) : (
+          <button
+            disabled={disabled}
+            onClick={handleSend}
+            className="px-5 py-2.5 border-none rounded-xl bg-accent text-white cursor-pointer text-sm font-medium shrink-0 shadow-[0_2px_12px_var(--accent-glow)] transition-all duration-fast hover:bg-accent-hover hover:-translate-y-px hover:shadow-[0_4px_20px_var(--accent-glow)] disabled:opacity-50 disabled:cursor-not-allowed disabled:translate-y-0 disabled:shadow-none"
+          >
+            Send
+          </button>
+        )}
         {/* Autoplay toggle */}
         <button
           onClick={onAutoplayToggle}

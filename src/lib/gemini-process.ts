@@ -422,6 +422,12 @@ export class GeminiProcess extends EventEmitter<GeminiProcessEvents> {
     }
   }
 
+  /** Respawn with the last used parameters (for recovery after cancel). */
+  respawn(): void {
+    if (!this.spawnCwd) return;
+    this.spawn(this.spawnCwd, undefined, this.spawnModel);
+  }
+
   get running(): boolean {
     return this.proc !== null || this.pendingFirstMessage;
   }

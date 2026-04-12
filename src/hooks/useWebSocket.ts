@@ -105,6 +105,11 @@ export function useWebSocket({
     send("chat:send", silent ? { text, silent: true } : { text });
   }, [send]);
 
+  /** Cancel the current streaming response */
+  const sendCancel = useCallback(() => {
+    send("chat:cancel");
+  }, [send]);
+
   useEffect(() => {
     if (!enabled) return;
     connect();
@@ -121,5 +126,5 @@ export function useWebSocket({
     };
   }, [connect, enabled]);
 
-  return { send, sendChat };
+  return { send, sendChat, sendCancel };
 }

@@ -346,6 +346,23 @@ export function useChat(rawSessionId?: string) {
     [prepareSend, sessionId]
   );
 
+  /** Handle cancellation: finalize partial text and reset streaming state */
+  const handleCancelled = useCallback(() => {
+    flushAssistantText();
+    rawAssistantTextRef.current = "";
+    displayAssistantTextRef.current = "";
+    carryAssistantTextRef.current = "";
+    assistantFullTextRef.current = null;
+    toolsRef.current = [];
+    seenToolKeysRef.current.clear();
+    sawTextDeltaRef.current = false;
+    currentBlockTypeRef.current = "text";
+    lastAssistantMsgIdRef.current = null;
+    oocRef.current = false;
+    setIsStreaming(false);
+    setStatus("connected");
+  }, [flushAssistantText]);
+
   const addOpeningMessage = useCallback((text: string) => {
     const id = `opening-${++msgIdRef.current}`;
     setMessages((prev) => [...prev, { id, role: "assistant", content: text }]);
@@ -455,6 +472,7 @@ export function useChat(rawSessionId?: string) {
     prepareSend,
     sendMessage,
     handleClaudeMessage,
+    handleCancelled,
     assignMessageId,
     addUserMessage,
     addOpeningMessage,

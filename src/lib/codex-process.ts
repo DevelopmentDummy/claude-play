@@ -558,6 +558,12 @@ export class CodexProcess extends EventEmitter<CodexProcessEvents> {
     }
   }
 
+  /** Respawn with the last used parameters (for recovery after cancel). */
+  respawn(): void {
+    if (!this.cwd) return;
+    this.spawn(this.cwd, this.threadId || undefined, this.model, undefined, this.effort);
+  }
+
   get running(): boolean {
     return !!this.proc && this.initialized;
   }

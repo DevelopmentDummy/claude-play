@@ -282,6 +282,14 @@ function handleMessage(
       break;
     }
 
+    case "chat:cancel": {
+      if (!client.sessionId) return;
+      const inst = getSessionInstance(client.sessionId);
+      if (!inst) return;
+      inst.cancelStreaming();
+      break;
+    }
+
     case "event:queue": {
       const header = msg.header as string;
       if (!header?.trim() || !client.sessionId) return;

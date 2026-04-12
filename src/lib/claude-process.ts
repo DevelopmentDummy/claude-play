@@ -353,6 +353,13 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
     }
   }
 
+  /** Respawn with the last used parameters (for recovery after cancel). */
+  respawn(): void {
+    if (!this.lastSpawnParams) return;
+    const p = this.lastSpawnParams;
+    this.spawn(p.cwd, undefined, p.model, p.appendSystemPrompt, p.effort, p.skipPermissions);
+  }
+
   get running(): boolean {
     return this.proc !== null;
   }

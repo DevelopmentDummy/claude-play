@@ -45,6 +45,7 @@ export default function ChatPage() {
     setError,
     prepareSend,
     handleClaudeMessage,
+    handleCancelled,
     assignMessageId,
     addUserMessage,
     addOpeningMessage,
@@ -316,7 +317,7 @@ export default function ChatPage() {
   }, [sessionId, currentModel, setStatus]);
 
   // WebSocket connection — only connect after session open completes
-  const { sendChat, send: wsSend } = useWebSocket({
+  const { sendChat, sendCancel, send: wsSend } = useWebSocket({
     sessionId,
     handlers: {
       "chat:user": (d) => {
@@ -324,6 +325,7 @@ export default function ChatPage() {
         addUserMessage(text, isOOC);
       },
       "claude:message": handleClaudeMessage,
+      "chat:cancelled": () => handleCancelled(),
       "claude:messageId": (d) => {
         const { messageId } = d as { messageId: string };
         if (messageId) assignMessageId(messageId);
@@ -492,6 +494,10 @@ export default function ChatPage() {
     },
     [prepareSend, sendChat, setStreamingManually, queueAvailableHeader]
   );
+
+  const handleCancel = useCallback(() => {
+    sendCancel();
+  }, [sendCancel]);
 
   const handleCompact = useCallback(() => {
     wsSend("command:send", { command: "compact" });
@@ -997,7 +1003,9 @@ export default function ChatPage() {
           >
             <ChatInput
               disabled={isStreaming || status === "compacting"}
+              isStreaming={isStreaming}
               onSend={sendMessage}
+              onCancel={handleCancel}
               sessionId={sessionId}
               showOOC={showOOC}
               onOOCToggle={handleOOCToggle}
