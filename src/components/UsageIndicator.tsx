@@ -58,11 +58,11 @@ function shortLabel(name: string, provider: string): string {
     if (name === "Pro") return "P";
     return name.slice(0, 2).toUpperCase();
   }
-  // Claude / Codex: "5시간" → "5h", "7일" → "7d"
+  // Claude / Codex: "5시간" → "5h", "7일 (Sonnet)" → "7d(s)", "7일" → "7d"
   const hourMatch = name.match(/(\d+)\s*시간/);
   if (hourMatch) return `${hourMatch[1]}h`;
-  const dayMatch = name.match(/(\d+)\s*일/);
-  if (dayMatch) return `${dayMatch[1]}d`;
+  const dayMatch = name.match(/(\d+)\s*일(?:\s*\((\w)\w*\))?/);
+  if (dayMatch) return dayMatch[2] ? `${dayMatch[1]}d(${dayMatch[2].toLowerCase()})` : `${dayMatch[1]}d`;
   return name.slice(0, 3);
 }
 
