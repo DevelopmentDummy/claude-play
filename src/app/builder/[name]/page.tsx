@@ -32,6 +32,7 @@ export default function BuilderPage() {
     setError,
     prepareSend,
     handleClaudeMessage,
+    handleCancelled,
     clearMessages,
     loadHistory,
     loadMore,
@@ -64,7 +65,7 @@ export default function BuilderPage() {
   const initialMsgSent = useRef(false);
 
   // WebSocket connection — only connect after init completes
-  const { sendChat, send: wsSend } = useWebSocket({
+  const { sendChat, sendCancel, send: wsSend } = useWebSocket({
     sessionId: name,
     isBuilder: true,
     handlers: {
@@ -77,6 +78,7 @@ export default function BuilderPage() {
       },
       "claude:error": (e) => setError(e as string),
       "claude:status": (s) => setStatus(s as string),
+      "chat:cancelled": () => handleCancelled(),
       "panels:update": () => {},
       "command:result": (d) => {
         const { text } = d as { text: string };
@@ -285,7 +287,9 @@ export default function BuilderPage() {
           />
           <ChatInput
             disabled={isStreaming}
+            isStreaming={isStreaming}
             onSend={sendMessage}
+            onCancel={sendCancel}
             voiceChat={voiceChat}
             usageProvider={providerFromModel(builderModel)}
             usageSessionId={name}

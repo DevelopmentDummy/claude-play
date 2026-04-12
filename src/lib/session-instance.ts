@@ -530,6 +530,44 @@ export class SessionInstance {
     this.saveHistory();
   }
 
+  /** Kill the AI process and save any partial assistant response accumulated so far. */
+  cancelStreaming(): void {
+    const partial = this.segments.join("");
+
+    // Kill the process
+    this._process.kill();
+
+    // Save partial response to history if any text was accumulated
+    if (partial) {
+      this.chatHistory.push({
+        id: `hist-a-${++this.historyId}`,
+        role: "assistant",
+        content: partial,
+      });
+      this.saveHistory();
+    }
+
+    // Reset accumulator state
+    this.segments = [];
+    this.assistantFullText = null;
+    this.tools = [];
+    this.seenToolKeys.clear();
+    this.sawTextDelta = false;
+    this.currentBlockType = "text";
+    this.lastAssistantMsgId = null;
+    this.isCompacting = false;
+    if (this.resultFinalizeTimer) { clearTimeout(this.resultFinalizeTimer); this.resultFinalizeTimer = null; }
+    this.heldResultMsg = null;
+    this.pendingTaskCount = 0;
+
+    // Respawn process so next message can be sent
+    // NOTE: don't re-bind events — EventEmitter listeners survive kill/respawn
+    this._process.respawn();
+
+    // Broadcast cancellation to frontend
+    this.broadcast("chat:cancelled", { partial: !!partial });
+  }
+
   clearHistory(): void {
     this.chatHistory = [];
     this.segments = [];
@@ -953,7 +991,10 @@ export class SessionInstance {
         // Subagent pattern: when tasks are pending, hold the result and keep
         // accumulating text from subsequent assistant messages.  Only process
         // once the last subagent result arrives (pendingTaskCount == 0).
-        if (this.pendingTaskCount > 0) {
+        // However, if stop_reason is "end_turn", the CLI has definitively
+        // finished — force-finalize regardless of pending task count.
+        const stopReason = (msg as Record<string, unknown>).stop_reason as string | undefined;
+        if (this.pendingTaskCount > 0 && stopReason !== "end_turn") {
           if (!this.heldResultMsg) this.heldResultMsg = d;
           return;
         }
@@ -966,6 +1007,8 @@ export class SessionInstance {
           this.processResult(held);
           return;
         }
+        // end_turn may arrive while pendingTaskCount > 0 (missed task_notification)
+        if (this.pendingTaskCount > 0) this.pendingTaskCount = 0;
         this.processResult(d);
       }
     });
