@@ -29,6 +29,7 @@ const COMFY_DEFAULT_QUALITY = "masterpiece, best quality, amazing quality, absur
 const COMFY_DEFAULT_NEGATIVE =
   "bad quality, worst quality, worst detail, sketch, censored, watermark, signature, extra fingers, mutated hands, bad anatomy";
 const COMFY_DEFAULT_TEMPLATE = "portrait";
+const WORKFLOWS_DIR = path.join(sessionDir, "..", "..", "tools", "comfyui", "skills", "generate-image", "workflows");
 
 const server = new McpServer({
   name: "claude-play",
@@ -386,13 +387,117 @@ server.registerTool(
 );
 
 server.registerTool(
+  "comfyui_workflow",
+  {
+    description:
+      "Manage ComfyUI workflow packages (list/get/save/delete). Each package contains workflow.json + params.json + optional resolver.mjs. See manage-workflows skill for detailed usage guide.",
+    inputSchema: {
+      action: z.enum(["list", "get", "save", "delete"]),
+      name: z.string().regex(/^[a-zA-Z0-9_-]+$/).optional(),
+      workflow: z.record(z.string(), z.unknown()).optional(),
+      params: z.record(z.string(), z.unknown()).optional(),
+      resolver: z.string().nullable().optional(),
+    },
+  },
+  async (input) => {
+    try {
+      const action = input.action;
+
+      if (action === "list") {
+        const entries = fs.readdirSync(WORKFLOWS_DIR, { withFileTypes: true })
+          .filter(e => e.isDirectory());
+        const results = [];
+        for (const entry of entries) {
+          const paramsPath = path.join(WORKFLOWS_DIR, entry.name, "params.json");
+          if (!fs.existsSync(paramsPath)) continue;
+          try {
+            const meta = JSON.parse(fs.readFileSync(paramsPath, "utf-8"));
+            const paramSummary = {};
+            for (const [k, v] of Object.entries(meta.params || {})) {
+              paramSummary[k] = { type: v.type, required: v.required, description: v.description };
+            }
+            results.push({
+              name: entry.name,
+              description: meta.description || null,
+              params: paramSummary,
+              hasResolver: fs.existsSync(path.join(WORKFLOWS_DIR, entry.name, "resolver.mjs")),
+            });
+          } catch { /* skip malformed */ }
+        }
+        return ok(results);
+      }
+
+      if (!input.name) throw new Error("name is required for get/save/delete actions");
+
+      if (action === "get") {
+        const pkgDir = path.join(WORKFLOWS_DIR, input.name);
+        if (!fs.existsSync(pkgDir)) throw new Error(`Package "${input.name}" not found`);
+        const workflowPath = path.join(pkgDir, "workflow.json");
+        const paramsPath = path.join(pkgDir, "params.json");
+        const resolverPath = path.join(pkgDir, "resolver.mjs");
+        const result = {
+          name: input.name,
+          workflow: fs.existsSync(workflowPath) ? JSON.parse(fs.readFileSync(workflowPath, "utf-8")) : null,
+          params: fs.existsSync(paramsPath) ? JSON.parse(fs.readFileSync(paramsPath, "utf-8")) : null,
+          resolver: fs.existsSync(resolverPath) ? fs.readFileSync(resolverPath, "utf-8") : null,
+        };
+        return ok(result);
+      }
+
+      if (action === "save") {
+        if (!input.workflow || !input.params) {
+          throw new Error("save requires both workflow and params");
+        }
+        const pkgDir = path.join(WORKFLOWS_DIR, input.name);
+        const tmpDir = pkgDir + `._tmp_${Date.now()}`;
+        fs.mkdirSync(tmpDir, { recursive: true });
+        try {
+          fs.writeFileSync(path.join(tmpDir, "workflow.json"), JSON.stringify(input.workflow, null, 2) + "\n");
+          fs.writeFileSync(path.join(tmpDir, "params.json"), JSON.stringify(input.params, null, 2) + "\n");
+
+          if (typeof input.resolver === "string") {
+            fs.writeFileSync(path.join(tmpDir, "resolver.mjs"), input.resolver);
+          } else if (input.resolver === null) {
+            // null = explicitly delete resolver
+          } else if (input.resolver === undefined && fs.existsSync(path.join(pkgDir, "resolver.mjs"))) {
+            // undefined = keep existing resolver
+            fs.copyFileSync(path.join(pkgDir, "resolver.mjs"), path.join(tmpDir, "resolver.mjs"));
+          }
+
+          if (fs.existsSync(pkgDir)) {
+            fs.rmSync(pkgDir, { recursive: true });
+          }
+          fs.renameSync(tmpDir, pkgDir);
+
+          return ok({ saved: input.name, files: fs.readdirSync(pkgDir) });
+        } catch (err) {
+          try { fs.rmSync(tmpDir, { recursive: true }); } catch { /* ignore */ }
+          throw err;
+        }
+      }
+
+      if (action === "delete") {
+        const pkgDir = path.join(WORKFLOWS_DIR, input.name);
+        if (!fs.existsSync(pkgDir)) throw new Error(`Package "${input.name}" not found`);
+        fs.rmSync(pkgDir, { recursive: true });
+        return ok({ deleted: input.name });
+      }
+
+      throw new Error(`Unknown action: ${action}`);
+    } catch (error) {
+      return fail(error);
+    }
+  }
+);
+
+server.registerTool(
   "comfyui_generate",
   {
     description:
       "Queue image generation via ComfyUI. Backward-compatible: prompt-only mode is supported (defaults to portrait workflow + legacy quality/trigger tags).",
     inputSchema: {
       workflow: z.string().optional(),
-      template: z.enum(["portrait", "scene", "scene-real", "scene-couple", "profile"]).optional(),
+      template: z.string().optional(),
       prompt: z.string().optional(),
       negative_prompt: z.string().optional(),
       seed: z.number().int().optional(),
@@ -527,7 +632,7 @@ server.registerTool(
     description:
       "High-level image generation compatible with legacy service behavior. Uses ComfyUI template mode with default quality/trigger tags.",
     inputSchema: {
-      template: z.enum(["portrait", "scene", "scene-real", "scene-couple", "profile"]).optional(),
+      template: z.string().optional(),
       prompt: z.string().optional(),
       prompt_left: z.string().optional(),
       prompt_right: z.string().optional(),
