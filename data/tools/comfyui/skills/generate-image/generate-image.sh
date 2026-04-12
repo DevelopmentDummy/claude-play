@@ -1,23 +1,40 @@
 #!/usr/bin/env bash
-# Usage: bash ./generate-image.sh <template> <prompt> <filename> [seed]
-#   template: portrait | scene
-#   prompt:   캐릭터/장면 태그 (quality/trigger 태그는 자동 삽입)
-#   filename: 출력 파일명 (예: diane-smile.png)
+# Usage: bash ./generate-image.sh <workflow> <prompt> <filename> [seed]
+#   workflow: 패키지 이름 (예: portrait, scene, profile, my-workflow)
+#   prompt:   캐릭터/장면 태그
+#   filename: 출력 파일명 (예: lattice-portrait.png)
 #   seed:     시드값 (기본 -1 = 랜덤)
 
-TEMPLATE="$1"
-PROMPT="$2"
-FILENAME="$3"
+set -euo pipefail
+
+WORKFLOW="${1:-}"
+PROMPT="${2:-}"
+FILENAME="${3:-}"
 SEED="${4:--1}"
 PORT="{{PORT}}"
 
-QUALITY="masterpiece, best quality, amazing quality, absurdres"
-TRIGGERS="anime screencap, anime coloring, sexydet, s1_dram"
-NEGATIVE="bad quality, worst quality, worst detail, sketch, censored, watermark, signature, extra fingers, mutated hands, bad anatomy"
+if [[ -z "$WORKFLOW" || -z "$PROMPT" || -z "$FILENAME" ]]; then
+  echo "Usage: bash ./generate-image.sh <workflow> <prompt> <filename> [seed]" >&2
+  exit 1
+fi
 
-FULL_PROMPT="${QUALITY}, ${TRIGGERS}, ${PROMPT}"
+TMP_JSON="$(mktemp)"
+cleanup() {
+  rm -f "$TMP_JSON"
+}
+trap cleanup EXIT
+
+cat > "$TMP_JSON" <<EOF
+{
+  "workflow": "$WORKFLOW",
+  "params": {
+    "prompt": "$PROMPT",
+    "seed": $SEED
+  },
+  "filename": "$FILENAME"
+}
+EOF
 
 curl -s -X POST "http://localhost:${PORT}/api/tools/comfyui/generate" \
   -H "Content-Type: application/json" \
-  -d "$(printf '{"workflow":"%s","params":{"prompt":"%s","negative_prompt":"%s","seed":%s},"filename":"%s"}' \
-    "$TEMPLATE" "$FULL_PROMPT" "$NEGATIVE" "$SEED" "$FILENAME")"
+  -d @"$TMP_JSON"

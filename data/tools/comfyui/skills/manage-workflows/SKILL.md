@@ -76,6 +76,13 @@ allowed-tools: Read
 4. `save` action으로 저장한다
 5. `comfyui_generate`에서 `workflow: "my-workflow"`로 사용한다
 
+## params.json과 resolver의 역할 분리
+
+- 단순히 하나의 파라미터를 하나의 node/field에 매핑하는 경우에는 `params.json`만 사용하라.
+- 여러 노드를 동시에 수정해야 하거나, 파라미터 값에 따라 조건 분기가 필요할 때만 `resolver.mjs`를 작성하라.
+- `params.json`에 정의된 파라미터 중 `node`/`field`가 없는 항목은 resolver가 직접 소비하는 제어 파라미터로 사용할 수 있다.
+- resolver는 강력하지만 유지보수 비용이 높다. 기본 매핑으로 충분한 경우 resolver를 만들지 마라.
+
 ## resolver.mjs 작성 가이드
 
 기본 리졸버(params.json의 node+field 매핑)로 충분하지 않을 때만 작성한다.

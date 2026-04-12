@@ -1,0 +1,38 @@
+{
+  "description": "품질 모드에 따라 steps/cfg/해상도를 자동 조정하는 초상 패키지",
+  "features": {
+    "checkpoint_auto": true,
+    "lora_injection": true,
+    "lora_couple_branches": false,
+    "seed_randomize": true,
+    "trigger_tags": true
+  },
+  "params": {
+    "prompt": {
+      "node": "2",
+      "field": "text",
+      "type": "string",
+      "required": true,
+      "description": "생성 프롬프트"
+    },
+    "negative_prompt": {
+      "node": "3",
+      "field": "text",
+      "type": "string",
+      "default": "bad quality, worst quality, worst detail, sketch, censored, watermark, signature, extra fingers, mutated hands, bad anatomy",
+      "description": "네거티브 프롬프트"
+    },
+    "seed": {
+      "node": "5",
+      "field": "seed",
+      "type": "number",
+      "default": -1,
+      "description": "생성 시드"
+    },
+    "quality_mode": {
+      "type": "string",
+      "default": "balanced",
+      "description": "fast | balanced | detail"
+    }
+  }
+}

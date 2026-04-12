@@ -130,6 +130,8 @@ function applyDefaultResolve(
       throw new Error(`Required parameter "${paramName}" not provided`);
     }
     if (value === undefined) continue;
+    // node/field가 없는 파라미터는 resolver 전용 제어 파라미터 — 기본 리졸버에서 건너뜀
+    if (!paramDef.node || !paramDef.field) continue;
     const node = workflow[paramDef.node] as Record<string, unknown> | undefined;
     if (!node) continue;
     const inputs = node.inputs as Record<string, unknown> | undefined;
