@@ -1661,12 +1661,15 @@ export class SessionManager {
     return !!this.getBuilderSessionId(name);
   }
 
-  /** Delete an incomplete persona (e.g. builder was cancelled) */
+  /** Soft-delete a persona by moving it to deleted_personas/ */
   deletePersona(name: string): void {
     const dir = this.getPersonaDir(name);
-    if (fs.existsSync(dir)) {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
+    if (!fs.existsSync(dir)) return;
+    const trashDir = path.join(this.dataDir, "deleted_personas");
+    fs.mkdirSync(trashDir, { recursive: true });
+    // Append timestamp to avoid name collisions from repeated create/delete
+    const dest = path.join(trashDir, `${name}__${Date.now()}`);
+    fs.renameSync(dir, dest);
   }
 
   // ── Layout ──────────────────────────────────────────────
