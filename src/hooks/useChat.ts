@@ -4,10 +4,14 @@ import { useState, useCallback, useRef } from "react";
 
 export interface ChatMessage {
   id: string;
+  /** Stable key for React rendering — survives id reassignment (stream-* → backend id) */
+  renderKey: string;
   role: "user" | "assistant";
   content: string;
   tools?: Array<{ name: string; input: unknown }>;
   ooc?: boolean;
+  /** True while this message is still being streamed (set at creation, cleared on finish) */
+  live?: boolean;
 }
 
 function toolUseKey(name: string, input: unknown): string {
@@ -105,7 +109,7 @@ export function useChat(rawSessionId?: string) {
 
   const addUserMessage = useCallback((text: string, ooc?: boolean) => {
     const id = `user-${++msgIdRef.current}`;
-    setMessages((prev) => [...prev, { id, role: "user", content: text, ooc: ooc || undefined }]);
+    setMessages((prev) => [...prev, { id, renderKey: id, role: "user", content: text, ooc: ooc || undefined }]);
   }, []);
 
   const upsertAssistantMessage = useCallback((content: string) => {
@@ -122,7 +126,7 @@ export function useChat(rawSessionId?: string) {
       const id = `stream-${++msgIdRef.current}`;
       return [
         ...prev,
-        { id, role: "assistant", content, tools: [...toolsRef.current], ooc: isOOC || undefined },
+        { id, renderKey: id, role: "assistant", content, tools: [...toolsRef.current], ooc: isOOC || undefined, live: true },
       ];
     });
   }, []);
@@ -170,7 +174,7 @@ export function useChat(rawSessionId?: string) {
     });
   }, []);
 
-  const finishAssistantTurn = useCallback(() => {
+  const finishAssistantTurn = useCallback((backendId?: string) => {
     flushAssistantText();
 
     // UTF-8 healing: character-level merge of delta-accumulated vs assistant full text.
@@ -178,16 +182,29 @@ export function useChat(rawSessionId?: string) {
     // so merging character-by-character recovers most U+FFFD replacements.
     const deltaText = rawAssistantTextRef.current;
     const fullText = assistantFullTextRef.current;
+    let healedText: string | null = null;
     if (fullText && deltaText && sawTextDeltaRef.current) {
       const deltaHasFffd = deltaText.includes("\ufffd");
       const fullHasFffd = fullText.includes("\ufffd");
       if (deltaHasFffd || fullHasFffd) {
         const healed = mergeUtf8Texts(deltaText, fullText);
         if (healed !== deltaText) {
-          upsertAssistantMessage(healed);
+          healedText = healed;
         }
       }
     }
+
+    // Single setMessages call: apply healed text + clear live flag + assign backend ID
+    setMessages((prev) => {
+      const last = prev[prev.length - 1];
+      if (last && last.role === "assistant" && last.live) {
+        const updated = { ...last, live: undefined };
+        if (healedText) updated.content = healedText;
+        if (backendId) updated.id = backendId;
+        return [...prev.slice(0, -1), updated];
+      }
+      return prev;
+    });
 
     rawAssistantTextRef.current = "";
     displayAssistantTextRef.current = "";
@@ -201,7 +218,7 @@ export function useChat(rawSessionId?: string) {
     lastAssistantMsgIdRef.current = null;
     oocRef.current = false;
     setIsStreaming(false);
-  }, [flushAssistantText, upsertAssistantMessage]);
+  }, [flushAssistantText]);
 
   const handleClaudeMessage = useCallback(
     (data: unknown) => {
@@ -292,7 +309,10 @@ export function useChat(rawSessionId?: string) {
                 : null;
           if (text) appendAssistantText(text);
         }
-        finishAssistantTurn();
+        // Pass messageId (included in result payload) so finishAssistantTurn
+        // can assign the backend ID in the same setMessages call (no flicker).
+        const backendId = typeof msg.messageId === "string" ? msg.messageId : undefined;
+        finishAssistantTurn(backendId);
         setStatus("connected");
       }
 
@@ -365,7 +385,7 @@ export function useChat(rawSessionId?: string) {
 
   const addOpeningMessage = useCallback((text: string) => {
     const id = `opening-${++msgIdRef.current}`;
-    setMessages((prev) => [...prev, { id, role: "assistant", content: text }]);
+    setMessages((prev) => [...prev, { id, renderKey: id, role: "assistant", content: text }]);
   }, []);
 
   const clearMessages = useCallback(() => {

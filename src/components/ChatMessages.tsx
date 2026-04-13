@@ -581,7 +581,7 @@ export default function ChatMessages({
         )}
         {messages.map((msg, idx) => {
         const isLastAssistant =
-          isStreaming && idx === lastIdx && msg.role === "assistant" && !msg.id.startsWith("opening-");
+          isStreaming && idx === lastIdx && msg.role === "assistant" && !msg.id.startsWith("opening-") && msg.live;
 
         // showOOC: bypass all filters, show raw content for every message
         // OOC messages: show raw content (no dialog_response extraction)
@@ -604,11 +604,11 @@ export default function ChatMessages({
           ? "border border-dashed border-yellow-500/40"
           : "";
 
-        const isLive = isLastAssistant || msg.id.startsWith("stream-");
+        const isLive = isLastAssistant || !!msg.live;
 
         return (
           <div
-            key={msg.id}
+            key={msg.renderKey || msg.id}
             data-msg
             className={`group relative max-w-[85%] px-4 py-3 rounded-2xl leading-relaxed whitespace-pre-wrap break-words animate-[messageIn_0.25s_ease-out] transition-[margin,max-width] duration-200 ${oocStyle} ${
               msg.role === "user"

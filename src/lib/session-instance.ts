@@ -872,12 +872,15 @@ export class SessionInstance {
       }
     }
 
-    // Broadcast result FIRST so frontend finishes the stream-* message,
-    // THEN send messageId to rename it. Reversed order causes upsert to
-    // create a duplicate because stream-* was already renamed to hist-*.
-    this.broadcast("claude:message", d);
-
+    // Include messageId in the result broadcast so frontend can finish streaming
+    // and assign the backend ID in a single state update (avoids flicker).
     const lastSaved = this.chatHistory[this.chatHistory.length - 1];
+    const resultPayload = lastSaved
+      ? { ...(d as Record<string, unknown>), messageId: lastSaved.id }
+      : d;
+    this.broadcast("claude:message", resultPayload);
+
+    // Keep separate messageId broadcast for backwards compat (e.g. reconnected clients)
     if (lastSaved) {
       this.broadcast("claude:messageId", { messageId: lastSaved.id });
     }
