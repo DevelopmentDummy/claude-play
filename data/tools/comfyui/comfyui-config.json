@@ -8,6 +8,17 @@
       "style_tags": "",
       "negative": "bad quality, worst quality, worst detail, lowres, bad anatomy, bad hands, extra fingers, fused fingers, too many fingers, mutated hands, poorly drawn hands, poorly drawn face, extra arms, extra legs, blurry, jpeg artifacts, sketch, censored, watermark, signature, text, cropped",
       "baseLoras": []
+    },
+    "anima": {
+      "checkpoint": "anima-preview3-base.safetensors",
+      "default_template": "anima-mixed-scene",
+      "quality_tags": "masterpiece, best quality, amazing quality",
+      "style_tags": "",
+      "negative": "worst quality, low quality, score_1, score_2, score_3, blurry, jpeg artifacts, bad anatomy, bad hands, bad arms, bad legs, bad feet, extra fingers, fused fingers, too many fingers, mutated hands, poorly drawn hands, extra arms, extra legs, extra feet, three arms, three legs, three feet, twisted limbs, watermark, signature, text",
+      "baseLoras": [
+        { "name": "anima-preview2-masterpieces-e50.safetensors", "strength": 0.5 },
+        { "name": "Hentai_Studio_Quality_Anima-step00001300.safetensors", "strength": 0.5 }
+      ]
     }
   }
 }

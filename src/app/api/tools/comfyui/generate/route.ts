@@ -122,48 +122,38 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: `Prompt build failed: ${message}` }, { status: 400 });
   }
 
-  // Phase 2: Route by backend
-  if (await client.isGpuManagerAvailable()) {
-    // GPU Manager is synchronous — fire-and-forget the entire generation.
-    // GPU Manager health check passed, so queue entry is reliable.
-    (async () => {
-      try {
-        const result = body.raw
-          ? await client.generateRaw({ prompt: body.raw, filename: safeName, sessionDir: targetDir, extraFiles: body.extraFiles })
-          : await client.generate({ workflow: body.workflow!, params: body.params || {}, filename: safeName, sessionDir: targetDir, extraFiles: body.extraFiles, loras: body.loras, loras_left: body.loras_left, loras_right: body.loras_right });
-        if (result.success) {
-          console.log(`[comfyui] Generated (gpu-manager): ${result.filepath}`);
-        } else {
-          console.error(`[comfyui] Generation failed (gpu-manager): ${result.error}`);
-        }
-      } catch (err) {
-        console.error(`[comfyui] Unexpected error (gpu-manager):`, err);
-      }
-    })();
-  } else {
-    // Direct ComfyUI: await queue entry, fire-and-forget polling + download
-    const handle = await client.submitToQueue(prompt);
-    if ("error" in handle) {
-      console.error(`[comfyui] Queue submission failed: ${handle.error}`);
-      return NextResponse.json({ error: handle.error }, { status: 502 });
-    }
+  // Phase 2: Generate synchronously so completed outputs are guaranteed to be
+  // downloaded/copied from ComfyUI output into the target session/persona images dir
+  // before the API reports success.
+  const result = body.raw
+    ? await client.generateRaw({
+        prompt: body.raw,
+        filename: safeName,
+        sessionDir: targetDir,
+        extraFiles: body.extraFiles,
+      })
+    : await client.generate({
+        workflow: body.workflow!,
+        params: body.params || {},
+        filename: safeName,
+        sessionDir: targetDir,
+        extraFiles: body.extraFiles,
+        loras: body.loras,
+        loras_left: body.loras_left,
+        loras_right: body.loras_right,
+      });
 
-    (async () => {
-      try {
-        const result = await client.waitAndDownload(handle.promptId, safeName, targetDir, body.extraFiles);
-        if (result.success) {
-          console.log(`[comfyui] Generated (direct): ${result.filepath}`);
-        } else {
-          console.error(`[comfyui] Generation failed (direct): ${result.error}`);
-        }
-      } catch (err) {
-        console.error(`[comfyui] Unexpected error (direct):`, err);
-      }
-    })();
+  if (!result.success) {
+    console.error(`[comfyui] Generation failed: ${result.error}`);
+    return NextResponse.json(
+      { error: result.error || "Image generation failed" },
+      { status: 502 }
+    );
   }
 
   return NextResponse.json({
-    status: "queued",
-    path: resultPath,
+    status: "success",
+    path: result.filepath || resultPath,
+    ...(result.extraPaths ? { extraPaths: result.extraPaths } : {}),
   });
 }

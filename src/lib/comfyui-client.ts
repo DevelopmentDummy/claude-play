@@ -65,6 +65,16 @@ interface QueueSnapshot {
   runningIds: string[];
 }
 
+interface LoraChainEndpoint {
+  nodeId: string;
+  outputIndex: number;
+}
+
+interface LoraInjectionAnchors {
+  model: LoraChainEndpoint;
+  clip: LoraChainEndpoint;
+}
+
 export class ComfyUIClient {
   private config: ComfyUIConfig;
   private workflowsDir: string;
@@ -447,6 +457,108 @@ export class ComfyUIClient {
     return names;
   }
 
+  /** Find the best model/clip anchor pair for injecting additional LoRA nodes. */
+  private findLoraInjectionAnchors(prompt: Record<string, unknown>): LoraInjectionAnchors | null {
+    const loraIds = Object.entries(prompt)
+      .filter(([, n]) => (n as Record<string, unknown>).class_type === "LoraLoader")
+      .map(([id]) => id)
+      .sort((a, b) => Number(a) - Number(b));
+
+    if (loraIds.length > 0) {
+      const lastId = loraIds[loraIds.length - 1];
+      return {
+        model: { nodeId: lastId, outputIndex: 0 },
+        clip: { nodeId: lastId, outputIndex: 1 },
+      };
+    }
+
+    const checkpointId = Object.entries(prompt)
+      .find(([, n]) => (n as Record<string, unknown>).class_type === "CheckpointLoaderSimple")
+      ?.[0];
+    if (checkpointId) {
+      return {
+        model: { nodeId: checkpointId, outputIndex: 0 },
+        clip: { nodeId: checkpointId, outputIndex: 1 },
+      };
+    }
+
+    const unetId = Object.entries(prompt)
+      .find(([, n]) => (n as Record<string, unknown>).class_type === "UNETLoader")
+      ?.[0];
+    const clipId = Object.entries(prompt)
+      .find(([, n]) => (n as Record<string, unknown>).class_type === "CLIPLoader")
+      ?.[0];
+
+    if (unetId && clipId) {
+      return {
+        model: { nodeId: unetId, outputIndex: 0 },
+        clip: { nodeId: clipId, outputIndex: 0 },
+      };
+    }
+
+    return null;
+  }
+
+  /** Append a LoRA chain after the given anchor pair and rewire downstream model/clip references. */
+  private appendLoraChain(
+    prompt: Record<string, unknown>,
+    loras: Array<{ name: string; strength: number }>,
+    anchors: LoraInjectionAnchors,
+    startIdHint = 200,
+    titlePrefix = "dynamic-lora"
+  ): string | null {
+    if (loras.length === 0) return null;
+
+    const usedIds = Object.keys(prompt).map(Number).filter(n => !Number.isNaN(n));
+    const startId = Math.max(startIdHint, usedIds.length > 0 ? Math.max(...usedIds) + 1 : startIdHint);
+
+    let prevModelRef: [string, number] = [anchors.model.nodeId, anchors.model.outputIndex];
+    let prevClipRef: [string, number] = [anchors.clip.nodeId, anchors.clip.outputIndex];
+    const injectedIds = new Set<string>();
+
+    for (let i = 0; i < loras.length; i++) {
+      const nodeId = String(startId + i);
+      injectedIds.add(nodeId);
+      prompt[nodeId] = {
+        class_type: "LoraLoader",
+        inputs: {
+          lora_name: loras[i].name,
+          strength_model: loras[i].strength,
+          strength_clip: loras[i].strength,
+          model: prevModelRef,
+          clip: prevClipRef,
+        },
+        _meta: { title: `${titlePrefix}-${i}` },
+      };
+      prevModelRef = [nodeId, 0];
+      prevClipRef = [nodeId, 1];
+    }
+
+    const finalNodeId = prevModelRef[0];
+    for (const [nodeId, node] of Object.entries(prompt)) {
+      if (injectedIds.has(nodeId)) continue;
+      const n = node as Record<string, unknown>;
+      const inputs = n.inputs as Record<string, unknown> | undefined;
+      if (!inputs) continue;
+
+      for (const [key, value] of Object.entries(inputs)) {
+        if (!Array.isArray(value) || value.length !== 2 || typeof value[0] !== "string") continue;
+        const [refNodeId, refOutputIndex] = value as [string, number];
+
+        if (refNodeId === anchors.model.nodeId && refOutputIndex === anchors.model.outputIndex) {
+          inputs[key] = [finalNodeId, 0];
+          continue;
+        }
+
+        if (refNodeId === anchors.clip.nodeId && refOutputIndex === anchors.clip.outputIndex) {
+          inputs[key] = [finalNodeId, 1];
+        }
+      }
+    }
+
+    return finalNodeId;
+  }
+
   /** Inject per-character CLIP-branch LoRA chains for scene-couple workflow.
    *  Each region (left=node 50, right=node 51) gets its own LoRA chain
    *  branching from the common chain's CLIP output. */
@@ -684,42 +796,16 @@ export class ComfyUIClient {
     prompt: Record<string, unknown>,
     baseLoras: Array<{ name: string; strength: number }>
   ): void {
-    const ckptId = Object.entries(prompt)
-      .find(([, n]) => (n as Record<string, unknown>).class_type === "CheckpointLoaderSimple")
-      ?.[0];
-    if (!ckptId) return;
+    const anchors = this.findLoraInjectionAnchors(prompt);
+    if (!anchors) {
+      console.warn("[comfyui] No checkpoint or split UNET/CLIP loader pair — cannot inject base LoRAs");
+      return;
+    }
 
-    let prevId = ckptId;
-    const baseStartId = 100;
-    for (let i = 0; i < baseLoras.length; i++) {
-      const bl = baseLoras[i];
-      const nodeId = String(baseStartId + i);
-      prompt[nodeId] = {
-        class_type: "LoraLoader",
-        inputs: {
-          lora_name: bl.name,
-          strength_model: bl.strength,
-          strength_clip: bl.strength,
-          model: [prevId, 0],
-          clip: [prevId, 1],
-        },
-        _meta: { title: `base-lora-${i}` },
-      };
-      prevId = nodeId;
+    const finalNodeId = this.appendLoraChain(prompt, baseLoras, anchors, 100, "base-lora");
+    if (finalNodeId) {
+      console.log(`[comfyui] Injected ${baseLoras.length} base LoRAs from config`);
     }
-    const lastBaseId = String(baseStartId + baseLoras.length - 1);
-    for (const [id, node] of Object.entries(prompt)) {
-      if (id === ckptId || id.startsWith(String(baseStartId))) continue;
-      const n = node as Record<string, unknown>;
-      const inputs = n.inputs as Record<string, unknown> | undefined;
-      if (!inputs) continue;
-      for (const [field, val] of Object.entries(inputs)) {
-        if (Array.isArray(val) && val[0] === ckptId && (val[1] === 0 || val[1] === 1)) {
-          inputs[field] = [lastBaseId, val[1]];
-        }
-      }
-    }
-    console.log(`[comfyui] Injected ${baseLoras.length} base LoRAs from config`);
   }
 
   /** Apply dynamic LoRA overrides and injections */
@@ -780,56 +866,16 @@ export class ComfyUIClient {
       : newLoras.filter(l => availableLoRAs.includes(l.name));
 
     if (validNewLoras.length > 0) {
-      const remainingLoraIds = Object.entries(prompt)
-        .filter(([, n]) => (n as Record<string, unknown>).class_type === "LoraLoader")
-        .map(([id]) => id)
-        .sort((a, b) => Number(a) - Number(b));
-
-      let anchorId = remainingLoraIds.length > 0 ? remainingLoraIds[remainingLoraIds.length - 1] : null;
-      if (!anchorId) {
-        anchorId = Object.entries(prompt)
-          .find(([, n]) => (n as Record<string, unknown>).class_type === "CheckpointLoaderSimple")
-          ?.[0] ?? null;
-      }
-
-      if (anchorId) {
-        let prevId = anchorId;
-        const maxExistingId = Math.max(...Object.keys(prompt).map(Number).filter(n => !isNaN(n)));
-        const dynamicStartId = Math.max(200, maxExistingId + 1);
-        const injectedIds = new Set<string>();
-
-        for (let i = 0; i < validNewLoras.length; i++) {
-          const nodeId = String(dynamicStartId + i);
-          injectedIds.add(nodeId);
-          prompt[nodeId] = {
-            class_type: "LoraLoader",
-            inputs: {
-              lora_name: validNewLoras[i].name,
-              strength_model: validNewLoras[i].strength,
-              strength_clip: validNewLoras[i].strength,
-              model: [prevId, 0],
-              clip: [prevId, 1],
-            },
-            _meta: { title: `dynamic-lora-${i}` },
-          };
-          prevId = nodeId;
+      const anchors = this.findLoraInjectionAnchors(prompt);
+      if (anchors) {
+        const finalNodeId = this.appendLoraChain(prompt, validNewLoras, anchors, 200, "dynamic-lora");
+        if (finalNodeId) {
+          console.log(
+            `[comfyui] Injected ${validNewLoras.length} dynamic LoRAs after model ${anchors.model.nodeId}:${anchors.model.outputIndex} / clip ${anchors.clip.nodeId}:${anchors.clip.outputIndex}`
+          );
         }
-
-        const newLastId = prevId;
-        for (const [nodeId, node] of Object.entries(prompt)) {
-          if (injectedIds.has(nodeId)) continue;
-          const n = node as Record<string, unknown>;
-          const inputs = n.inputs as Record<string, unknown> | undefined;
-          if (!inputs) continue;
-          for (const [key, value] of Object.entries(inputs)) {
-            if (Array.isArray(value) && value.length === 2 && value[0] === anchorId && (value[1] === 0 || value[1] === 1)) {
-              inputs[key] = [newLastId, value[1]];
-            }
-          }
-        }
-        console.log(`[comfyui] Injected ${validNewLoras.length} dynamic LoRAs after node ${anchorId}`);
       } else {
-        console.warn(`[comfyui] No LoraLoader or Checkpoint nodes — cannot inject dynamic LoRAs`);
+        console.warn("[comfyui] No LoraLoader, checkpoint, or split UNET/CLIP loader pair ? cannot inject dynamic LoRAs");
       }
     }
 
@@ -902,13 +948,13 @@ export class ComfyUIClient {
   /** Extract all output filenames grouped by their prefix */
   private extractOutputFilenames(
     historyEntry: Record<string, unknown>
-  ): Array<{ filename: string; prefix: string }> {
+  ): Array<{ filename: string; prefix: string; subfolder?: string; type?: string }> {
     const outputs = historyEntry.outputs as
       | Record<string, Record<string, unknown>>
       | undefined;
     if (!outputs) return [];
 
-    const results: Array<{ filename: string; prefix: string }> = [];
+    const results: Array<{ filename: string; prefix: string; subfolder?: string; type?: string }> = [];
     for (const nodeOutput of Object.values(outputs)) {
       const images = nodeOutput.images as
         | Array<{ filename: string; subfolder?: string; type?: string }>
@@ -917,11 +963,35 @@ export class ComfyUIClient {
         for (const img of images) {
           // ComfyUI filenames are like "profile_00001_.png" — extract prefix before first underscore+digits
           const prefix = img.filename.replace(/_\d+_?\.\w+$/, "");
-          results.push({ filename: img.filename, prefix });
+          results.push({
+            filename: img.filename,
+            prefix,
+            subfolder: img.subfolder,
+            type: img.type,
+          });
         }
       }
     }
     return results;
+  }
+
+  private copyOutputFileToSession(
+    outputFile: { filename: string; subfolder?: string; type?: string },
+    destPath: string
+  ): boolean {
+    const comfyDir = process.env.COMFYUI_DIR;
+    if (!comfyDir) return false;
+
+    const outputRoot = outputFile.type === "temp"
+      ? path.join(comfyDir, "temp")
+      : path.join(comfyDir, "output");
+    const sourcePath = path.join(outputRoot, outputFile.subfolder || "", outputFile.filename);
+
+    if (!fs.existsSync(sourcePath)) return false;
+
+    fs.mkdirSync(path.dirname(destPath), { recursive: true });
+    fs.copyFileSync(sourcePath, destPath);
+    return true;
   }
 
   private get gpuManagerUrl(): string {
@@ -1032,15 +1102,16 @@ export class ComfyUIClient {
     fs.mkdirSync(imagesDir, { recursive: true });
 
     const mainOutput = outputFiles[0];
-    const mainBuffer = await this.downloadImage(mainOutput.filename);
-    if (!mainBuffer) {
-      return { success: false, error: "Failed to download image from ComfyUI" };
-    }
-
     const safeName = safePath(filename);
     const mainDest = path.join(imagesDir, safeName);
     fs.mkdirSync(path.dirname(mainDest), { recursive: true });
-    fs.writeFileSync(mainDest, mainBuffer);
+
+    const mainBuffer = await this.downloadImage(mainOutput.filename);
+    if (mainBuffer) {
+      fs.writeFileSync(mainDest, mainBuffer);
+    } else if (!this.copyOutputFileToSession(mainOutput, mainDest)) {
+      return { success: false, error: "Failed to download or copy image from ComfyUI output" };
+    }
 
     const extraPaths: Record<string, string> = {};
     if (extraFiles) {
@@ -1048,13 +1119,16 @@ export class ComfyUIClient {
         const match = outputFiles.find((o) => o.prefix === prefix);
         if (match) {
           const buffer = await this.downloadImage(match.filename);
+          const safeExtra = safePath(extraFilename);
+          const extraDest = path.join(imagesDir, safeExtra);
+          fs.mkdirSync(path.dirname(extraDest), { recursive: true });
           if (buffer) {
-            const safeExtra = safePath(extraFilename);
-            const extraDest = path.join(imagesDir, safeExtra);
-            fs.mkdirSync(path.dirname(extraDest), { recursive: true });
             fs.writeFileSync(extraDest, buffer);
             extraPaths[prefix] = `images/${safeExtra}`;
             console.log(`[comfyui] Extra output saved: ${safeExtra} (prefix: ${prefix})`);
+          } else if (this.copyOutputFileToSession(match, extraDest)) {
+            extraPaths[prefix] = `images/${safeExtra}`;
+            console.log(`[comfyui] Extra output copied from output dir: ${safeExtra} (prefix: ${prefix})`);
           }
         }
       }
