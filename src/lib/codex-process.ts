@@ -123,7 +123,7 @@ export class CodexProcess extends EventEmitter<CodexProcessEvents> {
     // Build app-server startup args
     const args: string[] = ["app-server"];
 
-    // Sandbox: full access
+    // Sandbox: full access (app-server only supports -c, not -s)
     args.push("-c", 'sandbox="danger-full-access"');
     const reasoningEffort = this.effort || "medium";
     args.push("-c", `model_reasoning_effort="${reasoningEffort}"`);
@@ -297,7 +297,10 @@ export class CodexProcess extends EventEmitter<CodexProcessEvents> {
       // Try to resume
       if (this.logStream) this.logStream.write(`[thread] resuming ${this.threadId}\n`);
       try {
-        const result = await this.sendRequest("thread/resume", { threadId: this.threadId, cwd: this.cwd }) as Record<string, unknown>;
+        const result = await this.sendRequest("thread/resume", {
+          threadId: this.threadId,
+          ...params,
+        }) as Record<string, unknown>;
         const threadData = result.thread as Record<string, unknown> | undefined;
         const resumedId = threadData?.id as string || result.threadId as string;
         if (resumedId) {
