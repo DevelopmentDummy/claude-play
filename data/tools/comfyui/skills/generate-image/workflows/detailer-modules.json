@@ -1,0 +1,220 @@
+{
+  "face": {
+    "id_prefix": 500,
+    "nodes": {
+      "detector": {
+        "class_type": "UltralyticsDetectorProvider",
+        "inputs": { "model_name": "bbox/face_yolov8m.pt" },
+        "_meta": { "title": "face-detector" }
+      },
+      "detailer": {
+        "class_type": "FaceDetailer",
+        "inputs": {
+          "seed": 0,
+          "steps": 18,
+          "cfg": 4,
+          "sampler_name": "euler_ancestral",
+          "scheduler": "simple",
+          "denoise": 0.4,
+          "guide_size": 512,
+          "guide_size_for": true,
+          "max_size": 1024,
+          "feather": 5,
+          "noise_mask": true,
+          "force_inpaint": true,
+          "bbox_threshold": 0.5,
+          "bbox_dilation": 10,
+          "bbox_crop_factor": 3.0,
+          "sam_detection_hint": "center-1",
+          "sam_dilation": 0,
+          "sam_threshold": 0.93,
+          "sam_bbox_expansion": 0,
+          "sam_mask_hint_threshold": 0.7,
+          "sam_mask_hint_use_negative": "False",
+          "drop_size": 10,
+          "wildcard": "",
+          "cycle": 1
+        },
+        "_meta": { "title": "face-detailer" }
+      }
+    },
+    "use_main_prompt": true,
+    "internal_wiring": {
+      "detailer.bbox_detector": ["detector", 0]
+    }
+  },
+  "hand": {
+    "id_prefix": 510,
+    "nodes": {
+      "detector": {
+        "class_type": "UltralyticsDetectorProvider",
+        "inputs": { "model_name": "bbox/hand_yolov8s.pt" },
+        "_meta": { "title": "hand-detector" }
+      },
+      "detailer": {
+        "class_type": "FaceDetailer",
+        "inputs": {
+          "seed": 0,
+          "steps": 18,
+          "cfg": 4,
+          "sampler_name": "euler_ancestral",
+          "scheduler": "simple",
+          "denoise": 0.45,
+          "guide_size": 384,
+          "guide_size_for": true,
+          "max_size": 768,
+          "feather": 5,
+          "noise_mask": true,
+          "force_inpaint": true,
+          "bbox_threshold": 0.3,
+          "bbox_dilation": 15,
+          "bbox_crop_factor": 2.5,
+          "sam_detection_hint": "center-1",
+          "sam_dilation": 0,
+          "sam_threshold": 0.93,
+          "sam_bbox_expansion": 0,
+          "sam_mask_hint_threshold": 0.7,
+          "sam_mask_hint_use_negative": "False",
+          "drop_size": 10,
+          "wildcard": "",
+          "cycle": 1
+        },
+        "_meta": { "title": "hand-detailer" }
+      },
+      "pos_prompt": {
+        "class_type": "CLIPTextEncode",
+        "inputs": { "text": "detailed hands, perfect fingers, natural hand, fingernails" },
+        "_meta": { "title": "hand-pos" }
+      },
+      "neg_prompt": {
+        "class_type": "CLIPTextEncode",
+        "inputs": { "text": "eyes, face, mouth, nose, extra fingers, mutated hands, bad hands, fused fingers, too many fingers, missing fingers, deformed fingers" },
+        "_meta": { "title": "hand-neg" }
+      }
+    },
+    "use_main_prompt": false,
+    "internal_wiring": {
+      "detailer.bbox_detector": ["detector", 0],
+      "detailer.positive": ["pos_prompt", 0],
+      "detailer.negative": ["neg_prompt", 0],
+      "pos_prompt.clip": "__clip__",
+      "neg_prompt.clip": "__clip__"
+    }
+  },
+  "pussy": {
+    "id_prefix": 520,
+    "nodes": {
+      "detector": {
+        "class_type": "UltralyticsDetectorProvider",
+        "inputs": { "model_name": "bbox/vagina-v2.6.pt" },
+        "_meta": { "title": "pussy-detector" }
+      },
+      "detailer": {
+        "class_type": "FaceDetailer",
+        "inputs": {
+          "seed": 0,
+          "steps": 12,
+          "cfg": 4,
+          "sampler_name": "euler_ancestral",
+          "scheduler": "simple",
+          "denoise": 0.3,
+          "guide_size": 512,
+          "guide_size_for": true,
+          "max_size": 1024,
+          "feather": 15,
+          "noise_mask": true,
+          "force_inpaint": true,
+          "bbox_threshold": 0.45,
+          "bbox_dilation": 20,
+          "bbox_crop_factor": 5.0,
+          "sam_detection_hint": "center-1",
+          "sam_dilation": 0,
+          "sam_threshold": 0.93,
+          "sam_bbox_expansion": 0,
+          "sam_mask_hint_threshold": 0.7,
+          "sam_mask_hint_use_negative": "False",
+          "drop_size": 5,
+          "wildcard": "",
+          "cycle": 1
+        },
+        "_meta": { "title": "pussy-detailer" }
+      },
+      "pos_prompt": {
+        "class_type": "CLIPTextEncode",
+        "inputs": { "text": "detailed pussy, detailed vulva, labia, clitoris, anatomically correct, fair skin, matte skin, consistent skin texture" },
+        "_meta": { "title": "pussy-pos" }
+      },
+      "neg_prompt": {
+        "class_type": "CLIPTextEncode",
+        "inputs": { "text": "eyes, face, fingers, bad anatomy, censored, mosaic censoring, bar censor" },
+        "_meta": { "title": "pussy-neg" }
+      }
+    },
+    "use_main_prompt": false,
+    "internal_wiring": {
+      "detailer.bbox_detector": ["detector", 0],
+      "detailer.positive": ["pos_prompt", 0],
+      "detailer.negative": ["neg_prompt", 0],
+      "pos_prompt.clip": "__clip__",
+      "neg_prompt.clip": "__clip__"
+    }
+  },
+  "anus": {
+    "id_prefix": 530,
+    "nodes": {
+      "detector": {
+        "class_type": "UltralyticsDetectorProvider",
+        "inputs": { "model_name": "bbox/anus_v4.pt" },
+        "_meta": { "title": "anus-detector" }
+      },
+      "detailer": {
+        "class_type": "FaceDetailer",
+        "inputs": {
+          "seed": 0,
+          "steps": 12,
+          "cfg": 4,
+          "sampler_name": "euler_ancestral",
+          "scheduler": "simple",
+          "denoise": 0.2,
+          "guide_size": 768,
+          "guide_size_for": true,
+          "max_size": 1024,
+          "feather": 20,
+          "noise_mask": true,
+          "force_inpaint": false,
+          "bbox_threshold": 0.3,
+          "bbox_dilation": 80,
+          "bbox_crop_factor": 8.0,
+          "sam_detection_hint": "center-1",
+          "sam_dilation": 0,
+          "sam_threshold": 0.93,
+          "sam_bbox_expansion": 0,
+          "sam_mask_hint_threshold": 0.7,
+          "sam_mask_hint_use_negative": "False",
+          "drop_size": 5,
+          "wildcard": "",
+          "cycle": 1
+        },
+        "_meta": { "title": "anus-detailer" }
+      },
+      "pos_prompt": {
+        "class_type": "CLIPTextEncode",
+        "inputs": { "text": "detailed anus, anatomically correct, fair skin, matte skin, consistent skin texture, soft shading" },
+        "_meta": { "title": "anus-pos" }
+      },
+      "neg_prompt": {
+        "class_type": "CLIPTextEncode",
+        "inputs": { "text": "eyes, face, fingers, bad anatomy, censored, mosaic censoring, dark spot, black spot, discoloration" },
+        "_meta": { "title": "anus-neg" }
+      }
+    },
+    "use_main_prompt": false,
+    "internal_wiring": {
+      "detailer.bbox_detector": ["detector", 0],
+      "detailer.positive": ["pos_prompt", 0],
+      "detailer.negative": ["neg_prompt", 0],
+      "pos_prompt.clip": "__clip__",
+      "neg_prompt.clip": "__clip__"
+    }
+  }
+}

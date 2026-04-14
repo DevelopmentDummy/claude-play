@@ -19,6 +19,12 @@ export interface WorkflowFeatures {
   lora_couple_branches?: boolean;
   seed_randomize?: boolean;
   trigger_tags?: boolean;
+  detailer_chain?: boolean;
+}
+
+export interface DetailerChainConfig {
+  source: { node: string; output: number };  // e.g. { node: "9", output: 0 } = VAEDecode
+  sink: { node: string; field: string };     // e.g. { node: "30", field: "image" } = Upscale input
 }
 
 export interface WorkflowOutputDef {
@@ -32,6 +38,7 @@ export interface WorkflowPackageMeta {
   features?: WorkflowFeatures;
   outputs?: Record<string, WorkflowOutputDef>;
   params: Record<string, ParamDef>;
+  detailer_chain?: DetailerChainConfig;
 }
 
 export interface ResolverContext {

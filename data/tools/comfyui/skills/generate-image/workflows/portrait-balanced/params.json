@@ -5,7 +5,18 @@
     "lora_injection": true,
     "lora_couple_branches": false,
     "seed_randomize": true,
-    "trigger_tags": true
+    "trigger_tags": true,
+    "detailer_chain": true
+  },
+  "detailer_chain": {
+    "source": {
+      "node": "6",
+      "output": 0
+    },
+    "sink": {
+      "node": "30",
+      "field": "image"
+    }
   },
   "params": {
     "prompt": {
@@ -33,6 +44,26 @@
       "type": "string",
       "default": "balanced",
       "description": "fast | balanced | detail"
+    },
+    "detailer_face": {
+      "type": "boolean",
+      "default": true,
+      "description": "Enable/disable face detailer"
+    },
+    "detailer_hand": {
+      "type": "boolean",
+      "default": true,
+      "description": "Enable/disable hand detailer"
+    },
+    "detailer_pussy": {
+      "type": "boolean",
+      "default": true,
+      "description": "Enable/disable pussy detailer"
+    },
+    "detailer_anus": {
+      "type": "boolean",
+      "default": true,
+      "description": "Enable/disable anus detailer"
     }
   }
 }

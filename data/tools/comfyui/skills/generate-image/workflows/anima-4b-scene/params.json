@@ -5,7 +5,18 @@
     "lora_injection": true,
     "lora_couple_branches": false,
     "seed_randomize": true,
-    "trigger_tags": false
+    "trigger_tags": false,
+    "detailer_chain": true
+  },
+  "detailer_chain": {
+    "source": {
+      "node": "9",
+      "output": 0
+    },
+    "sink": {
+      "node": "30",
+      "field": "image"
+    }
   },
   "params": {
     "subject_tags": {
@@ -128,6 +139,26 @@
       "type": "string",
       "default": "You are an illustrator composing a polished anime image with elegant shading, clean structure, and strong visual appeal. <Prompt Start> ",
       "description": "Anima 시스템 프리픽스"
+    },
+    "detailer_face": {
+      "type": "boolean",
+      "default": true,
+      "description": "Enable/disable face detailer"
+    },
+    "detailer_hand": {
+      "type": "boolean",
+      "default": true,
+      "description": "Enable/disable hand detailer"
+    },
+    "detailer_pussy": {
+      "type": "boolean",
+      "default": true,
+      "description": "Enable/disable pussy detailer"
+    },
+    "detailer_anus": {
+      "type": "boolean",
+      "default": true,
+      "description": "Enable/disable anus detailer"
     }
   }
 }
