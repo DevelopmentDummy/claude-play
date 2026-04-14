@@ -19,6 +19,10 @@ MODEL_NAMES = {
     "0.6B": "openbmb/VoxCPM1.5",
 }
 
+# Windows lacks symlink privileges, so HuggingFace Hub cache fails.
+# Use local_dir download as fallback.
+_LOCAL_CACHE_DIR = Path.home() / ".cache" / "voxcpm"
+
 
 class VoxCPMEngine:
     def __init__(self, model_path: str | None = None) -> None:
@@ -59,11 +63,17 @@ class VoxCPMEngine:
     def _load_model_sync(self, model_size: str):
         from voxcpm import VoxCPM
 
-        model_name = self._model_path or MODEL_NAMES.get(model_size, MODEL_NAMES["2B"])
+        if self._model_path:
+            model_name = self._model_path
+        else:
+            hf_id = MODEL_NAMES.get(model_size, MODEL_NAMES["2B"])
+            # Prefer local cache (avoids Windows symlink issues with HF Hub)
+            local_dir = _LOCAL_CACHE_DIR / hf_id.split("/")[-1]
+            model_name = str(local_dir) if local_dir.exists() else hf_id
+
         model = VoxCPM.from_pretrained(
             model_name,
             load_denoiser=False,
-            device="cuda:0",
             optimize=False,
         )
         return model
