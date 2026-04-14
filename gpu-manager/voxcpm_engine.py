@@ -80,7 +80,7 @@ class VoxCPMEngine:
         model = VoxCPM.from_pretrained(
             model_name,
             load_denoiser=False,
-            optimize=True,
+            optimize=False,  # torch.compile incompatible with einops in VoxCPM
         )
         return model
 
