@@ -145,9 +145,9 @@ class VoxCPMEngine:
     # ── Synthesis ───────────────────────────────────────────
 
     async def synthesize_batch(self, payload: dict) -> list[dict]:
-        """Synthesize text chunks using VoxCPM2 with cached prompt."""
+        """Synthesize text chunks using VoxCPM2 with cached prompt (non-streaming)."""
         chunks = payload["chunks"]
-        voice_file = payload["voice_file"]  # .pt prompt cache file
+        voice_file = payload["voice_file"]
         model_size = payload.get("model_size", "2B")
 
         async with self._lock:
@@ -155,7 +155,6 @@ class VoxCPMEngine:
             await self.load_model(model_size)
             self._cancel_idle_timer()
 
-            # Load prompt cache once for the entire batch
             loop = asyncio.get_event_loop()
             prompt_cache = await loop.run_in_executor(
                 None, self._load_prompt_cache, voice_file
@@ -167,9 +166,7 @@ class VoxCPMEngine:
                 logger.info("VoxCPM chunk %d/%d: %s...", i + 1, len(chunks), text[:40])
 
                 audio_bytes = await loop.run_in_executor(
-                    None,
-                    self._synthesize_one,
-                    text, prompt_cache,
+                    None, self._synthesize_one, text, prompt_cache,
                 )
 
                 elapsed = time.monotonic() - t0
@@ -184,6 +181,67 @@ class VoxCPMEngine:
 
             self._reset_idle_timer()
             return results
+
+    async def synthesize_streaming(
+        self, payload: dict, chunk_queue: asyncio.Queue,
+    ) -> None:
+        """Synthesize text using VoxCPM2 streaming — push audio chunks as generated.
+
+        Each chunk is pushed to chunk_queue as a dict with chunk_index and audio_base64.
+        A None sentinel is pushed when done.
+        """
+        text = payload["text"]
+        voice_file = payload["voice_file"]
+        model_size = payload.get("model_size", "2B")
+
+        async with self._lock:
+            self._cancel_idle_timer()
+            await self.load_model(model_size)
+            self._cancel_idle_timer()
+
+            loop = asyncio.get_event_loop()
+            prompt_cache = await loop.run_in_executor(
+                None, self._load_prompt_cache, voice_file
+            )
+
+            logger.info("VoxCPM streaming: %s...", text[:60])
+            t0 = time.monotonic()
+
+            await loop.run_in_executor(
+                None,
+                self._stream_sync,
+                text, prompt_cache, chunk_queue, loop,
+            )
+
+            elapsed = time.monotonic() - t0
+            logger.info("VoxCPM streaming done in %.1fs", elapsed)
+            self._reset_idle_timer()
+
+    def _stream_sync(
+        self, text: str, prompt_cache: dict,
+        chunk_queue: asyncio.Queue, loop: asyncio.AbstractEventLoop,
+    ) -> None:
+        """Run streaming generation in sync thread, push chunks to async queue."""
+        chunk_idx = 0
+        for chunk_tuple in self._model.tts_model._generate_with_prompt_cache(
+            target_text=text,
+            prompt_cache=prompt_cache,
+            inference_timesteps=10,
+            cfg_value=2.0,
+            streaming=True,
+        ):
+            wav = chunk_tuple[0].cpu().numpy().squeeze()
+            mp3 = self._encode_mp3(wav.astype(np.float32), self._model.tts_model.sample_rate)
+            item = {
+                "chunk_index": chunk_idx,
+                "audio_base64": base64.b64encode(mp3).decode("ascii"),
+            }
+            asyncio.run_coroutine_threadsafe(chunk_queue.put(item), loop).result()
+            chunk_idx += 1
+            logger.info("VoxCPM streamed chunk %d", chunk_idx)
+
+        # Sentinel
+        asyncio.run_coroutine_threadsafe(chunk_queue.put(None), loop).result()
 
     @staticmethod
     def _load_prompt_cache(voice_file: str) -> dict:

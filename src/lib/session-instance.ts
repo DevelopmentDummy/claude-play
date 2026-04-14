@@ -698,16 +698,99 @@ export class SessionInstance {
             broadcastRef("audio:status", { status: "error", messageId, chunkIndex: i, totalChunks });
           }
         }
+      } else if (provider === "voxcpm") {
+        // --- VoxCPM streaming TTS ---
+        const voiceFile = voiceConfig.voiceFile
+          ? path.join(dir, voiceConfig.voiceFile)
+          : undefined;
+        if (!voiceFile || !fs.existsSync(voiceFile)) return;
+
+        const modelSize = voiceConfig.modelSize || "2B";
+        const gpuManagerUrl = `http://127.0.0.1:${process.env.GPU_MANAGER_PORT || "3342"}`;
+        const audioDir = path.join(dir, "audio");
+        if (!fs.existsSync(audioDir)) fs.mkdirSync(audioDir, { recursive: true });
+
+        // Send full text (no splitting) — VoxCPM streams audio chunks back.
+        // Use a large placeholder for totalChunks during streaming so the
+        // frontend keeps the "generating" status alive; send the real count
+        // once the stream ends.
+        const STREAM_PLACEHOLDER_TOTAL = 9999;
+        const fullText = chunks.join(" ");
+        broadcastRef("audio:status", { status: "queued", messageId, totalChunks: STREAM_PLACEHOLDER_TOTAL });
+
+        try {
+          const res = await fetch(`${gpuManagerUrl}/tts/synthesize-stream`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              text: fullText,
+              voice_file: voiceFile,
+              model_size: modelSize,
+            }),
+          });
+
+          if (!res.ok) {
+            const err = await res.text();
+            throw new Error(`GPU Manager TTS stream error: ${err}`);
+          }
+
+          // Read NDJSON stream line by line
+          const reader = res.body!.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+          let chunkCount = 0;
+
+          while (true) {
+            if (this.destroyed) break;
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() || "";
+
+            for (const line of lines) {
+              if (!line.trim()) continue;
+              const item = JSON.parse(line);
+              const audioBuffer = Buffer.from(item.audio_base64, "base64");
+
+              const timestamp = Date.now();
+              const audioFilename = `tts-${timestamp}-${chunkCount}.mp3`;
+              fs.writeFileSync(path.join(audioDir, audioFilename), audioBuffer);
+
+              const url = `/api/sessions/${sessionId}/files/audio/${audioFilename}`;
+              broadcastRef("audio:ready", {
+                url, messageId,
+                chunkIndex: chunkCount,
+                totalChunks: STREAM_PLACEHOLDER_TOTAL,
+              });
+              chunkCount++;
+            }
+          }
+
+          // Stream done — send final audio:ready with real totalChunks to
+          // let the frontend know all chunks have arrived
+          if (chunkCount > 0) {
+            broadcastRef("audio:ready", {
+              url: "", messageId,
+              chunkIndex: -1,
+              totalChunks: chunkCount,
+              streamDone: true,
+            });
+          }
+        } catch (err) {
+          console.error("[tts] VoxCPM stream error:", err);
+          broadcastRef("audio:status", { status: "error", messageId, totalChunks: 0 });
+        }
       } else {
-        // --- GPU Manager / Qwen3-TTS (local GPU) ---
+        // --- GPU Manager / Qwen3-TTS (batch) ---
         const voiceFile = voiceConfig.voiceFile
           ? path.join(dir, voiceConfig.voiceFile)
           : undefined;
         if (!voiceFile || !fs.existsSync(voiceFile)) return;
 
         const lang = voiceConfig.language || "ko";
-        const gpuProvider = provider === "voxcpm" ? "voxcpm" : "qwen3";
-        const modelSize = voiceConfig.modelSize || (gpuProvider === "voxcpm" ? "2B" : "1.7B");
+        const modelSize = voiceConfig.modelSize || "1.7B";
         const gpuManagerUrl = `http://127.0.0.1:${process.env.GPU_MANAGER_PORT || "3342"}`;
 
         broadcastRef("audio:status", { status: "queued", messageId, totalChunks });
@@ -715,9 +798,7 @@ export class SessionInstance {
         const audioDir = path.join(dir, "audio");
         if (!fs.existsSync(audioDir)) fs.mkdirSync(audioDir, { recursive: true });
 
-        // VoxCPM processes chunks sequentially (no batch inference),
-        // so batch size 1 gives faster first-audio latency.
-        const TTS_BATCH_SIZE = gpuProvider === "voxcpm" ? 1 : 3;
+        const TTS_BATCH_SIZE = 3;
 
         for (let batchStart = 0; batchStart < chunks.length; batchStart += TTS_BATCH_SIZE) {
           if (this.destroyed) return;
@@ -736,7 +817,7 @@ export class SessionInstance {
                 language: lang,
                 model_size: modelSize,
                 batch_size: TTS_BATCH_SIZE,
-                provider: gpuProvider,
+                provider: "qwen3",
               }),
             });
 

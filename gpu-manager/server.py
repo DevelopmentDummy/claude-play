@@ -64,8 +64,13 @@ async def _handle_comfyui(payload: dict) -> dict:
 async def _handle_tts(payload: dict) -> list[dict]:
     """Dispatch TTS to correct engine based on provider field."""
     provider = payload.get("provider", "qwen3")
+    chunk_queue = payload.pop("_chunk_queue", None)
+
     if provider == "voxcpm":
         tts_engine.force_unload()
+        if chunk_queue:
+            await voxcpm_engine.synthesize_streaming(payload, chunk_queue)
+            return []
         return await voxcpm_engine.synthesize_batch(payload)
     else:
         voxcpm_engine.force_unload()
@@ -182,6 +187,41 @@ async def tts_synthesize(request: Request) -> StreamingResponse:
     except Exception as e:
         logger.error("TTS synthesize error: %s", e)
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ── TTS Streaming (VoxCPM) ──────────────────────────────
+@app.post("/tts/synthesize-stream")
+async def tts_synthesize_stream(request: Request) -> StreamingResponse:
+    """Streaming TTS — audio chunks sent as they're generated (VoxCPM only)."""
+    if not VOXCPM_AVAILABLE:
+        return JSONResponse(
+            status_code=503,
+            content={"error": "VoxCPM not installed. Install with: pip install -r requirements-voxcpm.txt"},
+        )
+
+    body = await request.json()
+    chunk_queue: asyncio.Queue = asyncio.Queue()
+    body["_chunk_queue"] = chunk_queue
+    body["provider"] = "voxcpm"
+
+    task = Task(type=TaskType.TTS, payload=body)
+    submit_future = asyncio.ensure_future(queue.submit(task))
+
+    async def stream():
+        try:
+            while True:
+                item = await chunk_queue.get()
+                if item is None:
+                    break
+                yield json.dumps(item, ensure_ascii=False) + "\n"
+        except Exception as e:
+            logger.error("TTS stream error: %s", e)
+        try:
+            await submit_future
+        except Exception:
+            pass
+
+    return StreamingResponse(stream(), media_type="application/x-ndjson")
 
 
 # ── Voice Creation ───────────────────────────────────────
