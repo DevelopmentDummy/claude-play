@@ -24,7 +24,7 @@ const EDGE_VOICES = [
 export default function VoiceSettings({ personaName, accentColor = "var(--accent)", refreshTrigger = 0 }: VoiceSettingsProps) {
   const [config, setConfig] = useState({
     enabled: false,
-    ttsProvider: "comfyui" as "comfyui" | "edge",
+    ttsProvider: "comfyui" as "comfyui" | "edge" | "voxcpm",
     // Edge TTS fields
     edgeVoice: "ko-KR-SunHiNeural",
     edgeRate: "",
@@ -39,6 +39,7 @@ export default function VoiceSettings({ personaName, accentColor = "var(--accent
     modelSize: "1.7B",
   });
   const [localTtsAvailable, setLocalTtsAvailable] = useState<boolean | null>(null);
+  const [voxcpmAvailable, setVoxcpmAvailable] = useState<boolean | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -60,8 +61,14 @@ export default function VoiceSettings({ personaName, accentColor = "var(--accent
   useEffect(() => {
     fetch("/api/setup/tts-status")
       .then((r) => r.json())
-      .then((data) => setLocalTtsAvailable(data.ttsAvailable === true))
-      .catch(() => setLocalTtsAvailable(false));
+      .then((data) => {
+        setLocalTtsAvailable(data.ttsAvailable === true);
+        setVoxcpmAvailable(data.voxcpmAvailable === true);
+      })
+      .catch(() => {
+        setLocalTtsAvailable(false);
+        setVoxcpmAvailable(false);
+      });
   }, []);
 
   useEffect(() => {
@@ -222,6 +229,8 @@ export default function VoiceSettings({ personaName, accentColor = "var(--accent
   }
 
   const isEdge = config.ttsProvider === "edge";
+  const isVoxcpm = config.ttsProvider === "voxcpm";
+  const isLocalProvider = !isEdge; // comfyui or voxcpm
   const hasVoiceSource = isEdge
     ? !!config.edgeVoice
     : !!(config.voiceFile || config.referenceAudio || config.design);
@@ -276,23 +285,36 @@ export default function VoiceSettings({ personaName, accentColor = "var(--accent
                 borderRight: "1px solid var(--border)",
               }}
             >
-              ⚡ Edge TTS
+              ⚡ Edge
             </button>
             <button
               onClick={() => localTtsAvailable === true && saveConfig({ ...config, ttsProvider: "comfyui" })}
               disabled={localTtsAvailable !== true}
               className="flex-1 px-2 py-1.5 text-[10px] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               style={{
-                background: !isEdge ? `${accentColor}20` : "transparent",
-                color: !isEdge ? accentColor : "var(--text-dim)",
+                background: config.ttsProvider === "comfyui" ? `${accentColor}20` : "transparent",
+                color: config.ttsProvider === "comfyui" ? accentColor : "var(--text-dim)",
+                borderRight: "1px solid var(--border)",
               }}
-              title={localTtsAvailable === false ? "Local TTS 미설치" : localTtsAvailable === null ? "확인 중..." : undefined}
+              title={localTtsAvailable === false ? "Qwen3 TTS 미설치" : localTtsAvailable === null ? "확인 중..." : undefined}
             >
-              🎛 {localTtsAvailable === null ? "확인 중..." : localTtsAvailable === false ? "Local TTS 미설치" : "ComfyUI"}
+              🎛 Qwen3
+            </button>
+            <button
+              onClick={() => voxcpmAvailable === true && saveConfig({ ...config, ttsProvider: "voxcpm", modelSize: config.ttsProvider !== "voxcpm" ? "2B" : config.modelSize })}
+              disabled={voxcpmAvailable !== true}
+              className="flex-1 px-2 py-1.5 text-[10px] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{
+                background: isVoxcpm ? `${accentColor}20` : "transparent",
+                color: isVoxcpm ? accentColor : "var(--text-dim)",
+              }}
+              title={voxcpmAvailable === false ? "VoxCPM 미설치" : voxcpmAvailable === null ? "확인 중..." : undefined}
+            >
+              🔊 VoxCPM
             </button>
           </div>
           <p className="text-[9px] text-text-dim/40 mt-0.5">
-            {isEdge ? "클라우드 TTS — 빠르고 GPU 불필요" : "로컬 GPU — 보이스 클로닝 가능"}
+            {isEdge ? "클라우드 TTS — 빠르고 GPU 불필요" : isVoxcpm ? "VoxCPM2 — 48kHz 고품질, 30개 언어" : "Qwen3 TTS — 로컬 GPU 보이스 클로닝"}
           </p>
         </div>
 
@@ -325,6 +347,7 @@ export default function VoiceSettings({ personaName, accentColor = "var(--accent
         </div>
 
         {isEdge ? (
+          /* ───── Edge TTS Settings ───── */
           <>
             {/* Edge TTS Voice */}
             <div>
@@ -375,8 +398,9 @@ export default function VoiceSettings({ personaName, accentColor = "var(--accent
             </div>
           </>
         ) : (
+          /* ───── Local TTS Settings (ComfyUI / VoxCPM) ───── */
           <>
-            {/* ComfyUI: Reference Audio */}
+            {/* Reference Audio */}
             <div>
               <label className="text-[10px] text-text-dim/70 block mb-1">Reference Audio (3-30s)</label>
               {config.referenceAudio ? (
@@ -425,7 +449,7 @@ export default function VoiceSettings({ personaName, accentColor = "var(--accent
               )}
             </div>
 
-            {/* ComfyUI: Reference Text */}
+            {/* Reference Text */}
             {config.referenceAudio && (
               <div>
                 <label className="text-[10px] text-text-dim/70 block mb-1">Reference Text</label>
@@ -438,11 +462,13 @@ export default function VoiceSettings({ personaName, accentColor = "var(--accent
                   className="w-full px-2.5 py-1.5 text-[11px] rounded-lg border border-border/40 bg-transparent text-text
                     outline-none focus:border-accent/60 transition-colors placeholder:text-text-dim/30 resize-y"
                 />
-                <p className="text-[9px] text-text-dim/40 mt-0.5">입력 시 ICL 모드로 더 정확한 음성 클로닝 (비우면 x-vector only)</p>
+                <p className="text-[9px] text-text-dim/40 mt-0.5">
+                  {isVoxcpm ? "입력 시 Ultimate 모드 — 리듬/감정까지 재현 (비우면 Controllable 모드)" : "입력 시 ICL 모드로 더 정확한 음성 클로닝 (비우면 x-vector only)"}
+                </p>
               </div>
             )}
 
-            {/* ComfyUI: Voice Design */}
+            {/* Voice Design */}
             <div>
               <label className="text-[10px] text-text-dim/70 block mb-1">Voice Design</label>
               <input
@@ -450,14 +476,16 @@ export default function VoiceSettings({ personaName, accentColor = "var(--accent
                 value={config.design}
                 onChange={(e) => setConfig({ ...config, design: e.target.value })}
                 onBlur={() => saveConfig(config)}
-                placeholder="e.g. 차갑고 낮은 톤의 성인 여성"
+                placeholder={isVoxcpm ? "e.g. A young woman, gentle and sweet voice" : "e.g. 차갑고 낮은 톤의 성인 여성"}
                 className="w-full px-2.5 py-1.5 text-[11px] rounded-lg border border-border/40 bg-transparent text-text
                   outline-none focus:border-accent/60 transition-colors placeholder:text-text-dim/30"
               />
-              <p className="text-[9px] text-text-dim/40 mt-0.5">Reference audio가 없을 때 사용</p>
+              <p className="text-[9px] text-text-dim/40 mt-0.5">
+                {isVoxcpm ? "영문/중문 설명 권장 — Reference audio 없이 새 목소리 생성" : "Reference audio가 없을 때 사용"}
+              </p>
             </div>
 
-            {/* ComfyUI: Model Size */}
+            {/* Model Size */}
             <div>
               <label className="text-[10px] text-text-dim/70 block mb-1">Model Size</label>
               <select
@@ -467,36 +495,49 @@ export default function VoiceSettings({ personaName, accentColor = "var(--accent
                   outline-none cursor-pointer appearance-none"
                 style={selectStyle}
               >
-                <option value="0.6B" className="bg-[#1a1a2e] text-[#ccc]">0.6B (Fast)</option>
-                <option value="1.7B" className="bg-[#1a1a2e] text-[#ccc]">1.7B (Quality)</option>
+                {isVoxcpm ? (
+                  <>
+                    <option value="0.6B" className="bg-[#1a1a2e] text-[#ccc]">0.6B — VoxCPM1.5 (Fast)</option>
+                    <option value="2B" className="bg-[#1a1a2e] text-[#ccc]">2B — VoxCPM2 (Quality)</option>
+                  </>
+                ) : (
+                  <>
+                    <option value="0.6B" className="bg-[#1a1a2e] text-[#ccc]">0.6B (Fast)</option>
+                    <option value="1.7B" className="bg-[#1a1a2e] text-[#ccc]">1.7B (Quality)</option>
+                  </>
+                )}
               </select>
-              <p className="text-[9px] text-text-dim/40 mt-0.5">0.6B: 빠르지만 품질 낮음 / 1.7B: 느리지만 고품질</p>
+              <p className="text-[9px] text-text-dim/40 mt-0.5">
+                {isVoxcpm ? "0.6B: 44.1kHz / 2B: 48kHz 스튜디오 품질" : "0.6B: 빠르지만 품질 낮음 / 1.7B: 느리지만 고품질"}
+              </p>
             </div>
 
-            {/* ComfyUI: Voice .pt Generation */}
+            {/* Voice Generation */}
             <div
               className="rounded-lg p-2.5"
               style={{ background: `${accentColor}08`, border: `1px solid ${accentColor}10` }}
             >
               <div className="flex items-center justify-between mb-1.5">
-                <label className="text-[10px] text-text-dim/70">Voice Embedding (.pt)</label>
+                <label className="text-[10px] text-text-dim/70">
+                  {isVoxcpm ? "Voice File (.wav)" : "Voice Embedding (.pt)"}
+                </label>
                 {config.voiceFile && (
                   <span className="text-[9px] text-accent/70">{config.voiceFile}</span>
                 )}
               </div>
               <button
                 onClick={handleGenerateVoice}
-                disabled={generating || (!config.referenceAudio && !config.design) || localTtsAvailable === false}
+                disabled={generating || (!config.referenceAudio && !config.design) || (isVoxcpm ? voxcpmAvailable === false : localTtsAvailable === false)}
                 className="w-full px-3 py-1.5 text-[11px] rounded-lg border transition-all disabled:opacity-40
                   border-accent/40 text-accent/80 hover:bg-accent/10 hover:text-accent"
-                title={localTtsAvailable === false ? "Local TTS 미설치" : undefined}
+                title={(isVoxcpm ? voxcpmAvailable === false : localTtsAvailable === false) ? "TTS 미설치" : undefined}
               >
-                {generating ? "Generating..." : config.voiceFile ? "Regenerate Voice" : "Generate Voice (.pt)"}
+                {generating ? "Generating..." : config.voiceFile ? "Regenerate Voice" : isVoxcpm ? "Generate Voice (.wav)" : "Generate Voice (.pt)"}
               </button>
-              {localTtsAvailable === false && (
-                <p className="text-[9px] text-error/60 mt-1">Local TTS 미설치</p>
+              {(isVoxcpm ? voxcpmAvailable === false : localTtsAvailable === false) && (
+                <p className="text-[9px] text-error/60 mt-1">{isVoxcpm ? "VoxCPM 미설치" : "Local TTS 미설치"}</p>
               )}
-              {localTtsAvailable !== false && !config.referenceAudio && !config.design && (
+              {(isVoxcpm ? voxcpmAvailable !== false : localTtsAvailable !== false) && !config.referenceAudio && !config.design && (
                 <p className="text-[9px] text-text-dim/40 mt-1">Reference audio 또는 voice design 필요</p>
               )}
             </div>
@@ -537,10 +578,10 @@ export default function VoiceSettings({ personaName, accentColor = "var(--accent
             />
             <button
               onClick={handleTestTts}
-              disabled={testStatus === "generating" || !testText.trim() || !hasVoiceSource || (!isEdge && localTtsAvailable === false)}
+              disabled={testStatus === "generating" || !testText.trim() || !hasVoiceSource || (isVoxcpm ? voxcpmAvailable === false : !isEdge && localTtsAvailable === false)}
               className="px-3 py-1.5 text-[11px] rounded-lg border transition-all shrink-0 disabled:opacity-40
                 border-accent/40 text-accent/80 hover:bg-accent/10 hover:text-accent"
-              title={!isEdge && localTtsAvailable === false ? "Local TTS 미설치" : undefined}
+              title={isVoxcpm ? (voxcpmAvailable === false ? "VoxCPM 미설치" : undefined) : (!isEdge && localTtsAvailable === false ? "Local TTS 미설치" : undefined)}
             >
               {testStatus === "generating" ? "..." : "Play"}
             </button>

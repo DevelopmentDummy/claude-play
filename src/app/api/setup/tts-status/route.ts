@@ -11,6 +11,7 @@ export async function GET() {
       return NextResponse.json({
         gpuManagerAvailable: true,
         ttsAvailable: data.tts_available ?? false,
+        voxcpmAvailable: data.voxcpm_available ?? false,
       });
     }
     return NextResponse.json({ gpuManagerAvailable: false, ttsAvailable: false });
