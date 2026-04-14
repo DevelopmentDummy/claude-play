@@ -740,32 +740,39 @@ export class SessionInstance {
           let buffer = "";
           let chunkCount = 0;
 
-          while (true) {
-            if (this.destroyed) break;
-            const { done, value } = await reader.read();
-            if (done) break;
+          try {
+            while (true) {
+              if (this.destroyed) {
+                await reader.cancel();
+                break;
+              }
+              const { done, value } = await reader.read();
+              if (done) break;
 
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split("\n");
-            buffer = lines.pop() || "";
+              buffer += decoder.decode(value, { stream: true });
+              const lines = buffer.split("\n");
+              buffer = lines.pop() || "";
 
-            for (const line of lines) {
-              if (!line.trim()) continue;
-              const item = JSON.parse(line);
-              const audioBuffer = Buffer.from(item.audio_base64, "base64");
+              for (const line of lines) {
+                if (!line.trim()) continue;
+                const item = JSON.parse(line);
+                const audioBuffer = Buffer.from(item.audio_base64, "base64");
 
-              const timestamp = Date.now();
-              const audioFilename = `tts-${timestamp}-${chunkCount}.mp3`;
-              fs.writeFileSync(path.join(audioDir, audioFilename), audioBuffer);
+                const timestamp = Date.now();
+                const audioFilename = `tts-${timestamp}-${chunkCount}.mp3`;
+                fs.writeFileSync(path.join(audioDir, audioFilename), audioBuffer);
 
-              const url = `/api/sessions/${sessionId}/files/audio/${audioFilename}`;
-              broadcastRef("audio:ready", {
-                url, messageId,
-                chunkIndex: chunkCount,
-                totalChunks: STREAM_PLACEHOLDER_TOTAL,
-              });
-              chunkCount++;
+                const url = `/api/sessions/${sessionId}/files/audio/${audioFilename}`;
+                broadcastRef("audio:ready", {
+                  url, messageId,
+                  chunkIndex: chunkCount,
+                  totalChunks: STREAM_PLACEHOLDER_TOTAL,
+                });
+                chunkCount++;
+              }
             }
+          } finally {
+            reader.releaseLock();
           }
 
           // Stream done — send final audio:ready with real totalChunks to
