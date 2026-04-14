@@ -870,7 +870,8 @@ export class SessionInstance {
     if (!isSlash && !isOOC && this.chatHistory.length > 0) {
       const lastMsg = this.chatHistory[this.chatHistory.length - 1];
       if (lastMsg.role === "assistant" && lastMsg.content) {
-        this.triggerTts(lastMsg.content);
+        const dialogOnly = extractDialog(lastMsg.content);
+        if (dialogOnly) this.triggerTts(dialogOnly);
       }
     }
 
