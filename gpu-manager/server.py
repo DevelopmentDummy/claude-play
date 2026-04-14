@@ -53,11 +53,9 @@ voice_creator = VoiceCreator(tts_engine)
 voxcpm_engine = VoxCPMEngine(model_path=os.environ.get("VOXCPM_MODEL_PATH"))
 
 
-# ── ComfyUI handler (force-unloads TTS first) ───────────
+# ── ComfyUI handler ─────────────────────────────────────
 async def _handle_comfyui(payload: dict) -> dict:
-    """Force-unload TTS models before ComfyUI work, then proxy."""
-    tts_engine.force_unload()
-    voxcpm_engine.force_unload()
+    """Proxy to ComfyUI. No force-unload — rely on idle timeout."""
     return await comfyui.generate(payload)
 
 
@@ -67,13 +65,11 @@ async def _handle_tts(payload: dict) -> list[dict]:
     chunk_queue = payload.pop("_chunk_queue", None)
 
     if provider == "voxcpm":
-        tts_engine.force_unload()
         if chunk_queue:
             await voxcpm_engine.synthesize_streaming(payload, chunk_queue)
             return []
         return await voxcpm_engine.synthesize_batch(payload)
     else:
-        voxcpm_engine.force_unload()
         return await tts_engine.synthesize_batch(payload)
 
 
@@ -81,10 +77,8 @@ async def _handle_create_voice(payload: dict) -> dict:
     """Dispatch voice creation to correct engine based on provider field."""
     provider = payload.get("provider", "qwen3")
     if provider == "voxcpm":
-        tts_engine.force_unload()
         return await voxcpm_engine.create_voice(payload)
     else:
-        voxcpm_engine.force_unload()
         return await voice_creator.create_voice(payload)
 
 
