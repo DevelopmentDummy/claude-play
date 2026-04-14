@@ -16,6 +16,7 @@ from queue_manager import QueueManager, Task, TaskType
 from comfyui_proxy import ComfyUIProxy
 from tts_engine import TTSEngine
 from voice_creator import VoiceCreator
+from voxcpm_engine import VoxCPMEngine
 
 # ── TTS availability check ────────────────────────────────
 try:
@@ -23,6 +24,12 @@ try:
     TTS_AVAILABLE = True
 except ImportError:
     TTS_AVAILABLE = False
+
+try:
+    import voxcpm as _voxcpm_mod  # noqa: F401
+    VOXCPM_AVAILABLE = True
+except ImportError:
+    VOXCPM_AVAILABLE = False
 
 # ── Logging ──────────────────────────────────────────────
 logging.basicConfig(
@@ -43,13 +50,37 @@ queue = QueueManager()
 comfyui = ComfyUIProxy(args.comfyui_url)
 tts_engine = TTSEngine(model_path=os.environ.get("TTS_MODEL_PATH"))
 voice_creator = VoiceCreator(tts_engine)
+voxcpm_engine = VoxCPMEngine(model_path=os.environ.get("VOXCPM_MODEL_PATH"))
 
 
 # ── ComfyUI handler (force-unloads TTS first) ───────────
 async def _handle_comfyui(payload: dict) -> dict:
-    """Force-unload TTS model before ComfyUI work, then proxy."""
+    """Force-unload TTS models before ComfyUI work, then proxy."""
     tts_engine.force_unload()
+    voxcpm_engine.force_unload()
     return await comfyui.generate(payload)
+
+
+async def _handle_tts(payload: dict) -> list[dict]:
+    """Dispatch TTS to correct engine based on provider field."""
+    provider = payload.get("provider", "qwen3")
+    if provider == "voxcpm":
+        tts_engine.force_unload()
+        return await voxcpm_engine.synthesize_batch(payload)
+    else:
+        voxcpm_engine.force_unload()
+        return await tts_engine.synthesize_batch(payload)
+
+
+async def _handle_create_voice(payload: dict) -> dict:
+    """Dispatch voice creation to correct engine based on provider field."""
+    provider = payload.get("provider", "qwen3")
+    if provider == "voxcpm":
+        tts_engine.force_unload()
+        return await voxcpm_engine.create_voice(payload)
+    else:
+        voxcpm_engine.force_unload()
+        return await voice_creator.create_voice(payload)
 
 
 # ── Lifespan ─────────────────────────────────────────────
@@ -62,8 +93,8 @@ async def lifespan(app):
     asyncio.create_task(queue.worker())
 
     queue.register_handler(TaskType.COMFYUI, _handle_comfyui)
-    queue.register_handler(TaskType.TTS, tts_engine.synthesize_batch)
-    queue.register_handler(TaskType.CREATE_VOICE, voice_creator.create_voice)
+    queue.register_handler(TaskType.TTS, _handle_tts)
+    queue.register_handler(TaskType.CREATE_VOICE, _handle_create_voice)
 
     connected = await comfyui.check_connection()
     logger.info("ComfyUI connected: %s", connected)
@@ -72,6 +103,7 @@ async def lifespan(app):
     yield
     # Shutdown
     await tts_engine.unload_model()
+    await voxcpm_engine.unload_model()
     await comfyui.close()
     logger.info("GPU Manager shut down")
 
@@ -82,7 +114,11 @@ app = FastAPI(title="GPU Resource Manager", lifespan=lifespan)
 # ── Health / Status ──────────────────────────────────────
 @app.get("/health")
 async def health() -> dict:
-    return {"ready": True, "tts_available": TTS_AVAILABLE}
+    return {
+        "ready": True,
+        "tts_available": TTS_AVAILABLE,
+        "voxcpm_available": VOXCPM_AVAILABLE,
+    }
 
 
 @app.get("/status")
@@ -92,8 +128,10 @@ async def status() -> dict:
     return {
         "queue_size": q.queue_size,
         "current_task": q.current_task,
-        "model_loaded": tts_engine.is_loaded,
-        "model_size": tts_engine.loaded_size,
+        "qwen3_loaded": tts_engine.is_loaded,
+        "qwen3_size": tts_engine.loaded_size,
+        "voxcpm_loaded": voxcpm_engine.is_loaded,
+        "voxcpm_size": voxcpm_engine.loaded_size,
         "comfyui_connected": connected,
     }
 
@@ -116,12 +154,20 @@ async def comfyui_generate(request: Request) -> JSONResponse:
 # ── TTS Synthesize ───────────────────────────────────────
 @app.post("/tts/synthesize")
 async def tts_synthesize(request: Request) -> StreamingResponse:
-    if not TTS_AVAILABLE:
+    body = await request.json()
+    provider = body.get("provider", "qwen3")
+
+    if provider == "voxcpm" and not VOXCPM_AVAILABLE:
+        return JSONResponse(
+            status_code=503,
+            content={"error": "VoxCPM not installed. Install with: pip install -r requirements-voxcpm.txt"},
+        )
+    if provider != "voxcpm" and not TTS_AVAILABLE:
         return JSONResponse(
             status_code=503,
             content={"error": "Local TTS not installed. Install with: pip install -r requirements-tts.txt"},
         )
-    body = await request.json()
+
     task = Task(type=TaskType.TTS, payload=body)
     try:
         results = await queue.submit(task)
@@ -141,12 +187,20 @@ async def tts_synthesize(request: Request) -> StreamingResponse:
 # ── Voice Creation ───────────────────────────────────────
 @app.post("/tts/create-voice")
 async def tts_create_voice(request: Request) -> JSONResponse:
-    if not TTS_AVAILABLE:
+    body = await request.json()
+    provider = body.get("provider", "qwen3")
+
+    if provider == "voxcpm" and not VOXCPM_AVAILABLE:
+        return JSONResponse(
+            status_code=503,
+            content={"error": "VoxCPM not installed. Install with: pip install -r requirements-voxcpm.txt"},
+        )
+    if provider != "voxcpm" and not TTS_AVAILABLE:
         return JSONResponse(
             status_code=503,
             content={"error": "Local TTS not installed. Install with: pip install -r requirements-tts.txt"},
         )
-    body = await request.json()
+
     task = Task(type=TaskType.CREATE_VOICE, payload=body)
     try:
         result = await queue.submit(task)
