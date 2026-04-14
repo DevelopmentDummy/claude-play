@@ -485,8 +485,11 @@ export class ComfyUIClient {
     const unetId = Object.entries(prompt)
       .find(([, n]) => (n as Record<string, unknown>).class_type === "UNETLoader")
       ?.[0];
+    const CLIP_LOADER_TYPES = ["CLIPLoader", "LoadQwen35AnimaCLIP"];
     const clipId = Object.entries(prompt)
-      .find(([, n]) => (n as Record<string, unknown>).class_type === "CLIPLoader")
+      .find(([, n]) => CLIP_LOADER_TYPES.includes(
+        (n as Record<string, unknown>).class_type as string
+      ))
       ?.[0];
 
     if (unetId && clipId) {

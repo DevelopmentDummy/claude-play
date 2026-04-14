@@ -399,13 +399,13 @@
 #### Do You Want to Pet My Cat (Meme Concept)
 - 파일명: `anima-pet_my_cat_meme.safetensors`
 - 카테고리: 특수 컨셉/밈/NSFW
-- 권장 강도: `0.5 ~ 0.8`
+- 권장 강도: `0.8 ~ 0.9` (제작자 권장)
 - 관찰된 트리거: `crotch rub, cat writing on crotch, body writing, table humping`
-- 추천 시작값: `0.6`
+- 추천 시작값: `0.85`
 - 파일 크기: 약 `132 MB`
 - 호환: ✅ Anima 전용
 - 링크: https://civitai.com/models/2447374
-- 주의점: 밈 기반 컨셉 LoRA. 고양이가 가랑이에 얼굴 비비는 포즈 + body writing 조합
+- 주의점: 음부의 세로선을 고양이 입으로 활용하여 주변에 고양이 얼굴(수염/귀 등)을 그리는 밈 컨셉. **강도를 0.8 이상으로 올리고 트리거 태그를 전부 포함해야 밈 본래의 스타일이 나옴**. 낮은 강도(0.5~0.7)에서는 body writing이 불명확하거나 아예 안 나올 수 있음. 포즈 태그를 최소화하고 LoRA가 구도를 주도하도록 맡기는 편이 결과가 좋음. **⚠️ baseLoras(masterpieces, Hentai Studio Quality) 간섭 확인됨 — 이 LoRA 사용 시 baseLoras를 0.01로 오버라이드하여 사실상 무력화해야 밈 컨셉이 제대로 나옴**
 
 #### Dildo Under Clothes (Anima Preview)
 - 파일명: `anima-dildo_under_clothes.safetensors`

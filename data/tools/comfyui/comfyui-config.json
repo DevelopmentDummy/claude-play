@@ -17,7 +17,8 @@
       "negative": "worst quality, low quality, score_1, score_2, score_3, blurry, jpeg artifacts, bad anatomy, bad hands, bad arms, bad legs, bad feet, extra fingers, fused fingers, too many fingers, mutated hands, poorly drawn hands, extra arms, extra legs, extra feet, three arms, three legs, three feet, twisted limbs, watermark, signature, text",
       "baseLoras": [
         { "name": "anima-preview2-masterpieces-e50.safetensors", "strength": 0.5 },
-        { "name": "Hentai_Studio_Quality_Anima-step00001300.safetensors", "strength": 0.5 }
+        { "name": "Hentai_Studio_Quality_Anima-step00001300.safetensors", "strength": 0.5 },
+        { "name": "anima-e20_styles.safetensors", "strength": 0.85 }
       ]
     }
   }

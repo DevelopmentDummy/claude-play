@@ -1,0 +1,133 @@
+{
+  "description": "Anima 4B 텍스트 인코더 장면 패키지 — Qwen3.5 4B CLIP + UNET/VAE 분리 로드 + 4-Detailer + 4x Upscale",
+  "features": {
+    "checkpoint_auto": false,
+    "lora_injection": true,
+    "lora_couple_branches": false,
+    "seed_randomize": true,
+    "trigger_tags": false
+  },
+  "params": {
+    "subject_tags": {
+      "type": "string",
+      "required": true,
+      "description": "Danbooru/Gelbooru 스타일 주제 태그"
+    },
+    "scene_prompt": {
+      "type": "string",
+      "required": true,
+      "description": "자연어 장면 설명"
+    },
+    "meta_tags": {
+      "type": "string",
+      "default": "safe, highres",
+      "description": "안전/메타 태그"
+    },
+    "negative_prompt": {
+      "node": "5",
+      "field": "text",
+      "type": "string",
+      "default": "",
+      "description": "네거티브 프롬프트"
+    },
+    "width": {
+      "node": "6",
+      "field": "width",
+      "type": "number",
+      "default": 1024
+    },
+    "height": {
+      "node": "6",
+      "field": "height",
+      "type": "number",
+      "default": 1024
+    },
+    "steps": {
+      "node": "8",
+      "field": "steps",
+      "type": "number",
+      "default": 36
+    },
+    "cfg": {
+      "node": "8",
+      "field": "cfg",
+      "type": "number",
+      "default": 4.5
+    },
+    "seed": {
+      "node": "8",
+      "field": "seed",
+      "type": "number",
+      "default": -1
+    },
+    "sampler_name": {
+      "node": "8",
+      "field": "sampler_name",
+      "type": "string",
+      "default": "er_sde"
+    },
+    "scheduler": {
+      "node": "8",
+      "field": "scheduler",
+      "type": "string",
+      "default": "simple"
+    },
+    "quality_preset": {
+      "type": "string",
+      "default": "standard",
+      "description": "plain | standard | polished"
+    },
+    "model_profile": {
+      "type": "string",
+      "default": "auto",
+      "description": "auto | official_preview3 | cat_tower | pornmaster"
+    },
+    "diffusion_model": {
+      "node": "1",
+      "field": "unet_name",
+      "type": "string",
+      "default": "anima-preview3-base.safetensors"
+    },
+    "text_encoder": {
+      "node": "2",
+      "field": "clip_name",
+      "type": "string",
+      "default": "qwen35_4b.safetensors"
+    },
+    "use_alignment": {
+      "node": "2",
+      "field": "use_alignment",
+      "type": "boolean",
+      "default": true
+    },
+    "alignment_strength": {
+      "node": "2",
+      "field": "alignment_strength",
+      "type": "number",
+      "default": 0.5
+    },
+    "use_calibration": {
+      "node": "2",
+      "field": "use_calibration",
+      "type": "boolean",
+      "default": false
+    },
+    "output_scale": {
+      "node": "2",
+      "field": "output_scale",
+      "type": "number",
+      "default": 1
+    },
+    "vae_name": {
+      "node": "3",
+      "field": "vae_name",
+      "type": "string",
+      "default": "qwen_image_vae.safetensors"
+    },
+    "system_prefix": {
+      "type": "string",
+      "default": "You are an illustrator composing a polished anime image with elegant shading, clean structure, and strong visual appeal. <Prompt Start> ",
+      "description": "Anima 시스템 프리픽스"
+    }
+  }
+}
