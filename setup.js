@@ -124,10 +124,19 @@ async function stepGpuDetect() {
 async function stepLocalTTS(pip, gpuInfo) {
   if (!pip || !gpuInfo.hasGpu) return;
   header("Step 6: Local TTS (Optional)");
-  info("Qwen3-TTS — 음성 클로닝, GPU 음성 합성");
-  warn("설치 시 약 1.5GB의 디스크 공간이 필요합니다 (PyTorch + Qwen3-TTS)");
-  if (!await confirm("Local TTS를 설치하시겠습니까?", false)) return;
+  info("로컬 GPU TTS — 음성 클로닝, 음성 합성");
+  info("  1) Qwen3-TTS — 0.6B/1.7B, 한/영/일/중 (약 1.5GB)");
+  info("  2) VoxCPM2  — 0.6B/2B, 48kHz 고품질, 30개 언어 (약 3GB)");
+  info("  3) 둘 다 설치");
+  info("  4) 건너뛰기");
+  const choice = await ask("선택 [1-4]", "4");
 
+  const installQwen = choice === "1" || choice === "3";
+  const installVoxcpm = choice === "2" || choice === "3";
+
+  if (!installQwen && !installVoxcpm) return;
+
+  // PyTorch is shared by both — install once
   info("Installing PyTorch...");
   if (gpuInfo.cudaTag !== "cpu") {
     run(`"${pip}" install torch --index-url https://download.pytorch.org/whl/${gpuInfo.cudaTag}`);
@@ -137,9 +146,17 @@ async function stepLocalTTS(pip, gpuInfo) {
     info("PyTorch (CPU) installed");
   }
 
-  info("Installing TTS dependencies...");
-  run(`"${pip}" install -r "${path.join(__dirname, "gpu-manager", "requirements-tts.txt")}"`);
-  info("Local TTS installed");
+  if (installQwen) {
+    info("Installing Qwen3-TTS dependencies...");
+    run(`"${pip}" install -r "${path.join(__dirname, "gpu-manager", "requirements-tts.txt")}"`);
+    info("Qwen3-TTS installed");
+  }
+
+  if (installVoxcpm) {
+    info("Installing VoxCPM2 dependencies...");
+    run(`"${pip}" install -r "${path.join(__dirname, "gpu-manager", "requirements-voxcpm.txt")}"`);
+    info("VoxCPM2 installed");
+  }
 }
 
 async function stepComfyUI(gpuInfo) {
