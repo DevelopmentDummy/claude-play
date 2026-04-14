@@ -226,7 +226,7 @@ class VoxCPMEngine:
         Buffers STREAM_BUFFER_SIZE raw chunks before encoding to MP3 and sending,
         so each sent audio segment is long enough for smooth playback.
         """
-        STREAM_BUFFER_SIZE = 4  # accumulate N raw chunks → 1 MP3 segment
+        STREAM_BUFFER_SIZE = 12  # accumulate N raw chunks → 1 MP3 segment
         sr = self._model.tts_model.sample_rate
         segment_idx = 0
         audio_buffer: list[np.ndarray] = []
@@ -237,7 +237,7 @@ class VoxCPMEngine:
             inference_timesteps=10,
             cfg_value=2.0,
             streaming=True,
-            streaming_prefix_len=8,
+            streaming_prefix_len=16,
         ):
             wav = chunk_tuple[0].cpu().numpy().squeeze()
             audio_buffer.append(wav.astype(np.float32))
