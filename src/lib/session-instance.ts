@@ -706,7 +706,8 @@ export class SessionInstance {
         if (!voiceFile || !fs.existsSync(voiceFile)) return;
 
         const lang = voiceConfig.language || "ko";
-        const modelSize = voiceConfig.modelSize || "1.7B";
+        const gpuProvider = provider === "voxcpm" ? "voxcpm" : "qwen3";
+        const modelSize = voiceConfig.modelSize || (gpuProvider === "voxcpm" ? "2B" : "1.7B");
         const gpuManagerUrl = `http://127.0.0.1:${process.env.GPU_MANAGER_PORT || "3342"}`;
 
         broadcastRef("audio:status", { status: "queued", messageId, totalChunks });
@@ -733,6 +734,7 @@ export class SessionInstance {
                 language: lang,
                 model_size: modelSize,
                 batch_size: TTS_BATCH_SIZE,
+                provider: gpuProvider,
               }),
             });
 
