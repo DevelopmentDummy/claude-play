@@ -374,57 +374,78 @@ export default function ChatPage() {
         };
 
         if (streamDone) {
-          // VoxCPM streaming done — finalize: trim audioMap to real size, clear status
+          // VoxCPM streaming done — finalize: trim audioMap, clear status
+          // Update refs IMMEDIATELY (before React render cycle)
+          const curMap = audioMapRef.current;
+          if (curMap[messageId]) {
+            const trimmed = curMap[messageId].slice(0, totalChunks);
+            audioMapRef.current = { ...curMap, [messageId]: trimmed };
+          }
+          const curStatus = { ...audioStatusRef.current };
+          delete curStatus[messageId];
+          audioStatusRef.current = curStatus;
+
+          const state = playStateRef.current[messageId];
+          if (state) state.totalChunks = totalChunks;
+
+          // Sync React state
           setAudioMap((prev) => {
             const arr = prev[messageId];
             if (!arr) return prev;
-            const trimmed = arr.slice(0, totalChunks);
-            const next = { ...prev, [messageId]: trimmed };
-            audioMapRef.current = next;
-            return next;
+            return { ...prev, [messageId]: arr.slice(0, totalChunks) };
           });
           setAudioStatus((prev) => {
             const next = { ...prev };
             delete next[messageId];
-            audioStatusRef.current = next;
             return next;
           });
-          const state = playStateRef.current[messageId];
-          if (state) state.totalChunks = totalChunks;
           tryResume();
           return;
         }
 
-        // Store chunk URL in the array (update both state and ref)
+        // Update ref IMMEDIATELY so playNext always sees latest data
+        const curMap = audioMapRef.current;
+        const arr = curMap[messageId] ? [...curMap[messageId]] : [];
+        while (arr.length <= chunkIndex) arr.push("");
+        arr[chunkIndex] = url;
+        audioMapRef.current = { ...curMap, [messageId]: arr };
+
+        // Update status ref immediately
+        // totalChunks === 0 means streaming mode — never auto-clear status (streamDone handles it)
+        const curStatus = audioStatusRef.current;
+        const current = curStatus[messageId] || { generating: true, totalChunks, readyCount: 0 };
+        const rc = current.readyCount + 1;
+        if (totalChunks > 0 && rc >= totalChunks) {
+          const ns = { ...curStatus };
+          delete ns[messageId];
+          audioStatusRef.current = ns;
+        } else {
+          audioStatusRef.current = { ...curStatus, [messageId]: { ...current, readyCount: rc } };
+        }
+
+        // Sync React state (for UI rendering only)
         setAudioMap((prev) => {
-          const arr = prev[messageId] ? [...prev[messageId]] : new Array(totalChunks).fill(null);
-          // Grow array if needed (streaming: totalChunks is placeholder)
-          while (arr.length <= chunkIndex) arr.push(null);
-          arr[chunkIndex] = url;
-          const next = { ...prev, [messageId]: arr };
-          audioMapRef.current = next;
-          return next;
+          const a = prev[messageId] ? [...prev[messageId]] : [];
+          while (a.length <= chunkIndex) a.push("");
+          a[chunkIndex] = url;
+          return { ...prev, [messageId]: a };
         });
-        // Update status: increment ready count, clear generating when all done
         setAudioStatus((prev) => {
-          const current = prev[messageId] || { generating: true, totalChunks, readyCount: 0 };
-          const readyCount = current.readyCount + 1;
-          let next;
-          if (readyCount >= totalChunks) {
-            next = { ...prev };
-            delete next[messageId];
-          } else {
-            next = { ...prev, [messageId]: { ...current, readyCount } };
+          const c = prev[messageId] || { generating: true, totalChunks, readyCount: 0 };
+          const r = c.readyCount + 1;
+          if (totalChunks > 0 && r >= totalChunks) {
+            const n = { ...prev };
+            delete n[messageId];
+            return n;
           }
-          audioStatusRef.current = next;
-          return next;
+          return { ...prev, [messageId]: { ...c, readyCount: r } };
         });
+
         // Auto-play: enqueue or resume
         if (localStorage.getItem("tts-autoplay") !== "false") {
-          // Update totalChunks in play state if already queued
           const state = playStateRef.current[messageId];
-          if (state && totalChunks) state.totalChunks = totalChunks;
-          // Nudge playback in case it was waiting for this chunk
+          // Don't update totalChunks from streaming events (0 = unknown)
+          if (state && totalChunks > 0) state.totalChunks = totalChunks;
           tryResume();
         }
       },
@@ -457,7 +478,8 @@ export default function ChatPage() {
             return next;
           });
           if (localStorage.getItem("tts-autoplay") !== "false") {
-            enqueueMessage(messageId, totalChunks);
+            // For streaming (totalChunks=0), use Infinity so playNext never thinks we're done early
+            enqueueMessage(messageId, totalChunks > 0 ? totalChunks : Infinity);
           }
         }
       },

@@ -711,12 +711,10 @@ export class SessionInstance {
         if (!fs.existsSync(audioDir)) fs.mkdirSync(audioDir, { recursive: true });
 
         // Send full text (no splitting) — VoxCPM streams audio chunks back.
-        // Use a large placeholder for totalChunks during streaming so the
-        // frontend keeps the "generating" status alive; send the real count
-        // once the stream ends.
-        const STREAM_PLACEHOLDER_TOTAL = 9999;
+        // totalChunks is unknown during streaming, use 0 as "streaming mode" signal.
+        // The frontend uses audioStatus.generating to know more chunks may arrive.
         const fullText = chunks.join(" ");
-        broadcastRef("audio:status", { status: "queued", messageId, totalChunks: STREAM_PLACEHOLDER_TOTAL });
+        broadcastRef("audio:status", { status: "queued", messageId, totalChunks: 0, streaming: true });
 
         try {
           const res = await fetch(`${gpuManagerUrl}/tts/synthesize-stream`, {
@@ -766,7 +764,7 @@ export class SessionInstance {
                 broadcastRef("audio:ready", {
                   url, messageId,
                   chunkIndex: chunkCount,
-                  totalChunks: STREAM_PLACEHOLDER_TOTAL,
+                  totalChunks: 0,
                 });
                 chunkCount++;
               }
