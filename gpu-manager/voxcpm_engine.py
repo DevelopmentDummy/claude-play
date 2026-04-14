@@ -245,9 +245,14 @@ class VoxCPMEngine:
 
     @staticmethod
     def _load_prompt_cache(voice_file: str) -> dict:
-        """Load .pt prompt cache file."""
+        """Load .pt prompt cache file.
+
+        Tensors are restored to the device they were saved on (cuda).
+        Do NOT use map_location — let torch restore to original device
+        to avoid dtype/device mismatches with the model.
+        """
         import torch
-        return torch.load(voice_file, map_location="cuda:0", weights_only=False)
+        return torch.load(voice_file, weights_only=False)
 
     def _synthesize_one(self, text: str, prompt_cache: dict) -> bytes:
         """Single text -> MP3 bytes using pre-built prompt cache."""
