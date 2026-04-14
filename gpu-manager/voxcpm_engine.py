@@ -4,11 +4,17 @@ import asyncio
 import base64
 import io
 import logging
+import os
 import time
 from pathlib import Path
 
 import numpy as np
 import soundfile as sf
+
+# Enable persistent torch.compile cache so compilation survives server restarts
+_COMPILE_CACHE = str(Path.home() / ".cache" / "torch" / "inductor")
+os.environ.setdefault("TORCHINDUCTOR_CACHE_DIR", _COMPILE_CACHE)
+os.environ.setdefault("TORCHINDUCTOR_FX_GRAPH_CACHE", "1")
 
 logger = logging.getLogger("gpu-manager.voxcpm")
 
