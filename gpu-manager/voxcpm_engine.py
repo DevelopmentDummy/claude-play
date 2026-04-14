@@ -169,13 +169,30 @@ class VoxCPMEngine:
             return results
 
     def _synthesize_one(self, text: str, voice_file: str) -> bytes:
-        """Single text -> MP3 bytes via VoxCPM2."""
-        wav = self._model.generate(
-            text=text,
-            reference_wav_path=voice_file,
-            cfg_value=2.0,
-            inference_timesteps=10,
-        )
+        """Single text -> MP3 bytes via VoxCPM2.
+
+        Automatically detects ultimate mode by checking for a sidecar .txt
+        transcript file next to the voice .wav file.
+        """
+        # Check for sidecar transcript (ultimate mode)
+        transcript_path = Path(voice_file).with_suffix(".txt")
+        if transcript_path.exists():
+            transcript = transcript_path.read_text(encoding="utf-8").strip()
+            wav = self._model.generate(
+                text=text,
+                prompt_wav_path=voice_file,
+                prompt_text=transcript,
+                reference_wav_path=voice_file,
+                cfg_value=2.0,
+                inference_timesteps=10,
+            )
+        else:
+            wav = self._model.generate(
+                text=text,
+                reference_wav_path=voice_file,
+                cfg_value=2.0,
+                inference_timesteps=10,
+            )
 
         sr = self._model.tts_model.sample_rate
         audio_np = wav if isinstance(wav, np.ndarray) else wav.cpu().numpy()
