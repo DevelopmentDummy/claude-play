@@ -221,24 +221,50 @@ class VoxCPMEngine:
         self, text: str, prompt_cache: dict,
         chunk_queue: asyncio.Queue, loop: asyncio.AbstractEventLoop,
     ) -> None:
-        """Run streaming generation in sync thread, push chunks to async queue."""
-        chunk_idx = 0
+        """Run streaming generation in sync thread, push chunks to async queue.
+
+        Buffers STREAM_BUFFER_SIZE raw chunks before encoding to MP3 and sending,
+        so each sent audio segment is long enough for smooth playback.
+        """
+        STREAM_BUFFER_SIZE = 4  # accumulate N raw chunks → 1 MP3 segment
+        sr = self._model.tts_model.sample_rate
+        segment_idx = 0
+        audio_buffer: list[np.ndarray] = []
+
         for chunk_tuple in self._model.tts_model._generate_with_prompt_cache(
             target_text=text,
             prompt_cache=prompt_cache,
             inference_timesteps=10,
             cfg_value=2.0,
             streaming=True,
+            streaming_prefix_len=8,
         ):
             wav = chunk_tuple[0].cpu().numpy().squeeze()
-            mp3 = self._encode_mp3(wav.astype(np.float32), self._model.tts_model.sample_rate)
+            audio_buffer.append(wav.astype(np.float32))
+
+            if len(audio_buffer) >= STREAM_BUFFER_SIZE:
+                merged = np.concatenate(audio_buffer)
+                audio_buffer.clear()
+                mp3 = self._encode_mp3(merged, sr)
+                item = {
+                    "chunk_index": segment_idx,
+                    "audio_base64": base64.b64encode(mp3).decode("ascii"),
+                }
+                asyncio.run_coroutine_threadsafe(chunk_queue.put(item), loop).result()
+                segment_idx += 1
+                logger.info("VoxCPM streamed segment %d", segment_idx)
+
+        # Flush remaining buffer
+        if audio_buffer:
+            merged = np.concatenate(audio_buffer)
+            mp3 = self._encode_mp3(merged, sr)
             item = {
-                "chunk_index": chunk_idx,
+                "chunk_index": segment_idx,
                 "audio_base64": base64.b64encode(mp3).decode("ascii"),
             }
             asyncio.run_coroutine_threadsafe(chunk_queue.put(item), loop).result()
-            chunk_idx += 1
-            logger.info("VoxCPM streamed chunk %d", chunk_idx)
+            segment_idx += 1
+            logger.info("VoxCPM streamed final segment %d", segment_idx)
 
         # Sentinel
         asyncio.run_coroutine_threadsafe(chunk_queue.put(None), loop).result()
