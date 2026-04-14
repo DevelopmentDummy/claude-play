@@ -142,10 +142,12 @@ class VoxCPMEngine:
             sf.write(buf, audio, sample_rate, format="WAV")
             return buf.getvalue()
 
+    # ── Synthesis ───────────────────────────────────────────
+
     async def synthesize_batch(self, payload: dict) -> list[dict]:
-        """Synthesize text chunks using VoxCPM2."""
+        """Synthesize text chunks using VoxCPM2 with cached prompt."""
         chunks = payload["chunks"]
-        voice_file = payload["voice_file"]
+        voice_file = payload["voice_file"]  # .pt prompt cache file
         model_size = payload.get("model_size", "2B")
 
         async with self._lock:
@@ -153,16 +155,21 @@ class VoxCPMEngine:
             await self.load_model(model_size)
             self._cancel_idle_timer()
 
+            # Load prompt cache once for the entire batch
+            loop = asyncio.get_event_loop()
+            prompt_cache = await loop.run_in_executor(
+                None, self._load_prompt_cache, voice_file
+            )
+
             results = []
             for i, text in enumerate(chunks):
                 t0 = time.monotonic()
                 logger.info("VoxCPM chunk %d/%d: %s...", i + 1, len(chunks), text[:40])
 
-                loop = asyncio.get_event_loop()
                 audio_bytes = await loop.run_in_executor(
                     None,
                     self._synthesize_one,
-                    text, voice_file,
+                    text, prompt_cache,
                 )
 
                 elapsed = time.monotonic() - t0
@@ -178,38 +185,32 @@ class VoxCPMEngine:
             self._reset_idle_timer()
             return results
 
-    def _synthesize_one(self, text: str, voice_file: str) -> bytes:
-        """Single text -> MP3 bytes via VoxCPM2.
+    @staticmethod
+    def _load_prompt_cache(voice_file: str) -> dict:
+        """Load .pt prompt cache file."""
+        import torch
+        return torch.load(voice_file, map_location="cuda:0", weights_only=False)
 
-        Automatically detects ultimate mode by checking for a sidecar .txt
-        transcript file next to the voice .wav file.
-        """
-        # Check for sidecar transcript (ultimate mode)
-        transcript_path = Path(voice_file).with_suffix(".txt")
-        if transcript_path.exists():
-            transcript = transcript_path.read_text(encoding="utf-8").strip()
-            wav = self._model.generate(
-                text=text,
-                prompt_wav_path=voice_file,
-                prompt_text=transcript,
-                reference_wav_path=voice_file,
-                cfg_value=2.0,
-                inference_timesteps=10,
-            )
-        else:
-            wav = self._model.generate(
-                text=text,
-                reference_wav_path=voice_file,
-                cfg_value=2.0,
-                inference_timesteps=10,
-            )
+    def _synthesize_one(self, text: str, prompt_cache: dict) -> bytes:
+        """Single text -> MP3 bytes using pre-built prompt cache."""
+        result = next(self._model.tts_model._generate_with_prompt_cache(
+            target_text=text,
+            prompt_cache=prompt_cache,
+            inference_timesteps=10,
+            cfg_value=2.0,
+            streaming=False,
+        ))
 
+        # result is a tuple; first element is the waveform tensor
+        wav_tensor = result[0]
         sr = self._model.tts_model.sample_rate
-        audio_np = wav if isinstance(wav, np.ndarray) else wav.cpu().numpy()
+        audio_np = wav_tensor.cpu().numpy().squeeze()
         return self._encode_mp3(audio_np.astype(np.float32), sample_rate=sr)
 
+    # ── Voice Creation ──────────────────────────────────────
+
     async def create_voice(self, payload: dict) -> dict:
-        """Create voice for VoxCPM — saves reference audio as the voice file."""
+        """Create .pt prompt cache from reference audio or voice design."""
         mode = payload["mode"]  # "reference", "ultimate", "design"
         output_path = payload["output_path"]
         model_size = payload.get("model_size", "2B")
@@ -253,19 +254,59 @@ class VoxCPMEngine:
             self._reset_idle_timer()
             return result
 
+    def _build_and_save_cache(
+        self, output_path: str, *,
+        reference_wav_path: str | None = None,
+        prompt_wav_path: str | None = None,
+        prompt_text: str | None = None,
+    ) -> dict:
+        """Build prompt cache from audio and save as .pt file."""
+        import torch
+
+        cache = self._model.tts_model.build_prompt_cache(
+            reference_wav_path=reference_wav_path,
+            prompt_wav_path=prompt_wav_path,
+            prompt_text=prompt_text,
+        )
+
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        torch.save(cache, output_path)
+        logger.info("Saved prompt cache: %s", output_path)
+        return cache
+
+    def _generate_sample_from_cache(self, cache: dict, language: str) -> bytes:
+        """Generate a short sample audio for preview using prompt cache."""
+        sample_texts = {
+            "ko": "안녕하세요, 만나서 반갑습니다.",
+            "en": "Hello, nice to meet you.",
+            "ja": "こんにちは、はじめまして。",
+            "zh": "你好，很高兴认识你。",
+        }
+        text = sample_texts.get(language, sample_texts["ko"])
+
+        result = next(self._model.tts_model._generate_with_prompt_cache(
+            target_text=text,
+            prompt_cache=cache,
+            inference_timesteps=10,
+            cfg_value=2.0,
+            streaming=False,
+        ))
+
+        sr = self._model.tts_model.sample_rate
+        audio_np = result[0].cpu().numpy().squeeze()
+        return self._encode_mp3(audio_np.astype(np.float32), sample_rate=sr)
+
     def _create_from_reference(
         self, reference_audio: str, output_path: str, language: str,
     ) -> dict:
-        """Controllable cloning — copy reference audio as the voice file."""
-        import shutil
-
+        """Controllable cloning — build prompt cache from reference audio."""
         t0 = time.monotonic()
         logger.info("VoxCPM voice from reference: %s", reference_audio)
 
-        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(reference_audio, output_path)
-
-        sample_audio = self._generate_sample(output_path, language)
+        cache = self._build_and_save_cache(
+            output_path, reference_wav_path=reference_audio,
+        )
+        sample_audio = self._generate_sample_from_cache(cache, language)
 
         elapsed = time.monotonic() - t0
         logger.info("VoxCPM voice created in %.1fs: %s", elapsed, output_path)
@@ -280,22 +321,17 @@ class VoxCPMEngine:
         self, reference_audio: str, reference_text: str,
         output_path: str, language: str,
     ) -> dict:
-        """Ultimate cloning — copy reference audio + save transcript as sidecar."""
-        import shutil
-
+        """Ultimate cloning — build prompt cache with audio + transcript."""
         t0 = time.monotonic()
         logger.info("VoxCPM ultimate voice from reference: %s", reference_audio)
 
-        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(reference_audio, output_path)
-
-        # Save transcript as sidecar file for ultimate mode
-        transcript_path = str(Path(output_path).with_suffix(".txt"))
-        Path(transcript_path).write_text(reference_text, encoding="utf-8")
-
-        sample_audio = self._generate_sample_ultimate(
-            output_path, reference_text, language,
+        cache = self._build_and_save_cache(
+            output_path,
+            reference_wav_path=reference_audio,
+            prompt_wav_path=reference_audio,
+            prompt_text=reference_text,
         )
+        sample_audio = self._generate_sample_from_cache(cache, language)
 
         elapsed = time.monotonic() - t0
         logger.info("VoxCPM ultimate voice created in %.1fs: %s", elapsed, output_path)
@@ -309,7 +345,10 @@ class VoxCPMEngine:
     def _create_from_design(
         self, design_prompt: str, output_path: str, language: str,
     ) -> dict:
-        """Voice Design — generate reference audio from text description."""
+        """Voice Design — generate reference audio, then build prompt cache."""
+        import tempfile
+        import os
+
         t0 = time.monotonic()
         logger.info("VoxCPM voice design: %s...", design_prompt[:60])
 
@@ -321,6 +360,7 @@ class VoxCPMEngine:
         }
         sample_text = sample_texts.get(language, sample_texts["ko"])
 
+        # Generate reference audio from design prompt
         design_text = f"({design_prompt}){sample_text}"
         wav = self._model.generate(
             text=design_text,
@@ -331,10 +371,20 @@ class VoxCPMEngine:
         sr = self._model.tts_model.sample_rate
         audio_np = wav if isinstance(wav, np.ndarray) else wav.cpu().numpy()
 
-        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-        sf.write(output_path, audio_np, sr)
+        # Save generated audio to temp file, build cache from it
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            tmp_path = tmp.name
+            sf.write(tmp_path, audio_np, sr)
 
-        sample_audio = self._encode_mp3(audio_np.astype(np.float32), sample_rate=sr)
+        try:
+            cache = self._build_and_save_cache(
+                output_path, reference_wav_path=tmp_path,
+            )
+        finally:
+            os.unlink(tmp_path)
+
+        # Use the design-generated audio as the sample preview
+        sample_audio = self._encode_mp3(audio_np.squeeze().astype(np.float32), sample_rate=sr)
 
         elapsed = time.monotonic() - t0
         logger.info("VoxCPM voice designed in %.1fs: %s", elapsed, output_path)
@@ -344,49 +394,3 @@ class VoxCPMEngine:
             "voice_file": output_path,
             "sample_audio": base64.b64encode(sample_audio).decode("ascii"),
         }
-
-    def _generate_sample(self, voice_file: str, language: str) -> bytes:
-        """Generate a short sample audio for preview (controllable mode)."""
-        sample_texts = {
-            "ko": "안녕하세요, 만나서 반갑습니다.",
-            "en": "Hello, nice to meet you.",
-            "ja": "こんにちは、はじめまして。",
-            "zh": "你好，很高兴认识你。",
-        }
-        text = sample_texts.get(language, sample_texts["ko"])
-
-        wav = self._model.generate(
-            text=text,
-            reference_wav_path=voice_file,
-            cfg_value=2.0,
-            inference_timesteps=10,
-        )
-
-        sr = self._model.tts_model.sample_rate
-        audio_np = wav if isinstance(wav, np.ndarray) else wav.cpu().numpy()
-        return self._encode_mp3(audio_np.astype(np.float32), sample_rate=sr)
-
-    def _generate_sample_ultimate(
-        self, voice_file: str, transcript: str, language: str,
-    ) -> bytes:
-        """Generate a short sample audio for preview (ultimate mode)."""
-        sample_texts = {
-            "ko": "안녕하세요, 만나서 반갑습니다.",
-            "en": "Hello, nice to meet you.",
-            "ja": "こんにちは、はじめまして。",
-            "zh": "你好，很高兴认识你。",
-        }
-        text = sample_texts.get(language, sample_texts["ko"])
-
-        wav = self._model.generate(
-            text=text,
-            prompt_wav_path=voice_file,
-            prompt_text=transcript,
-            reference_wav_path=voice_file,
-            cfg_value=2.0,
-            inference_timesteps=10,
-        )
-
-        sr = self._model.tts_model.sample_rate
-        audio_np = wav if isinstance(wav, np.ndarray) else wav.cpu().numpy()
-        return self._encode_mp3(audio_np.astype(np.float32), sample_rate=sr)

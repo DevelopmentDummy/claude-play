@@ -519,7 +519,7 @@ export default function VoiceSettings({ personaName, accentColor = "var(--accent
             >
               <div className="flex items-center justify-between mb-1.5">
                 <label className="text-[10px] text-text-dim/70">
-                  {isVoxcpm ? "Voice File (.wav)" : "Voice Embedding (.pt)"}
+                  {isVoxcpm ? "Voice Cache (.pt)" : "Voice Embedding (.pt)"}
                 </label>
                 {config.voiceFile && (
                   <span className="text-[9px] text-accent/70">{config.voiceFile}</span>
@@ -532,7 +532,7 @@ export default function VoiceSettings({ personaName, accentColor = "var(--accent
                   border-accent/40 text-accent/80 hover:bg-accent/10 hover:text-accent"
                 title={(isVoxcpm ? voxcpmAvailable === false : localTtsAvailable === false) ? "TTS 미설치" : undefined}
               >
-                {generating ? "Generating..." : config.voiceFile ? "Regenerate Voice" : isVoxcpm ? "Generate Voice (.wav)" : "Generate Voice (.pt)"}
+                {generating ? "Generating..." : config.voiceFile ? "Regenerate Voice" : "Generate Voice (.pt)"}
               </button>
               {(isVoxcpm ? voxcpmAvailable === false : localTtsAvailable === false) && (
                 <p className="text-[9px] text-error/60 mt-1">{isVoxcpm ? "VoxCPM 미설치" : "Local TTS 미설치"}</p>
