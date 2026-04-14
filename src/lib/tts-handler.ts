@@ -259,7 +259,7 @@ async function handleVoiceGeneratePost(body: Record<string, unknown>, personaNam
 
     const voiceName = personaName.replace(/[^a-zA-Z0-9_-]/g, "_");
     const gpuProvider = voiceProvider === "voxcpm" ? "voxcpm" : "qwen3";
-    const voiceExt = gpuProvider === "voxcpm" ? "voxcpm.wav" : "pt";
+    const voiceExt = gpuProvider === "voxcpm" ? "voxcpm.pt" : "pt";
     const outputPath = path.join(personaDir, "voice", `${voiceName}.${voiceExt}`);
 
     const payload: Record<string, unknown> = {
