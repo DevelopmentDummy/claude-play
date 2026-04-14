@@ -74,7 +74,7 @@ class VoxCPMEngine:
         model = VoxCPM.from_pretrained(
             model_name,
             load_denoiser=False,
-            optimize=False,
+            optimize=True,
         )
         return model
 
