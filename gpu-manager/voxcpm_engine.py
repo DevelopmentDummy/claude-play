@@ -217,16 +217,26 @@ class VoxCPMEngine:
             logger.info("VoxCPM streaming done in %.1fs", elapsed)
             self._reset_idle_timer()
 
+    @staticmethod
+    def _is_silence(audio: np.ndarray, threshold: float = 0.01) -> bool:
+        """Check if an audio chunk is silence (low RMS energy)."""
+        rms = np.sqrt(np.mean(audio ** 2))
+        return rms < threshold
+
     def _stream_sync(
         self, text: str, prompt_cache: dict,
         chunk_queue: asyncio.Queue, loop: asyncio.AbstractEventLoop,
     ) -> None:
         """Run streaming generation in sync thread, push chunks to async queue.
 
-        Buffers STREAM_BUFFER_SIZE raw chunks before encoding to MP3 and sending,
-        so each sent audio segment is long enough for smooth playback.
+        Splits at silence boundaries for natural-sounding segments:
+        - Accumulate raw audio chunks
+        - After MIN_CHUNKS, check each new chunk for silence (pause)
+        - Flush at silence boundary → clean cut between phrases
+        - Force flush at MAX_CHUNKS to cap latency
         """
-        STREAM_BUFFER_SIZE = 12  # accumulate N raw chunks → 1 MP3 segment
+        MIN_CHUNKS = 6    # minimum chunks before checking for silence
+        MAX_CHUNKS = 20   # force flush even without silence
         sr = self._model.tts_model.sample_rate
         segment_idx = 0
         audio_buffer: list[np.ndarray] = []
@@ -237,12 +247,18 @@ class VoxCPMEngine:
             inference_timesteps=10,
             cfg_value=2.0,
             streaming=True,
-            streaming_prefix_len=16,
+            streaming_prefix_len=8,
         ):
-            wav = chunk_tuple[0].cpu().numpy().squeeze()
-            audio_buffer.append(wav.astype(np.float32))
+            wav = chunk_tuple[0].cpu().numpy().squeeze().astype(np.float32)
+            audio_buffer.append(wav)
 
-            if len(audio_buffer) >= STREAM_BUFFER_SIZE:
+            should_flush = False
+            if len(audio_buffer) >= MAX_CHUNKS:
+                should_flush = True
+            elif len(audio_buffer) >= MIN_CHUNKS and self._is_silence(wav):
+                should_flush = True
+
+            if should_flush:
                 merged = np.concatenate(audio_buffer)
                 audio_buffer.clear()
                 mp3 = self._encode_mp3(merged, sr)
@@ -252,7 +268,8 @@ class VoxCPMEngine:
                 }
                 asyncio.run_coroutine_threadsafe(chunk_queue.put(item), loop).result()
                 segment_idx += 1
-                logger.info("VoxCPM streamed segment %d", segment_idx)
+                dur = len(merged) / sr
+                logger.info("VoxCPM segment %d (%.1fs)", segment_idx, dur)
 
         # Flush remaining buffer
         if audio_buffer:
@@ -264,7 +281,8 @@ class VoxCPMEngine:
             }
             asyncio.run_coroutine_threadsafe(chunk_queue.put(item), loop).result()
             segment_idx += 1
-            logger.info("VoxCPM streamed final segment %d", segment_idx)
+            dur = len(merged) / sr
+            logger.info("VoxCPM final segment %d (%.1fs)", segment_idx, dur)
 
         # Sentinel
         asyncio.run_coroutine_threadsafe(chunk_queue.put(None), loop).result()
