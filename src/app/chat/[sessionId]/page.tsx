@@ -369,12 +369,37 @@ export default function ChatPage() {
         }
       },
       "audio:ready": (d) => {
-        const { url, messageId, chunkIndex = 0, totalChunks = 1 } = d as {
-          url: string; messageId: string; chunkIndex?: number; totalChunks?: number;
+        const { url, messageId, chunkIndex = 0, totalChunks = 1, streamDone } = d as {
+          url: string; messageId: string; chunkIndex?: number; totalChunks?: number; streamDone?: boolean;
         };
+
+        if (streamDone) {
+          // VoxCPM streaming done — finalize: trim audioMap to real size, clear status
+          setAudioMap((prev) => {
+            const arr = prev[messageId];
+            if (!arr) return prev;
+            const trimmed = arr.slice(0, totalChunks);
+            const next = { ...prev, [messageId]: trimmed };
+            audioMapRef.current = next;
+            return next;
+          });
+          setAudioStatus((prev) => {
+            const next = { ...prev };
+            delete next[messageId];
+            audioStatusRef.current = next;
+            return next;
+          });
+          const state = playStateRef.current[messageId];
+          if (state) state.totalChunks = totalChunks;
+          tryResume();
+          return;
+        }
+
         // Store chunk URL in the array (update both state and ref)
         setAudioMap((prev) => {
           const arr = prev[messageId] ? [...prev[messageId]] : new Array(totalChunks).fill(null);
+          // Grow array if needed (streaming: totalChunks is placeholder)
+          while (arr.length <= chunkIndex) arr.push(null);
           arr[chunkIndex] = url;
           const next = { ...prev, [messageId]: arr };
           audioMapRef.current = next;
