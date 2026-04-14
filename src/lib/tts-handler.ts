@@ -196,7 +196,7 @@ async function handleChatTts(body: Record<string, unknown>): Promise<HandlerResu
     const audioDir = path.join(sessionDir, "audio");
     if (!fs.existsSync(audioDir)) fs.mkdirSync(audioDir, { recursive: true });
 
-    const TTS_BATCH_SIZE = 3;
+    const TTS_BATCH_SIZE = gpuProvider === "voxcpm" ? 1 : 3;
 
     (async () => {
       for (let batchStart = 0; batchStart < chunks.length; batchStart += TTS_BATCH_SIZE) {

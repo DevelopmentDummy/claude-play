@@ -715,7 +715,9 @@ export class SessionInstance {
         const audioDir = path.join(dir, "audio");
         if (!fs.existsSync(audioDir)) fs.mkdirSync(audioDir, { recursive: true });
 
-        const TTS_BATCH_SIZE = 3;
+        // VoxCPM processes chunks sequentially (no batch inference),
+        // so batch size 1 gives faster first-audio latency.
+        const TTS_BATCH_SIZE = gpuProvider === "voxcpm" ? 1 : 3;
 
         for (let batchStart = 0; batchStart < chunks.length; batchStart += TTS_BATCH_SIZE) {
           if (this.destroyed) return;
