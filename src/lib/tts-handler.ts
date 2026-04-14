@@ -28,6 +28,7 @@ async function synthesizeViaGpuManager(
   voiceFile: string,
   language: string,
   modelSize: string,
+  provider: string,
 ): Promise<Array<{ chunkIndex: number; audioBuffer: Buffer }>> {
   const res = await fetch(`${GPU_MANAGER_URL}/tts/synthesize`, {
     method: "POST",
@@ -37,6 +38,7 @@ async function synthesizeViaGpuManager(
       voice_file: voiceFile,
       language,
       model_size: modelSize,
+      provider,
     }),
   });
 
@@ -141,7 +143,7 @@ async function handleChatTts(body: Record<string, unknown>): Promise<HandlerResu
   const messageId = body.messageId as string;
   const chunkDelay = voiceConfig.chunkDelay ?? 500;
   const provider = voiceConfig.ttsProvider || "comfyui";
-  const isLocalTts = provider === "local" || provider === "comfyui";
+  const isLocalTts = provider === "local" || provider === "comfyui" || provider === "voxcpm";
 
   const wsFilter = { sessionId };
   wsBroadcast("audio:status", { status: "generating", messageId, totalChunks }, wsFilter);
@@ -188,6 +190,7 @@ async function handleChatTts(body: Record<string, unknown>): Promise<HandlerResu
     }
 
     const lang = voiceConfig.language || "ko";
+    const gpuProvider = provider === "voxcpm" ? "voxcpm" : "qwen3";
     const modelSize = voiceConfig.modelSize || "1.7B";
 
     const audioDir = path.join(sessionDir, "audio");
@@ -201,7 +204,7 @@ async function handleChatTts(body: Record<string, unknown>): Promise<HandlerResu
 
         const batch = chunks.slice(batchStart, batchStart + TTS_BATCH_SIZE);
         try {
-          const results = await synthesizeViaGpuManager(batch, voiceFile, lang, modelSize);
+          const results = await synthesizeViaGpuManager(batch, voiceFile, lang, modelSize, gpuProvider);
           for (const { chunkIndex, audioBuffer } of results) {
             const globalIdx = batchStart + chunkIndex;
             const timestamp = Date.now();
@@ -238,7 +241,7 @@ async function handleVoiceGeneratePost(body: Record<string, unknown>, personaNam
 
   const voiceConfig = svc.sessions.readVoiceConfig(personaDir);
   const voiceProvider = voiceConfig?.ttsProvider || "comfyui";
-  const isLocalProvider = voiceProvider === "local" || voiceProvider === "comfyui";
+  const isLocalProvider = voiceProvider === "local" || voiceProvider === "comfyui" || voiceProvider === "voxcpm";
 
   if (body.mode === "create-voice") {
     if (!isLocalProvider) {
@@ -255,12 +258,15 @@ async function handleVoiceGeneratePost(body: Record<string, unknown>, personaNam
     }
 
     const voiceName = personaName.replace(/[^a-zA-Z0-9_-]/g, "_");
-    const outputPath = path.join(personaDir, "voice", `${voiceName}.pt`);
+    const gpuProvider = voiceProvider === "voxcpm" ? "voxcpm" : "qwen3";
+    const voiceExt = gpuProvider === "voxcpm" ? "voxcpm.wav" : "pt";
+    const outputPath = path.join(personaDir, "voice", `${voiceName}.${voiceExt}`);
 
     const payload: Record<string, unknown> = {
       output_path: outputPath,
-      model_size: voiceConfig?.modelSize || "1.7B",
+      model_size: voiceConfig?.modelSize || (gpuProvider === "voxcpm" ? "2B" : "1.7B"),
       language: voiceConfig?.language || "ko",
+      provider: gpuProvider,
     };
 
     if (hasRefAudio) {
@@ -306,14 +312,14 @@ async function handleVoiceGeneratePost(body: Record<string, unknown>, personaNam
     const updatedConfig = svc.sessions.readVoiceConfig(personaDir) || { enabled: true };
     svc.sessions.writeVoiceConfig(personaDir, {
       ...updatedConfig,
-      voiceFile: `voice/${voiceName}.pt`,
+      voiceFile: `voice/${voiceName}.${voiceExt}`,
     });
 
     return {
       status: 200,
       data: {
         ok: true,
-        voiceFile: `voice/${voiceName}.pt`,
+        voiceFile: `voice/${voiceName}.${voiceExt}`,
         testAudioUrl: `/api/personas/${encodeURIComponent(personaName)}/voice/generate?file=${testAudioFilename}`,
       },
     };
@@ -358,11 +364,13 @@ async function handleVoiceGeneratePost(body: Record<string, unknown>, personaNam
     const audioDir = path.join(personaDir, "audio");
     if (!fs.existsSync(audioDir)) fs.mkdirSync(audioDir, { recursive: true });
 
+    const gpuProvider = voiceProvider === "voxcpm" ? "voxcpm" : "qwen3";
     const results = await synthesizeViaGpuManager(
       [body.text as string],
       voiceFile,
       voiceConfig?.language || "ko",
-      voiceConfig?.modelSize || "1.7B",
+      voiceConfig?.modelSize || (gpuProvider === "voxcpm" ? "2B" : "1.7B"),
+      gpuProvider,
     );
 
     if (results.length === 0) {
