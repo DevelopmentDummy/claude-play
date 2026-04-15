@@ -1269,6 +1269,145 @@ $PANEL:거래$
 - `__panelBridge.openModal()` 및 `/api/sessions/[id]/modals` 엔드포인트 모두 그룹 로직을 적용한다
 - `updateVariables({ __modals })` 직접 호출 시에는 그룹 로직이 적용되지 않으므로, `openModal()` / `closeModal()`을 사용하는 것을 권장한다
 
+### 모달 박스 모델 규칙 (중요)
+
+모달 패널은 **패널이 원하는 크기**와 **시스템이 실제로 제공할 수 있는 크기**를 분리해서 생각한다.
+
+#### 1. 크기 우선순위
+
+모달의 크기 결정 우선순위는 다음과 같다:
+
+1. `layout.json`의 `panels.modalSize[패널명]` — 세션별 override
+2. 패널 HTML 내부의 `<panel-meta>` — 패널 자체 기본값
+3. `ModalPanel`의 시스템 기본값 — fallback (`860px`, `80vh`)
+
+즉, **세션 레이아웃이 최우선**이고, 패널 자체 메타는 그 다음이며, 둘 다 없을 때만 시스템 기본값을 사용한다.
+
+#### 2. `<panel-meta>` 사용법
+
+패널이 기본 모달 크기를 스스로 선언하고 싶다면 HTML 상단에 `<panel-meta>` 블록을 넣는다:
+
+```html
+<panel-meta>
+{
+  "maxWidth": "1360px",
+  "maxHeight": "86vh"
+}
+</panel-meta>
+```
+
+현재 공통 지원 필드:
+
+- `maxWidth` — **패널이 실제로 사용하고 싶은 내용(content) 기준 최대 너비**
+- `maxHeight` — 모달 최대 높이
+
+**중요:** `maxWidth`는 바깥 카드 전체 폭이 아니라, 패널이 실제로 쓰고 싶은 내용 폭으로 해석한다. 시스템은 자기 chrome(바깥 inset, 본문 padding)을 고려해 최종 외곽 폭을 계산한다.
+
+#### 3. usable width 계산 규칙
+
+`ModalPanel`은 패널이 선언한 `maxWidth`를 그대로 외곽 박스에 쓰지 않는다. 시스템이 가진 고정 chrome을 감안해 **usable width → outer width**로 변환한다.
+
+현재 시스템 chrome:
+
+- 모달 바깥 inset: `p-4` → 좌우 총 `32px`
+- 본문 래퍼 padding: `px-5` → 좌우 총 `40px`
+
+따라서 개념적으로:
+
+```text
+최종 모달 외곽 maxWidth
+= min(뷰포트 허용폭, 패널이 원하는 내용폭 + 시스템 본문 padding)
+= min(calc(100vw - 32px), calc(requestedMaxWidth + 40px))
+```
+
+즉 패널 작성자는 `calc(100vw - 32px)` 같은 값을 직접 계산하지 말고, **자신이 실제로 원하는 내용 폭**만 선언하면 된다. 뷰포트 및 시스템 패딩 차감은 `ModalPanel`이 처리한다.
+
+#### 4. 패널 root 규칙 (매우 중요)
+
+대형 모달 패널의 최상위 root(`.wrap`, `.root`, `.container` 등)는 반드시 다음 규칙을 따른다:
+
+```css
+.wrap {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+```
+
+이 규칙이 없으면 `width: 100%` 상태에서 padding이 바깥으로 더해져, 부모보다 넓어지며 가로 overflow가 발생할 수 있다.
+
+**특히 `box-sizing: border-box`는 필수다.** `content-box` 상태에서 root에 padding을 주면, 모달 내부에서 가로가 튀어나가는 가장 흔한 원인이 된다.
+
+#### 5. 가로 스크롤 정책
+
+일반 모달 패널은 **가로 스크롤을 기본 금지**한다.
+
+- 공용 `ModalPanel` 본문은 `overflow-x: hidden`을 기본으로 한다
+- 패널 root는 항상 부모 폭 안에 들어가야 한다
+- grid/flex 자식에 필요하면 `min-width: 0`을 명시한다
+- 긴 ID, 긴 mono 문자열, 뱃지 행은 줄바꿈 또는 잘림 처리를 한다
+
+가로 스크롤을 허용하는 패널은 예외적이어야 한다. 예:
+
+- 로그/콘솔 뷰어
+- 코드/JSON 뷰어
+- 고정폭 표(grid) 또는 이미지 비교 캔버스
+
+일반 대시보드형, 상태형, 리뷰형 모달에서 가로 스크롤이 생기면 버그로 간주한다.
+
+#### 6. 세로 스크롤 책임
+
+세로 스크롤은 **공용 wrapper 또는 패널 내부 중 한 곳만** 책임져야 한다. 둘 다 동시에 스크롤되면 UX가 나빠진다.
+
+대형 대시보드 패널은 보통 다음 형태를 권장한다:
+
+```css
+.wrap {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  height: min(72vh, 860px);
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+```
+
+즉 모달 전체가 스크롤되기보다, 패널 내부의 실제 목록 영역만 스크롤되게 만드는 편이 안정적이다.
+
+#### 7. 레이아웃 override를 써야 하는 경우
+
+다음 상황에서는 패널 메타보다 `layout.json` override를 우선 사용하는 것이 맞다:
+
+- 특정 세션에서만 더 크게/작게 띄우고 싶을 때
+- 같은 공용 패널이라도 페르소나별로 크기 전략이 달라야 할 때
+- 실험 중 일시적으로 크기를 조정할 때
+
+예:
+
+```json
+{
+  "panels": {
+    "modalSize": {
+      "service-status": {
+        "maxWidth": "1500px",
+        "maxHeight": "88vh"
+      }
+    }
+  }
+}
+```
+
+이 값은 동일 패널의 `<panel-meta>`보다 우선한다.
+
 ### 레이아웃 실시간 업데이트
 
 `layout.json` 파일은 `panel-engine.ts`의 `fs.watch`로 감시된다. 파일이 변경되면 `layout:update` WebSocket 이벤트가 브로드캐스트되어, 프론트엔드에서 세션 재진입 없이 즉시 반영된다. `__panelBridge.updateLayout(patch)` 호출 시에도 동일한 경로로 전파된다.

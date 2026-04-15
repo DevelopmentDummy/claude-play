@@ -25,7 +25,7 @@ import ToastEffect from "@/components/ToastEffect";
 import UsageModal from "@/components/UsageModal";
 import { dispatchBridgeEvent } from "@/lib/use-panel-bridge";
 import { buildAutoplayMessage, calculateAutoplayDelay, getSelectedPreset, type SteeringPreset } from "@/lib/autoplay";
-import { getPanelActionRegistry, parsePanelActions } from "@/lib/panel-action-registry";
+import { getPanelActionRegistry, parsePanelActions, parsePanelMeta } from "@/lib/panel-action-registry";
 
 interface Panel {
   name: string;
@@ -723,6 +723,14 @@ export default function ChatPage() {
   const rawPlacement = layout?.panels?.placement || {};
 
   const modalSize = layout?.panels?.modalSize || {};
+  const getPanelModalSize = useCallback((panel: Panel) => {
+    const fromLayout = (modalSize as Record<string, { maxWidth?: string; maxHeight?: string }>)[panel.name] || {};
+    const fromMeta = parsePanelMeta(panel.html) || {};
+    return {
+      maxWidth: fromLayout.maxWidth || fromMeta.maxWidth,
+      maxHeight: fromLayout.maxHeight || fromMeta.maxHeight,
+    };
+  }, [modalSize]);
 
   // Normalize placement keys: strip numeric prefix (e.g. "01-상태" → "상태") so it matches panel names
   // Merge layout placements with shared panel default placements (shared panels default to modal)
@@ -1169,6 +1177,7 @@ export default function ChatPage() {
         const isActive = !!modalsState?.[p.name] && !minimizedModals.has(p.name);
         const isDismissible = modalsState?.[p.name] === "dismissible";
         const activeIndex = isActive ? activeModalPanels.indexOf(p) : 0;
+        const panelModalSize = getPanelModalSize(p);
         return (
           <ModalPanel
             key={p.name}
@@ -1178,8 +1187,8 @@ export default function ChatPage() {
             active={isActive}
             zIndex={activeIndex}
             isTopmost={isActive && activeIndex === activeModalPanels.length - 1}
-            maxWidth={modalSize[p.name]?.maxWidth}
-            maxHeight={modalSize[p.name]?.maxHeight}
+            maxWidth={panelModalSize.maxWidth}
+            maxHeight={panelModalSize.maxHeight}
             sessionId={sessionId}
             panelData={panelData}
             onClose={() => handleModalClose(p.name)}

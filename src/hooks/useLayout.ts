@@ -7,11 +7,13 @@ export interface LayoutConfig {
   panels: {
     position: "right" | "left" | "bottom" | "hidden";
     size: number;
+    leftSize?: number;
+    rightSize?: number;
     placement?: Record<string, "left" | "right" | "modal" | "modal-dismissible" | "dock" | "dock-left" | "dock-right" | "dock-bottom">;
     modalSize?: Record<string, { maxWidth?: string; maxHeight?: string }>;
-    dockSize?: number;   // deprecated, use dockHeight
-    dockHeight?: number;
-    dockWidth?: number;
+    dockSize?: number | string;   // deprecated, use dockHeight
+    dockHeight?: number | string;
+    dockWidth?: number | string;
     showProfileImage?: boolean;
   };
   chat: {

@@ -70,12 +70,24 @@ allowed-tools: Read, Write, Edit, Bash
 - [ ] `variables.json` → `__modals.{이름}` = `false` (초기값)
 - [ ] 어딘가에 열기 버튼: `__panelBridge.openModal('{이름}', 'dismissible')` 또는 `__panelBridge.openModal('{이름}', true)`
 - [ ] (선택) `layout.json` → `panels.modalGroups`에 그룹 등록 (상호 배타)
+- [ ] 큰 모달이면 `<panel-meta>`로 `maxWidth` / `maxHeight` 기본값 선언
+- [ ] 최상위 root에 `box-sizing: border-box; width: 100%; max-width: 100%; min-width: 0;` 적용
+- [ ] 일반 모달은 가로 스크롤이 생기지 않게 설계 (긴 행/그리드는 줄바꿈 또는 내부 재배치)
 
 **모달 동작 원리:**
 - 모달 패널은 **항상 마운트**되어 있다 (`display:none`으로 숨김). 닫아도 DOM과 핸들러가 유지된다.
 - 패널 액션 핸들러(`registerAction`)는 모달이 닫혀있을 때도 살아있어서, 선택지 액션이 모달을 열지 않고 직접 실행할 수 있다.
 - **모달이 다시 열릴 때 (active: false→true) 스크립트가 자동 재실행된다.** 따라서 대회, 모험 등 매번 초기화가 필요한 패널도 정상 동작한다.
 - `autoRefresh: false`는 이제 대부분의 모달에서 불필요하다 — 모달이 열릴 때마다 자동으로 재초기화되므로.
+
+**모달 박스 모델 요약:**
+- 크기 우선순위는 `layout.json`의 `panels.modalSize` → 패널의 `<panel-meta>` → 시스템 기본값 순서다
+- `<panel-meta>.maxWidth`는 **패널이 실제로 원하는 내용 폭**으로 해석한다
+- 시스템은 자기 chrome(바깥 inset, 본문 padding)을 감안해 최종 외곽 폭을 계산한다
+- 패널은 항상 부모 폭 안으로 들어가야 하며, 일반 모달에서 가로 스크롤은 버그로 본다
+- 세로 스크롤은 공용 wrapper 또는 패널 내부 중 한 곳만 책임지게 설계한다
+
+모달 크기와 root 규칙의 상세 기준은 반드시 루트 `panel-spec.md`의 "모달 박스 모델 규칙" 섹션을 먼저 읽고 따른다.
 
 ### 독 패널 (dock 계열)
 - [ ] `panels/{번호}-{이름}.html` 파일 생성

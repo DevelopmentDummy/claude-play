@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import ImageModal from "./ImageModal";
 import { installImagePolling } from "@/lib/panel-image-polling";
 import { usePanelBridge } from "@/lib/use-panel-bridge";
-import { getPanelActionRegistry, parsePanelActions, stripPanelActions } from "@/lib/panel-action-registry";
+import { getPanelActionRegistry, parsePanelActions, stripPanelActions, stripPanelMeta } from "@/lib/panel-action-registry";
 
 interface ModalPanelProps {
   name: string;
@@ -39,6 +39,8 @@ export default function ModalPanel({
   onMinimize,
   onSendMessage,
 }: ModalPanelProps) {
+  const VIEWPORT_INSET_X = 32; // outer p-4 => 16px * 2
+  const CONTENT_CHROME_X = 40; // content px-5 => 20px * 2
   const backdropZ = 9998 + zIndex * 2;
   const contentZ = 9999 + zIndex * 2;
   const containerRef = useRef<HTMLDivElement>(null);
@@ -51,6 +53,7 @@ export default function ModalPanel({
   // Counter to force shadow re-render when modal becomes active
   const [renderEpoch, setRenderEpoch] = useState(0);
   const [streaming, setStreaming] = useState(false);
+  const effectiveMaxWidth = `min(calc(100vw - ${VIEWPORT_INSET_X}px), calc(${maxWidth} + ${CONTENT_CHROME_X}px))`;
 
   // Track streaming state via global event
   useEffect(() => {
@@ -163,19 +166,15 @@ export default function ModalPanel({
 
     shadow.innerHTML =
       `<style>:host{display:block;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:14px;line-height:1.6;color:#e0e0e0;}img{cursor:zoom-in;}</style>` +
-      stripPanelActions(html);
+      stripPanelMeta(stripPanelActions(html));
 
-    // Default: host element gets maxWidth so panels without explicit width have a canvas
-    // Then auto-detect: if panel content root has explicit width/max-width, shrink to fit
+    // Box model rule:
+    // - modal shell decides the outer size (layout/meta/default)
+    // - panel content always fits inside the shell width
     const hostEl = shadow.host as HTMLElement;
-    const firstEl = shadow.querySelector(":host > :not(style):not(script)") as HTMLElement | null;
-    const hasExplicitWidth = firstEl && (firstEl.style.width || firstEl.style.maxWidth);
-    if (hasExplicitWidth) {
-      hostEl.style.width = "fit-content";
-    } else {
-      hostEl.style.width = maxWidth;
-    }
+    hostEl.style.width = "100%";
     hostEl.style.maxWidth = "100%";
+    hostEl.style.minWidth = "0";
 
     installImagePolling(shadow);
 
@@ -243,9 +242,9 @@ export default function ModalPanel({
         }}
       >
         <div
-          className="relative pointer-events-auto w-fit max-w-full"
+          className="relative pointer-events-auto w-full max-w-full"
           style={{
-            maxWidth,
+            maxWidth: effectiveMaxWidth,
             maxHeight,
             opacity: (visible && !minimizing) ? 1 : 0,
             transform: minimizing
@@ -264,6 +263,8 @@ export default function ModalPanel({
             className="rounded-2xl overflow-hidden border border-white/[0.1] shadow-[0_8px_40px_rgba(0,0,0,0.5)]"
             style={{
               backgroundColor: "var(--surface, rgb(15, 15, 26))",
+              width: "100%",
+              maxWidth: "100%",
             }}
           >
             {/* Header */}
@@ -319,8 +320,8 @@ export default function ModalPanel({
             </div>
             {/* Content */}
             <div
-              className="px-5 py-4 overflow-y-auto relative"
-              style={{ maxHeight: `calc(${maxHeight} - 52px)` }}
+              className="px-5 py-4 overflow-y-auto overflow-x-hidden relative"
+              style={{ maxHeight: `calc(${maxHeight} - 52px)`, width: "100%", maxWidth: "100%" }}
             >
               <div ref={containerRef} />
               {streaming && (
