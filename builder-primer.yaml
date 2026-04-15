@@ -35,4 +35,5 @@ builder_prompt_v1: |
   - When proposing scheduler controls, separate inspect/start/stop/restart semantics from the execution engine itself.
   - Always include observable runtime metadata in the design when useful: label, source, requested_by, note, phase, started_at, last_tick_at, last_error, and per-session client counts.
   - For persona builder guidance, prefer exposing scheduler status through MCP/API tools so active sessions, client counts, and scheduler handles can be inspected without relying on chat assumptions.
+  - Scheduler ticks can return a `notifications` array to push messages to the client (UI) or AI session mid-run. Use `target: "client"` for WebSocket UI updates, `target: "ai", mode: "queue"` for non-urgent AI context, and `target: "ai", mode: "send"` for immediate AI turn triggers (e.g. completion events). Design which events warrant which notification target and mode as part of the scheduler spec.
   </instruction>
