@@ -1,0 +1,457 @@
+<panel-meta>
+{
+  "maxWidth": "1360px",
+  "maxHeight": "86vh"
+}
+</panel-meta>
+
+<style>
+  :host {
+    display: block;
+    color: #e7f4ff;
+    font-family: 'Inter', 'Pretendard', system-ui, sans-serif;
+  }
+
+  .wrap {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    height: min(72vh, 860px);
+    min-height: 0;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    background:
+      radial-gradient(circle at top right, rgba(103, 232, 249, 0.12), transparent 30%),
+      linear-gradient(180deg, rgba(9, 18, 28, 0.985), rgba(7, 13, 22, 0.965));
+    border: 1px solid rgba(103, 232, 249, 0.18);
+    border-radius: 22px;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.34);
+    padding: 22px;
+  }
+
+  .topbar {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 18px;
+  }
+
+  .eyebrow {
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #8da8bf;
+    margin-bottom: 6px;
+  }
+
+  h2 {
+    margin: 0;
+    font-size: 28px;
+    font-weight: 800;
+    line-height: 1.1;
+  }
+
+  .sub {
+    margin-top: 8px;
+    color: #9db6c8;
+    font-size: 13px;
+  }
+
+  .actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .btn {
+    appearance: none;
+    border: 1px solid rgba(255,255,255,0.10);
+    background: rgba(255,255,255,0.04);
+    color: #eaf9ff;
+    border-radius: 12px;
+    padding: 10px 14px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 0.15s ease, opacity 0.15s ease, border-color 0.15s ease;
+  }
+
+  .btn:hover { transform: translateY(-1px); }
+  .btn:disabled { opacity: 0.55; cursor: wait; transform: none; }
+
+  .btn-primary {
+    border-color: rgba(52,211,153,0.28);
+    background: linear-gradient(135deg, rgba(52,211,153,0.22), rgba(103,232,249,0.14));
+    color: #f4fffc;
+  }
+
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .stat {
+    border: 1px solid rgba(255,255,255,0.07);
+    background: rgba(255,255,255,0.03);
+    border-radius: 16px;
+    padding: 14px 14px 13px;
+  }
+
+  .stat-label {
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #89a3b7;
+    margin-bottom: 8px;
+  }
+
+  .stat-value {
+    font-size: 24px;
+    font-weight: 800;
+    color: #f4fbff;
+    line-height: 1;
+  }
+
+  .stat-note {
+    margin-top: 8px;
+    font-size: 12px;
+    color: #94b1c4;
+  }
+
+  .status-line {
+    min-height: 21px;
+    margin-bottom: 14px;
+    font-size: 13px;
+    color: #bfefff;
+  }
+
+  .status-line.error { color: #ffb4b4; }
+  .status-line.success { color: #b8ffe9; }
+
+  .session-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding-right: 2px;
+  }
+
+  .session-card {
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.03);
+    border-radius: 18px;
+    padding: 16px;
+  }
+
+  .session-card.current {
+    border-color: rgba(103,232,249,0.28);
+    box-shadow: inset 0 0 0 1px rgba(103,232,249,0.08);
+  }
+
+  .row {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    align-items: flex-start;
+  }
+
+  .session-title {
+    font-size: 18px;
+    font-weight: 800;
+    color: #f3fbff;
+    margin-bottom: 6px;
+  }
+
+  .session-meta,
+  .scheduler-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+  }
+
+  .pill {
+    border-radius: 999px;
+    padding: 5px 10px;
+    font-size: 12px;
+    font-weight: 700;
+    background: rgba(255,255,255,0.05);
+    color: #d8edf8;
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+
+  .pill.good {
+    background: rgba(16, 185, 129, 0.14);
+    border-color: rgba(16, 185, 129, 0.24);
+    color: #baf7df;
+  }
+
+  .pill.warn {
+    background: rgba(251, 191, 36, 0.12);
+    border-color: rgba(251, 191, 36, 0.24);
+    color: #ffe7a3;
+  }
+
+  .pill.error {
+    background: rgba(248, 113, 113, 0.12);
+    border-color: rgba(248, 113, 113, 0.24);
+    color: #ffc4c4;
+  }
+
+  .mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    color: #9db6c8;
+    word-break: break-all;
+  }
+
+  .section {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+  }
+
+  .grid2 {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .kv {
+    display: grid;
+    gap: 6px;
+  }
+
+  .k {
+    color: #8ea9bc;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .v {
+    color: #edf8ff;
+    font-size: 13px;
+    line-height: 1.45;
+  }
+
+  .empty {
+    border: 1px dashed rgba(255,255,255,0.12);
+    border-radius: 18px;
+    padding: 26px;
+    text-align: center;
+    color: #93adc0;
+    background: rgba(255,255,255,0.02);
+  }
+
+  @media (max-width: 1100px) {
+    .summary-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .grid2 { grid-template-columns: 1fr; }
+  }
+
+  @media (max-width: 720px) {
+    .wrap { padding: 16px; height: min(76vh, 860px); }
+    .topbar, .row { flex-direction: column; }
+    .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+</style>
+
+<div class="wrap">
+  <div class="topbar">
+    <div>
+      <div class="eyebrow">Service Runtime</div>
+      <h2>서비스 상태</h2>
+      <div class="sub" id="serviceStatusSub">활성 세션, 접속자 수, 스케줄러 상태를 확인합니다.</div>
+    </div>
+    <div class="actions">
+      <button class="btn" id="closeServiceStatusBtn">닫기</button>
+      <button class="btn btn-primary" id="refreshServiceStatusBtn">새로고침</button>
+    </div>
+  </div>
+
+  <div class="summary-grid" id="summaryGrid"></div>
+  <div class="status-line" id="serviceStatusLine"></div>
+  <div class="session-list" id="serviceSessionList"></div>
+</div>
+
+<script>
+(function() {
+  const root = document.currentScript.getRootNode();
+  const bridge = window.__panelBridge;
+  const currentSessionId = bridge?.sessionId || "";
+
+  const refreshBtn = root.getElementById("refreshServiceStatusBtn");
+  const closeBtn = root.getElementById("closeServiceStatusBtn");
+  const statusLine = root.getElementById("serviceStatusLine");
+  const summaryGrid = root.getElementById("summaryGrid");
+  const sessionList = root.getElementById("serviceSessionList");
+  const subLine = root.getElementById("serviceStatusSub");
+
+  let inflight = false;
+
+  function fmtTime(value) {
+    if (!value) return "-";
+    try {
+      const d = new Date(value);
+      if (Number.isNaN(d.getTime())) return String(value);
+      return d.toLocaleString();
+    } catch {
+      return String(value);
+    }
+  }
+
+  function setStatus(text, tone) {
+    statusLine.textContent = text || "";
+    statusLine.className = "status-line" + (tone ? " " + tone : "");
+  }
+
+  function statCard(label, value, note) {
+    return `
+      <div class="stat">
+        <div class="stat-label">${label}</div>
+        <div class="stat-value">${value}</div>
+        <div class="stat-note">${note || ""}</div>
+      </div>
+    `;
+  }
+
+  function pillClass(scheduler) {
+    if (!scheduler) return "pill";
+    if (scheduler.lastError || scheduler.phase === "error") return "pill error";
+    if (scheduler.running) return "pill good";
+    if (scheduler.phase === "stopping") return "pill warn";
+    return "pill";
+  }
+
+  function buildSessionCard(entry) {
+    const isCurrent = entry.id === currentSessionId;
+    const instance = entry.instance || null;
+    const scheduler = entry.scheduler || null;
+    const schedulerLabel = scheduler
+      ? (scheduler.metadata?.label || scheduler.phase || "running")
+      : "없음";
+    const schedulerState = scheduler
+      ? (scheduler.running ? "running" : (scheduler.phase || "idle"))
+      : "idle";
+
+    return `
+      <div class="session-card${isCurrent ? " current" : ""}">
+        <div class="row">
+          <div>
+            <div class="session-title">${entry.title || entry.displayName || entry.id}${isCurrent ? " · 현재 세션" : ""}</div>
+            <div class="mono">${entry.id}</div>
+            <div class="session-meta">
+              <span class="pill">${entry.persona || "-"}</span>
+              <span class="pill">clients ${entry.clients || 0}</span>
+              <span class="pill ${instance && instance.running ? "good" : ""}">instance ${instance ? (instance.running ? "running" : "idle") : "none"}</span>
+              <span class="${pillClass(scheduler)}">scheduler ${schedulerState}</span>
+            </div>
+          </div>
+          <div class="scheduler-meta">
+            <span class="pill">${schedulerLabel}</span>
+            ${entry.model ? `<span class="pill">${entry.model}</span>` : ""}
+          </div>
+        </div>
+
+        <div class="section grid2">
+          <div class="kv">
+            <div class="k">Created</div>
+            <div class="v">${fmtTime(entry.createdAt)}</div>
+          </div>
+          <div class="kv">
+            <div class="k">Last Activity</div>
+            <div class="v">${fmtTime(entry.lastActivity)}</div>
+          </div>
+        </div>
+
+        <div class="section grid2">
+          <div class="kv">
+            <div class="k">Scheduler Started</div>
+            <div class="v">${fmtTime(scheduler?.startedAt)}</div>
+          </div>
+          <div class="kv">
+            <div class="k">Last Tick</div>
+            <div class="v">${fmtTime(scheduler?.lastTickAt)}</div>
+          </div>
+        </div>
+
+        <div class="section grid2">
+          <div class="kv">
+            <div class="k">Requested By</div>
+            <div class="v">${scheduler?.metadata?.requestedBy || "-"}</div>
+          </div>
+          <div class="kv">
+            <div class="k">Source</div>
+            <div class="v">${scheduler?.metadata?.source || "-"}</div>
+          </div>
+        </div>
+
+        <div class="section grid2">
+          <div class="kv">
+            <div class="k">Note</div>
+            <div class="v">${scheduler?.metadata?.note || "-"}</div>
+          </div>
+          <div class="kv">
+            <div class="k">Last Error</div>
+            <div class="v">${scheduler?.lastError || "-"}</div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  async function loadStatus() {
+    if (inflight) return;
+    inflight = true;
+    refreshBtn.disabled = true;
+    setStatus("서비스 상태를 불러오는 중...", "");
+
+    try {
+      const res = await fetch("/api/service/status?includeInactive=false");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "service status load failed");
+
+      const summary = data.summary || {};
+      const sessions = Array.isArray(data.sessions) ? data.sessions : [];
+
+      summaryGrid.innerHTML = [
+        statCard("Sessions", summary.sessions || 0, "표시 중인 세션"),
+        statCard("Instances", summary.activeInstances || 0, "살아 있는 런타임"),
+        statCard("Schedulers", summary.runningSchedulers || 0, "가동 중"),
+        statCard("Clients", summary.totalClients || 0, "WS 연결"),
+        statCard("Bound", summary.boundClients || 0, "세션 바운드"),
+        statCard("Unbound", summary.unboundClients || 0, "바인드 전/없음")
+      ].join("");
+
+      if (sessions.length === 0) {
+        sessionList.innerHTML = '<div class="empty">표시할 활성 세션이 없습니다.</div>';
+      } else {
+        sessionList.innerHTML = sessions.map(buildSessionCard).join("");
+      }
+
+      subLine.textContent = "생성 시각: " + fmtTime(data.generatedAt);
+      setStatus("서비스 상태를 갱신했습니다.", "success");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error), "error");
+    } finally {
+      inflight = false;
+      refreshBtn.disabled = false;
+    }
+  }
+
+  refreshBtn.addEventListener("click", loadStatus);
+  closeBtn.addEventListener("click", function() {
+    bridge?.closeModal("service-status");
+  });
+
+  loadStatus();
+})();
+</script>

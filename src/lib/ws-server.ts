@@ -8,6 +8,7 @@ import {
   scheduleSessionCleanup,
   cancelSessionCleanup,
 } from "./session-registry";
+import { stopPipelineScheduler } from "./pipeline-scheduler";
 import { isAuthEnabled, verifyAuthToken, parseCookieToken } from "./auth";
 
 interface WSClient {
@@ -87,6 +88,7 @@ function detachClient(client: WSClient): void {
   clients.delete(client);
   client.sessionId = null;
   if (closedSessionId && countSessionClients(closedSessionId) === 0) {
+    void stopPipelineScheduler(closedSessionId);
     scheduleSessionCleanup(closedSessionId);
   }
 }
@@ -134,13 +136,50 @@ export function wsBroadcast(
 }
 
 /** Count active clients for a specific session */
-function countSessionClients(sessionId: string): number {
+export function countSessionClients(sessionId: string): number {
   const { clients } = getWSState();
   let count = 0;
   for (const c of clients) {
     if (c.ws.readyState === WebSocket.OPEN && c.sessionId === sessionId) count++;
   }
   return count;
+}
+
+export function listSessionClientCounts(): Array<{ sessionId: string; clients: number }> {
+  const { clients } = getWSState();
+  const counts = new Map<string, number>();
+  for (const client of clients) {
+    if (client.ws.readyState !== WebSocket.OPEN) continue;
+    if (!client.sessionId) continue;
+    counts.set(client.sessionId, (counts.get(client.sessionId) || 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([sessionId, clients]) => ({ sessionId, clients }))
+    .sort((a, b) => b.clients - a.clients || a.sessionId.localeCompare(b.sessionId));
+}
+
+export function getWebSocketStats(): {
+  totalClients: number;
+  boundClients: number;
+  unboundClients: number;
+  builderClients: number;
+} {
+  const { clients } = getWSState();
+  let totalClients = 0;
+  let boundClients = 0;
+  let builderClients = 0;
+  for (const client of clients) {
+    if (client.ws.readyState !== WebSocket.OPEN) continue;
+    totalClients += 1;
+    if (client.sessionId) boundClients += 1;
+    if (client.isBuilder) builderClients += 1;
+  }
+  return {
+    totalClients,
+    boundClients,
+    unboundClients: Math.max(0, totalClients - boundClients),
+    builderClients,
+  };
 }
 
 export function setupWebSocket(server: HTTPServer): void {
@@ -174,12 +213,8 @@ export function setupWebSocket(server: HTTPServer): void {
       const sessionId = normalizeSessionId(query.sessionId);
       const isBuilder = query.builder === "true";
 
-      const client: WSClient = { ws, sessionId, isBuilder };
+      const client: WSClient = { ws, sessionId: null, isBuilder };
       state.clients.add(client);
-
-      if (sessionId) {
-        cancelSessionCleanup(sessionId);
-      }
 
       ws.on("message", (raw) => {
         const msg = parseIncomingMessage(raw);
@@ -339,6 +374,7 @@ function handleMessage(
         const remaining = countSessionClients(leavingSession);
         console.log(`[ws] Client left session ${leavingSession} — ${remaining} client(s) remaining`);
         if (remaining === 0) {
+          void stopPipelineScheduler(leavingSession);
           scheduleSessionCleanup(leavingSession);
         }
       }

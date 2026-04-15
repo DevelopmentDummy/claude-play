@@ -61,6 +61,16 @@ export function useWebSocket({
     ws.binaryType = "arraybuffer";
     wsRef.current = ws;
 
+    ws.onopen = () => {
+      if (sessionId || isBuilder) {
+        ws.send(JSON.stringify({
+          type: "session:bind",
+          sessionId,
+          isBuilder: !!isBuilder,
+        }));
+      }
+    };
+
     ws.onmessage = (e) => {
       try {
         const rawText = decodeWsMessage(e.data);

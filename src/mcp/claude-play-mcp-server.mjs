@@ -74,6 +74,13 @@ function pickString(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function resolveTargetSessionId(inputSessionId) {
+  const explicit = pickString(inputSessionId);
+  if (explicit) return explicit;
+  if (mode === "session" && sessionId) return sessionId;
+  throw new Error("sessionId is required in builder mode");
+}
+
 /**
  * Track filenames requested in this session to detect same-turn collisions.
  * Intentional overwrites (e.g. standing_portrait.png across turns) are allowed —
@@ -350,6 +357,126 @@ server.registerTool(
   },
   async () => {
     return ok({ apiBase, mode, persona: persona || null, sessionDir });
+  }
+);
+
+server.registerTool(
+  "bridge_service_status",
+  {
+    description: "Show Claude Play service status including active sessions, client counts, and scheduler state.",
+    inputSchema: {
+      includeInactive: z.boolean().optional(),
+      sessionId: z.string().optional(),
+    },
+  },
+  async ({ includeInactive = false, sessionId: targetSessionId }) => {
+    try {
+      const query = new URLSearchParams();
+      if (includeInactive) query.set("includeInactive", "true");
+      if (pickString(targetSessionId)) query.set("sessionId", pickString(targetSessionId));
+      const suffix = query.toString() ? `?${query.toString()}` : "";
+      const data = await requestJson("GET", `/api/service/status${suffix}`);
+      return ok(data);
+    } catch (error) {
+      return fail(error);
+    }
+  }
+);
+
+server.registerTool(
+  "bridge_scheduler_inspect",
+  {
+    description: "Inspect scheduler/runtime state for a specific session or the current session.",
+    inputSchema: {
+      sessionId: z.string().optional(),
+      includeInactive: z.boolean().optional(),
+    },
+  },
+  async ({ sessionId: targetSessionId, includeInactive = false }) => {
+    try {
+      const resolvedSessionId = resolveTargetSessionId(targetSessionId);
+      const query = new URLSearchParams();
+      query.set("sessionId", resolvedSessionId);
+      if (includeInactive) query.set("includeInactive", "true");
+      const data = await requestJson("GET", `/api/service/status?${query.toString()}`);
+      const sessionEntry = Array.isArray(data?.sessions)
+        ? data.sessions.find((entry) => entry && entry.id === resolvedSessionId) || null
+        : null;
+      const schedulerEntry = Array.isArray(data?.schedulers)
+        ? data.schedulers.find((entry) => entry && entry.sessionId === resolvedSessionId) || null
+        : null;
+      return ok({
+        sessionId: resolvedSessionId,
+        session: sessionEntry,
+        scheduler: schedulerEntry,
+        summary: data?.summary || null,
+      });
+    } catch (error) {
+      return fail(error);
+    }
+  }
+);
+
+server.registerTool(
+  "bridge_scheduler_stop",
+  {
+    description: "Stop the scheduler for a specific session or the current session.",
+    inputSchema: {
+      sessionId: z.string().optional(),
+    },
+  },
+  async ({ sessionId: targetSessionId }) => {
+    try {
+      const resolvedSessionId = resolveTargetSessionId(targetSessionId);
+      const data = await requestJson(
+        "POST",
+        `/api/sessions/${encodeURIComponent(resolvedSessionId)}/pipeline-scheduler/stop`,
+      );
+      return ok({ sessionId: resolvedSessionId, ...data });
+    } catch (error) {
+      return fail(error);
+    }
+  }
+);
+
+server.registerTool(
+  "bridge_scheduler_restart",
+  {
+    description: "Restart the scheduler for a specific session or the current session.",
+    inputSchema: {
+      sessionId: z.string().optional(),
+      label: z.string().optional(),
+      source: z.string().optional(),
+      requestedBy: z.string().optional(),
+      note: z.string().optional(),
+    },
+  },
+  async ({ sessionId: targetSessionId, label, source, requestedBy, note }) => {
+    try {
+      const resolvedSessionId = resolveTargetSessionId(targetSessionId);
+      const stopResult = await requestJson(
+        "POST",
+        `/api/sessions/${encodeURIComponent(resolvedSessionId)}/pipeline-scheduler/stop`,
+      );
+      const startPayload = {
+        label: pickString(label) || "mcp-restart",
+        source: pickString(source) || "mcp",
+        requestedBy: pickString(requestedBy) || "bridge_scheduler_restart",
+        note: pickString(note) || "restart requested from MCP",
+      };
+      const startResult = await requestJson(
+        "POST",
+        `/api/sessions/${encodeURIComponent(resolvedSessionId)}/pipeline-scheduler/start`,
+        startPayload,
+      );
+      return ok({
+        sessionId: resolvedSessionId,
+        stop: stopResult,
+        start: startResult,
+      });
+    } catch (error) {
+      return fail(error);
+    }
   }
 );
 
