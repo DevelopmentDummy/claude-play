@@ -209,6 +209,10 @@ export class SessionInstance {
   private heldResultMsg: unknown = null;
   private resultFinalizeTimer: ReturnType<typeof setTimeout> | null = null;
 
+  // Scheduler notification: track whether AI is mid-turn
+  private _pendingTurn = false;
+  private idleResolvers: Array<() => void> = [];
+
   // TTS queue — serialize requests to avoid ENOBUFS
   private ttsQueue: Array<() => Promise<void>> = [];
   private ttsRunning = false;
@@ -311,6 +315,50 @@ export class SessionInstance {
     }
     headers.push(header);
     this.writePendingEvents(headers);
+  }
+
+  /** Whether the AI is currently processing a turn (streaming, tool use, etc.) */
+  isBusy(): boolean {
+    return this._pendingTurn;
+  }
+
+  /** Wait until AI finishes current turn. Resolves immediately if idle. */
+  waitForIdle(): Promise<void> {
+    if (!this._pendingTurn) return Promise.resolve();
+    return new Promise(resolve => this.idleResolvers.push(resolve));
+  }
+
+  /** Send a message to AI from server-side, triggering a new turn.
+   *  If AI is mid-turn, waits for completion first (up to 60s timeout). */
+  async sendMessage(text: string): Promise<void> {
+    if (!this.claude.isRunning()) {
+      console.warn(`[session:${this.id}] sendMessage skipped — AI process not running`);
+      return;
+    }
+    // Wait for idle with timeout
+    const timeout = new Promise<void>((resolve) => {
+      const timer = setTimeout(() => {
+        console.warn(`[session:${this.id}] sendMessage waitForIdle timed out (60s), sending anyway`);
+        resolve();
+      }, 60_000);
+      timer.unref?.();
+      this.waitForIdle().then(() => { clearTimeout(timer); resolve(); });
+    });
+    await timeout;
+
+    const eventHeaders = this.flushEvents();
+    const hintSnapshot = this.buildHintSnapshot();
+    const actionHistory = this.flushActions();
+    const jsonLint = this.buildJsonLint();
+    const parts = [eventHeaders, jsonLint, hintSnapshot, actionHistory, text].filter(Boolean);
+    this._pendingTurn = true;
+    this.claude.send(parts.join("\n"));
+  }
+
+  /** Send raw text to the AI process, marking turn as pending. */
+  sendToAI(text: string): void {
+    this._pendingTurn = true;
+    this.claude.send(text);
   }
 
   /** Flush all pending event headers, returning formatted string (or empty) */
@@ -518,6 +566,7 @@ export class SessionInstance {
     if (this._provider !== "claude") return;
     if (!this.claude.isRunning()) return;
     this.isSlashCommand = true;
+    this._pendingTurn = true;
     this.claude.send(`/${command}`);
   }
 
@@ -566,6 +615,10 @@ export class SessionInstance {
 
     // Broadcast cancellation to frontend
     this.broadcast("chat:cancelled", { partial: !!partial });
+
+    // Flush idle waiters
+    this._pendingTurn = false;
+    for (const resolve of this.idleResolvers.splice(0)) resolve();
   }
 
   clearHistory(): void {
@@ -975,6 +1028,10 @@ export class SessionInstance {
     if (lastSaved) {
       this.broadcast("claude:messageId", { messageId: lastSaved.id });
     }
+
+    // Flush idle waiters (scheduler sendMessage)
+    this._pendingTurn = false;
+    for (const resolve of this.idleResolvers.splice(0)) resolve();
   }
 
   // --- Process event binding ---

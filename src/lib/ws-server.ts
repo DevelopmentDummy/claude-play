@@ -289,7 +289,7 @@ function handleMessage(
         const actionHistory = instance.flushActions();
         const jsonLint = instance.buildJsonLint();
         const parts = [eventHeaders, jsonLint, hintSnapshot, actionHistory, text].filter(Boolean);
-        instance.claude.send(parts.join("\n"));
+        instance.sendToAI(parts.join("\n"));
         break;
       }
 
@@ -310,7 +310,7 @@ function handleMessage(
       const jsonLint = instance.buildJsonLint();
       const oocHint = isOOC ? "[OOC 메시지입니다. RP 응답(dialog_response)을 포함하지 마세요. 메타/시스템 수준으로만 응답하세요.]\n" : "";
       const parts = [oocHint, eventHeaders, jsonLint, hintSnapshot, actionHistory, text].filter(Boolean);
-      instance.claude.send(parts.join("\n"));
+      instance.sendToAI(parts.join("\n"));
 
       // Broadcast user message to other clients in same session (sender already has it locally)
       wsBroadcast("chat:user", { text, isOOC }, { sessionId: client.sessionId, exclude: client });
