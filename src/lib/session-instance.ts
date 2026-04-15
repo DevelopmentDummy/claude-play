@@ -328,6 +328,12 @@ export class SessionInstance {
     return new Promise(resolve => this.idleResolvers.push(resolve));
   }
 
+  /** Reset pending turn state and resolve all idle waiters. */
+  private flushIdleWaiters(): void {
+    this._pendingTurn = false;
+    for (const resolve of this.idleResolvers.splice(0)) resolve();
+  }
+
   /** Send a message to AI from server-side, triggering a new turn.
    *  If AI is mid-turn, waits for completion first (up to 60s timeout). */
   async sendMessage(text: string): Promise<void> {
@@ -345,6 +351,11 @@ export class SessionInstance {
       this.waitForIdle().then(() => { clearTimeout(timer); resolve(); });
     });
     await timeout;
+
+    if (!this.claude.isRunning() || this.destroyed) {
+      console.warn(`[session:${this.id}] sendMessage skipped — AI process died during wait`);
+      return;
+    }
 
     const eventHeaders = this.flushEvents();
     const hintSnapshot = this.buildHintSnapshot();
@@ -617,8 +628,7 @@ export class SessionInstance {
     this.broadcast("chat:cancelled", { partial: !!partial });
 
     // Flush idle waiters
-    this._pendingTurn = false;
-    for (const resolve of this.idleResolvers.splice(0)) resolve();
+    this.flushIdleWaiters();
   }
 
   clearHistory(): void {
@@ -1030,8 +1040,7 @@ export class SessionInstance {
     }
 
     // Flush idle waiters (scheduler sendMessage)
-    this._pendingTurn = false;
-    for (const resolve of this.idleResolvers.splice(0)) resolve();
+    this.flushIdleWaiters();
   }
 
   // --- Process event binding ---
@@ -1166,7 +1175,10 @@ export class SessionInstance {
 
     p.on("error", (e) => this.broadcast("claude:error", e));
     p.on("status", (s) => this.broadcast("claude:status", s));
-    p.on("exit", () => this.broadcast("claude:status", "disconnected"));
+    p.on("exit", () => {
+      this.flushIdleWaiters();
+      this.broadcast("claude:status", "disconnected");
+    });
 
     p.on("sessionId", (sessionId: string) => {
       try {
@@ -1191,6 +1203,7 @@ export class SessionInstance {
 
   destroy(): void {
     this.destroyed = true;
+    this.flushIdleWaiters();
     this.ttsQueue = [];
     this.ttsRunning = false;
     if (this.resultFinalizeTimer) { clearTimeout(this.resultFinalizeTimer); this.resultFinalizeTimer = null; }
