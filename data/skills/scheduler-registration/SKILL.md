@@ -156,3 +156,54 @@ If code changes are requested, keep the design consistent across:
 - MCP tools
 - panel controls
 - status/inspection views
+
+## Scheduler Notifications
+
+스케줄러의 `scheduler_tick` 반환값에 `notifications` 배열을 포함하면, 서버가 클라이언트(UI)와 AI 세션에 메시지를 자동으로 전달한다.
+
+### Notification Schema
+
+```javascript
+// scheduler_tick 반환값 예시
+return {
+  success: true,
+  phase: "source",
+  did_work: true,
+  notifications: [
+    // 클라이언트(UI)에 알림 — wsBroadcast로 전달
+    {
+      target: "client",
+      event: "scheduler:progress",     // WebSocket 이벤트 타입 (기본: "scheduler:notify")
+      payload: { step: 3, total: 10 }  // 자유 형태
+    },
+    // AI에 이벤트 큐 — 다음 유저 메시지에 같이 전달
+    {
+      target: "ai",
+      mode: "queue",                   // "queue" (기본) 또는 "send"
+      message: "[SCHEDULER] 3/10 완료"
+    },
+    // AI에 직접 턴 트리거 — 응답 중이면 완료 대기 후 전송
+    {
+      target: "ai",
+      mode: "send",
+      message: "[SCHEDULER_COMPLETE] 작업이 완료되었습니다. 결과를 확인하고 유저에게 알려주세요."
+    }
+  ]
+};
+```
+
+### target별 동작
+
+| target | mode | 동작 |
+|--------|------|------|
+| `client` | — | `wsBroadcast(event, payload, { sessionId })` 호출. 해당 세션의 모든 클라이언트에 WebSocket 이벤트 전달 |
+| `ai` | `queue` (기본) | `instance.queueEvent(message)` 호출. 이벤트 큐에 쌓이고, 다음 유저 메시지 전송 시 AI에 함께 전달 |
+| `ai` | `send` | `instance.sendMessage(message)` 호출. AI에 직접 새 턴을 트리거. AI가 응답 중이면 완료 대기 후 전송 |
+
+### 사용 가이드
+
+- **진행 상황 알림**: `target: "client"` — 프론트엔드에서 토스트, 프로그레스 바, 패널 업데이트에 활용
+- **AI에 중간 보고**: `target: "ai", mode: "queue"` — 급하지 않은 정보. 다음 대화 턴에 자연스럽게 포함
+- **AI에 즉시 알림**: `target: "ai", mode: "send"` — 완료/에러 등 AI가 즉시 반응해야 하는 이벤트. 대화가 끊긴 상태에서도 AI 턴을 시작함
+- 매 틱마다 0~N개 알림 가능. 완료 틱(`completed: true`)에도 알림이 처리된 후 루프가 종료됨
+- notification 처리 중 에러는 로그만 남기고 스케줄러 루프는 중단하지 않음
