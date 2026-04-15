@@ -1,0 +1,56 @@
+{
+  "description": "Boleromix 스모크 테스트용 img2img — 입력 이미지 1장을 받아 Danbooru 태그 프롬프트로 재페인팅",
+  "features": {
+    "checkpoint_auto": false,
+    "lora_injection": true,
+    "lora_couple_branches": false,
+    "seed_randomize": true,
+    "trigger_tags": false
+  },
+  "params": {
+    "prompt": {
+      "node": "2",
+      "field": "text",
+      "type": "string",
+      "required": true,
+      "description": "Boleromix용 Danbooru 태그 프롬프트"
+    },
+    "negative_prompt": {
+      "node": "3",
+      "field": "text",
+      "type": "string",
+      "default": "low quality, worst quality, blurry, extra fingers, broken hands, bad anatomy, deformed face, distorted eyes, overpainted details, muddy colors, oversharpen, duplicate"
+    },
+    "input_image": {
+      "node": "4",
+      "field": "image",
+      "type": "string",
+      "required": true,
+      "description": "세션 images/ 기준 입력 이미지 경로"
+    },
+    "steps": {
+      "node": "6",
+      "field": "steps",
+      "type": "number",
+      "default": 24
+    },
+    "cfg": {
+      "node": "6",
+      "field": "cfg",
+      "type": "number",
+      "default": 5.2
+    },
+    "denoise": {
+      "node": "6",
+      "field": "denoise",
+      "type": "number",
+      "default": 0.55
+    },
+    "seed": {
+      "node": "6",
+      "field": "seed",
+      "type": "number",
+      "default": -1
+    }
+  }
+}

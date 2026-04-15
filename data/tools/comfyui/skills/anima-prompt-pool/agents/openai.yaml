@@ -1,0 +1,4 @@
+interface:
+  display_name: "Anima Prompt Pool"
+  short_description: "Create Anima prompt pools in a stable reusable format."
+  default_prompt: "Write Anima prompt-pool items in JSON format."
