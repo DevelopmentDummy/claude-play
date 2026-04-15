@@ -12,6 +12,7 @@ import ChatMessages from "@/components/ChatMessages";
 import ChatInput from "@/components/ChatInput";
 import { extractChoices } from "@/components/ChatMessages";
 import PanelArea from "@/components/PanelArea";
+import PanelResizeHandle from "@/components/PanelResizeHandle";
 import PanelDrawer from "@/components/PanelDrawer";
 import ModalPanel from "@/components/ModalPanel";
 import MinimizedModals from "@/components/MinimizedModals";
@@ -691,6 +692,32 @@ export default function ChatPage() {
 
   const panelPosition = layout?.panels?.position || "right";
   const panelSize = layout?.panels?.size || 280;
+  const layoutLeftSize = layout?.panels?.leftSize || panelSize;
+  const layoutRightSize = layout?.panels?.rightSize || panelSize;
+
+  // Resizable panel sizes — local state overrides layout during drag
+  const [resizeLeftSize, setResizeLeftSize] = useState<number | null>(null);
+  const [resizeRightSize, setResizeRightSize] = useState<number | null>(null);
+  const leftPanelSize = resizeLeftSize ?? layoutLeftSize;
+  const rightPanelSize = resizeRightSize ?? layoutRightSize;
+
+  // Reset local overrides when layout updates from server
+  useEffect(() => {
+    setResizeLeftSize(null);
+    setResizeRightSize(null);
+  }, [layoutLeftSize, layoutRightSize]);
+
+  const savePanelSize = useCallback(
+    (side: "left" | "right", size: number) => {
+      const key = side === "left" ? "leftSize" : "rightSize";
+      fetch(`/api/sessions/${sessionId}/layout`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ panels: { [key]: Math.round(size) } }),
+      }).catch(() => {});
+    },
+    [sessionId]
+  );
   const dockMaxHeight = layout?.panels?.dockHeight || layout?.panels?.dockSize;
   const dockWidth = layout?.panels?.dockWidth;
   const rawPlacement = layout?.panels?.placement || {};
@@ -992,8 +1019,8 @@ export default function ChatPage() {
         <div
           className="absolute inset-0 flex flex-col min-h-0"
           style={{
-            ...(showInlinePanel && hasLeftSidebar ? { left: `${panelSize}px` } : {}),
-            ...(showInlinePanel && hasRightSidebar ? { right: `${panelSize}px` } : {}),
+            ...(showInlinePanel && hasLeftSidebar ? { left: `${leftPanelSize}px` } : {}),
+            ...(showInlinePanel && hasRightSidebar ? { right: `${rightPanelSize}px` } : {}),
           }}
         >
           <ChatMessages
@@ -1077,16 +1104,24 @@ export default function ChatPage() {
         {showInlinePanel && hasLeftSidebar && (
           <div
             className="absolute top-0 bottom-0 left-0"
-            style={{ width: `${panelSize}px` }}
+            style={{ width: `${leftPanelSize}px` }}
           >
             <PanelArea
               panels={sidebarLeftPanels}
               position="left"
-              size={panelSize}
+              size={leftPanelSize}
               profileImageUrl={showProfile ? profileImage : null}
               sessionId={sessionId}
               panelData={panelData}
               onSendMessage={sendMessage}
+            />
+            <PanelResizeHandle
+              side="left"
+              onResize={setResizeLeftSize}
+              onResizeEnd={(size) => {
+                setResizeLeftSize(size);
+                savePanelSize("left", size);
+              }}
             />
           </div>
         )}
@@ -1094,15 +1129,23 @@ export default function ChatPage() {
         {showInlinePanel && hasRightSidebar && (
           <div
             className="absolute top-0 bottom-0 right-0"
-            style={{ width: `${panelSize}px` }}
+            style={{ width: `${rightPanelSize}px` }}
           >
             <PanelArea
               panels={sidebarRightPanels}
               position="right"
-              size={panelSize}
+              size={rightPanelSize}
               sessionId={sessionId}
               panelData={panelData}
               onSendMessage={sendMessage}
+            />
+            <PanelResizeHandle
+              side="right"
+              onResize={setResizeRightSize}
+              onResizeEnd={(size) => {
+                setResizeRightSize(size);
+                savePanelSize("right", size);
+              }}
             />
           </div>
         )}
@@ -1114,7 +1157,7 @@ export default function ChatPage() {
           onClose={() => setDrawerOpen(false)}
           panels={[...sidebarLeftPanels, ...sidebarRightPanels]}
           panelPosition="right"
-          panelSize={panelSize}
+          panelSize={Math.max(leftPanelSize, rightPanelSize)}
           profileImageUrl={showProfile ? profileImage : null}
           sessionId={sessionId}
           panelData={panelData}
