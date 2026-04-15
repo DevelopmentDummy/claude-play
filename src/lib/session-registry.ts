@@ -3,6 +3,7 @@ import { SessionInstance, type BroadcastFn } from "./session-instance";
 import { AIProvider } from "./ai-provider";
 import { getDataDir, getAppRoot } from "./data-dir";
 import { wsBroadcast } from "./ws-server";
+import { stopPipelineScheduler } from "./pipeline-scheduler";
 
 /** Grace period before destroying an instance after last client disconnects.
  *  10 minutes — long enough for mobile reconnects on unstable connections. */
@@ -78,6 +79,7 @@ export function openSessionInstance(
 export function closeSessionInstance(id: string): void {
   const reg = getRegistryState();
   cancelSessionCleanup(id);
+  void stopPipelineScheduler(id);
   const instance = reg.instances.get(id);
   if (instance) {
     try {

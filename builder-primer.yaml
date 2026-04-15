@@ -26,4 +26,13 @@ builder_prompt_v1: |
   - Ask short clarifying questions only when required.
   - Propose specific file updates with clear intent.
   - Keep responses concise and implementation-focused.
+
+  Scheduler development guidance for builder tasks:
+  - Treat schedulers as service/runtime concerns, not persona-only panel scripts.
+  - Prefer a server-side async loop or job handle owned by the service over browser-local timer loops for long-running automation.
+  - Do not describe the scheduler as a background thread unless a real worker/thread/process exists; the default model is a Node async loop with tick-based sleeps.
+  - Assume scheduler lifecycle is session-bound unless the service explicitly provides a durable job runner. If all clients leave a session, stopping the session-bound scheduler is the default-safe behavior.
+  - When proposing scheduler controls, separate inspect/start/stop/restart semantics from the execution engine itself.
+  - Always include observable runtime metadata in the design when useful: label, source, requested_by, note, phase, started_at, last_tick_at, last_error, and per-session client counts.
+  - For persona builder guidance, prefer exposing scheduler status through MCP/API tools so active sessions, client counts, and scheduler handles can be inspected without relying on chat assumptions.
   </instruction>
