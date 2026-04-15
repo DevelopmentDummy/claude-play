@@ -33,6 +33,11 @@ export interface PanelActionRecord {
   params?: Record<string, unknown>;
 }
 
+export interface PanelMeta {
+  maxWidth?: string;
+  maxHeight?: string;
+}
+
 // ---------------------------------------------------------------------------
 // Internal storage shape
 // ---------------------------------------------------------------------------
@@ -451,9 +456,40 @@ export function parsePanelActions(
 }
 
 /**
+ * Extract panel meta from `<panel-meta>...</panel-meta>` tags.
+ * Current use: modal sizing defaults for shared or session panels.
+ */
+export function parsePanelMeta(html: string): PanelMeta | null {
+  const match = html.match(/<panel-meta[^>]*>([\s\S]*?)<\/panel-meta>/i);
+  const content = match?.[1]?.trim();
+  if (!content) return null;
+
+  try {
+    const parsed = JSON.parse(content) as Record<string, unknown>;
+    const meta: PanelMeta = {};
+    if (typeof parsed.maxWidth === "string" && parsed.maxWidth.trim()) {
+      meta.maxWidth = parsed.maxWidth.trim();
+    }
+    if (typeof parsed.maxHeight === "string" && parsed.maxHeight.trim()) {
+      meta.maxHeight = parsed.maxHeight.trim();
+    }
+    return Object.keys(meta).length > 0 ? meta : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Remove `<panel-actions>...</panel-actions>` tags from HTML string.
  * Call before setting innerHTML so the metadata block doesn't render.
  */
 export function stripPanelActions(html: string): string {
   return html.replace(/<panel-actions[^>]*>[\s\S]*?<\/panel-actions>/gi, "");
+}
+
+/**
+ * Remove `<panel-meta>...</panel-meta>` tags from HTML string.
+ */
+export function stripPanelMeta(html: string): string {
+  return html.replace(/<panel-meta[^>]*>[\s\S]*?<\/panel-meta>/gi, "");
 }

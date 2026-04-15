@@ -15,7 +15,7 @@ export interface DockPanelEntry {
 interface DockPanelProps {
   panels: DockPanelEntry[];
   direction?: "bottom" | "left" | "right";
-  maxSize?: number;
+  maxSize?: number | string;
   sessionId?: string;
   panelData?: Record<string, unknown>;
   onClose: (name: string) => void;
@@ -147,6 +147,10 @@ export default function DockPanel({
 
   const showTabs = panels.length > 1;
   const isSide = direction === "left" || direction === "right";
+  const maxSizeCss =
+    typeof maxSize === "number"
+      ? `${maxSize}px`
+      : (typeof maxSize === "string" && maxSize.trim() ? maxSize : undefined);
 
   const borderClass = floating
     ? "border border-border/50 rounded-lg shadow-lg"
@@ -155,10 +159,10 @@ export default function DockPanel({
       : "border-t border-border";
 
   const sizeStyle = floating
-    ? { maxHeight: maxSize ? `${maxSize}px` : "80vh" }
+    ? { maxHeight: maxSizeCss || "80vh" }
     : isSide
-      ? { width: "380px", maxHeight: maxSize ? `${maxSize}px` : "50vh" }
-      : { maxHeight: maxSize ? `${maxSize}px` : "50vh" };
+      ? { width: "380px", maxHeight: maxSizeCss || "50vh" }
+      : { maxHeight: maxSizeCss || "50vh" };
 
   const tabBar = showTabs && current && (
     <div className={`flex items-center gap-0 ${isSide ? "border-b" : "border-b"} border-border/50 px-2 shrink-0`}>

@@ -29,8 +29,8 @@ interface ChatMessagesProps {
   showOOC?: boolean;
   dockLeft?: DockPanelEntry[];
   dockRight?: DockPanelEntry[];
-  dockMaxSize?: number;
-  dockWidth?: number;
+  dockMaxSize?: number | string;
+  dockWidth?: number | string;
   panelData?: Record<string, unknown>;
   onDockClose?: (name: string) => void;
   audioMap?: Record<string, string[]>;
@@ -709,9 +709,13 @@ export default function ChatMessages({
             ref={dockWrapperRef}
             className={`sticky bottom-2 z-10 ${dockSide === "right" ? "self-end" : "self-start"}`}
             style={{
-              width: dockWidthProp ? `${dockWidthProp}px` : undefined,
+              width: typeof dockWidthProp === "number" ? `${dockWidthProp}px` : dockWidthProp || undefined,
               minWidth: dockWidthProp ? undefined : "280px",
-              maxWidth: dockWidthProp ? `min(${dockWidthProp}px, calc(100vw - 2rem))` : "50%",
+              maxWidth: typeof dockWidthProp === "number"
+                ? `min(${dockWidthProp}px, calc(100vw - 2rem))`
+                : dockWidthProp
+                  ? `min(${dockWidthProp}, calc(100vw - 2rem))`
+                  : "50%",
               marginTop: dockMeasuredHeight > 0 ? `-${dockMeasuredHeight}px` : undefined,
               pointerEvents: hasDockFloat ? "auto" : "none",
             }}
