@@ -21,6 +21,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string; name: string }> }
 ) {
   const { id, name } = await params;
+  const sessionId = decodeURIComponent(id);
 
   // Path traversal check
   if (name.includes("/") || name.includes("\\") || name.includes("..")) {
@@ -28,7 +29,7 @@ export async function POST(
   }
 
   const svc = getServices();
-  const sessionDir = svc.sessions.getSessionDir(id);
+  const sessionDir = svc.sessions.getSessionDir(sessionId);
   const toolPath = path.join(sessionDir, "tools", `${name}.js`);
 
   if (!fs.existsSync(toolPath)) {
@@ -47,6 +48,11 @@ export async function POST(
   } catch {
     // empty args is fine
   }
+
+  const action = typeof args.action === "string" ? args.action : null;
+  const timeoutMs = name === "pipeline"
+    ? 30 * 60 * 1000
+    : 10_000;
 
   // Build context
   const varsPath = path.join(sessionDir, "variables.json");
@@ -84,7 +90,10 @@ export async function POST(
 
     const resultPromise = fn(context, args);
     const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("Tool execution timed out (10s)")), 10_000)
+      setTimeout(
+        () => reject(new Error(`Tool execution timed out (${Math.round(timeoutMs / 1000)}s)${action ? ` [${action}]` : ""}`)),
+        timeoutMs,
+      )
     );
     const result = await Promise.race([resultPromise, timeoutPromise]) as {
       variables?: Record<string, unknown>;
@@ -163,7 +172,6 @@ export async function POST(
     // Auto-queue events from engine results
     const toolResult = result?.result as Record<string, unknown> | undefined;
     if (toolResult?.search_init_event && typeof toolResult.search_init_event === "string") {
-      const sessionId = decodeURIComponent(id);
       const instance = getSessionInstance(sessionId);
       if (instance) {
         instance.queueEvent(toolResult.search_init_event);
@@ -172,7 +180,6 @@ export async function POST(
     }
     // Auto-queue result events (e.g. milking results, purchase confirmations)
     if (toolResult?.queue_events && Array.isArray(toolResult.queue_events)) {
-      const sessionId = decodeURIComponent(id);
       const instance = getSessionInstance(sessionId);
       if (instance) {
         for (const header of toolResult.queue_events) {
