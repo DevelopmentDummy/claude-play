@@ -1,4 +1,6 @@
 import { getInternalToken } from "./auth";
+import { getSessionInstance } from "./session-registry";
+import { wsBroadcast } from "./ws-server";
 
 type SchedulerPhase = "idle" | "source" | "teacher" | "stopping" | "error";
 
@@ -70,6 +72,41 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+interface SchedulerNotification {
+  target: "client" | "ai";
+  event?: string;
+  payload?: unknown;
+  mode?: "queue" | "send";
+  message?: string;
+}
+
+async function processNotifications(sessionId: string, notifications: unknown): Promise<void> {
+  if (!Array.isArray(notifications) || notifications.length === 0) return;
+
+  for (const notif of notifications as SchedulerNotification[]) {
+    try {
+      if (notif.target === "client") {
+        const eventType = notif.event || "scheduler:notify";
+        wsBroadcast(eventType, notif.payload ?? {}, { sessionId });
+      } else if (notif.target === "ai" && notif.message) {
+        const instance = getSessionInstance(sessionId);
+        if (!instance) {
+          console.warn(`[scheduler:${sessionId}] notification skipped — no active instance`);
+          continue;
+        }
+        if (notif.mode === "send") {
+          await instance.sendMessage(notif.message);
+        } else {
+          // default: queue
+          instance.queueEvent(notif.message);
+        }
+      }
+    } catch (err) {
+      console.error(`[scheduler:${sessionId}] notification error:`, err);
+    }
+  }
+}
+
 async function ensureStopped(sessionId: string): Promise<void> {
   try {
     await runSessionTool(sessionId, "engine", { action: "finish_scheduler" });
@@ -90,6 +127,9 @@ async function schedulerLoop(handle: SchedulerHandle): Promise<void> {
 
       const phase = typeof result.phase === "string" ? result.phase : "idle";
       handle.phase = phase === "source" || phase === "teacher" ? phase : "idle";
+
+      // Process notifications from tick result
+      await processNotifications(handle.sessionId, result.notifications);
 
       if (result.stopped === true || result.completed === true) {
         break;
