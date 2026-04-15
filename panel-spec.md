@@ -1412,6 +1412,30 @@ $PANEL:거래$
 
 `layout.json` 파일은 `panel-engine.ts`의 `fs.watch`로 감시된다. 파일이 변경되면 `layout:update` WebSocket 이벤트가 브로드캐스트되어, 프론트엔드에서 세션 재진입 없이 즉시 반영된다. `__panelBridge.updateLayout(patch)` 호출 시에도 동일한 경로로 전파된다.
 
+### 스케줄러 알림 이벤트
+
+Pipeline scheduler의 `scheduler_tick` 도구 반환값에 `notifications` 배열이 포함되면, 서버가 해당 세션의 클라이언트에 WebSocket 이벤트를 브로드캐스트한다.
+
+기본 이벤트 타입은 `scheduler:notify`이며, 도구 스크립트가 `event` 필드로 커스텀 이벤트 타입을 지정할 수 있다.
+
+**이벤트 예시:**
+
+| 이벤트 타입 | 용도 | payload 예시 |
+|-------------|------|-------------|
+| `scheduler:notify` | 범용 알림 (기본값) | `{ message: "작업 완료" }` |
+| `scheduler:progress` | 진행 상황 | `{ step: 3, total: 10, label: "이미지 생성" }` |
+| `scheduler:complete` | 완료 알림 | `{ label: "파이프라인", elapsed: 192 }` |
+| `scheduler:error` | 에러 알림 | `{ error: "API 타임아웃", phase: "source" }` |
+
+이벤트 타입과 payload 구조는 도구 스크립트가 자유롭게 정의한다. 프론트엔드 패널은 `__panelBridge` 또는 WebSocket 리스너를 통해 이 이벤트를 수신하여 토스트, 프로그레스 바, 상태 패널 업데이트 등에 활용할 수 있다.
+
+```javascript
+// 프론트엔드 패널에서 수신 예시 (패널 HTML 내부)
+__panelBridge.on("scheduler:progress", (data) => {
+  updateProgressBar(data.step, data.total);
+});
+```
+
 ### dock 크기 설정 (`layout.json`의 `panels`)
 
 | 속성 | 설명 | 기본값 |
