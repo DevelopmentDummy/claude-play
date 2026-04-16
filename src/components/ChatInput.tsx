@@ -679,7 +679,7 @@ function ChatInput({ disabled, isStreaming, onSend, onCancel, sessionId, choices
           </div>
         ) : null;
       })()}
-      {pendingEvents && pendingEvents.length > 0 && (
+      {pendingEvents && pendingEvents.length > 0 && !isStreaming && !disabled && (
         <div className="flex flex-wrap gap-1.5 px-4 pt-2 pb-1 max-h-[100px] overflow-y-auto">
           {pendingEvents.map((header, i) => (
             <span

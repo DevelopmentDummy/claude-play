@@ -1484,11 +1484,14 @@ export class SessionManager {
     } catch { return []; }
   }
 
+  /** Soft-delete a session by moving it to deleted_sessions/ */
   deleteSession(id: string): void {
     const dir = this.getSessionDir(id);
-    if (fs.existsSync(dir)) {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
+    if (!fs.existsSync(dir)) return;
+    const trashDir = path.join(this.dataDir, "deleted_sessions");
+    fs.mkdirSync(trashDir, { recursive: true });
+    const dest = path.join(trashDir, `${id}__${Date.now()}`);
+    fs.renameSync(dir, dest);
   }
 
   /** Regenerate CLAUDE.md and AGENTS.md from persona's latest session-instructions.md */
