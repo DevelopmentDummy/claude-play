@@ -13,7 +13,7 @@ import PublishPersonaModal from "@/components/PublishPersonaModal";
 import ClonePersonaDialog from "@/components/ClonePersonaDialog";
 
 const PERSONA_ACCENTS = [
-  "var(--plum)",
+  "#b87db8",
   "#e6a664",
   "#8ec46a",
   "#6ac4e6",
