@@ -30,6 +30,17 @@
   --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.4);
   --transition-fast: 0.15s ease;
   --transition-normal: 0.25s ease;
+  /* ── Lobby (Editorial) tokens ──────────────────── */
+  --lobby-bg: #0a0a0e;
+  --lobby-surface: #0c0c10;
+  --lobby-card: #0f0f14;
+  --lobby-border: rgba(255, 255, 255, 0.05);
+  --lobby-border-hover: rgba(184, 125, 184, 0.25);
+  --plum: #b87db8;
+  --plum-soft: rgba(184, 125, 184, 0.08);
+  --plum-hairline: rgba(184, 125, 184, 0.3);
+  --plum-glow: rgba(184, 125, 184, 0.5);
+  --text-mute: rgba(250, 250, 250, 0.4);
 }
 
 html, body {
