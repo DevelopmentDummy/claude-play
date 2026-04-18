@@ -89,14 +89,14 @@ export default function PersonaCard({
 
   return (
     <div
-      className="group relative rounded-xl overflow-hidden cursor-pointer
+      className="group relative rounded-xl cursor-pointer
         bg-lobby-card border border-lobby-border
         transition-all duration-normal
         hover:border-lobby-border-hover hover:-translate-y-0.5"
       onClick={onSelect}
     >
       <div
-        className="relative h-[140px] border-b"
+        className="relative h-[140px] border-b overflow-hidden rounded-t-xl"
         style={{
           background: iconUrl
             ? `url(${iconUrl}) center/cover no-repeat, linear-gradient(160deg, ${grad.from}, ${grad.to})`
@@ -117,14 +117,6 @@ export default function PersonaCard({
           <div className="absolute top-3 right-9 w-1.5 h-1.5 rounded-full"
             style={{ background: "var(--plum)", boxShadow: "0 0 10px var(--plum-glow)" }} />
         )}
-        <div className="absolute top-2 right-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-fast">
-          <KebabMenu
-            items={items}
-            badge={updateStatus === "update-available" ? (
-              <span className="block w-2 h-2 rounded-full bg-[var(--warning)] ring-2 ring-black" />
-            ) : undefined}
-          />
-        </div>
         {(importMeta || publishMeta) && (
           <div className="absolute bottom-2 left-2.5 flex gap-1">
             {importMeta ? (
@@ -138,6 +130,15 @@ export default function PersonaCard({
             ) : null}
           </div>
         )}
+      </div>
+
+      <div className="absolute top-2 right-2 z-30 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-fast">
+        <KebabMenu
+          items={items}
+          badge={updateStatus === "update-available" ? (
+            <span className="block w-2 h-2 rounded-full bg-[var(--warning)] ring-2 ring-black" />
+          ) : undefined}
+        />
       </div>
 
       <div className="p-3.5">
