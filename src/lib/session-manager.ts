@@ -279,18 +279,11 @@ export class SessionManager {
       .map((d) => {
         const personaMd = path.join(dir, d.name, "persona.md");
         let displayName = d.name;
-        if (fs.existsSync(personaMd)) {
-          const firstLine = fs
-            .readFileSync(personaMd, "utf-8")
-            .split("\n")[0]
-            .replace(/^#\s*/, "")
-            .trim();
-          if (firstLine) displayName = firstLine;
-        }
         let tagline: string | undefined;
         if (fs.existsSync(personaMd)) {
-          const content = fs.readFileSync(personaMd, "utf-8");
-          const lines = content.split("\n");
+          const lines = fs.readFileSync(personaMd, "utf-8").split(/\r?\n/);
+          const firstLine = (lines[0] ?? "").replace(/^#+\s*/, "").trim();
+          if (firstLine) displayName = firstLine;
           const bodyStart = lines.findIndex((l, i) => i > 0 && l.trim() !== "" && !l.startsWith("#"));
           if (bodyStart > 0) {
             const paragraph: string[] = [];
