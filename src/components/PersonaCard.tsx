@@ -110,7 +110,15 @@ export default function PersonaCard({
             {initial}
           </div>
         )}
-        <div className="absolute top-2.5 left-3 font-serif italic text-[10px]" style={{ color: "rgba(184,125,184,0.8)" }}>
+        {iconUrl && (
+          <>
+            <div className="absolute inset-x-0 top-0 h-12 pointer-events-none"
+              style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0.55), rgba(0,0,0,0))" }} />
+            <div className="absolute inset-x-0 bottom-0 h-12 pointer-events-none"
+              style={{ background: "linear-gradient(to top, rgba(0,0,0,0.55), rgba(0,0,0,0))" }} />
+          </>
+        )}
+        <div className="absolute top-2.5 left-3 font-serif italic text-[10px]" style={{ color: "rgba(184,125,184,0.95)", textShadow: "0 1px 2px rgba(0,0,0,0.6)" }}>
           {numLabel}
         </div>
         {sessionCount > 0 && (
