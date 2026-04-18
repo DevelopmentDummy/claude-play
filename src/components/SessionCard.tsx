@@ -18,7 +18,6 @@ interface SessionCardProps {
   createdAt: string;
   hasIcon?: boolean;
   model?: string;
-  index?: number;
   personaIndex?: number;
   onOpen: () => void;
   onDelete: () => void;
@@ -58,7 +57,6 @@ export default function SessionCard({
   createdAt,
   hasIcon,
   model,
-  index = 0,
   personaIndex = 0,
   onOpen,
   onDelete,
@@ -79,7 +77,6 @@ export default function SessionCard({
 
   const grad = SESSION_GRADIENTS[personaIndex % SESSION_GRADIENTS.length];
   const info = providerInfo(model);
-  const numLabel = String(index + 1).padStart(2, "0");
 
   return (
     <div
@@ -122,11 +119,6 @@ export default function SessionCard({
             </span>
           ) : null}
         </div>
-      </div>
-
-      <div className="absolute top-2 right-2.5 font-serif italic text-[9px] opacity-100 md:group-hover:opacity-0 transition-opacity duration-fast"
-        style={{ color: "rgba(184,125,184,0.5)" }}>
-        {numLabel}
       </div>
 
       <button

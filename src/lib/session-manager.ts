@@ -317,8 +317,17 @@ export class SessionManager {
             } catch { /* ignore */ }
           }
         }
-        return { name: d.name, displayName, hasIcon, importMeta, publishMeta, tagline };
-      });
+        // mtime: persona.md 우선, 없으면 디렉토리
+        let mtimeMs = 0;
+        try {
+          mtimeMs = fs.existsSync(personaMd)
+            ? fs.statSync(personaMd).mtimeMs
+            : fs.statSync(path.join(dir, d.name)).mtimeMs;
+        } catch { /* ignore */ }
+        return { name: d.name, displayName, hasIcon, importMeta, publishMeta, tagline, mtimeMs };
+      })
+      .sort((a, b) => b.mtimeMs - a.mtimeMs)
+      .map(({ mtimeMs: _m, ...p }) => p);
   }
 
   getPersonaDir(name: string): string {

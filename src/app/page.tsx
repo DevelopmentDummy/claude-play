@@ -285,7 +285,7 @@ export default function LobbyPage() {
               아직 세션이 없습니다
             </p>
           ) : (
-            sessions.map((s, i) => (
+            sessions.map((s) => (
               <SessionCard
                 key={s.id}
                 id={s.id}
@@ -294,7 +294,6 @@ export default function LobbyPage() {
                 createdAt={s.createdAt}
                 hasIcon={s.hasIcon}
                 model={s.model}
-                index={i}
                 personaIndex={personaIndexMap.get(s.persona) ?? 0}
                 onOpen={() => {
                   router.push(`/chat/${encodeURIComponent(s.id)}`);
