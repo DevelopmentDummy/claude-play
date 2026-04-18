@@ -55,7 +55,6 @@ export default function PersonaCard({
 }: PersonaCardProps) {
   const grad = PERSONA_GRADIENTS[index % PERSONA_GRADIENTS.length];
   const initial = displayName.charAt(0).toUpperCase();
-  const numLabel = `No. ${String(index + 1).padStart(2, "0")}`;
   const iconUrl = hasIcon
     ? `/api/personas/${encodeURIComponent(name)}/images?file=icon.png`
     : null;
@@ -118,9 +117,6 @@ export default function PersonaCard({
               style={{ background: "linear-gradient(to top, rgba(0,0,0,0.55), rgba(0,0,0,0))" }} />
           </>
         )}
-        <div className="absolute top-2.5 left-3 font-serif italic text-[10px]" style={{ color: "rgba(184,125,184,0.95)", textShadow: "0 1px 2px rgba(0,0,0,0.6)" }}>
-          {numLabel}
-        </div>
         {sessionCount > 0 && (
           <div className="absolute top-3 right-9 w-1.5 h-1.5 rounded-full"
             style={{ background: "var(--plum)", boxShadow: "0 0 10px var(--plum-glow)" }} />
