@@ -71,6 +71,7 @@ export interface PersonaInfo {
   publishMeta?: {
     url: string;
   };
+  tagline?: string;
 }
 
 export interface ProfileInfo {
@@ -286,6 +287,22 @@ export class SessionManager {
             .trim();
           if (firstLine) displayName = firstLine;
         }
+        let tagline: string | undefined;
+        if (fs.existsSync(personaMd)) {
+          const content = fs.readFileSync(personaMd, "utf-8");
+          const lines = content.split("\n");
+          const bodyStart = lines.findIndex((l, i) => i > 0 && l.trim() !== "" && !l.startsWith("#"));
+          if (bodyStart > 0) {
+            const paragraph: string[] = [];
+            for (let i = bodyStart; i < lines.length; i++) {
+              if (lines[i].trim() === "") break;
+              paragraph.push(lines[i].trim());
+            }
+            const joined = paragraph.join(" ").replace(/[*_`]/g, "");
+            const sentence = joined.split(/(?<=[.!?。!?…])\s+/)[0]?.trim();
+            if (sentence) tagline = sentence.length > 120 ? sentence.slice(0, 117) + "…" : sentence;
+          }
+        }
         const hasIcon = fs.existsSync(path.join(dir, d.name, "images", "icon.png"));
         let importMeta: PersonaInfo["importMeta"];
         const importMetaPath = path.join(dir, d.name, "import-meta.json");
@@ -307,7 +324,7 @@ export class SessionManager {
             } catch { /* ignore */ }
           }
         }
-        return { name: d.name, displayName, hasIcon, importMeta, publishMeta };
+        return { name: d.name, displayName, hasIcon, importMeta, publishMeta, tagline };
       });
   }
 
