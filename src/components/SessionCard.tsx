@@ -38,6 +38,7 @@ function providerInfo(model?: string): { label: string; cls: string } | null {
 
 function relativeTime(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime();
+  if (ms < 0) return "방금";
   const m = Math.floor(ms / 60000);
   if (m < 1) return "방금";
   if (m < 60) return `${m}분 전`;
@@ -111,11 +112,15 @@ export default function SessionCard({
           <span className="truncate">{persona}</span>
           <span className="w-[3px] h-[3px] rounded-full bg-white/30 shrink-0" />
           <span className="shrink-0">{relativeTime(createdAt)}</span>
-          {info && (
+          {info ? (
             <span className={`inline-flex items-center px-1 py-0 rounded text-[8px] font-semibold tracking-wide border ${info.cls}`}>
               {info.label}
             </span>
-          )}
+          ) : model ? (
+            <span className="inline-flex items-center px-1 py-0 rounded text-[8px] font-medium tracking-wide text-text-mute">
+              {model}
+            </span>
+          ) : null}
         </div>
       </div>
 
