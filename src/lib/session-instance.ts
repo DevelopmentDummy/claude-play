@@ -198,7 +198,7 @@ export class SessionInstance {
   private seenToolKeys = new Set<string>();
   private sawTextDelta = false;
   private currentBlockType = "text";
-  private lastAssistantMsgId: string | null = null;
+  private pushedTextsByMsgId = new Map<string, Set<string>>();
   private isCompacting = false;
   private isSlashCommand = false;
   private historyId = 0;
@@ -614,7 +614,7 @@ export class SessionInstance {
     this.seenToolKeys.clear();
     this.sawTextDelta = false;
     this.currentBlockType = "text";
-    this.lastAssistantMsgId = null;
+    this.pushedTextsByMsgId.clear();
     this.isCompacting = false;
     if (this.resultFinalizeTimer) { clearTimeout(this.resultFinalizeTimer); this.resultFinalizeTimer = null; }
     this.heldResultMsg = null;
@@ -1011,7 +1011,7 @@ export class SessionInstance {
     this.seenToolKeys.clear();
     this.sawTextDelta = false;
     this.currentBlockType = "text";
-    this.lastAssistantMsgId = null;
+    this.pushedTextsByMsgId.clear();
     this.isCompacting = false;
 
     if (!isSlash) {
@@ -1059,6 +1059,7 @@ export class SessionInstance {
       if (msg.type === "content_reset") {
         this.segments = [];
         this.assistantFullText = null;
+        this.pushedTextsByMsgId.clear();
         this.broadcast("claude:message", d);
         return;
       }
@@ -1116,27 +1117,31 @@ export class SessionInstance {
         const message = msg.message as Record<string, unknown> | undefined;
         if (!message) return;
 
-        // Guard: same msg ID emitted multiple times (one per content block completion).
-        // Skip text from repeat emissions to prevent duplication; still process tool_use.
+        // Per-msgId content-based dedup. CLI emits one block per emission with
+        // shared msgId (thinking → text → tool_use). Some CLI modes emit cumulative
+        // content arrays; in either case dedup-by-content prevents double-push.
         const assistantMsgId = message.id as string | undefined;
-        const isRepeatMsg = !!(assistantMsgId && assistantMsgId === this.lastAssistantMsgId);
-        if (assistantMsgId) this.lastAssistantMsgId = assistantMsgId;
+        const pushTextOnce = (text: string): void => {
+          if (this.sawTextDelta) return;
+          if (!assistantMsgId) { this.segments.push(text); return; }
+          let pushed = this.pushedTextsByMsgId.get(assistantMsgId);
+          if (!pushed) { pushed = new Set(); this.pushedTextsByMsgId.set(assistantMsgId, pushed); }
+          if (pushed.has(text)) return;
+          pushed.add(text);
+          this.segments.push(text);
+        };
 
         // Always capture full text for UTF-8 healing comparison at result time
         const fullTextParts: string[] = [];
         if (typeof message.content === "string") {
           fullTextParts.push(message.content);
-          if (!this.sawTextDelta && !isRepeatMsg) {
-            this.segments.push(message.content);
-          }
+          pushTextOnce(message.content);
         } else if (Array.isArray(message.content)) {
           for (const block of message.content) {
             const b = block as Record<string, unknown>;
             if (b.type === "text" && typeof b.text === "string") {
               fullTextParts.push(b.text);
-              if (!this.sawTextDelta && !isRepeatMsg) {
-                this.segments.push(b.text);
-              }
+              pushTextOnce(b.text);
             } else if (b.type === "tool_use") {
               this.addToolUse(b.name as string, b.input);
             }

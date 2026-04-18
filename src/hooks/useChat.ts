@@ -101,7 +101,7 @@ export function useChat(rawSessionId?: string) {
   const seenToolKeysRef = useRef<Set<string>>(new Set());
   const sawTextDeltaRef = useRef(false);
   const currentBlockTypeRef = useRef<string>("text");
-  const lastAssistantMsgIdRef = useRef<string | null>(null);
+  const pushedTextsByMsgIdRef = useRef<Map<string, Set<string>>>(new Map());
   const msgIdRef = useRef(0);
   const totalRef = useRef(0);
   const loadedOffsetRef = useRef(0);
@@ -215,7 +215,7 @@ export function useChat(rawSessionId?: string) {
     seenToolKeysRef.current.clear();
     sawTextDeltaRef.current = false;
     currentBlockTypeRef.current = "text";
-    lastAssistantMsgIdRef.current = null;
+    pushedTextsByMsgIdRef.current.clear();
     oocRef.current = false;
     setIsStreaming(false);
   }, [flushAssistantText]);
@@ -234,6 +234,7 @@ export function useChat(rawSessionId?: string) {
         assistantFullTextRef.current = null;
         toolsRef.current = [];
         seenToolKeysRef.current.clear();
+        pushedTextsByMsgIdRef.current.clear();
         upsertAssistantMessage("");
         return;
       }
@@ -268,27 +269,31 @@ export function useChat(rawSessionId?: string) {
         const message = msg.message as Record<string, unknown> | undefined;
         if (!message) return;
 
-        // Guard: same msg ID emitted multiple times (one per content block completion).
-        // Skip text from repeat emissions to prevent duplication; still process tool_use.
+        // Per-msgId content-based dedup. CLI emits one block per emission with
+        // shared msgId (thinking → text → tool_use); dedup-by-content prevents
+        // double-push whether emissions are per-block or cumulative.
         const assistantMsgId = message.id as string | undefined;
-        const isRepeatMsg = !!(assistantMsgId && assistantMsgId === lastAssistantMsgIdRef.current);
-        if (assistantMsgId) lastAssistantMsgIdRef.current = assistantMsgId;
+        const appendTextOnce = (text: string): void => {
+          if (sawTextDeltaRef.current) return;
+          if (!assistantMsgId) { appendAssistantText(text); return; }
+          let pushed = pushedTextsByMsgIdRef.current.get(assistantMsgId);
+          if (!pushed) { pushed = new Set(); pushedTextsByMsgIdRef.current.set(assistantMsgId, pushed); }
+          if (pushed.has(text)) return;
+          pushed.add(text);
+          appendAssistantText(text);
+        };
 
         // Always capture full text for UTF-8 healing at turn end
         const fullParts: string[] = [];
         if (typeof message.content === "string") {
           fullParts.push(message.content);
-          if (!sawTextDeltaRef.current && !isRepeatMsg) {
-            appendAssistantText(message.content);
-          }
+          appendTextOnce(message.content);
         } else if (Array.isArray(message.content)) {
           for (const block of message.content) {
             const b = block as Record<string, unknown>;
             if (b.type === "text" && typeof b.text === "string") {
               fullParts.push(b.text);
-              if (!sawTextDeltaRef.current && !isRepeatMsg) {
-                appendAssistantText(b.text);
-              }
+              appendTextOnce(b.text);
             }
             else if (b.type === "tool_use") addToolUse(b.name as string, b.input);
           }
@@ -333,7 +338,7 @@ export function useChat(rawSessionId?: string) {
       seenToolKeysRef.current.clear();
       sawTextDeltaRef.current = false;
       currentBlockTypeRef.current = "text";
-      lastAssistantMsgIdRef.current = null;
+      pushedTextsByMsgIdRef.current.clear();
       addUserMessage(text, isOOC);
       setIsStreaming(true);
       setError(null);
@@ -377,7 +382,7 @@ export function useChat(rawSessionId?: string) {
     seenToolKeysRef.current.clear();
     sawTextDeltaRef.current = false;
     currentBlockTypeRef.current = "text";
-    lastAssistantMsgIdRef.current = null;
+    pushedTextsByMsgIdRef.current.clear();
     oocRef.current = false;
     setIsStreaming(false);
     setStatus("connected");
@@ -399,7 +404,7 @@ export function useChat(rawSessionId?: string) {
     seenToolKeysRef.current.clear();
     sawTextDeltaRef.current = false;
     currentBlockTypeRef.current = "text";
-    lastAssistantMsgIdRef.current = null;
+    pushedTextsByMsgIdRef.current.clear();
     oocRef.current = false;
   }, []);
 
