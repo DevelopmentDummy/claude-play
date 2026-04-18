@@ -50,6 +50,22 @@ export default function resolve(workflow, params, context) {
       systemPrefix:
         "You are an assistant designed to generate superior images with the superior degree of image-text alignment based on textual prompts or user prompts. <Prompt Start> ",
     },
+    wai_anima: {
+      matches: ["waianima_v10.safetensors", "waiANIMA_v10.safetensors", "waianima"],
+      qualityMap: {
+        plain: "best quality",
+        standard: "masterpiece, best quality, amazing quality",
+        polished: "masterpiece, best quality, amazing quality, very aesthetic, absurdres, high detail",
+      },
+      sampler: "euler_ancestral",
+      scheduler: "simple",
+      cfgByPreset: { plain: 3.4, standard: 3.8, polished: 4.0 },
+      shiftByPreset: { plain: 2.8, standard: 3.0, polished: 3.1 },
+      stepsByPreset: { plain: 28, standard: 36, polished: 40 },
+      extraMeta: "",
+      systemPrefix:
+        "You are an illustrator composing a polished anime image with elegant shading, clean structure, and strong visual appeal. <Prompt Start> ",
+    },
     animaika: {
       matches: ["animaika_v30.safetensors", "animaika_v3", "animaika"],
       qualityMap: {

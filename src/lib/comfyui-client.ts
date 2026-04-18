@@ -808,7 +808,67 @@ export class ComfyUIClient {
       this.processDetailerChain(prompt, pkg.meta.detailer_chain, params);
     }
 
+    // 4g: auto-upload session images for LoadImage nodes
+    if (sessionDir) {
+      await this.autoUploadLoadImages(prompt, sessionDir);
+    }
+
     return prompt;
+  }
+
+  /** Auto-upload session-local images to ComfyUI input dir for LoadImage nodes.
+   *  Scans all LoadImage nodes in the prompt. If the image value looks like a
+   *  session-relative path (contains "/" — e.g. "images/source/p000002.png"),
+   *  uploads the file from sessionDir and replaces the value with the uploaded name. */
+  private async autoUploadLoadImages(
+    prompt: Record<string, unknown>,
+    sessionDir: string
+  ): Promise<void> {
+    for (const node of Object.values(prompt)) {
+      const n = node as Record<string, unknown>;
+      if (n.class_type !== "LoadImage") continue;
+      const inputs = n.inputs as Record<string, unknown> | undefined;
+      if (!inputs || typeof inputs.image !== "string") continue;
+
+      const imagePath = inputs.image as string;
+      // Only process paths that look session-relative (contain a slash)
+      // Plain filenames (e.g. "example.png") are already in ComfyUI input
+      if (!imagePath.includes("/")) continue;
+
+      let absPath = path.join(sessionDir, imagePath);
+      // Fallback: if not found directly, try under images/ subdirectory
+      // (pipeline may store paths as "source/foo.png" relative to images/)
+      if (!fs.existsSync(absPath)) {
+        const fallback = path.join(sessionDir, "images", imagePath);
+        if (fs.existsSync(fallback)) {
+          absPath = fallback;
+        } else {
+          console.error(`[comfyui] LoadImage auto-upload: file not found: ${absPath} (also tried ${fallback})`);
+          continue;
+        }
+      }
+
+      // Upload with a unique suffix to bust ComfyUI's image cache
+      const ext = path.extname(absPath);
+      const base = path.basename(absPath, ext);
+      const uniqueName = `${base}_${Date.now()}${ext}`;
+      const uniquePath = path.join(path.dirname(absPath), uniqueName);
+      fs.copyFileSync(absPath, uniquePath);
+
+      let uploadedName: string | null;
+      try {
+        uploadedName = await this.uploadImage(uniquePath);
+      } finally {
+        try { fs.unlinkSync(uniquePath); } catch { /* ignore */ }
+      }
+
+      if (uploadedName) {
+        inputs.image = uploadedName;
+        console.log(`[comfyui] LoadImage auto-upload: ${imagePath} → ${uploadedName}`);
+      } else {
+        console.error(`[comfyui] LoadImage auto-upload failed for: ${imagePath}`);
+      }
+    }
   }
 
   /** Cached detailer module templates loaded from detailer-modules.json */
@@ -1046,12 +1106,19 @@ export class ComfyUIClient {
 
   private async pollHistory(
     promptId: string,
-    timeoutMs = 120_000
+    timeoutMs = 120_000,
+    opts: { initialWaitMs?: number; startIntervalMs?: number; maxIntervalMs?: number } = {}
   ): Promise<Record<string, unknown> | null> {
     const timeout = timeoutMs;
-    const interval = 2_000;
+    const initialWait = opts.initialWaitMs ?? 0;
     const start = Date.now();
 
+    if (initialWait > 0) {
+      await new Promise((r) => setTimeout(r, initialWait));
+    }
+
+    let interval = opts.startIntervalMs ?? 2_000;
+    const maxInterval = opts.maxIntervalMs ?? 8_000;
     while (Date.now() - start < timeout) {
       try {
         const res = await this.fetchWithRetry(
@@ -1072,6 +1139,7 @@ export class ComfyUIClient {
       }
 
       await new Promise((r) => setTimeout(r, interval));
+      interval = Math.min(Math.floor(interval * 1.5), maxInterval);
     }
 
     return null;
@@ -1215,7 +1283,11 @@ export class ComfyUIClient {
     sessionDir: string,
     extraFiles?: Record<string, string>
   ): Promise<GenerateResult> {
-    const history = await this.pollHistory(promptId);
+    // Image generation rarely finishes in <10s — wait before first poll to avoid
+    // hammering ComfyUI (and exhausting ephemeral ports).
+    const history = await this.pollHistory(promptId, 120_000, {
+      initialWaitMs: 10_000,
+    });
     if (!history) {
       await this.cancelPrompt(promptId);
       return { success: false, error: "Timeout waiting for ComfyUI generation" };

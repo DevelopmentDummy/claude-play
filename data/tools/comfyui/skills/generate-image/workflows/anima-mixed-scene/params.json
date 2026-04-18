@@ -5,7 +5,7 @@
     "lora_injection": true,
     "lora_couple_branches": false,
     "seed_randomize": true,
-    "trigger_tags": false,
+    "trigger_tags": true,
     "detailer_chain": true
   },
   "detailer_chain": {

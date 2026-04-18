@@ -1,0 +1,531 @@
+<panel-actions>
+[
+  {
+    "id": "append_prompt_file_submit",
+    "label": "프롬프트 파일 추가",
+    "description": "업로드한 파일에서 프롬프트 묶음을 읽어 prompt_bank와 pipeline_state에 append합니다.",
+    "needs_ui": true
+  }
+]
+</panel-actions>
+
+<style>
+  :host {
+    display: block;
+    color: #e7f4ff;
+    font-family: 'Inter', 'Pretendard', system-ui, sans-serif;
+  }
+
+  .panel {
+    width: min(800px, 92vw);
+    background:
+      radial-gradient(circle at top right, rgba(103,232,249,0.16), transparent 35%),
+      linear-gradient(180deg, rgba(10, 18, 30, 0.99), rgba(8, 14, 24, 0.97));
+    border: 1px solid rgba(103,232,249,0.16);
+    border-radius: 22px;
+    padding: 22px;
+    box-shadow: 0 24px 50px rgba(0,0,0,0.35);
+  }
+
+  .eyebrow {
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #8da8bf;
+    margin-bottom: 6px;
+  }
+
+  h2 {
+    margin: 0 0 8px 0;
+    font-size: 24px;
+    font-weight: 700;
+  }
+
+  .sub {
+    font-size: 13px;
+    line-height: 1.55;
+    color: #b8d4e8;
+    margin-bottom: 18px;
+  }
+
+  .dropzone {
+    border: 1px dashed rgba(103,232,249,0.28);
+    background: rgba(255,255,255,0.03);
+    border-radius: 18px;
+    padding: 18px;
+    margin-bottom: 14px;
+  }
+
+  .drop-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+
+  .drop-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: #f4fdff;
+  }
+
+  .drop-help {
+    font-size: 12px;
+    color: #9bb8cc;
+    line-height: 1.45;
+  }
+
+  input[type="file"] {
+    display: none;
+  }
+
+  .pick-btn,
+  .ghost,
+  .primary {
+    appearance: none;
+    border-radius: 12px;
+    padding: 10px 14px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+  }
+
+  .pick-btn,
+  .primary {
+    border: 1px solid rgba(103,232,249,0.24);
+    background: linear-gradient(135deg, rgba(103,232,249,0.18), rgba(139,92,246,0.18));
+    color: #f4fdff;
+  }
+
+  .ghost {
+    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.04);
+    color: #dcefff;
+  }
+
+  .pick-btn:hover,
+  .ghost:hover,
+  .primary:hover {
+    transform: translateY(-1px);
+  }
+
+  .pick-btn:disabled,
+  .ghost:disabled,
+  .primary:disabled {
+    opacity: 0.55;
+    cursor: wait;
+    transform: none;
+  }
+
+  .meta {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+  }
+
+  .chip {
+    padding: 6px 9px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.07);
+    color: #dcefff;
+    font-size: 12px;
+  }
+
+  .sample-box,
+  .format-box,
+  .preview-box {
+    border-radius: 16px;
+    padding: 14px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    margin-bottom: 12px;
+  }
+
+  .label {
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #8da8bf;
+    margin-bottom: 8px;
+  }
+
+  pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 12px;
+    line-height: 1.6;
+    color: #eef8ff;
+  }
+
+  .preview-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 220px;
+    overflow: auto;
+  }
+
+  .preview-item {
+    border-radius: 12px;
+    padding: 10px 12px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.06);
+  }
+
+  .preview-item strong {
+    display: block;
+    font-size: 12px;
+    color: #b8ffe9;
+    margin-bottom: 4px;
+  }
+
+  .preview-item span {
+    display: block;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #eef8ff;
+  }
+
+  .actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-top: 16px;
+  }
+
+  .status {
+    flex: 1;
+    min-height: 20px;
+    font-size: 13px;
+    color: #bfefff;
+  }
+
+  .btns {
+    display: flex;
+    gap: 10px;
+  }
+</style>
+
+<div class="panel">
+  <div class="eyebrow">Append Utility</div>
+  <h2>프롬프트 파일 업로드</h2>
+  <div class="sub">
+    외부에서 만든 Anima 프롬프트 풀을 파일로 바로 넣습니다.
+    정식 포맷은 <code>subject_tags + scene_prompt</code> 조합이고,
+    예전 <code>prompt</code> 단일 필드 포맷도 하위 호환으로 그대로 받습니다.
+  </div>
+
+  <div class="dropzone">
+    <div class="drop-head">
+      <div>
+        <div class="drop-title">파일 선택</div>
+        <div class="drop-help">지원 형식: <code>.json</code>, <code>.txt</code>, <code>.jsonl</code></div>
+      </div>
+      <div>
+        <input id="fileInput" type="file" accept=".json,.txt,.jsonl,application/json,text/plain" />
+        <button class="pick-btn" id="pickFileBtn">파일 고르기</button>
+      </div>
+    </div>
+    <div class="meta">
+      <div class="chip">다음 ID · p{{pipeline_meta.next_prompt_id}}</div>
+      <div class="chip">현재 총량 · {{prompt_bank.items.length}}</div>
+      <div class="chip" id="fileNameChip">선택된 파일 없음</div>
+      <div class="chip" id="parsedCountChip">파싱 전</div>
+    </div>
+  </div>
+
+  <div class="format-box">
+    <div class="label">권장 JSON 형식</div>
+    <pre>[
+  {
+    "id": "p001",
+    "category": ["vivid", "street"],
+    "subject_tags": "1girl, solo, black bob hair, red jacket, pencil skirt",
+    "scene_prompt": "An adult woman is crossing a neon street at night under vivid sign lights. The scene feels glossy and colorful, with reflective wet pavement and confident posture.",
+    "notes": "강한 색 대비 테스트"
+  }
+]</pre>
+  </div>
+
+  <div class="sample-box">
+    <div class="label">내부 저장 방식</div>
+    <pre>scene_prompt → prompt_bank.prompt 로 저장
+subject_tags → prompt_bank.meta.subject_tags 로 저장
+id → source_key 로 우선 사용
+
+legacy:
+{"prompt":"...","source_key":"..."} 도 그대로 허용</pre>
+  </div>
+
+  <div class="preview-box">
+    <div class="label">파싱 미리보기</div>
+    <div class="preview-list" id="previewList">
+      <div class="preview-item">
+        <strong>대기 중</strong>
+        <span>파일을 선택하면 append 전에 어떤 항목이 들어가는지 여기서 먼저 보여줍니다.</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="actions">
+    <div class="status" id="appendStatus"></div>
+    <div class="btns">
+      <button class="ghost" id="closeAppendPrompt">닫기</button>
+      <button class="primary" id="submitAppendPrompt" disabled>파일 append</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const fileInput = shadow.querySelector('#fileInput');
+  const pickFileBtn = shadow.querySelector('#pickFileBtn');
+  const fileNameChip = shadow.querySelector('#fileNameChip');
+  const parsedCountChip = shadow.querySelector('#parsedCountChip');
+  const previewList = shadow.querySelector('#previewList');
+  const statusEl = shadow.querySelector('#appendStatus');
+  const submitBtn = shadow.querySelector('#submitAppendPrompt');
+  const closeBtn = shadow.querySelector('#closeAppendPrompt');
+
+  let parsedItems = [];
+
+  function setStatus(text, tone) {
+    statusEl.textContent = text || '';
+    statusEl.style.color =
+      tone === 'error' ? '#ffb4b4' :
+      tone === 'success' ? '#b8ffe9' :
+      '#bfefff';
+  }
+
+  function escapeHtml(text) {
+    return String(text || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  function renderPreview(items) {
+    if (!items.length) {
+      previewList.innerHTML = `
+        <div class="preview-item">
+          <strong>대기 중</strong>
+          <span>파일을 선택하면 append 전에 어떤 항목이 들어가는지 여기서 먼저 보여줍니다.</span>
+        </div>
+      `;
+      return;
+    }
+
+    const sliced = items.slice(0, 8);
+    previewList.innerHTML = sliced.map((item, index) => {
+      const subjectTags = item.meta?.subject_tags ? `\nsubject_tags: ${item.meta.subject_tags}` : '';
+      return `
+        <div class="preview-item">
+          <strong>${index + 1}${item.source_key ? ` · ${escapeHtml(item.source_key)}` : ''}</strong>
+          <span>${escapeHtml(item.prompt || '')}${escapeHtml(subjectTags)}</span>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function normalizeJsonItem(item) {
+    if (typeof item === 'string') {
+      const prompt = item.trim();
+      return prompt ? { prompt } : null;
+    }
+
+    if (!item || typeof item !== 'object') return null;
+
+    const sourceKey =
+      typeof item.source_key === 'string' && item.source_key.trim()
+        ? item.source_key.trim()
+        : typeof item.id === 'string' && item.id.trim()
+          ? item.id.trim()
+          : '';
+
+    const category = Array.isArray(item.category)
+      ? item.category.map(v => String(v).trim()).filter(Boolean)
+      : typeof item.category === 'string'
+        ? item.category.split(',').map(v => v.trim()).filter(Boolean)
+        : [];
+
+    const notes = typeof item.notes === 'string' ? item.notes : '';
+
+    if (typeof item.scene_prompt === 'string' && item.scene_prompt.trim()) {
+      return {
+        prompt: item.scene_prompt.trim(),
+        source_key: sourceKey,
+        category,
+        notes,
+        meta: {
+          subject_tags: typeof item.subject_tags === 'string' ? item.subject_tags.trim() : '',
+          scene_prompt: item.scene_prompt.trim(),
+          negative_prompt: typeof item.negative_prompt === 'string' ? item.negative_prompt.trim() : '',
+          original_id: typeof item.id === 'string' ? item.id.trim() : '',
+          teacher_prompt: typeof item.teacher_prompt === 'string' ? item.teacher_prompt.trim() : ''
+        }
+      };
+    }
+
+    if (typeof item.prompt === 'string' && item.prompt.trim()) {
+      return {
+        prompt: item.prompt.trim(),
+        source_key: sourceKey,
+        category,
+        notes,
+        meta: {
+          subject_tags: typeof item.subject_tags === 'string' ? item.subject_tags.trim() : '',
+          original_id: typeof item.id === 'string' ? item.id.trim() : ''
+        }
+      };
+    }
+
+    return null;
+  }
+
+  function parseTextLines(raw) {
+    const lines = raw.split(/\r?\n/).map(v => v.trim()).filter(Boolean);
+    const items = [];
+
+    for (const line of lines) {
+      if (line.startsWith('{') && line.endsWith('}')) {
+        try {
+          const parsed = normalizeJsonItem(JSON.parse(line));
+          if (parsed) {
+            items.push(parsed);
+            continue;
+          }
+        } catch (_) {}
+      }
+
+      items.push({ prompt: line, meta: {} });
+    }
+
+    return items;
+  }
+
+  function parseUploadedText(fileName, raw) {
+    const lower = (fileName || '').toLowerCase();
+
+    if (lower.endsWith('.json')) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.map(normalizeJsonItem).filter(Boolean);
+      }
+      if (Array.isArray(parsed?.items)) {
+        return parsed.items.map(normalizeJsonItem).filter(Boolean);
+      }
+      const single = normalizeJsonItem(parsed);
+      return single ? [single] : [];
+    }
+
+    return parseTextLines(raw);
+  }
+
+  __panelBridge.registerAction('append_prompt_file_submit', async (params) => {
+    const result = await __panelBridge.runTool('engine', {
+      action: 'append_prompts_bulk',
+      items: params.items || []
+    });
+
+    if (!result.result?.success) {
+      throw new Error(result.result?.message || '파일 append 실패');
+    }
+
+    return result;
+  });
+
+  pickFileBtn?.addEventListener('click', () => {
+    fileInput?.click();
+  });
+
+  fileInput?.addEventListener('change', async () => {
+    const file = fileInput.files?.[0];
+    parsedItems = [];
+    submitBtn.disabled = true;
+
+    if (!file) {
+      fileNameChip.textContent = '선택된 파일 없음';
+      parsedCountChip.textContent = '파싱 전';
+      renderPreview([]);
+      setStatus('', 'info');
+      return;
+    }
+
+    fileNameChip.textContent = file.name;
+    setStatus('파일 읽는 중...', 'info');
+
+    try {
+      const raw = await file.text();
+      const items = parseUploadedText(file.name, raw);
+      parsedItems = items;
+      parsedCountChip.textContent = `${items.length}개 파싱`;
+      renderPreview(items);
+
+      if (!items.length) {
+        submitBtn.disabled = true;
+        setStatus('유효한 프롬프트를 찾지 못했어요.', 'error');
+        return;
+      }
+
+      submitBtn.disabled = false;
+      setStatus(`${items.length}개 준비 완료`, 'success');
+    } catch (error) {
+      parsedItems = [];
+      submitBtn.disabled = true;
+      parsedCountChip.textContent = '파싱 실패';
+      renderPreview([]);
+      setStatus(error?.message || '파일 파싱 실패', 'error');
+    }
+  });
+
+  submitBtn?.addEventListener('click', async () => {
+    if (!parsedItems.length) {
+      setStatus('먼저 파일을 선택해 주세요.', 'error');
+      return;
+    }
+
+    submitBtn.disabled = true;
+    pickFileBtn.disabled = true;
+    closeBtn.disabled = true;
+    setStatus('append 중...', 'info');
+
+    try {
+      const result = await __panelBridge.executeAction('append_prompt_file_submit', {
+        items: parsedItems
+      });
+
+      const appended = result?.result?.appended || [];
+      const skipped = result?.result?.skipped || [];
+      setStatus(`append 완료 · 추가 ${appended.length} / 스킵 ${skipped.length}`, 'success');
+
+      parsedItems = [];
+      if (fileInput) fileInput.value = '';
+      fileNameChip.textContent = '선택된 파일 없음';
+      parsedCountChip.textContent = '파싱 전';
+      renderPreview([]);
+
+      setTimeout(() => {
+        __panelBridge.closeModal('append-prompt');
+      }, 450);
+    } catch (error) {
+      setStatus(error?.message || '파일 append 실패', 'error');
+      submitBtn.disabled = false;
+      pickFileBtn.disabled = false;
+      closeBtn.disabled = false;
+      return;
+    }
+
+    submitBtn.disabled = false;
+    pickFileBtn.disabled = false;
+    closeBtn.disabled = false;
+  });
+
+  closeBtn?.addEventListener('click', () => {
+    __panelBridge.closeModal('append-prompt');
+  });
+</script>

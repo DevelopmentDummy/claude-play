@@ -10,7 +10,7 @@
       "baseLoras": []
     },
     "anima": {
-      "checkpoint": "anima-preview3-base.safetensors",
+      "checkpoint": "animaCatTower_v05.safetensors",
       "default_template": "anima-mixed-scene",
       "quality_tags": "masterpiece, best quality, amazing quality",
       "style_tags": "",
@@ -18,7 +18,8 @@
       "baseLoras": [
         { "name": "anima-preview2-masterpieces-e50.safetensors", "strength": 0.5 },
         { "name": "Hentai_Studio_Quality_Anima-step00001300.safetensors", "strength": 0.5 },
-        { "name": "anima-e20_styles.safetensors", "strength": 0.85 }
+        { "name": "anima-e20_styles.safetensors", "strength": 0.85 },
+        { "name": "anima_lora_lattice_v2.safetensors", "strength": 0.8 }
       ]
     }
   }

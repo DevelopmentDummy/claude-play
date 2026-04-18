@@ -388,16 +388,24 @@ export class PanelActionRegistry {
 }
 
 // ---------------------------------------------------------------------------
-// Singleton
+// Per-session instances
 // ---------------------------------------------------------------------------
 
-let _instance: PanelActionRegistry | null = null;
+const _instances = new Map<string, PanelActionRegistry>();
 
-export function getPanelActionRegistry(): PanelActionRegistry {
-  if (!_instance) {
-    _instance = new PanelActionRegistry();
+export function getPanelActionRegistry(sessionId: string): PanelActionRegistry {
+  let inst = _instances.get(sessionId);
+  if (!inst) {
+    inst = new PanelActionRegistry();
+    inst.setSessionId(sessionId);
+    _instances.set(sessionId, inst);
   }
-  return _instance;
+  return inst;
+}
+
+/** Clean up a session's registry when the page unmounts */
+export function destroyPanelActionRegistry(sessionId: string): void {
+  _instances.delete(sessionId);
 }
 
 // ---------------------------------------------------------------------------

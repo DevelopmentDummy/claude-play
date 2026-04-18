@@ -57,22 +57,22 @@ export interface Choice {
 }
 
 /** Choice button with portal-based tooltip that escapes overflow clipping */
-function ChoiceButton({ choice, busy, onChoice }: { choice: Choice; busy: boolean; onChoice: (c: Choice) => void }) {
+function ChoiceButton({ choice, busy, onChoice, sessionId }: { choice: Choice; busy: boolean; onChoice: (c: Choice) => void; sessionId?: string }) {
   const btnRef = useRef<HTMLButtonElement>(null);
   const [hover, setHover] = useState(false);
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
 
   const actionLabel = choice.actions?.length ? choice.actions.map(a => {
-    if (a.panel) {
+    if (a.panel && sessionId) {
       if (a.action === "__open") return `${a.panel} 열기`;
       if (a.action === "__close") return `${a.panel} 닫기`;
-      const reg = getPanelActionRegistry();
+      const reg = getPanelActionRegistry(sessionId);
       return reg.getLabel(a.panel, a.action) || reg.getLabelByAction(a.action) || a.action;
     }
     // Tool action: try to find a readable label from args.action
     const toolAction = a.args?.action as string | undefined;
-    if (toolAction) {
-      const reg = getPanelActionRegistry();
+    if (toolAction && sessionId) {
+      const reg = getPanelActionRegistry(sessionId);
       return reg.getLabelByAction(toolAction) || toolAction.replace(/_/g, " ");
     }
     return a.action || a.tool || "";
@@ -256,7 +256,7 @@ function ChatInput({ disabled, isStreaming, onSend, onCancel, sessionId, choices
   }, []);
 
   const executeChoiceActions = useCallback(async (choice: Choice, sessionId: string) => {
-    const registry = getPanelActionRegistry();
+    const registry = getPanelActionRegistry(sessionId);
     const win = window as unknown as Record<string, unknown>;
     let lastAvailable: Array<{ action: string; label: string; args_hint: string | null }> | null = null;
 
@@ -674,7 +674,7 @@ function ChatInput({ disabled, isStreaming, onSend, onCancel, sessionId, choices
         return visible.length > 0 ? (
           <div className="flex flex-wrap gap-2 px-4 pt-3 pb-1">
             {visible.map((c, i) => (
-              <ChoiceButton key={i} choice={c} busy={choiceBusy} onChoice={handleChoice} />
+              <ChoiceButton key={i} choice={c} busy={choiceBusy} onChoice={handleChoice} sessionId={sessionId} />
             ))}
           </div>
         ) : null;

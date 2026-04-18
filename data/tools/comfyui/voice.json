@@ -1,0 +1,7 @@
+{
+  "enabled": false,
+  "design": "A polite Korean research assistant with a calm, precise, and professional tone. Clear diction, measured pacing, and a helpful academic vibe.",
+  "language": "ko",
+  "modelSize": "1.7B",
+  "chunkDelay": 500
+}

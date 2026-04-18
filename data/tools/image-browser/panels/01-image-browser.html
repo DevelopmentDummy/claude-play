@@ -1,0 +1,372 @@
+<panel-meta>
+{ "maxWidth": 900, "maxHeight": 700 }
+</panel-meta>
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap');
+  :host { font-family: 'Noto Sans KR', sans-serif; }
+
+  .browser-root {
+    box-sizing: border-box;
+    width: 100%; max-width: 100%; min-width: 0;
+    background: #121218;
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+    max-height: 75vh;
+    overflow: hidden;
+  }
+
+  /* Header */
+  .browser-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid #2a2a3a;
+    flex-shrink: 0;
+  }
+  .browser-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: #e0e0e8;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .browser-title .icon { font-size: 18px; }
+  .image-count {
+    font-size: 12px;
+    color: #888;
+    font-weight: 400;
+  }
+
+  /* Folder tabs */
+  .folder-bar {
+    display: flex;
+    gap: 4px;
+    padding: 8px 16px;
+    border-bottom: 1px solid #1e1e2e;
+    overflow-x: auto;
+    flex-shrink: 0;
+    scrollbar-width: thin;
+    scrollbar-color: #333 transparent;
+  }
+  .folder-tab {
+    padding: 5px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    color: #aaa;
+    background: #1a1a28;
+    border: 1px solid #2a2a3a;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s;
+  }
+  .folder-tab:hover { background: #252538; color: #ccc; }
+  .folder-tab.active {
+    background: #2a2850;
+    color: #b8b0ff;
+    border-color: #4a40aa;
+  }
+
+  /* Grid */
+  .image-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 8px;
+    padding: 12px 16px;
+    overflow-y: auto;
+    flex: 1;
+    scrollbar-width: thin;
+    scrollbar-color: #333 transparent;
+  }
+
+  .thumb-card {
+    position: relative;
+    aspect-ratio: 1;
+    border-radius: 8px;
+    overflow: hidden;
+    cursor: pointer;
+    background: #1a1a28;
+    border: 1px solid #2a2a3a;
+    transition: all 0.15s;
+  }
+  .thumb-card:hover {
+    border-color: #5a50cc;
+    transform: scale(1.03);
+    z-index: 1;
+  }
+  .thumb-card img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .thumb-card .fname {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 3px 6px;
+    font-size: 10px;
+    color: #ddd;
+    background: linear-gradient(transparent, rgba(0,0,0,0.8));
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .thumb-card .folder-badge {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    padding: 1px 6px;
+    font-size: 9px;
+    font-weight: 600;
+    color: #b8b0ff;
+    background: rgba(40, 35, 80, 0.85);
+    border-radius: 4px;
+  }
+
+  /* Loading */
+  .loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    color: #666;
+    font-size: 13px;
+  }
+  .loading .spinner {
+    width: 20px;
+    height: 20px;
+    border: 2px solid #333;
+    border-top-color: #7a70cc;
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+    margin-right: 10px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Empty */
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 20px;
+    color: #555;
+    font-size: 13px;
+    gap: 8px;
+  }
+  .empty-state .empty-icon { font-size: 36px; opacity: 0.4; }
+
+  /* Lightbox */
+  .lightbox {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: rgba(0,0,0,0.92);
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+  }
+  .lightbox.open { display: flex; }
+  .lightbox img {
+    max-width: 90vw;
+    max-height: 80vh;
+    object-fit: contain;
+    border-radius: 8px;
+    box-shadow: 0 4px 40px rgba(0,0,0,0.6);
+  }
+  .lightbox .lb-info {
+    margin-top: 12px;
+    color: #aaa;
+    font-size: 12px;
+    text-align: center;
+    max-width: 90vw;
+    word-break: break-all;
+  }
+  .lightbox .lb-close {
+    position: absolute;
+    top: 16px;
+    right: 20px;
+    font-size: 28px;
+    color: #888;
+    cursor: pointer;
+    line-height: 1;
+    transition: color 0.15s;
+  }
+  .lightbox .lb-close:hover { color: #fff; }
+  .lightbox .lb-nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 36px;
+    color: #666;
+    cursor: pointer;
+    padding: 20px;
+    transition: color 0.15s;
+    user-select: none;
+  }
+  .lightbox .lb-nav:hover { color: #ddd; }
+  .lightbox .lb-prev { left: 8px; }
+  .lightbox .lb-next { right: 8px; }
+</style>
+
+<div class="browser-root">
+  <div class="browser-header">
+    <div class="browser-title">
+      <span class="icon">🖼</span>
+      <span>Image Browser</span>
+      <span class="image-count" id="imgCount"></span>
+    </div>
+  </div>
+  <div class="folder-bar" id="folderBar"></div>
+  <div class="image-grid" id="imageGrid">
+    <div class="loading"><div class="spinner"></div>이미지 로딩 중...</div>
+  </div>
+</div>
+
+<div class="lightbox" id="lightbox">
+  <div class="lb-close" id="lbClose">✕</div>
+  <div class="lb-nav lb-prev" id="lbPrev">‹</div>
+  <div class="lb-nav lb-next" id="lbNext">›</div>
+  <img id="lbImg" src="" alt="">
+  <div class="lb-info" id="lbInfo"></div>
+</div>
+
+<script>
+  const grid = shadow.getElementById('imageGrid');
+  const folderBar = shadow.getElementById('folderBar');
+  const imgCount = shadow.getElementById('imgCount');
+  const lightbox = shadow.getElementById('lightbox');
+  const lbImg = shadow.getElementById('lbImg');
+  const lbInfo = shadow.getElementById('lbInfo');
+
+  let allImages = [];
+  let folders = [];
+  let currentFolder = '';
+  let lbIndex = 0;
+  let filteredImages = [];
+
+  const sessionId = __panelBridge.sessionId;
+  const baseUrl = `/api/sessions/${sessionId}/files/`;
+
+  async function loadImages() {
+    try {
+      const resp = await fetch(`/api/sessions/${sessionId}/images?recursive=true`);
+      const data = await resp.json();
+      allImages = data.images || [];
+      folders = data.folders || [];
+      renderFolders();
+      filterAndRender();
+    } catch (e) {
+      grid.innerHTML = '<div class="empty-state"><div class="empty-icon">⚠</div><div>이미지를 불러올 수 없습니다</div></div>';
+    }
+  }
+
+  function renderFolders() {
+    let html = '<div class="folder-tab active" data-folder="">전체 (' + allImages.length + ')</div>';
+    // Count per folder
+    const counts = {};
+    allImages.forEach(img => {
+      const f = img.folder || '';
+      counts[f] = (counts[f] || 0) + 1;
+    });
+    // Root-level images
+    if (counts['']) {
+      html += '<div class="folder-tab" data-folder="__root">루트 (' + counts[''] + ')</div>';
+    }
+    folders.forEach(f => {
+      html += '<div class="folder-tab" data-folder="' + f + '">' + f + ' (' + (counts[f] || 0) + ')</div>';
+    });
+    folderBar.innerHTML = html;
+
+    folderBar.querySelectorAll('.folder-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        folderBar.querySelectorAll('.folder-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        currentFolder = tab.dataset.folder;
+        filterAndRender();
+      });
+    });
+  }
+
+  function filterAndRender() {
+    if (currentFolder === '') {
+      filteredImages = allImages;
+    } else if (currentFolder === '__root') {
+      filteredImages = allImages.filter(img => !img.folder);
+    } else {
+      filteredImages = allImages.filter(img => img.folder === currentFolder);
+    }
+    imgCount.textContent = filteredImages.length + '장';
+    renderGrid();
+  }
+
+  function renderGrid() {
+    if (!filteredImages.length) {
+      grid.innerHTML = '<div class="empty-state"><div class="empty-icon">📂</div><div>이미지가 없습니다</div></div>';
+      return;
+    }
+
+    grid.innerHTML = filteredImages.map((img, i) => {
+      const fname = img.path.split('/').pop();
+      const showFolder = currentFolder === '' && img.folder;
+      return '<div class="thumb-card" data-idx="' + i + '">' +
+        (showFolder ? '<div class="folder-badge">' + img.folder + '</div>' : '') +
+        '<img loading="lazy" src="' + baseUrl + img.path + '" alt="' + fname + '">' +
+        '<div class="fname">' + fname + '</div>' +
+        '</div>';
+    }).join('');
+
+    grid.querySelectorAll('.thumb-card').forEach(card => {
+      card.addEventListener('click', () => {
+        lbIndex = parseInt(card.dataset.idx);
+        openLightbox();
+      });
+    });
+  }
+
+  function openLightbox() {
+    const img = filteredImages[lbIndex];
+    if (!img) return;
+    lbImg.src = baseUrl + img.path;
+    const fname = img.path.split('/').pop();
+    lbInfo.textContent = (img.folder ? img.folder + ' / ' : '') + fname;
+    lightbox.classList.add('open');
+  }
+
+  function closeLightbox() {
+    lightbox.classList.remove('open');
+    lbImg.src = '';
+  }
+
+  shadow.getElementById('lbClose').addEventListener('click', closeLightbox);
+  lightbox.addEventListener('click', (e) => {
+    if (e.target === lightbox) closeLightbox();
+  });
+  shadow.getElementById('lbPrev').addEventListener('click', (e) => {
+    e.stopPropagation();
+    lbIndex = (lbIndex - 1 + filteredImages.length) % filteredImages.length;
+    openLightbox();
+  });
+  shadow.getElementById('lbNext').addEventListener('click', (e) => {
+    e.stopPropagation();
+    lbIndex = (lbIndex + 1) % filteredImages.length;
+    openLightbox();
+  });
+
+  // Keyboard navigation
+  document.addEventListener('keydown', (e) => {
+    if (!lightbox.classList.contains('open')) return;
+    if (e.key === 'Escape') closeLightbox();
+    if (e.key === 'ArrowLeft') { lbIndex = (lbIndex - 1 + filteredImages.length) % filteredImages.length; openLightbox(); }
+    if (e.key === 'ArrowRight') { lbIndex = (lbIndex + 1) % filteredImages.length; openLightbox(); }
+  });
+
+  loadImages();
+</script>

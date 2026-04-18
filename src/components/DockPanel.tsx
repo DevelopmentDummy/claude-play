@@ -109,8 +109,8 @@ export default function DockPanel({
 
     // Parse <panel-actions> and register metadata
     const actionMetas = parsePanelActions(current.html);
-    if (actionMetas.length > 0) {
-      getPanelActionRegistry().registerMeta(current.name, actionMetas);
+    if (actionMetas.length > 0 && sessionId) {
+      getPanelActionRegistry(sessionId).registerMeta(current.name, actionMetas);
     }
 
     // Set panel name context for registerAction calls in panel scripts
@@ -138,8 +138,10 @@ export default function DockPanel({
   // Cleanup panel action registry entries on unmount
   useEffect(() => {
     return () => {
-      for (const p of panels) {
-        getPanelActionRegistry().clearPanel(p.name);
+      if (sessionId) {
+        for (const p of panels) {
+          getPanelActionRegistry(sessionId).clearPanel(p.name);
+        }
       }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps

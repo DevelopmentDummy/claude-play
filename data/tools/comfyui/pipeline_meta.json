@@ -1,0 +1,46 @@
+{
+  "next_prompt_id": 62,
+  "next_source_batch_id": 5,
+  "next_teacher_batch_id": 31,
+  "pilot_batch_size": 30,
+  "source_batch_size": 30,
+  "teacher_batch_size": 30,
+  "source_workflow": "anima-mixed-scene",
+  "teacher_workflow": "boleromix-img2img-smoke",
+  "source_stop_requested": false,
+  "teacher_stop_requested": false,
+  "scheduler_enabled": false,
+  "scheduler_stop_requested": false,
+  "scheduler_chunk_size": 1,
+  "teacher_checkpoint": "boleromixIllustrious_v900.safetensors",
+  "teacher_denoise": 0.55,
+  "source_default_negative": "worst quality, low quality, score_1, score_2, score_3, multiple girls, 2girls, extra person, crowd, people in background, multiple people, blurry, watermark, signature, text",
+  "teacher_default_negative": "multiple girls, 2girls, extra person, crowd, people in background, multiple people, 2boys, group, low quality, worst quality, blurry, extra fingers, broken hands, bad anatomy, deformed face, distorted eyes, overpainted details, muddy colors, oversharpen, duplicate",
+  "teacher_triggers": [
+    "anime screencap",
+    "anime coloring",
+    "sexydet"
+  ],
+  "teacher_loras": [
+    {
+      "name": "Smooth_Booster_v4.safetensors",
+      "strength": 0.4
+    },
+    {
+      "name": "sexy_details_v4.safetensors",
+      "strength": 0.4
+    },
+    {
+      "name": "Age_V2.5.safetensors",
+      "strength": -3
+    },
+    {
+      "name": "anime_screencap-IllustriousV2.safetensors",
+      "strength": 0.5
+    },
+    {
+      "name": "QAQv5p2_IL-40.safetensors",
+      "strength": 0.4
+    }
+  ]
+}

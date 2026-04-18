@@ -1,0 +1,152 @@
+<style>
+  :host {
+    display: block;
+    color: #e7f4ff;
+    font-family: 'Inter', 'Pretendard', system-ui, sans-serif;
+  }
+
+  .panel {
+    background:
+      radial-gradient(circle at top left, rgba(139, 92, 246, 0.16), transparent 32%),
+      linear-gradient(180deg, rgba(14, 19, 32, 0.98), rgba(9, 14, 25, 0.95));
+    border: 1px solid rgba(139, 92, 246, 0.18);
+    border-radius: 20px;
+    padding: 18px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.28);
+  }
+
+  .eyebrow {
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #9aa8cc;
+    margin-bottom: 6px;
+  }
+
+  h2 {
+    margin: 0 0 16px 0;
+    font-size: 22px;
+    font-weight: 700;
+  }
+
+  .section {
+    border-radius: 14px;
+    padding: 14px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    margin-bottom: 12px;
+  }
+
+  .section:last-child {
+    margin-bottom: 0;
+  }
+
+  .label {
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #9aa8cc;
+    margin-bottom: 8px;
+  }
+
+  .main {
+    font-size: 14px;
+    line-height: 1.6;
+    color: #f4f7ff;
+    word-break: keep-all;
+  }
+
+  .row {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 7px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    font-size: 13px;
+  }
+
+  .row:last-child {
+    border-bottom: 0;
+    padding-bottom: 0;
+  }
+
+  .row:first-child {
+    padding-top: 0;
+  }
+
+  .key {
+    color: #9cc0d8;
+  }
+
+  .val {
+    color: #eef8ff;
+    text-align: right;
+    word-break: keep-all;
+  }
+
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+  }
+
+  .chip {
+    padding: 6px 9px;
+    border-radius: 999px;
+    background: rgba(103,232,249,0.08);
+    border: 1px solid rgba(103,232,249,0.12);
+    color: #eaf8ff;
+    font-size: 12px;
+  }
+
+</style>
+
+<div class="panel">
+  <div class="eyebrow">Teacher Setup</div>
+  <h2>교사 셋업 보드</h2>
+
+  <div class="section">
+    <div class="label">현재 기준선</div>
+    <div class="row">
+      <span class="key">source 모델</span>
+      <span class="val">{{active_model}}</span>
+    </div>
+    <div class="row">
+      <span class="key">teacher 체크포인트</span>
+      <span class="val">{{pipeline_meta.teacher_checkpoint}}</span>
+    </div>
+    <div class="row">
+      <span class="key">teacher denoise</span>
+      <span class="val">{{pipeline_meta.teacher_denoise}}</span>
+    </div>
+    <div class="row">
+      <span class="key">파일럿 규모</span>
+      <span class="val">{{pipeline_meta.pilot_batch_size}}</span>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="label">고정 트리거</div>
+    <div class="chips">
+      {{#each pipeline_meta.teacher_triggers}}
+        <span class="chip">{{this}}</span>
+      {{/each}}
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="label">고정 LoRA</div>
+    {{#each pipeline_meta.teacher_loras}}
+      <div class="row">
+        <span class="key">{{this.name}}</span>
+        <span class="val">{{this.strength}}</span>
+      </div>
+    {{/each}}
+  </div>
+
+  <div class="section">
+    <div class="label">현재 작업</div>
+    <div class="main">{{current_task}}</div>
+  </div>
+</div>

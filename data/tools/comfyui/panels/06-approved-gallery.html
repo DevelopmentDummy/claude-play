@@ -1,0 +1,300 @@
+<style>
+  :host {
+    display: block;
+    width: min(1680px, 98vw);
+    max-width: 98vw;
+    color: #e7f4ff;
+    font-family: 'Inter', 'Pretendard', system-ui, sans-serif;
+  }
+
+  .panel {
+    width: 100%;
+    max-height: 88vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    background:
+      radial-gradient(circle at top right, rgba(103,232,249,0.16), transparent 30%),
+      linear-gradient(180deg, rgba(8, 14, 24, 0.99), rgba(7, 12, 20, 0.98));
+    border: 1px solid rgba(103,232,249,0.18);
+    border-radius: 22px;
+    box-shadow: 0 28px 60px rgba(0,0,0,0.42);
+  }
+
+  .header {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    align-items: flex-start;
+    padding: 18px 20px 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+  }
+
+  .eyebrow {
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #8da8bf;
+    margin-bottom: 6px;
+  }
+
+  h2 {
+    margin: 0;
+    font-size: 26px;
+    font-weight: 800;
+  }
+
+  .pill {
+    padding: 7px 11px;
+    border-radius: 999px;
+    background: rgba(103,232,249,0.10);
+    border: 1px solid rgba(103,232,249,0.18);
+    color: #dffbff;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  .body {
+    padding: 16px 20px 20px;
+    overflow: auto;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 14px;
+  }
+
+  .card {
+    border-radius: 16px;
+    overflow: hidden;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.07);
+  }
+
+  .thumb {
+    width: 100%;
+    aspect-ratio: 0.78;
+    background: rgba(255,255,255,0.03);
+  }
+
+  .thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  .meta {
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .id {
+    font-size: 12px;
+    font-weight: 800;
+    color: #b8ffe9;
+    letter-spacing: 0.08em;
+  }
+
+  .line {
+    font-size: 12px;
+    line-height: 1.55;
+    color: #dcefff;
+    word-break: break-word;
+  }
+
+  .muted {
+    color: #8da8bf;
+  }
+
+  .actions {
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .btn {
+    appearance: none;
+    border: 1px solid rgba(255,255,255,0.10);
+    background: rgba(255,255,255,0.04);
+    color: #dcefff;
+    border-radius: 10px;
+    padding: 8px 10px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .empty {
+    padding: 42px 20px;
+    text-align: center;
+    color: #9fb8ca;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  .overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: rgba(3, 8, 14, 0.86);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+
+  .overlay.show {
+    display: flex;
+  }
+
+  .overlay-inner {
+    position: relative;
+    width: min(96vw, 1600px);
+    height: min(94vh, 1000px);
+    border-radius: 20px;
+    overflow: hidden;
+    background: rgba(6, 10, 16, 0.98);
+    border: 1px solid rgba(255,255,255,0.10);
+  }
+
+  .overlay img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+  }
+
+  .overlay-close {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    appearance: none;
+    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(0,0,0,0.45);
+    color: #fff;
+    border-radius: 12px;
+    padding: 10px 12px;
+    font-size: 12px;
+    font-weight: 800;
+    cursor: pointer;
+  }
+</style>
+
+<div class="panel">
+  <div class="header">
+    <div>
+      <div class="eyebrow">Approved Dataset</div>
+      <h2>학습 데이터 갤러리</h2>
+    </div>
+    <div class="pill" id="galleryCount">승인: 0</div>
+  </div>
+
+  <div class="body">
+    <div class="grid" id="galleryGrid"></div>
+    <div class="empty" id="galleryEmpty" style="display:none;">아직 Yes로 승인된 학습 데이터가 없습니다.</div>
+  </div>
+</div>
+
+<div class="overlay" id="galleryOverlay">
+  <div class="overlay-inner">
+    <button class="overlay-close" id="galleryOverlayClose">닫기</button>
+    <img id="galleryOverlayImage" alt="approved dataset image" />
+  </div>
+</div>
+
+<script>
+  const gridEl = shadow.querySelector('#galleryGrid');
+  const emptyEl = shadow.querySelector('#galleryEmpty');
+  const countEl = shadow.querySelector('#galleryCount');
+  const overlay = shadow.querySelector('#galleryOverlay');
+  const overlayImage = shadow.querySelector('#galleryOverlayImage');
+  const overlayClose = shadow.querySelector('#galleryOverlayClose');
+
+  function fileUrl(path) {
+    if (!path) return '';
+    return `/api/sessions/${__panelBridge.sessionId}/files?path=${encodeURIComponent(path)}`;
+  }
+
+  function escapeHtml(text) {
+    return String(text || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  function getApprovedItems() {
+    const stateItems = __panelBridge.data?.pipeline_state?.items || [];
+    const promptItems = __panelBridge.data?.prompt_bank?.items || [];
+    const promptMap = new Map(promptItems.map((item) => [item.id, item]));
+
+    return stateItems
+      .filter((item) => item.review_decision === 'yes' && item.teacher_image)
+      .map((item) => {
+        const prompt = promptMap.get(item.id) || {};
+        return {
+          id: item.id,
+          teacher_image: item.teacher_image,
+          subject_tags: prompt.meta?.subject_tags || '',
+          scene_prompt: prompt.meta?.scene_prompt || prompt.prompt || '',
+          notes: prompt.notes || ''
+        };
+      })
+      .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  }
+
+  function openZoom(path) {
+    if (!path) return;
+    overlayImage.src = fileUrl(path);
+    overlay.classList.add('show');
+  }
+
+  function closeZoom() {
+    overlay.classList.remove('show');
+    overlayImage.src = '';
+  }
+
+  function render() {
+    const items = getApprovedItems();
+    countEl.textContent = `승인: ${items.length}`;
+
+    if (!items.length) {
+      gridEl.innerHTML = '';
+      emptyEl.style.display = 'block';
+      return;
+    }
+
+    emptyEl.style.display = 'none';
+    gridEl.innerHTML = items.map((item, index) => `
+      <div class="card">
+        <div class="thumb">
+          <img src="${fileUrl(item.teacher_image)}" alt="">
+        </div>
+        <div class="meta">
+          <div class="id">${escapeHtml(item.id)}</div>
+          <div class="line"><span class="muted">subject_tags:</span> ${escapeHtml(item.subject_tags || '-')}</div>
+          <div class="line"><span class="muted">scene_prompt:</span> ${escapeHtml(item.scene_prompt || '-')}</div>
+          <div class="actions">
+            <button class="btn" data-index="${index}">확대</button>
+          </div>
+        </div>
+      </div>
+    `).join('');
+
+    gridEl.querySelectorAll('.btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const item = items[Number(btn.dataset.index)];
+        openZoom(item?.teacher_image);
+      });
+    });
+  }
+
+  overlayClose?.addEventListener('click', closeZoom);
+  overlay?.addEventListener('click', (event) => {
+    if (event.target === overlay) closeZoom();
+  });
+
+  render();
+</script>
