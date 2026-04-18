@@ -169,7 +169,8 @@ export function usePanelBridge(
       },
       /** Register a panel action handler. panelName auto-detected from __currentPanelName or registry lookup. */
       registerAction(actionId: string, handler: PanelActionHandler, panelName?: string): void {
-        const registry = getPanelActionRegistry();
+        if (!sessionId) return;
+        const registry = getPanelActionRegistry(sessionId);
         const panel = panelName
           || (window as unknown as Record<string, unknown>).__currentPanelName as string
           || registry.findPanelByAction(actionId)
@@ -182,8 +183,9 @@ export function usePanelBridge(
       },
       /** Execute a registered panel action. Records to history automatically. Panel auto-resolved from registry if not provided. */
       async executeAction(actionId: string, params?: Record<string, unknown>, panelName?: string): Promise<void> {
+        if (!sessionId) return;
         const panel = panelName || (window as unknown as Record<string, unknown>).__currentPanelName as string || "";
-        await getPanelActionRegistry().execute(panel, actionId, params);
+        await getPanelActionRegistry(sessionId).execute(panel, actionId, params);
       },
       sessionId,
       data: panelData || {},
@@ -192,8 +194,6 @@ export function usePanelBridge(
       },
     };
     (window as unknown as Record<string, unknown>).__panelBridge = bridge;
-    if (sessionId) {
-      getPanelActionRegistry().setSessionId(sessionId);
-    }
+    // sessionId is already set during getPanelActionRegistry(sessionId) creation
   }, [sessionId, panelData]);
 }

@@ -1,0 +1,42 @@
+{
+  "panels": {
+    "size": 420,
+    "leftSize": 288,
+    "rightSize": 467,
+    "dockSize": "75vh",
+    "dockHeight": "75vh",
+    "placement": {
+      "status": "right",
+      "lab-board": "right",
+      "training-track": "left",
+      "append-prompt": "modal-dismissible",
+      "review-panel": "modal-dismissible",
+      "approved-gallery": "modal-dismissible",
+      "service-status": "modal-dismissible"
+    },
+    "modalGroups": {
+      "pipeline-tools": [
+        "append-prompt",
+        "review-panel",
+        "approved-gallery",
+        "service-status"
+      ]
+    }
+  },
+  "chat": {
+    "maxWidth": 900,
+    "align": "stretch"
+  },
+  "theme": {
+    "accent": "#67e8f9",
+    "bg": "#071019",
+    "surface": "#0d1723",
+    "surfaceLight": "#162436",
+    "userBubble": "#1d3147",
+    "assistantBubble": "#101b2b",
+    "border": "#21405a",
+    "text": "#e7f4ff",
+    "textDim": "#8da8bf"
+  },
+  "customCSS": "body { background-image: radial-gradient(circle at top, rgba(103,232,249,0.10), transparent 28%), linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px); background-size: auto, 28px 28px, 28px 28px; background-position: center top, 0 0, 0 0; } header, footer { backdrop-filter: blur(10px); }"
+}

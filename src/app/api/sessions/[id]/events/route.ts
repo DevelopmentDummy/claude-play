@@ -12,12 +12,14 @@ export async function POST(
     return NextResponse.json({ error: "Session not found" }, { status: 404 });
   }
 
-  const { header } = (await req.json()) as { header?: string };
+  const { header, silent } = (await req.json()) as { header?: string; silent?: boolean };
   if (!header?.trim()) {
     return NextResponse.json({ error: "header required" }, { status: 400 });
   }
 
   instance.queueEvent(header.trim());
-  instance.broadcast("event:pending", { headers: instance.getPendingEvents() });
+  if (!silent) {
+    instance.broadcast("event:pending", { headers: instance.getPendingEvents() });
+  }
   return NextResponse.json({ ok: true });
 }

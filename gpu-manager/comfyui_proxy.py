@@ -55,10 +55,14 @@ class ComfyUIProxy:
     async def _poll_history(
         self, prompt_id: str, timeout_s: float
     ) -> dict:
-        """Poll GET /history/{prompt_id} with exponential backoff."""
+        """Poll GET /history/{prompt_id}: wait 10s before first poll, then 2s→8s backoff."""
         deadline = time.monotonic() + timeout_s
-        delay = 0.5
 
+        # Image generation rarely finishes in <10s — skip early polling entirely
+        # to avoid hammering ComfyUI (and exhausting ephemeral ports).
+        await asyncio.sleep(10.0)
+
+        delay = 2.0
         while time.monotonic() < deadline:
             try:
                 resp = await self._client.get(
@@ -71,7 +75,7 @@ class ComfyUIProxy:
                 logger.warning("Poll error: %s", e)
 
             await asyncio.sleep(delay)
-            delay = min(delay * 1.5, 5.0)
+            delay = min(delay * 1.5, 8.0)
 
         # Timeout — try to cancel
         try:

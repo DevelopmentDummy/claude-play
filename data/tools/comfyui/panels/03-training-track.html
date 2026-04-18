@@ -1,0 +1,358 @@
+<panel-actions>
+[
+  {
+    "id": "toggle_scheduler_start",
+    "label": "파이프라인 실행",
+    "description": "source와 teacher를 체크 단위로 자동 스케줄링 실행합니다.",
+    "needs_ui": true
+  },
+  {
+    "id": "toggle_scheduler_stop",
+    "label": "파이프라인 중단",
+    "description": "현재 스케줄러의 안전 정지를 요청합니다.",
+    "needs_ui": true
+  },
+  {
+    "id": "create_source_batch",
+    "label": "source 배치 생성",
+    "description": "pending/error 항목을 묶어 source 배치를 생성합니다.",
+    "needs_ui": true
+  },
+  {
+    "id": "requeue_source_items",
+    "label": "source 재큐잉",
+    "description": "queued/running/error source 항목을 pending으로 되돌립니다.",
+    "needs_ui": true
+  },
+  {
+    "id": "rebuild_review_queue",
+    "label": "review queue 재빌드",
+    "description": "teacher 완료 항목을 review queue로 다시 모읍니다.",
+    "needs_ui": true
+  }
+]
+</panel-actions>
+
+<style>
+  :host {
+    display: block;
+    color: #e7f4ff;
+    font-family: 'Inter', 'Pretendard', system-ui, sans-serif;
+  }
+
+  .panel {
+    background:
+      radial-gradient(circle at top right, rgba(52, 211, 153, 0.12), transparent 30%),
+      linear-gradient(180deg, rgba(9, 18, 28, 0.98), rgba(7, 13, 22, 0.95));
+    border: 1px solid rgba(103, 232, 249, 0.16);
+    border-radius: 20px;
+    padding: 18px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.24);
+  }
+
+  .eyebrow {
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #8da8bf;
+    margin-bottom: 6px;
+  }
+
+  h2 {
+    margin: 0 0 14px 0;
+    font-size: 24px;
+    font-weight: 700;
+  }
+
+  .stack {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 2px;
+  }
+
+  .primary-btn,
+  .secondary-btn,
+  .ghost-btn {
+    appearance: none;
+    width: 100%;
+    border-radius: 14px;
+    padding: 13px 16px;
+    font-size: 14px;
+    font-weight: 800;
+    cursor: pointer;
+    transition: transform 0.15s ease, opacity 0.15s ease, border-color 0.15s ease;
+  }
+
+  .primary-btn {
+    border: 1px solid rgba(52,211,153,0.28);
+    background: linear-gradient(135deg, rgba(52,211,153,0.20), rgba(103,232,249,0.18));
+    color: #f2fffb;
+  }
+
+  .primary-btn.stop {
+    border-color: rgba(248,113,113,0.28);
+    background: linear-gradient(135deg, rgba(248,113,113,0.18), rgba(251,191,36,0.14));
+    color: #fff2f2;
+  }
+
+  .secondary-btn {
+    border: 1px solid rgba(103,232,249,0.22);
+    background: rgba(255,255,255,0.05);
+    color: #ecfbff;
+  }
+
+  .ghost-btn {
+    border: 1px solid rgba(255,255,255,0.10);
+    background: rgba(255,255,255,0.03);
+    color: #d5e9f7;
+    font-weight: 700;
+    padding: 10px 14px;
+    font-size: 13px;
+  }
+
+  .primary-btn:hover,
+  .secondary-btn:hover,
+  .ghost-btn:hover {
+    transform: translateY(-1px);
+  }
+
+  .primary-btn:disabled,
+  .secondary-btn:disabled,
+  .ghost-btn:disabled {
+    opacity: 0.6;
+    cursor: wait;
+    transform: none;
+  }
+
+  .status {
+    min-height: 22px;
+    font-size: 13px;
+    color: #bfefff;
+    padding: 2px 2px 0;
+  }
+
+  details.advanced {
+    margin-top: 8px;
+    border-radius: 14px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    overflow: hidden;
+  }
+
+  details.advanced summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 12px 14px;
+    font-size: 13px;
+    font-weight: 700;
+    color: #d9eeff;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  details.advanced summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .advanced-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 0 12px 12px;
+  }
+</style>
+
+<div class="panel">
+  <div class="eyebrow">Pipeline Control</div>
+  <h2>트레이닝 트랙</h2>
+
+  <div class="stack">
+    <button class="secondary-btn" id="openAppendPromptBtn">프롬프트 파일 추가</button>
+    <button class="secondary-btn" id="openReviewPanelBtn">리뷰 모달 열기</button>
+    <button class="secondary-btn" id="openApprovedGalleryBtn">학습 데이터 갤러리</button>
+    <button class="secondary-btn" id="openServiceStatusBtn">서비스 상태</button>
+
+    <button
+      class="primary-btn {{#if pipeline_meta.scheduler_enabled}}stop{{/if}}"
+      id="schedulerToggleBtn"
+    >
+      {{#if pipeline_meta.scheduler_enabled}}파이프라인 중단{{else}}파이프라인 실행{{/if}}
+    </button>
+
+    <div class="status" id="pipelineRunnerStatus"></div>
+
+    <details class="advanced">
+      <summary>
+        <span>고급 복구/관리</span>
+      </summary>
+      <div class="advanced-body">
+        <button class="ghost-btn" id="createSourceBatchBtn">source 배치 생성</button>
+        <button class="ghost-btn" id="requeueSourceBtn">source 재큐잉</button>
+        <button class="ghost-btn" id="rebuildReviewQueueBtn">review queue 재빌드</button>
+      </div>
+    </details>
+  </div>
+</div>
+
+<script>
+  const statusEl = shadow.querySelector('#pipelineRunnerStatus');
+  const toggleBtn = shadow.querySelector('#schedulerToggleBtn');
+  const appendBtn = shadow.querySelector('#openAppendPromptBtn');
+  const reviewBtn = shadow.querySelector('#openReviewPanelBtn');
+  const galleryBtn = shadow.querySelector('#openApprovedGalleryBtn');
+  const serviceStatusBtn = shadow.querySelector('#openServiceStatusBtn');
+  const createSourceBtn = shadow.querySelector('#createSourceBatchBtn');
+  const requeueSourceBtn = shadow.querySelector('#requeueSourceBtn');
+  const rebuildReviewBtn = shadow.querySelector('#rebuildReviewQueueBtn');
+
+  function setStatus(text, tone) {
+    statusEl.textContent = text || '';
+    statusEl.style.color =
+      tone === 'error' ? '#ffb4b4' :
+      tone === 'success' ? '#b8ffe9' :
+      '#bfefff';
+  }
+
+  function setButtonsBusy(disabled) {
+    [toggleBtn, appendBtn, reviewBtn, galleryBtn, serviceStatusBtn, createSourceBtn, requeueSourceBtn, rebuildReviewBtn].forEach((btn) => {
+      if (btn) btn.disabled = disabled;
+    });
+  }
+
+  function setAdvancedBusy(disabled) {
+    [createSourceBtn, requeueSourceBtn, rebuildReviewBtn].forEach((btn) => {
+      if (btn) btn.disabled = disabled;
+    });
+  }
+
+  async function requestScheduler(route, payload) {
+    const response = await fetch(`/api/sessions/${encodeURIComponent(__panelBridge.sessionId)}/pipeline-scheduler/${route}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload || {})
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data?.ok !== true) {
+      throw new Error(data?.error || `${route} failed`);
+    }
+
+    return data;
+  }
+
+  __panelBridge.registerAction('toggle_scheduler_start', async () => {
+    return await requestScheduler('start', {
+      label: 'training-track',
+      source: 'panel',
+      requestedBy: 'training-track',
+      note: 'main control panel',
+    });
+  });
+
+  __panelBridge.registerAction('toggle_scheduler_stop', async () => {
+    return await requestScheduler('stop');
+  });
+
+  __panelBridge.registerAction('create_source_batch', async () => {
+    const result = await __panelBridge.runTool('engine', { action: 'create_source_batch' });
+    if (!result.result?.success) throw new Error(result.result?.message || 'create_source_batch failed');
+    return result;
+  });
+
+  __panelBridge.registerAction('requeue_source_items', async () => {
+    const result = await __panelBridge.runTool('engine', { action: 'requeue_source_items' });
+    if (!result.result?.success) throw new Error(result.result?.message || 'requeue_source_items failed');
+    return result;
+  });
+
+  __panelBridge.registerAction('rebuild_review_queue', async () => {
+    const result = await __panelBridge.runTool('engine', { action: 'rebuild_review_queue' });
+    if (!result.result?.success) throw new Error(result.result?.message || 'rebuild_review_queue failed');
+    return result;
+  });
+
+  appendBtn?.addEventListener('click', () => {
+    __panelBridge.openModal('append-prompt', 'dismissible');
+  });
+
+  reviewBtn?.addEventListener('click', () => {
+    __panelBridge.openModal('review-panel', 'dismissible');
+  });
+
+  galleryBtn?.addEventListener('click', () => {
+    __panelBridge.openModal('approved-gallery', 'dismissible');
+  });
+
+  serviceStatusBtn?.addEventListener('click', () => {
+    __panelBridge.openModal('service-status', 'dismissible');
+  });
+
+  toggleBtn?.addEventListener('click', async () => {
+    const enabled = {{#if pipeline_meta.scheduler_enabled}}true{{else}}false{{/if}};
+
+    if (!enabled) {
+      try {
+        setButtonsBusy(true);
+        setStatus('파이프라인 시작 중...', 'info');
+        await __panelBridge.executeAction('toggle_scheduler_start');
+        setStatus('스케줄러 활성화됨', 'success');
+      } catch (error) {
+        setStatus(error?.message || '파이프라인 시작 실패', 'error');
+      } finally {
+        setButtonsBusy(false);
+      }
+      return;
+    }
+
+    try {
+      setButtonsBusy(true);
+      await __panelBridge.executeAction('toggle_scheduler_stop');
+      setStatus('중단 요청 전송됨', 'success');
+    } catch (error) {
+      setStatus(error?.message || '중단 요청 실패', 'error');
+    } finally {
+      setButtonsBusy(false);
+    }
+  });
+
+  createSourceBtn?.addEventListener('click', async () => {
+    try {
+      setAdvancedBusy(true);
+      setStatus('source 배치 생성 중...', 'info');
+      const result = await __panelBridge.executeAction('create_source_batch');
+      setStatus(`${result?.result?.batch_id || '-'} 생성 완료`, 'success');
+    } catch (error) {
+      setStatus(error?.message || 'source 배치 생성 실패', 'error');
+    } finally {
+      setAdvancedBusy(false);
+    }
+  });
+
+  requeueSourceBtn?.addEventListener('click', async () => {
+    try {
+      setAdvancedBusy(true);
+      setStatus('source 재큐잉 중...', 'info');
+      const result = await __panelBridge.executeAction('requeue_source_items');
+      setStatus(`${result?.result?.reset_count || 0}개 pending 복귀`, 'success');
+    } catch (error) {
+      setStatus(error?.message || 'source 재큐잉 실패', 'error');
+    } finally {
+      setAdvancedBusy(false);
+    }
+  });
+
+  rebuildReviewBtn?.addEventListener('click', async () => {
+    try {
+      setAdvancedBusy(true);
+      setStatus('review queue 재빌드 중...', 'info');
+      const result = await __panelBridge.executeAction('rebuild_review_queue');
+      setStatus(`review queue ${result?.result?.count || 0}개`, 'success');
+    } catch (error) {
+      setStatus(error?.message || 'review queue 재빌드 실패', 'error');
+    } finally {
+      setAdvancedBusy(false);
+    }
+  });
+</script>

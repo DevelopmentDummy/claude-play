@@ -25,7 +25,7 @@ import ToastEffect from "@/components/ToastEffect";
 import UsageModal from "@/components/UsageModal";
 import { dispatchBridgeEvent } from "@/lib/use-panel-bridge";
 import { buildAutoplayMessage, calculateAutoplayDelay, getSelectedPreset, type SteeringPreset } from "@/lib/autoplay";
-import { getPanelActionRegistry, parsePanelActions, parsePanelMeta } from "@/lib/panel-action-registry";
+import { getPanelActionRegistry, destroyPanelActionRegistry, parsePanelActions, parsePanelMeta } from "@/lib/panel-action-registry";
 
 interface Panel {
   name: string;
@@ -63,8 +63,8 @@ export default function ChatPage() {
   const panelDataRef = useRef<Record<string, unknown>>({});
   useEffect(() => { panelDataRef.current = panelData; }, [panelData]);
   useEffect(() => {
-    getPanelActionRegistry().updateVariables(panelData);
-  }, [panelData]);
+    if (sessionId) getPanelActionRegistry(sessionId).updateVariables(panelData);
+  }, [panelData, sessionId]);
   const [sharedPlacements, setSharedPlacements] = useState<Record<string, "modal" | "modal-dismissible" | "dock" | "dock-left" | "dock-right" | "dock-bottom">>({});
   const [layout, setLayout] = useState<LayoutConfig | null>(null);
   const [title, setTitle] = useState("");
@@ -343,10 +343,12 @@ export default function ChatPage() {
         setPanels(update.panels);
         setPanelData(update.context);
         // Pre-parse <panel-actions> metadata from all panel HTML (before rendering)
-        const registry = getPanelActionRegistry();
-        for (const panel of update.panels) {
-          const metas = parsePanelActions(panel.html);
-          if (metas.length > 0) registry.registerMeta(panel.name, metas);
+        if (sessionId) {
+          const registry = getPanelActionRegistry(sessionId);
+          for (const panel of update.panels) {
+            const metas = parsePanelActions(panel.html);
+            if (metas.length > 0) registry.registerMeta(panel.name, metas);
+          }
         }
         if (update.sharedPlacements) setSharedPlacements(update.sharedPlacements);
         // Only update popup queue when explicitly present in update
@@ -508,12 +510,12 @@ export default function ChatPage() {
 
   const queueAvailableHeader = useCallback(async () => {
     if (!sessionId) return;
-    const header = getPanelActionRegistry().buildAvailableHeader();
+    const header = getPanelActionRegistry(sessionId).buildAvailableHeader();
     if (!header) return;
     await fetch(`/api/sessions/${sessionId}/events`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ header }),
+      body: JSON.stringify({ header, silent: true }),
     });
   }, [sessionId]);
 
@@ -596,10 +598,12 @@ export default function ChatPage() {
       if (data.panels?.length) {
         setPanels(data.panels);
         // Pre-parse <panel-actions> metadata from all panel HTML
-        const registry = getPanelActionRegistry();
-        for (const panel of data.panels) {
-          const metas = parsePanelActions(panel.html);
-          if (metas.length > 0) registry.registerMeta(panel.name, metas);
+        if (sessionId) {
+          const registry = getPanelActionRegistry(sessionId);
+          for (const panel of data.panels) {
+            const metas = parsePanelActions(panel.html);
+            if (metas.length > 0) registry.registerMeta(panel.name, metas);
+          }
         }
       }
       if (data.panelContext) {
@@ -954,6 +958,12 @@ export default function ChatPage() {
 
   // Cleanup autoplay timer on unmount
   useEffect(() => () => cancelAutoplayTimer(), [cancelAutoplayTimer]);
+
+  // Cleanup panel action registry on unmount
+  useEffect(() => {
+    if (!sessionId) return;
+    return () => { destroyPanelActionRegistry(sessionId); };
+  }, [sessionId]);
 
   // Listen for panel bridge sendMessage events
   useEffect(() => {

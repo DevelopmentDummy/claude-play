@@ -1,6 +1,31 @@
 # Anima LoRA 치트시트
 
-기준 날짜: 2026-04-14 (호환성 테스트 완료: seed 42424242, 1024x1024, steps 36, quality_preset standard)
+기준 날짜: 2026-04-17 (호환성 테스트 완료: seed 42424242, 1024x1024, steps 36, quality_preset standard)
+
+## 커스텀 학습 LoRA
+
+#### anima_lora_lattice_v2
+- 파일명: `anima_lora_lattice_v2.safetensors`
+- 카테고리: 커스텀 화풍 전이
+- 권장 강도: `0.6 ~ 0.9`
+- 트리거: `lattice_style`
+- 추천 시작값: `0.8`
+- 파일 크기: 약 `163 MB`
+- 학습 데이터: 155장/2epoch, Anima Preview3 base, dim32/alpha32, lr 5e-5
+- 학습 결과: train_loss 0.094, val_loss 0.179
+- 캡션 형식: `lattice_style, @lattice_style, {subject_tags}. {scene_prompt}` (keep_tokens=2)
+- 효과: 밝은 피부톤, 선명한 눈 하이라이트, 광택 머리카락, 부드러운 셰이딩
+- 호환 체크포인트: animaCatTower_v05 ✅, anima-preview3-base ✅, animaika_v30 ⚠️미테스트
+- 비고: baseLoras에 등록하여 상시 적용 권장. v1(119장/2ep) 대비 val_loss 0.233→0.179 개선.
+
+#### anima_lora_lattice_v1 (레거시)
+- 파일명: `anima_lora_lattice_v1.safetensors`
+- 카테고리: 커스텀 화풍 전이 (레거시)
+- 권장 강도: `0.8`
+- 트리거: `lattice_style`
+- 비고: v2로 대체됨. 119장/2ep, train_loss 0.089, val_loss 0.233.
+
+---
 
 ## 프롬프트 운영 원칙
 
@@ -399,13 +424,31 @@
 #### Do You Want to Pet My Cat (Meme Concept)
 - 파일명: `anima-pet_my_cat_meme.safetensors`
 - 카테고리: 특수 컨셉/밈/NSFW
-- 권장 강도: `0.8 ~ 0.9` (제작자 권장)
+- 권장 강도: `0.9` (확정)
 - 관찰된 트리거: `crotch rub, cat writing on crotch, body writing, table humping`
-- 추천 시작값: `0.85`
+- 추천 시작값: `0.9`
 - 파일 크기: 약 `132 MB`
 - 호환: ✅ Anima 전용
 - 링크: https://civitai.com/models/2447374
-- 주의점: 음부의 세로선을 고양이 입으로 활용하여 주변에 고양이 얼굴(수염/귀 등)을 그리는 밈 컨셉. **강도를 0.8 이상으로 올리고 트리거 태그를 전부 포함해야 밈 본래의 스타일이 나옴**. 낮은 강도(0.5~0.7)에서는 body writing이 불명확하거나 아예 안 나올 수 있음. 포즈 태그를 최소화하고 LoRA가 구도를 주도하도록 맡기는 편이 결과가 좋음. **⚠️ baseLoras(masterpieces, Hentai Studio Quality) 간섭 확인됨 — 이 LoRA 사용 시 baseLoras를 0.01로 오버라이드하여 사실상 무력화해야 밈 컨셉이 제대로 나옴**
+- 컨셉: 음부의 세로선을 고양이 입으로 활용하여 주변에 고양이 얼굴(수염/귀 등)을 그리는 밈.
+- **⚠️ 사용법 (테스트 검증 완료 2026-04-17, 다수 캐릭터 A/B 테스트 완료):**
+  1. **baseLoras 전부 제거** — `anima-clean` 프리셋 사용. baseLoras가 밈 컨셉을 희석시킴
+  2. **포즈 태그 넣지 마라** — sitting, spread legs, straddling 등. LoRA가 구도를 100% 주도해야 함
+  3. **scene_prompt(자연어) 비움** — 자연어 서술도 LoRA 밸런스를 깨뜨림. 빈 문자열로 둘 것
+  4. **보조 태그 추가 금지** — `cat face drawing`, `whisker markings`, `cute cat tattoo` 등을 넣으면 고양이가 과장되어 크게 그려짐. 트리거 태그만으로 충분
+  5. **강도 1.0 금지** — 0.9가 최적. 1.0은 보조 태그와 마찬가지로 과장됨
+  6. **상의 의상은 유지, 하의만 제거** — 교복 상의, 드레스 상단 등 OK. `nude` 불필요
+  7. **lattice LoRA 병용 가능** — 화풍 LoRA는 컨셉에 간섭 안 함. `anima_lora_lattice_v2` 0.8 OK
+  8. **`body writing` 간섭 주의** — 마법진/문양 시그니처가 강한 캐릭터(토오사카 린 등)에서는 `body writing`만 빼고 나머지 3개 트리거 사용
+  9. **상반신 포즈는 추가 가능** — `hands behind head, arms up`(항복 포즈) 등 하반신에 간섭하지 않는 포즈 태그는 OK
+  10. **`looking away, face turned away, averted gaze` 조합 추천** — 수치 표현과 궁합 좋음. `looking at viewer`도 가능하지만 시선 회피 쪽이 갭모에 극대화
+- **핵심 원칙: 이 LoRA는 순정이 최고. 건드릴수록 나빠진다.**
+- 검증 프롬프트 예시:
+  ```
+  lattice_style, @lattice_style, {캐릭터 태그}, {상의 의상}, pussy, crotch rub, cat writing on crotch, body writing, table humping, hands behind head, arms up, from front, looking away, face turned away, averted gaze, blush, embarrassed, head tilt
+  ```
+  LoRA: pet_my_cat 0.9 + lattice_v2 0.8
+  프리셋: anima-clean (baseLoras 없음)
 
 #### Dildo Under Clothes (Anima Preview)
 - 파일명: `anima-dildo_under_clothes.safetensors`

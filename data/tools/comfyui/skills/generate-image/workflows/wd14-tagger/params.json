@@ -1,0 +1,52 @@
+{
+  "description": "WD14 Tagger — 이미지에서 Danbooru 스타일 태그 추출. output_node로 결과는 /history API에서 추출. crop_engine.js의 crop_run_wd_tagger에서 사용.",
+  "features": {
+    "checkpoint_auto": false,
+    "lora_injection": false,
+    "lora_couple_branches": false,
+    "seed_randomize": false,
+    "trigger_tags": false
+  },
+  "params": {
+    "image": {
+      "node": "1",
+      "field": "image",
+      "type": "string",
+      "required": true,
+      "description": "ComfyUI input 폴더 기준 파일명"
+    },
+    "model": {
+      "node": "2",
+      "field": "model",
+      "type": "string",
+      "default": "wd-eva02-large-tagger-v3",
+      "description": "사용할 태거 모델"
+    },
+    "threshold": {
+      "node": "2",
+      "field": "threshold",
+      "type": "number",
+      "default": 0.35,
+      "description": "일반 태그 신뢰도 임계"
+    },
+    "character_threshold": {
+      "node": "2",
+      "field": "character_threshold",
+      "type": "number",
+      "default": 0.85,
+      "description": "캐릭터 태그 임계"
+    },
+    "replace_underscore": {
+      "node": "2",
+      "field": "replace_underscore",
+      "type": "boolean",
+      "default": true
+    },
+    "exclude_tags": {
+      "node": "2",
+      "field": "exclude_tags",
+      "type": "string",
+      "default": ""
+    }
+  }
+}

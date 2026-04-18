@@ -181,7 +181,7 @@ export default function ModalPanel({
     // Parse <panel-actions> and register metadata
     const actionMetas = parsePanelActions(html);
     if (actionMetas.length > 0) {
-      getPanelActionRegistry().registerMeta(name, actionMetas);
+      if (sessionId) getPanelActionRegistry(sessionId).registerMeta(name, actionMetas);
     }
 
     // Set panel name context for registerAction calls in panel scripts

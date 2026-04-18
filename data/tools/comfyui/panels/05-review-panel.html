@@ -1,0 +1,504 @@
+<style>
+  :host {
+    display: block;
+    width: min(1680px, 98vw);
+    max-width: 98vw;
+    color: #e7f4ff;
+    font-family: 'Inter', 'Pretendard', system-ui, sans-serif;
+  }
+
+  .panel {
+    width: 100%;
+    max-height: none;
+    overflow: visible;
+    display: flex;
+    flex-direction: column;
+    background:
+      radial-gradient(circle at top right, rgba(103,232,249,0.16), transparent 30%),
+      linear-gradient(180deg, rgba(8, 14, 24, 0.99), rgba(7, 12, 20, 0.98));
+    border: 1px solid rgba(103,232,249,0.18);
+    border-radius: 22px;
+    box-shadow: 0 28px 60px rgba(0,0,0,0.42);
+  }
+
+  .header {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    align-items: flex-start;
+    padding: 18px 20px 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+  }
+
+  .eyebrow {
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #8da8bf;
+    margin-bottom: 6px;
+  }
+
+  h2 {
+    margin: 0 0 8px 0;
+    font-size: 26px;
+    font-weight: 800;
+  }
+
+  .meta {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-end;
+  }
+
+  .pill {
+    padding: 7px 11px;
+    border-radius: 999px;
+    background: rgba(103,232,249,0.10);
+    border: 1px solid rgba(103,232,249,0.18);
+    color: #dffbff;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  .body {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    padding: 16px 20px 14px;
+    min-height: 0;
+  }
+
+  .image-card {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .image-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    align-items: center;
+  }
+
+  .image-label {
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #9cc0d8;
+  }
+
+  .zoom-btn {
+    appearance: none;
+    border: 1px solid rgba(255,255,255,0.10);
+    background: rgba(255,255,255,0.04);
+    color: #dcefff;
+    border-radius: 10px;
+    padding: 8px 10px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .frame {
+    position: relative;
+    min-height: 340px;
+    height: 100%;
+    border-radius: 18px;
+    overflow: hidden;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.07);
+  }
+
+  .frame img {
+    width: 100%;
+    height: 100%;
+    min-height: 340px;
+    max-height: 52vh;
+    object-fit: contain;
+    display: block;
+    background:
+      linear-gradient(45deg, rgba(255,255,255,0.02) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.02) 75%),
+      linear-gradient(45deg, rgba(255,255,255,0.02) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.02) 75%);
+    background-size: 20px 20px;
+    background-position: 0 0, 10px 10px;
+  }
+
+  .empty {
+    height: 100%;
+    min-height: 340px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 20px;
+    color: #9fb8ca;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  .footer {
+    padding: 0 20px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .prompt-box {
+    border-radius: 16px;
+    padding: 14px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+  }
+
+  .prompt-title {
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #8da8bf;
+    margin-bottom: 8px;
+  }
+
+  .prompt-line {
+    font-size: 13px;
+    line-height: 1.6;
+    color: #eef8ff;
+    margin-bottom: 8px;
+    word-break: break-word;
+  }
+
+  .prompt-line:last-child {
+    margin-bottom: 0;
+  }
+
+  .muted {
+    color: #9cc0d8;
+  }
+
+  .actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px;
+  }
+
+  .decision-btn {
+    appearance: none;
+    border-radius: 14px;
+    padding: 14px 16px;
+    font-size: 14px;
+    font-weight: 800;
+    cursor: pointer;
+    border: 1px solid rgba(255,255,255,0.10);
+    color: #f4fdff;
+    transition: transform 0.15s ease, opacity 0.15s ease;
+  }
+
+  .decision-btn:hover {
+    transform: translateY(-1px);
+  }
+
+  .decision-btn:disabled,
+  .zoom-btn:disabled {
+    opacity: 0.6;
+    cursor: wait;
+    transform: none;
+  }
+
+  .yes { background: linear-gradient(135deg, rgba(52,211,153,0.26), rgba(16,185,129,0.18)); }
+  .no { background: linear-gradient(135deg, rgba(248,113,113,0.24), rgba(239,68,68,0.16)); }
+  .hold { background: linear-gradient(135deg, rgba(251,191,36,0.24), rgba(245,158,11,0.16)); }
+
+  .status {
+    min-height: 22px;
+    font-size: 13px;
+    color: #bfefff;
+    padding: 0 2px;
+  }
+
+  .done-box {
+    padding: 26px 22px 30px;
+    text-align: center;
+  }
+
+  .done-box h3 {
+    margin: 0 0 10px 0;
+    font-size: 26px;
+  }
+
+  .done-box p {
+    margin: 0;
+    color: #b8d4e8;
+    line-height: 1.6;
+    font-size: 14px;
+  }
+
+  .overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: rgba(3, 8, 14, 0.86);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+
+  .overlay.show {
+    display: flex;
+  }
+
+  .overlay-inner {
+    position: relative;
+    width: min(96vw, 1600px);
+    height: min(94vh, 1000px);
+    border-radius: 20px;
+    overflow: hidden;
+    background: rgba(6, 10, 16, 0.98);
+    border: 1px solid rgba(255,255,255,0.10);
+  }
+
+  .overlay img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+  }
+
+  .overlay-close {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    appearance: none;
+    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(0,0,0,0.45);
+    color: #fff;
+    border-radius: 12px;
+    padding: 10px 12px;
+    font-size: 12px;
+    font-weight: 800;
+    cursor: pointer;
+  }
+</style>
+
+<div class="panel">
+  <div class="header">
+    <div>
+      <div class="eyebrow">Review Queue</div>
+      <h2>학습 데이터 리뷰</h2>
+    </div>
+    <div class="meta">
+      <div class="pill" id="reviewRemain">남은 리뷰: {{review_queue.summary.total}}</div>
+      <div class="pill" id="reviewItemId">ID: -</div>
+      <div class="pill">단축키: Y / N / H</div>
+    </div>
+  </div>
+
+  <div id="reviewActive">
+    <div class="body">
+      <div class="image-card">
+        <div class="image-head">
+          <div class="image-label">원본 Anima</div>
+          <button class="zoom-btn" id="zoomSourceBtn">확대</button>
+        </div>
+        <div class="frame" id="sourceFrame"></div>
+      </div>
+
+      <div class="image-card">
+        <div class="image-head">
+          <div class="image-label">I2I 결과</div>
+          <button class="zoom-btn" id="zoomTeacherBtn">확대</button>
+        </div>
+        <div class="frame" id="teacherFrame"></div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <div class="prompt-box">
+        <div class="prompt-title">Prompt</div>
+        <div class="prompt-line"><span class="muted">subject_tags:</span> <span id="subjectTagsText">-</span></div>
+        <div class="prompt-line"><span class="muted">scene_prompt:</span> <span id="scenePromptText">-</span></div>
+        <div class="prompt-line"><span class="muted">notes:</span> <span id="notesText">-</span></div>
+      </div>
+
+      <div class="actions">
+        <button class="decision-btn no" id="decisionNoBtn">No</button>
+        <button class="decision-btn hold" id="decisionHoldBtn">Hold</button>
+        <button class="decision-btn yes" id="decisionYesBtn">Yes</button>
+      </div>
+
+      <div class="status" id="reviewStatus"></div>
+    </div>
+  </div>
+
+  <div class="done-box" id="reviewDone" style="display:none;">
+    <h3>리뷰 대기열이 비었습니다</h3>
+    <p>현재 남아 있는 pending / hold 항목이 없어요. 새 teacher 결과가 쌓이거나 review queue를 재빌드하면 다시 이어서 검토할 수 있습니다.</p>
+  </div>
+</div>
+
+<div class="overlay" id="imageOverlay">
+  <div class="overlay-inner">
+    <button class="overlay-close" id="overlayCloseBtn">닫기</button>
+    <img id="overlayImage" alt="zoomed review image" />
+  </div>
+</div>
+
+<script>
+  const remainEl = shadow.querySelector('#reviewRemain');
+  const itemIdEl = shadow.querySelector('#reviewItemId');
+  const sourceFrame = shadow.querySelector('#sourceFrame');
+  const teacherFrame = shadow.querySelector('#teacherFrame');
+  const subjectTagsText = shadow.querySelector('#subjectTagsText');
+  const scenePromptText = shadow.querySelector('#scenePromptText');
+  const notesText = shadow.querySelector('#notesText');
+  const statusEl = shadow.querySelector('#reviewStatus');
+  const reviewActive = shadow.querySelector('#reviewActive');
+  const reviewDone = shadow.querySelector('#reviewDone');
+  const yesBtn = shadow.querySelector('#decisionYesBtn');
+  const noBtn = shadow.querySelector('#decisionNoBtn');
+  const holdBtn = shadow.querySelector('#decisionHoldBtn');
+  const zoomSourceBtn = shadow.querySelector('#zoomSourceBtn');
+  const zoomTeacherBtn = shadow.querySelector('#zoomTeacherBtn');
+  const overlay = shadow.querySelector('#imageOverlay');
+  const overlayImage = shadow.querySelector('#overlayImage');
+  const overlayCloseBtn = shadow.querySelector('#overlayCloseBtn');
+
+  let queueItems = [];
+  let currentIndex = 0;
+  let currentItem = null;
+  const decidedIds = new Set();
+
+  function setStatus(text, tone) {
+    statusEl.textContent = text || '';
+    statusEl.style.color =
+      tone === 'error' ? '#ffb4b4' :
+      tone === 'success' ? '#b8ffe9' :
+      '#bfefff';
+  }
+
+  function fileUrl(path) {
+    if (!path) return '';
+    return `/api/sessions/${__panelBridge.sessionId}/files?path=${encodeURIComponent(path)}`;
+  }
+
+  function getQueueItems() {
+    // 이번 세션에서 이미 결정한 항목은 즉시 제외 (데이터 갱신 지연 대응)
+    const all = (__panelBridge.data?.review_queue?.items || []).filter((item) => !decidedIds.has(item.id));
+    const pending = all.filter((item) => item.status === 'pending');
+    const hold = all.filter((item) => item.status === 'hold');
+    const items = pending.length > 0 ? pending : hold;
+    items.sort((a, b) => String(a.id || '').localeCompare(String(b.id || '')));
+    return items;
+  }
+
+  function renderImageFrame(container, path, emptyText) {
+    if (!path) {
+      container.innerHTML = `<div class="empty">${emptyText}</div>`;
+      return;
+    }
+    container.innerHTML = `<img src="${fileUrl(path)}" alt="">`;
+  }
+
+  function renderCurrent() {
+    queueItems = getQueueItems();
+
+    if (!queueItems.length) {
+      currentItem = null;
+      remainEl.textContent = '남은 리뷰: 0';
+      itemIdEl.textContent = 'ID: -';
+      reviewActive.style.display = 'none';
+      reviewDone.style.display = 'block';
+      return;
+    }
+
+    if (currentIndex >= queueItems.length) currentIndex = 0;
+    if (currentIndex < 0) currentIndex = 0;
+
+    currentItem = queueItems[currentIndex];
+    remainEl.textContent = `남은 리뷰: ${queueItems.length}`;
+    itemIdEl.textContent = `ID: ${currentItem.id || '-'}`;
+    reviewActive.style.display = 'block';
+    reviewDone.style.display = 'none';
+
+    renderImageFrame(sourceFrame, currentItem.source_image, '원본 이미지가 아직 없습니다.');
+    renderImageFrame(teacherFrame, currentItem.teacher_image, 'I2I 결과 이미지가 아직 없습니다.');
+
+    subjectTagsText.textContent = currentItem.subject_tags || '-';
+    scenePromptText.textContent = currentItem.scene_prompt || currentItem.prompt || '-';
+    notesText.textContent = currentItem.notes || '-';
+  }
+
+  async function decide(decision) {
+    if (!currentItem?.id) return;
+
+    const previousId = currentItem.id;
+    [yesBtn, noBtn, holdBtn].forEach((btn) => btn.disabled = true);
+    setStatus(`${previousId} · ${decision.toUpperCase()} 기록 중...`, 'info');
+
+    try {
+      const result = await __panelBridge.runTool('engine', {
+        action: 'mark_review_decision',
+        id: previousId,
+        decision
+      });
+
+      if (!result.result?.success) {
+        throw new Error(result.result?.message || 'review decision failed');
+      }
+
+      decidedIds.add(previousId);
+      setStatus(`${previousId} · ${decision.toUpperCase()} 저장 완료`, 'success');
+      renderCurrent();
+    } catch (error) {
+      setStatus(error?.message || 'review decision failed', 'error');
+    } finally {
+      [yesBtn, noBtn, holdBtn].forEach((btn) => btn.disabled = false);
+    }
+  }
+
+  function openZoom(path) {
+    if (!path) return;
+    overlayImage.src = fileUrl(path);
+    overlay.classList.add('show');
+  }
+
+  function closeZoom() {
+    overlay.classList.remove('show');
+    overlayImage.src = '';
+  }
+
+  yesBtn?.addEventListener('click', () => decide('yes'));
+  noBtn?.addEventListener('click', () => decide('no'));
+  holdBtn?.addEventListener('click', () => decide('hold'));
+  zoomSourceBtn?.addEventListener('click', () => openZoom(currentItem?.source_image));
+  zoomTeacherBtn?.addEventListener('click', () => openZoom(currentItem?.teacher_image));
+  overlayCloseBtn?.addEventListener('click', closeZoom);
+  overlay?.addEventListener('click', (event) => {
+    if (event.target === overlay) closeZoom();
+  });
+
+  function handleKeydown(event) {
+    // 입력 필드에 포커스가 있으면 단축키 무시
+    const tag = (event.target?.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || event.target?.isContentEditable) return;
+
+    // 모달이 닫혀 있으면 무시
+    const isOpen = __panelBridge.data?.__modals?.['review-panel'];
+    if (!isOpen) return;
+
+    if (overlay.classList.contains('show')) {
+      if (event.key === 'Escape') closeZoom();
+      return;
+    }
+    if (!currentItem) return;
+    if (event.key === 'y' || event.key === 'Y') { event.preventDefault(); decide('yes'); }
+    if (event.key === 'n' || event.key === 'N') { event.preventDefault(); decide('no'); }
+    if (event.key === 'h' || event.key === 'H') { event.preventDefault(); decide('hold'); }
+  }
+  window.addEventListener('keydown', handleKeydown);
+
+  renderCurrent();
+</script>

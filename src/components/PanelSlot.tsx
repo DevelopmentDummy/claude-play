@@ -66,8 +66,8 @@ export default function PanelSlot({ name, html, sessionId, panelData, onSendMess
 
     // Parse <panel-actions> and register metadata
     const actionMetas = parsePanelActions(html);
-    if (actionMetas.length > 0) {
-      getPanelActionRegistry().registerMeta(name, actionMetas);
+    if (actionMetas.length > 0 && sessionId) {
+      getPanelActionRegistry(sessionId).registerMeta(name, actionMetas);
     }
 
     // Set panel name context for registerAction calls in panel scripts
@@ -98,8 +98,8 @@ export default function PanelSlot({ name, html, sessionId, panelData, onSendMess
 
   // Cleanup panel action registry on unmount
   useEffect(() => {
-    return () => { getPanelActionRegistry().clearPanel(name); };
-  }, [name]);
+    return () => { if (sessionId) getPanelActionRegistry(sessionId).clearPanel(name); };
+  }, [name, sessionId]);
 
   return (
     <>

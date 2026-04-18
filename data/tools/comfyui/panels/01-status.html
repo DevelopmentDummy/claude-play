@@ -1,0 +1,184 @@
+<style>
+  :host {
+    display: block;
+    color: #e7f4ff;
+    font-family: 'Inter', 'Pretendard', system-ui, sans-serif;
+  }
+
+  .panel {
+    background:
+      radial-gradient(circle at top right, rgba(103, 232, 249, 0.15), transparent 30%),
+      linear-gradient(180deg, rgba(10, 20, 34, 0.98), rgba(8, 14, 24, 0.95));
+    border: 1px solid rgba(103, 232, 249, 0.16);
+    border-radius: 20px;
+    padding: 18px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.30);
+  }
+
+  .eyebrow {
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #8da8bf;
+    margin-bottom: 6px;
+  }
+
+  h2 {
+    margin: 0 0 12px 0;
+    font-size: 22px;
+    font-weight: 700;
+  }
+
+  .pill {
+    display: inline-flex;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: rgba(103, 232, 249, 0.12);
+    border: 1px solid rgba(103, 232, 249, 0.20);
+    color: #9ff4ff;
+    font-size: 12px;
+    white-space: nowrap;
+    margin-bottom: 16px;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+
+  .card {
+    border-radius: 14px;
+    padding: 12px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.06);
+  }
+
+  .label {
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #8da8bf;
+    margin-bottom: 6px;
+  }
+
+  .value {
+    font-size: 22px;
+    font-weight: 700;
+    color: #f5fbff;
+    margin-bottom: 4px;
+  }
+
+  .section {
+    border-radius: 14px;
+    padding: 14px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    margin-bottom: 12px;
+  }
+
+  .section:last-child {
+    margin-bottom: 0;
+  }
+
+  .row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 7px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    font-size: 13px;
+  }
+
+  .row:last-child {
+    border-bottom: 0;
+    padding-bottom: 0;
+  }
+
+  .row:first-child {
+    padding-top: 0;
+  }
+
+  .key {
+    color: #9cc0d8;
+    flex: 0 0 46%;
+  }
+
+  .val {
+    color: #eef8ff;
+    text-align: right;
+    word-break: keep-all;
+  }
+
+  .track {
+    width: 100%;
+    height: 10px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: rgba(255,255,255,0.08);
+    margin-top: 8px;
+  }
+
+  .fill {
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #67e8f9, #8b5cf6);
+  }
+</style>
+
+<div class="panel">
+  <div class="eyebrow">Pipeline Status</div>
+  <h2>증분 파이프라인 현황</h2>
+  <div class="pill">{{training_stage}}</div>
+
+  <div class="grid">
+    <div class="card">
+      <div class="label">프롬프트 총량</div>
+      <div class="value">{{prompt_bank.items.length}}</div>
+    </div>
+    <div class="card">
+      <div class="label">다음 ID</div>
+      <div class="value">p{{pipeline_meta.next_prompt_id}}</div>
+    </div>
+    <div class="card">
+      <div class="label">리뷰 대기</div>
+      <div class="value">{{review_queue.items.length}}</div>
+    </div>
+    <div class="card">
+      <div class="label">승인 누적</div>
+      <div class="value">{{review_log.summary.yes}}</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="label">학습 준비도</div>
+    <div class="row">
+      <span class="key">데이터셋 진행률</span>
+      <span class="val">{{dataset_readiness}} / {{dataset_readiness_max}} · {{percentage dataset_readiness dataset_readiness_max}}%</span>
+    </div>
+    <div class="track">
+      <div class="fill" style="width: {{percentage dataset_readiness dataset_readiness_max}}%;"></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="label">단계별 집계</div>
+    <div class="row">
+      <span class="key">source 완료</span>
+      <span class="val">{{pipeline_state.summary.source_done}}</span>
+    </div>
+    <div class="row">
+      <span class="key">teacher 완료</span>
+      <span class="val">{{pipeline_state.summary.teacher_done}}</span>
+    </div>
+    <div class="row">
+      <span class="key">에러 항목</span>
+      <span class="val">{{pipeline_state.summary.error}}</span>
+    </div>
+    <div class="row">
+      <span class="key">보류 항목</span>
+      <span class="val">{{review_log.summary.hold}}</span>
+    </div>
+  </div>
+</div>
