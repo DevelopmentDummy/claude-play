@@ -61,26 +61,26 @@ export default function PersonaCard({
     : null;
 
   const items: KebabMenuItem[] = [
-    { label: "Edit", onClick: onEdit, icon: <span>&#9998;</span> },
-    { label: "Clone", onClick: onClone, icon: <span>&#10291;</span> },
+    { label: "편집", onClick: onEdit, icon: <span>&#9998;</span> },
+    { label: "복제", onClick: onClone, icon: <span>&#10291;</span> },
     {
-      label: updateStatus === "checking" ? "Checking…" :
-             updateStatus === "update-available" ? `${behindCount ?? ""} update(s)` :
-             updateStatus === "up-to-date" ? "Up to date" :
-             "Check update",
+      label: updateStatus === "checking" ? "확인 중…" :
+             updateStatus === "update-available" ? `업데이트 ${behindCount ?? 0}건` :
+             updateStatus === "up-to-date" ? "최신" :
+             "업데이트 확인",
       onClick: () => onCheckUpdate?.(),
       icon: <span>&#8635;</span>,
       hidden: !onCheckUpdate,
     },
     {
-      label: "Apply update",
+      label: "업데이트 적용",
       onClick: () => onUpdate?.(),
       icon: <span>&#8593;</span>,
       hidden: !(onUpdate && updateStatus === "update-available"),
     },
     {
-      label: "Delete",
-      confirm: sessionCount > 0 ? `Delete (${sessionCount} sessions)` : "Delete?",
+      label: "삭제",
+      confirm: sessionCount > 0 ? `삭제 (세션 ${sessionCount}개)` : "정말 삭제?",
       onClick: onDelete,
       danger: true,
       icon: <span>&times;</span>,
