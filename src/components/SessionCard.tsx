@@ -2,6 +2,15 @@
 
 import { useState, useRef, useEffect } from "react";
 
+const SESSION_GRADIENTS = [
+  { from: "#2a1a3a", to: "#1a1028" },
+  { from: "#3a2a1a", to: "#28180a" },
+  { from: "#1a2a3a", to: "#0a1828" },
+  { from: "#2a3a1a", to: "#182810" },
+  { from: "#3a1a28", to: "#28101a" },
+  { from: "#2a1a2a", to: "#1a081a" },
+];
+
 interface SessionCardProps {
   id: string;
   title: string;
@@ -10,28 +19,35 @@ interface SessionCardProps {
   hasIcon?: boolean;
   model?: string;
   index?: number;
+  personaIndex?: number;
   onOpen: () => void;
   onDelete: () => void;
 }
 
-/** Determine provider info from model string */
-function providerInfo(model?: string): { label: string; bg: string; text: string; border: string } | null {
+function providerInfo(model?: string): { label: string; cls: string } | null {
   if (!model) return null;
   const lower = model.split(":")[0].toLowerCase();
-  const codexPrefixes = ["gpt-5", "codex-mini", "o3", "o4"];
-  for (const prefix of codexPrefixes) {
-    if (lower === prefix || lower.startsWith(prefix))
-      return { label: "Codex", bg: "bg-[#2a5a3a]/60", text: "text-[#4dff91]/80", border: "border-[#4dff91]/15" };
-  }
-  const geminiPrefixes = ["gemini-", "gemini"];
-  for (const prefix of geminiPrefixes) {
-    if (lower === prefix || lower.startsWith(prefix))
-      return { label: "Gemini", bg: "bg-[#1a3a5c]/60", text: "text-[#64b5f6]/80", border: "border-[#64b5f6]/15" };
-  }
-  // Claude — show badge for explicit models
-  if (lower.includes("sonnet") || lower.includes("opus") || lower.includes("haiku") || lower.includes("claude"))
-    return { label: "Claude", bg: "bg-[#4a2a1a]/60", text: "text-[#ff9f43]/80", border: "border-[#ff9f43]/15" };
+  if (/^(gpt-5|codex-mini|o3|o4)/.test(lower))
+    return { label: "Codex", cls: "bg-[#2a5a3a]/60 text-[#4dff91]/80 border-[#4dff91]/15" };
+  if (/^gemini/.test(lower))
+    return { label: "Gemini", cls: "bg-[#1a3a5c]/60 text-[#64b5f6]/80 border-[#64b5f6]/15" };
+  if (/(sonnet|opus|haiku|claude)/.test(lower))
+    return { label: "Claude", cls: "bg-[#4a2a1a]/60 text-[#ff9f43]/80 border-[#ff9f43]/15" };
   return null;
+}
+
+function relativeTime(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(ms / 60000);
+  if (m < 1) return "방금";
+  if (m < 60) return `${m}분 전`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}시간 전`;
+  const d = Math.floor(h / 24);
+  if (d < 7) return `${d}일 전`;
+  const w = Math.floor(d / 7);
+  if (w < 5) return `${w}주 전`;
+  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 export default function SessionCard({
@@ -41,6 +57,8 @@ export default function SessionCard({
   createdAt,
   hasIcon,
   model,
+  index = 0,
+  personaIndex = 0,
   onOpen,
   onDelete,
 }: SessionCardProps) {
@@ -51,71 +69,70 @@ export default function SessionCard({
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
   }, []);
 
-  const date = new Date(createdAt);
-  const timeStr = date.toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-  });
-
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (confirmDelete) {
-      onDelete();
-    } else {
-      setConfirmDelete(true);
-      timerRef.current = setTimeout(() => setConfirmDelete(false), 2500);
-    }
+    if (confirmDelete) { onDelete(); return; }
+    setConfirmDelete(true);
+    timerRef.current = setTimeout(() => setConfirmDelete(false), 2500);
   };
+
+  const grad = SESSION_GRADIENTS[personaIndex % SESSION_GRADIENTS.length];
+  const info = providerInfo(model);
+  const numLabel = String(index + 1).padStart(2, "0");
 
   return (
     <div
-      className="group relative flex items-center gap-3 mx-2 px-4 py-3 rounded-xl cursor-pointer
-        transition-all duration-fast
-        hover:bg-surface-light/50"
+      className="group relative mx-2 px-2.5 py-2.5 pr-8 rounded-lg cursor-pointer
+        transition-all duration-fast flex items-center gap-2.5
+        hover:bg-plum-soft"
       onClick={onOpen}
     >
-      {hasIcon ? (
-        <img
-          src={`/api/sessions/${id}/files/images/icon.png`}
-          alt=""
-          className="w-8 h-8 rounded-full object-cover shrink-0 border border-white/[0.08]"
-        />
-      ) : (
-        <div className="w-8 h-8 rounded-full shrink-0 bg-surface-light/40 flex items-center justify-center text-xs text-text-dim/60 border border-white/[0.06]">
-          {persona.charAt(0).toUpperCase()}
-        </div>
-      )}
+      <div
+        className="w-[34px] h-[34px] rounded-[9px] shrink-0 relative overflow-hidden border border-white/[0.06]"
+        style={{
+          background: hasIcon
+            ? `url(/api/sessions/${id}/files/images/icon.png) center/cover no-repeat`
+            : `linear-gradient(135deg, ${grad.from}, ${grad.to})`,
+        }}
+      >
+        {!hasIcon && (
+          <div className="absolute inset-0 flex items-center justify-center font-serif italic text-sm"
+            style={{ color: "rgba(255,255,255,0.85)" }}>
+            {persona.charAt(0).toUpperCase()}
+          </div>
+        )}
+      </div>
+
       <div className="flex-1 min-w-0">
-        <div className="text-sm text-text truncate leading-snug">{title}</div>
-        <div className="text-xs text-text-dim/60 mt-1 flex items-center gap-1.5">
-          <span>{persona} &middot; {timeStr}</span>
-          {(() => {
-            const info = providerInfo(model);
-            if (info) return (
-              <span className={`inline-flex items-center px-1.5 py-0 rounded text-[9px] font-semibold tracking-wide border ${info.bg} ${info.text} ${info.border}`}>
-                {info.label}
-              </span>
-            );
-            if (model && model !== "") return (
-              <span className="inline-flex items-center px-1.5 py-0 rounded text-[9px] font-medium tracking-wide text-text-dim/40">
-                {model}
-              </span>
-            );
-            return null;
-          })()}
+        <div className="text-[13px] text-text font-medium truncate leading-snug" style={{ letterSpacing: "-0.005em" }}>
+          {title}
+        </div>
+        <div className="text-[10px] text-text-mute mt-0.5 flex items-center gap-1.5 truncate">
+          <span className="truncate">{persona}</span>
+          <span className="w-[3px] h-[3px] rounded-full bg-white/30 shrink-0" />
+          <span className="shrink-0">{relativeTime(createdAt)}</span>
+          {info && (
+            <span className={`inline-flex items-center px-1 py-0 rounded text-[8px] font-semibold tracking-wide border ${info.cls}`}>
+              {info.label}
+            </span>
+          )}
         </div>
       </div>
 
+      <div className="absolute top-2 right-2.5 font-serif italic text-[9px] opacity-100 md:group-hover:opacity-0 transition-opacity duration-fast"
+        style={{ color: "rgba(184,125,184,0.5)" }}>
+        {numLabel}
+      </div>
+
       <button
-        className={`absolute top-2.5 right-2.5 flex items-center justify-center rounded-md text-sm cursor-pointer
-          transition-all duration-fast
-          ${confirmDelete
-            ? "px-2 py-0.5 text-error bg-error/15 border border-error/30 opacity-100"
-            : "w-6 h-6 text-text-dim/40 opacity-100 md:opacity-0 md:group-hover:opacity-100 hover:text-error hover:bg-error/10"
-          }`}
         onClick={handleDelete}
+        className={`absolute top-1.5 right-1.5 flex items-center justify-center rounded-md cursor-pointer transition-all duration-fast
+          ${confirmDelete
+            ? "px-2 py-0.5 text-[10px] text-error bg-error/15 border border-error/30 opacity-100"
+            : "w-6 h-6 text-sm text-text-dim/40 opacity-0 md:group-hover:opacity-100 hover:text-error hover:bg-error/10"
+          }`}
       >
-        {confirmDelete ? <span className="text-[10px] font-medium">삭제</span> : <>&times;</>}
+        {confirmDelete ? <span>삭제</span> : <>&times;</>}
       </button>
     </div>
   );
