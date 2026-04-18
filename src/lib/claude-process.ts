@@ -351,6 +351,10 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
       this.proc = null;
       this.buffer = "";
     }
+    if (this.logStream) {
+      try { this.logStream.end(); } catch { /* */ }
+      this.logStream = null;
+    }
   }
 
   /** Respawn with the last used parameters (for recovery after cancel). */
