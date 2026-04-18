@@ -13,18 +13,19 @@ import PublishPersonaModal from "@/components/PublishPersonaModal";
 import ClonePersonaDialog from "@/components/ClonePersonaDialog";
 
 const PERSONA_ACCENTS = [
-  "var(--accent)",
-  "#ff6482",
-  "#4dff91",
-  "#ffa64d",
-  "#64c8ff",
-  "#c882ff",
+  "var(--plum)",
+  "#e6a664",
+  "#8ec46a",
+  "#6ac4e6",
+  "#e66a8c",
+  "#c888e6",
 ];
 
 interface Persona {
   name: string;
   displayName: string;
   hasIcon?: boolean;
+  tagline?: string;
   importMeta?: {
     source: string;
     url: string;
@@ -237,9 +238,12 @@ export default function LobbyPage() {
   const sessionCountByPersona = (name: string) =>
     sessions.filter((s) => s.persona === name).length;
 
+  const personaIndexMap = new Map<string, number>();
+  personas.forEach((p, i) => personaIndexMap.set(p.name, i));
+
   return (
-    <div className="flex h-screen relative">
-      {/* ── Mobile sidebar backdrop ── */}
+    <div className="flex h-screen relative bg-lobby-bg text-text">
+      {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
         <div
           className="fixed inset-0 bg-black/50 z-30 md:hidden"
@@ -247,33 +251,38 @@ export default function LobbyPage() {
         />
       )}
 
-      {/* ── Sidebar: Sessions ── */}
+      {/* Sidebar: Sessions */}
       <aside
-        className={`shrink-0 flex flex-col border-r border-border bg-surface/50 backdrop-blur-[16px] transition-all duration-normal overflow-hidden
+        className={`shrink-0 flex flex-col border-r border-lobby-border bg-lobby-surface transition-all duration-normal overflow-hidden
           fixed inset-y-0 left-0 z-40 md:relative md:z-auto ${
           sidebarOpen ? "w-[280px]" : "w-0 border-r-0"
         }`}
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border/50">
-          <span className="text-sm font-semibold text-text-dim uppercase tracking-wider">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-lobby-border">
+          <span className="font-serif italic text-sm" style={{ color: "var(--plum)" }}>
             Sessions
           </span>
-          <button
-            onClick={() => setSidebarOpen(false)}
-            className="w-8 h-8 flex items-center justify-center rounded-lg text-text-dim/60 cursor-pointer
-              hover:bg-surface-light hover:text-text transition-all duration-fast text-base"
-          >
-            &lsaquo;
-          </button>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-text-mute uppercase tracking-[0.15em]">
+              {sessions.length}
+            </span>
+            <button
+              onClick={() => setSidebarOpen(false)}
+              className="w-7 h-7 flex items-center justify-center rounded-md text-text-dim/60 cursor-pointer
+                hover:bg-white/5 hover:text-text transition-all duration-fast text-sm"
+            >
+              &lsaquo;
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto py-2">
           {sessions.length === 0 ? (
-            <p className="text-text-dim/50 text-sm text-center py-10">
+            <p className="font-serif italic text-text-mute text-sm text-center py-10">
               No sessions yet
             </p>
           ) : (
-            sessions.map((s) => (
+            sessions.map((s, i) => (
               <SessionCard
                 key={s.id}
                 id={s.id}
@@ -282,6 +291,8 @@ export default function LobbyPage() {
                 createdAt={s.createdAt}
                 hasIcon={s.hasIcon}
                 model={s.model}
+                index={i}
+                personaIndex={personaIndexMap.get(s.persona) ?? 0}
                 onOpen={() => {
                   router.push(`/chat/${encodeURIComponent(s.id)}`);
                   if (window.innerWidth < 768) setSidebarOpen(false);
@@ -293,28 +304,33 @@ export default function LobbyPage() {
         </div>
       </aside>
 
-      {/* ── Main Content ── */}
+      {/* Main */}
       <main className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <header className="relative flex items-center gap-3 px-4 py-3 md:px-6 md:py-4 border-b border-border bg-surface/30 backdrop-blur-[16px]">
+        <header className="flex items-center gap-3 px-4 py-3 md:px-7 md:py-4 border-b border-lobby-border bg-[var(--lobby-bg)]/50 backdrop-blur-glass">
           {!sidebarOpen && (
             <button
               onClick={() => setSidebarOpen(true)}
-              className="w-8 h-8 flex items-center justify-center rounded-lg text-text-dim cursor-pointer
-                border border-border/40 hover:bg-surface-light hover:text-text transition-all duration-fast text-sm"
+              className="w-8 h-8 flex items-center justify-center rounded-md text-text-dim cursor-pointer
+                border border-lobby-border hover:bg-white/5 hover:text-text transition-all duration-fast text-sm"
             >
               &rsaquo;
             </button>
           )}
-          <div className="flex items-end gap-2.5">
-            <h1 className="text-xl tracking-tight" style={{ fontWeight: 300, letterSpacing: "-0.02em" }}>
-              <span className="text-accent" style={{ fontWeight: 600 }}>Claude</span>
-              <span className="text-text-dim" style={{ fontWeight: 300 }}>{" "}Play</span>
-            </h1>
+          <div className="flex items-baseline gap-[3px]">
+            <span className="font-sans font-medium text-[15px]" style={{ letterSpacing: "-0.01em" }}>
+              Claude
+            </span>
+            <span className="font-serif italic text-[15px]" style={{ color: "var(--plum)", letterSpacing: "-0.01em" }}>
+              Play
+            </span>
           </div>
+          <div className="w-px h-3.5 bg-white/10 mx-3 hidden sm:block" />
+          <span className="hidden sm:inline text-[11px] text-text-mute uppercase tracking-[0.2em]">
+            Lobby
+          </span>
 
-          {/* right side: profiles */}
-          <div className="ml-auto flex items-center gap-1.5 md:gap-2.5 overflow-x-auto">
+          <div className="ml-auto flex items-center gap-1.5 md:gap-2 overflow-x-auto">
             {profiles.map((p) => (
               <ProfileCard
                 key={p.slug}
@@ -325,12 +341,9 @@ export default function LobbyPage() {
               />
             ))}
             <button
-              onClick={() => {
-                setEditingProfile(null);
-                setProfileDialogOpen(true);
-              }}
-              className="w-8 h-8 flex items-center justify-center rounded-full text-text-dim/60 cursor-pointer
-                border border-border/40 hover:bg-surface-light hover:text-text hover:border-border/60 transition-all duration-fast text-sm"
+              onClick={() => { setEditingProfile(null); setProfileDialogOpen(true); }}
+              className="w-6 h-6 flex items-center justify-center rounded-full text-text-dim/60 cursor-pointer
+                border border-dashed border-white/15 hover:bg-white/5 hover:text-text transition-all duration-fast text-xs"
               title="Add profile"
             >
               +
@@ -338,23 +351,28 @@ export default function LobbyPage() {
           </div>
         </header>
 
-        {/* Persona Area */}
+        {/* Persona area */}
         <div className="flex-1 overflow-y-auto">
-          <div className="max-w-[860px] mx-auto px-4 py-8 md:px-8 md:py-12">
-            {/* Hero text */}
-            <div className="text-center mb-8 md:mb-10 animate-[slideUp_0.4s_ease_both]">
-              <h2 className="text-2xl md:text-3xl font-light text-text tracking-tight mb-2.5" style={{ letterSpacing: "-0.03em" }}>
-                Who would you like to meet?
+          <div className="max-w-[1040px] mx-auto px-4 py-10 md:px-12 md:py-14">
+            {/* Hero */}
+            <div className="text-center mb-12 md:mb-14 animate-[slideUp_0.4s_ease_both]">
+              <div className="text-[10px] font-medium uppercase mb-3.5" style={{ color: "var(--plum)", letterSpacing: "0.35em" }}>
+                Tonight&rsquo;s Cast
+              </div>
+              <h2 className="font-sans font-extralight text-[30px] md:text-[38px] leading-[1.1]" style={{ letterSpacing: "-0.035em" }}>
+                Who would you like to meet
+                <span className="font-serif italic font-normal" style={{ color: "var(--plum)" }}>?</span>
               </h2>
-              <p className="text-base text-text-dim/70">
+              <p className="text-[13px] text-text-dim/70 mt-3.5 font-light">
                 Choose a persona to start a new session
               </p>
+              <div className="w-10 h-px mx-auto mt-5" style={{ background: "var(--plum-hairline)" }} />
             </div>
 
-            {/* Persona Grid */}
+            {/* Grid */}
             <div
-              className="grid gap-3 md:gap-5 mb-8 animate-[slideUp_0.4s_ease_0.08s_both]"
-              style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(180px, 100%), 1fr))" }}
+              className="grid gap-4 md:gap-[18px] mb-8 animate-[slideUp_0.4s_ease_0.08s_both]"
+              style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(200px, 100%), 1fr))" }}
             >
               {personas.map((p, i) => (
                 <PersonaCard
@@ -362,6 +380,7 @@ export default function LobbyPage() {
                   name={p.name}
                   displayName={p.displayName}
                   hasIcon={p.hasIcon}
+                  tagline={p.tagline}
                   index={i}
                   sessionCount={sessionCountByPersona(p.name)}
                   onSelect={() => handlePersonaClick(p.name, p.displayName, i)}
@@ -377,27 +396,36 @@ export default function LobbyPage() {
                 />
               ))}
 
-              {/* Create new persona card */}
-              <div
-                className="flex flex-col items-center justify-center gap-3 py-12 rounded-2xl cursor-pointer
-                  border border-dashed border-border/50 transition-all duration-normal
-                  hover:border-accent/40 hover:bg-accent/5"
+              {/* New Persona */}
+              <button
                 onClick={() => setDialogOpen(true)}
+                className="flex flex-col items-center justify-center gap-2 rounded-xl cursor-pointer
+                  border border-dashed border-white/10 min-h-[220px]
+                  transition-all duration-fast hover:border-plum-hairline hover:bg-plum-soft"
               >
-                <div className="w-12 h-12 rounded-xl bg-accent/10 flex items-center justify-center border border-accent/20">
-                  <span className="text-accent text-xl font-light">+</span>
+                <div className="w-9 h-9 rounded-[10px] flex items-center justify-center bg-plum-soft border border-plum-hairline"
+                  style={{ color: "var(--plum)" }}>
+                  <span className="text-lg font-extralight">+</span>
                 </div>
-                <span className="text-sm text-text-dim">New Persona</span>
-              </div>
+                <span className="text-[11px] text-text-dim tracking-wider">New Persona</span>
+              </button>
 
-              {/* GitHub에서 가져오기 card */}
-              <div
+              {/* Import from GitHub */}
+              <button
                 onClick={() => setImportOpen(true)}
-                className="flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-border/50 hover:border-accent/50 cursor-pointer transition-all duration-fast min-h-[140px] text-text-dim hover:text-accent"
+                className="flex flex-col items-center justify-center gap-2 rounded-xl cursor-pointer
+                  border border-dashed border-white/10 min-h-[220px] text-text-dim
+                  transition-all duration-fast hover:border-plum-hairline hover:text-text"
               >
-                <span className="text-2xl">&darr;</span>
-                <span className="text-sm">GitHub에서 가져오기</span>
-              </div>
+                <div className="w-9 h-9 rounded-[10px] flex items-center justify-center bg-white/[0.03] border border-white/10 text-text-dim/80">
+                  <span className="text-base">&darr;</span>
+                </div>
+                <span className="text-[11px] tracking-wider">Import from GitHub</span>
+              </button>
+            </div>
+
+            <div className="mt-8 text-center text-[10px] uppercase tracking-[0.25em] text-white/[0.18]">
+              — Claude Play · Lobby —
             </div>
           </div>
         </div>
