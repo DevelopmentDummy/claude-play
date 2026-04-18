@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import PersonaCard from "@/components/PersonaCard";
 import SessionCard from "@/components/SessionCard";
@@ -238,8 +238,11 @@ export default function LobbyPage() {
   const sessionCountByPersona = (name: string) =>
     sessions.filter((s) => s.persona === name).length;
 
-  const personaIndexMap = new Map<string, number>();
-  personas.forEach((p, i) => personaIndexMap.set(p.name, i));
+  const personaIndexMap = useMemo(() => {
+    const m = new Map<string, number>();
+    personas.forEach((p, i) => m.set(p.name, i));
+    return m;
+  }, [personas]);
 
   return (
     <div className="flex h-screen relative bg-lobby-bg text-text">
@@ -279,7 +282,7 @@ export default function LobbyPage() {
         <div className="flex-1 overflow-y-auto py-2">
           {sessions.length === 0 ? (
             <p className="font-serif italic text-text-mute text-sm text-center py-10">
-              No sessions yet
+              아직 세션이 없습니다
             </p>
           ) : (
             sessions.map((s, i) => (
@@ -307,7 +310,10 @@ export default function LobbyPage() {
       {/* Main */}
       <main className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <header className="flex items-center gap-3 px-4 py-3 md:px-7 md:py-4 border-b border-lobby-border bg-[var(--lobby-bg)]/50 backdrop-blur-glass">
+        <header
+          className="flex items-center gap-3 px-4 py-3 md:px-7 md:py-4 border-b border-lobby-border backdrop-blur-glass"
+          style={{ background: "color-mix(in srgb, var(--lobby-bg) 60%, transparent)" }}
+        >
           {!sidebarOpen && (
             <button
               onClick={() => setSidebarOpen(true)}
@@ -407,7 +413,7 @@ export default function LobbyPage() {
                   style={{ color: "var(--plum)" }}>
                   <span className="text-lg font-extralight">+</span>
                 </div>
-                <span className="text-[11px] text-text-dim tracking-wider">New Persona</span>
+                <span className="text-[11px] text-text-dim tracking-wider">페르소나 추가</span>
               </button>
 
               {/* Import from GitHub */}
@@ -420,7 +426,7 @@ export default function LobbyPage() {
                 <div className="w-9 h-9 rounded-[10px] flex items-center justify-center bg-white/[0.03] border border-white/10 text-text-dim/80">
                   <span className="text-base">&darr;</span>
                 </div>
-                <span className="text-[11px] tracking-wider">Import from GitHub</span>
+                <span className="text-[11px] tracking-wider">GitHub에서 가져오기</span>
               </button>
             </div>
 
