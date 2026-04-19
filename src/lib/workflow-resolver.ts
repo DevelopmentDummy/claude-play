@@ -33,12 +33,24 @@ export interface WorkflowOutputDef {
   description?: string;
 }
 
+export interface CompatibilityRequires {
+  loader?: string;
+  family?: string;
+  [key: string]: string | undefined;
+}
+
+export interface CompatibilityConfig {
+  requires?: CompatibilityRequires;
+  incompatible_message?: string;
+}
+
 export interface WorkflowPackageMeta {
   description?: string;
   features?: WorkflowFeatures;
   outputs?: Record<string, WorkflowOutputDef>;
   params: Record<string, ParamDef>;
   detailer_chain?: DetailerChainConfig;
+  compatibility?: CompatibilityConfig;
 }
 
 export interface ResolverContext {

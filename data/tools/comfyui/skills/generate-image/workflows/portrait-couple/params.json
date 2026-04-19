@@ -1,5 +1,9 @@
 {
   "description": "2인 장면 (1216x832) — Attention Couple 좌/우 분리 + FaceDetailer + 4x Upscale",
+  "compatibility": {
+    "requires": { "loader": "checkpoint_simple" },
+    "incompatible_message": "portrait-couple 패키지는 단일 세이프텐서 체크포인트(CheckpointLoaderSimple)만 지원합니다. UNET 분리 로드 체크포인트는 'anima-mixed-scene' 패키지를 사용하세요."
+  },
   "features": {
     "checkpoint_auto": true,
     "lora_injection": true,

@@ -717,6 +717,94 @@ export class ComfyUIClient {
     return selected;
   }
 
+  private loadCheckpointRegistry(): Record<string, Record<string, string>> {
+    const registryPath = path.join(this.workflowsDir, "..", "..", "..", "checkpoints.json");
+    try {
+      const data = JSON.parse(fs.readFileSync(registryPath, "utf-8"));
+      return (data.checkpoints || {}) as Record<string, Record<string, string>>;
+    } catch {
+      return {};
+    }
+  }
+
+  private findCompatiblePackages(
+    registryEntry: Record<string, string>,
+    excludeName: string
+  ): string[] {
+    if (!fs.existsSync(this.workflowsDir)) return [];
+    const compatible: string[] = [];
+    for (const entry of fs.readdirSync(this.workflowsDir, { withFileTypes: true })) {
+      if (!entry.isDirectory() || entry.name === excludeName) continue;
+      const paramsPath = path.join(this.workflowsDir, entry.name, "params.json");
+      if (!fs.existsSync(paramsPath)) continue;
+      try {
+        const meta = JSON.parse(fs.readFileSync(paramsPath, "utf-8")) as WorkflowPackageMeta;
+        const requires = meta.compatibility?.requires;
+        if (!requires) continue;
+        const matches = Object.entries(requires).every(
+          ([k, v]) => v === undefined || registryEntry[k] === v
+        );
+        if (matches) compatible.push(entry.name);
+      } catch {
+        /* skip */
+      }
+    }
+    return compatible;
+  }
+
+  private validateCheckpointCompatibility(
+    prompt: Record<string, unknown>,
+    pkg: { name: string; meta: WorkflowPackageMeta }
+  ): void {
+    const compat = pkg.meta.compatibility;
+    if (!compat?.requires) return;
+
+    const activeCheckpoints: string[] = [];
+    for (const node of Object.values(prompt)) {
+      const n = node as { class_type?: string; inputs?: Record<string, unknown> };
+      if (n?.class_type === "CheckpointLoaderSimple" && typeof n.inputs?.ckpt_name === "string") {
+        activeCheckpoints.push(n.inputs.ckpt_name);
+      } else if (n?.class_type === "UNETLoader" && typeof n.inputs?.unet_name === "string") {
+        activeCheckpoints.push(n.inputs.unet_name);
+      }
+    }
+    if (activeCheckpoints.length === 0) return;
+
+    const registry = this.loadCheckpointRegistry();
+    if (Object.keys(registry).length === 0) {
+      console.warn("[comfyui] checkpoints.json 레지스트리를 찾지 못해 호환성 검사를 건너뜁니다.");
+      return;
+    }
+
+    for (const ckpt of activeCheckpoints) {
+      const entry = registry[ckpt];
+      if (!entry) {
+        throw new Error(
+          `체크포인트 '${ckpt}'이(가) checkpoints.json 레지스트리에 등록되지 않았습니다. ` +
+          `data/tools/comfyui/checkpoints.json에 { "loader": "...", "family": "..." } 엔트리를 추가하세요.`
+        );
+      }
+      const mismatches: string[] = [];
+      for (const [key, expected] of Object.entries(compat.requires)) {
+        if (expected === undefined) continue;
+        if (entry[key] !== expected) {
+          mismatches.push(`${key}: 요구 "${expected}" vs 실제 "${entry[key] ?? "(없음)"}"`);
+        }
+      }
+      if (mismatches.length > 0) {
+        const compatibleList = this.findCompatiblePackages(entry, pkg.name);
+        const compatibleHint = compatibleList.length > 0
+          ? `\n해당 체크포인트와 호환되는 패키지: ${compatibleList.join(", ")}`
+          : "\n레지스트리상 이 체크포인트와 호환되는 다른 패키지가 없습니다.";
+        const message = compat.incompatible_message ? `\n${compat.incompatible_message}` : "";
+        throw new Error(
+          `체크포인트 호환성 검사 실패: '${ckpt}'은(는) '${pkg.name}' 패키지와 호환되지 않습니다. ` +
+          `[${mismatches.join("; ")}]` + message + compatibleHint
+        );
+      }
+    }
+  }
+
   async buildPrompt(
     workflowName: string,
     params: Record<string, unknown>,
@@ -763,6 +851,9 @@ export class ComfyUIClient {
       }
     }
 
+    // 4a.5: checkpoint compatibility validation
+    this.validateCheckpointCompatibility(prompt, pkg);
+
     // 4b: lora_injection (base LoRAs + dynamic LoRAs + pruning)
     if (features.lora_injection) {
       if (sessionDir) {
@@ -805,7 +896,7 @@ export class ComfyUIClient {
 
     // 4f: detailer_chain
     if (features.detailer_chain && pkg.meta.detailer_chain) {
-      this.processDetailerChain(prompt, pkg.meta.detailer_chain, params);
+      this.processDetailerChain(prompt, pkg.meta.detailer_chain, params, pkg.meta.params);
     }
 
     // 4g: auto-upload session images for LoadImage nodes
@@ -887,8 +978,15 @@ export class ComfyUIClient {
   private processDetailerChain(
     prompt: Record<string, unknown>,
     chainConfig: DetailerChainConfig,
-    params: Record<string, unknown>
+    params: Record<string, unknown>,
+    paramDefs?: Record<string, { default?: unknown }>
   ): void {
+    // Helper: read param value, falling back to param spec's default (for non-node params
+    // like `detailer_face_denoise` that don't appear in workflow nodes).
+    const getParam = (key: string): unknown => {
+      if (params[key] !== undefined) return params[key];
+      return paramDefs?.[key]?.default;
+    };
     const modules = this.loadDetailerModules();
     if (!modules || Object.keys(modules).length === 0) return;
 
@@ -926,15 +1024,24 @@ export class ComfyUIClient {
     for (const moduleId of moduleOrder) {
       if (!modules[moduleId]) continue;
       const paramKey = `detailer_${moduleId}`;
-      if (params[paramKey] === false) continue;
+      if (getParam(paramKey) === false) continue;
       enabledModules.push({ id: moduleId, template: modules[moduleId] });
     }
 
     // If no modules enabled, source→sink is already connected in base workflow
     if (enabledModules.length === 0) return;
 
+    // Fields on the detailer node that can be overridden per-package via params.
+    // Param key format: `detailer_{moduleId}_{field}` (e.g. detailer_face_denoise = 0.25).
+    // Only applies to the "detailer" role; detector/pos_prompt/neg_prompt are not affected.
+    const OVERRIDABLE_DETAILER_FIELDS = [
+      "denoise", "steps", "cfg", "sampler_name", "scheduler",
+      "guide_size", "max_size", "feather",
+      "bbox_threshold", "bbox_dilation", "bbox_crop_factor",
+    ];
+
     // Inject each enabled module's nodes into the prompt
-    for (const { template } of enabledModules) {
+    for (const { id: moduleId, template } of enabledModules) {
       const prefix = template.id_prefix;
 
       // Node ID mapping: detector=+0, detailer=+1, pos_prompt=+2, neg_prompt=+3
@@ -949,9 +1056,24 @@ export class ComfyUIClient {
       for (const [role, nodeDef] of Object.entries(template.nodes)) {
         const nodeId = nodeIdMap[role];
         if (!nodeId) continue;
+        const inputs: Record<string, unknown> = { ...nodeDef.inputs };
+        if (role === "detailer") {
+          const appliedOverrides: string[] = [];
+          for (const field of OVERRIDABLE_DETAILER_FIELDS) {
+            const paramKey = `detailer_${moduleId}_${field}`;
+            const override = getParam(paramKey);
+            if (override !== undefined && override !== null) {
+              inputs[field] = override;
+              appliedOverrides.push(`${field}=${override}`);
+            }
+          }
+          if (appliedOverrides.length > 0) {
+            console.log(`[comfyui] Detailer override ${moduleId}: ${appliedOverrides.join(", ")}`);
+          }
+        }
         prompt[nodeId] = {
           class_type: nodeDef.class_type,
-          inputs: { ...nodeDef.inputs },
+          inputs,
           _meta: nodeDef._meta,
         };
       }
