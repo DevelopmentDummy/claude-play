@@ -1,10 +1,10 @@
 {
-  "description": "Boleromix teacher img2img",
+  "description": "Matrix teacher img2img — matrixHentai_v55. Detailer face denoise는 패키지 params에서 오버라이드 (detailer_face_denoise=0.25).",
   "compatibility": {
     "requires": {
       "loader": "checkpoint_simple"
     },
-    "incompatible_message": "checkpoint_simple only"
+    "incompatible_message": "matrix-img2img-smoke는 단일 체크포인트만 지원."
   },
   "features": {
     "checkpoint_auto": false,
@@ -29,13 +29,14 @@
       "node": "2",
       "field": "text",
       "type": "string",
-      "required": true
+      "required": true,
+      "description": "Danbooru 태그 (trigger: sexydet)"
     },
     "negative_prompt": {
       "node": "3",
       "field": "text",
       "type": "string",
-      "default": "low quality, worst quality, blurry, extra fingers, broken hands, bad anatomy, deformed face, distorted eyes, overpainted details, muddy colors, oversharpen, duplicate"
+      "default": "low quality, worst quality, blurry, extra fingers, broken hands, bad anatomy, deformed face, distorted eyes, overpainted details, muddy colors, oversharpen, duplicate, extra legs, extra limbs, three legs, duplicate limbs, mutated legs"
     },
     "input_image": {
       "node": "4",
@@ -70,6 +71,11 @@
     "detailer_face": {
       "type": "boolean",
       "default": true
+    },
+    "detailer_face_denoise": {
+      "type": "number",
+      "default": 0.25,
+      "description": "Face detailer denoise override (default 0.25 to preserve expressions)"
     },
     "detailer_hand": {
       "type": "boolean",

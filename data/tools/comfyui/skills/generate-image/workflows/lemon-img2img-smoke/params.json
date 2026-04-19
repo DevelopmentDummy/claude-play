@@ -1,10 +1,10 @@
 {
-  "description": "Boleromix teacher img2img",
+  "description": "Lemon teacher img2img — lemonsugarmix_v30 + 2D 스타일 스택. Anima 소스를 denoise 0.55로 재페인팅. baseLoras로 Smooth_Booster(0.4) + sexy_details(0.4) + S1_Dramatic(0.5) + animemix_v3_offset(0.4) 자동 주입 기대. 트리거 태그: sexydet, s1_dram.",
   "compatibility": {
     "requires": {
       "loader": "checkpoint_simple"
     },
-    "incompatible_message": "checkpoint_simple only"
+    "incompatible_message": "lemon-img2img-smoke는 단일 세이프텐서 체크포인트만 지원합니다."
   },
   "features": {
     "checkpoint_auto": false,
@@ -29,19 +29,21 @@
       "node": "2",
       "field": "text",
       "type": "string",
-      "required": true
+      "required": true,
+      "description": "Danbooru 태그 프롬프트 (트리거 sexydet, s1_dram 포함 권장)"
     },
     "negative_prompt": {
       "node": "3",
       "field": "text",
       "type": "string",
-      "default": "low quality, worst quality, blurry, extra fingers, broken hands, bad anatomy, deformed face, distorted eyes, overpainted details, muddy colors, oversharpen, duplicate"
+      "default": "low quality, worst quality, blurry, extra fingers, broken hands, bad anatomy, deformed face, distorted eyes, overpainted details, muddy colors, oversharpen, duplicate, extra legs, extra limbs, three legs, duplicate limbs, mutated legs"
     },
     "input_image": {
       "node": "4",
       "field": "image",
       "type": "string",
-      "required": true
+      "required": true,
+      "description": "세션 images/ 기준 입력 이미지 경로"
     },
     "steps": {
       "node": "6",

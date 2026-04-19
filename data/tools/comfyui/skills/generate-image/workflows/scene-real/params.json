@@ -1,5 +1,9 @@
 {
   "description": "반실사 배경/CG 장면 (1216x832 가로) — bismuth/babes 최적화. LoRA x6 (+ PosingDynamics) + 4-Detailer + 4x Upscale",
+  "compatibility": {
+    "requires": { "loader": "checkpoint_simple" },
+    "incompatible_message": "scene-real 패키지는 단일 세이프텐서 체크포인트(CheckpointLoaderSimple)만 지원합니다. UNET 분리 로드 체크포인트는 'anima-mixed-scene' 패키지를 사용하세요."
+  },
   "features": {
     "checkpoint_auto": true,
     "lora_injection": true,

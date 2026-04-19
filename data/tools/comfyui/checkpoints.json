@@ -1,0 +1,74 @@
+{
+  "description": "Checkpoint registry — declares each known checkpoint file's loader type so workflow packages can validate compatibility without hardcoding names. Add a new entry here when introducing a new checkpoint.",
+  "loaders": {
+    "checkpoint_simple": "Full checkpoint usable via CheckpointLoaderSimple (UNET+CLIP+VAE bundled in one .safetensors)",
+    "unet_only": "UNET-only weights requiring separate CLIP and VAE loaders (UNETLoader + CLIPLoader/LoadQwen35AnimaCLIP + VAELoader)"
+  },
+  "checkpoints": {
+    "model.safetensors": {
+      "loader": "checkpoint_simple",
+      "family": "illustrious",
+      "notes": "Default anime preset checkpoint"
+    },
+    "boleromixIllustrious_v900.safetensors": {
+      "loader": "checkpoint_simple",
+      "family": "illustrious"
+    },
+    "matrixHentai_v55.safetensors": {
+      "loader": "checkpoint_simple",
+      "family": "sdxl"
+    },
+    "pieModels_lemon.safetensors": {
+      "loader": "checkpoint_simple",
+      "family": "sdxl",
+      "notes": "SDXL 기반 머지 체크포인트 (6.94GB, dual CLIP + ADM 구조 확인)"
+    },
+    "lemonsugarmix_v30.safetensors": {
+      "loader": "checkpoint_simple",
+      "family": "sdxl",
+      "notes": "SDXL 기반 머지 체크포인트 (6.94GB, CLIP-L + OpenCLIP-G 듀얼 인코더 확인)"
+    },
+    "waiIllustriousSDXL_v160.safetensors": {
+      "loader": "checkpoint_simple",
+      "family": "illustrious",
+      "notes": "WAI Illustrious SDXL v1.60 (6.94GB)"
+    },
+    "dvine_v80.safetensors": {
+      "loader": "checkpoint_simple",
+      "family": "illustrious"
+    },
+    "unholyDesireMixSinister_v70.safetensors": {
+      "loader": "checkpoint_simple",
+      "family": "illustrious"
+    },
+    "prefectIllustriousXL_v70.safetensors": {
+      "loader": "checkpoint_simple",
+      "family": "illustrious"
+    },
+    "fantasyAnime_v16.safetensors": {
+      "loader": "checkpoint_simple",
+      "family": "illustrious"
+    },
+    "animaCatTower_v05.safetensors": {
+      "loader": "unet_only",
+      "family": "anima",
+      "notes": "Anima cat tower — UNET only, pairs with Qwen3.5 CLIP or separate SDXL CLIP"
+    },
+    "anima-preview3-base.safetensors": {
+      "loader": "unet_only",
+      "family": "anima"
+    },
+    "pornmasterAnima_v10.safetensors": {
+      "loader": "unet_only",
+      "family": "anima"
+    },
+    "waianima_v10.safetensors": {
+      "loader": "unet_only",
+      "family": "anima"
+    },
+    "animaika_v30.safetensors": {
+      "loader": "unet_only",
+      "family": "anima"
+    }
+  }
+}

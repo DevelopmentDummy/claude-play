@@ -1,5 +1,9 @@
 {
   "description": "캐릭터 프로필 (832x1216 세로) — portrait + 얼굴 크롭 아이콘 동시 생성",
+  "compatibility": {
+    "requires": { "loader": "checkpoint_simple" },
+    "incompatible_message": "profile 패키지는 단일 세이프텐서 체크포인트(CheckpointLoaderSimple)만 지원합니다. UNET 분리 로드 체크포인트는 'anima-mixed-scene' 패키지를 사용하세요."
+  },
   "features": {
     "checkpoint_auto": true,
     "lora_injection": true,
