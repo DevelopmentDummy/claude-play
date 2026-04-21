@@ -498,6 +498,47 @@ server.registerTool(
 );
 
 server.registerTool(
+  "comfyui_paths",
+  {
+    description:
+      "Get the ComfyUI installation directory and its standard model subdirectories (checkpoints, loras, vae, clip, upscale_models, etc.). Use this instead of reading .env.local directly. Returns { comfyuiDir, exists, subdirs, source }. If COMFYUI_DIR is not configured, returns { exists: false, source: 'unset' }.",
+    inputSchema: {},
+  },
+  async () => {
+    try {
+      const comfyuiDir = process.env.COMFYUI_DIR || null;
+      if (!comfyuiDir) {
+        return ok({ comfyuiDir: null, exists: false, source: "unset" });
+      }
+      const exists = fs.existsSync(comfyuiDir);
+      const subdirNames = [
+        "checkpoints", "loras", "vae", "clip", "clip_vision",
+        "unet", "diffusion_models", "controlnet", "upscale_models",
+        "embeddings", "hypernetworks", "style_models",
+      ];
+      const subdirs = {};
+      const modelsRoot = path.join(comfyuiDir, "models");
+      for (const name of subdirNames) {
+        const full = path.join(modelsRoot, name);
+        subdirs[name] = {
+          path: full,
+          exists: fs.existsSync(full),
+        };
+      }
+      return ok({
+        comfyuiDir,
+        exists,
+        modelsRoot,
+        subdirs,
+        source: "env:COMFYUI_DIR",
+      });
+    } catch (error) {
+      return fail(error);
+    }
+  }
+);
+
+server.registerTool(
   "comfyui_models",
   {
     description: "List available ComfyUI checkpoints/models through Claude Play API.",
