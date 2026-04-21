@@ -31,23 +31,14 @@ Claude Bridge 프로젝트(`C:/repository/claude bridge/`)에서 내장 usage tr
 
 ### 1단계: 환경 사전 점검
 
-현재 환경 상태 (이전 세션에서 확인):
+현재 환경 상태:
 - `node v22.19.0` ✓
 - `npm.cmd 11.12.1` ✓
-- **Rust**: ❌ 미설치 — 반드시 먼저 설치할 것
+- **Rust**: ✅ `rustc 1.95.0` / `cargo 1.95.0` (winget Rustlang.Rustup으로 설치 완료)
 - **npm registry 접근**: ⚠️ 이전 세션에서 `npm ping` timeout. 방화벽/프록시 확인 필요할 수 있음
 - **PowerShell execution policy**: `npm.ps1`이 차단되므로 `npm.cmd`를 사용하거나 execution policy 조정
 
-### 2단계: Rust 설치
-
-https://rustup.rs 에서 `rustup-init.exe` 다운로드 후 실행. 기본 옵션으로 설치 (MSVC toolchain 포함). 설치 후 **새 셸**에서 확인:
-
-```bash
-rustc -V   # 예: rustc 1.x.x
-cargo -V   # 예: cargo 1.x.x
-```
-
-### 3단계: Claude Code 새 세션 시작
+### 2단계: Claude Code 새 세션 시작
 
 - **작업 디렉토리를 반드시 `C:/repository/`로 변경**해서 Claude Code 열 것. `C:/repository/claude bridge/` 안에서 열면 이전 세션과 같은 샌드박스 문제가 반복됨.
 - 새 세션에서 이 handoff 문서 내용 또는 다음 프롬프트를 붙여넣기:
@@ -58,7 +49,7 @@ docs/claude-bridge/docs/superpowers/plans/2026-04-22-cli-usage-widget.md 의 Tas
 
 (위 경로는 새 세션 기준 상대 경로로 조정 필요. 가장 확실한 건 Claude Code를 `C:/repository/`에서 열면 `claude bridge/docs/...`로 참조 가능.)
 
-### 4단계: 구현 진행 방식 권장
+### 3단계: 구현 진행 방식 권장
 
 플랜의 각 task 코드 블록은 거의 그대로 붙여넣을 수 있는 수준으로 작성됨. Task 1 (`npm create tauri-app`)만 인터랙티브 프롬프트가 있을 수 있으니 주의. 이후 Task 2~19는 파일 생성 중심이라 순차 진행. Task 20~22는 빌드/CI 설정.
 
