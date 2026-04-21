@@ -171,6 +171,7 @@ interface BuilderMeta {
   codexThreadId?: string;
   geminiSessionId?: string;
   provider?: "claude" | "codex" | "gemini";
+  model?: string;
 }
 
 const CLAUDE_SETTINGS = {
@@ -1678,6 +1679,29 @@ export class SessionManager {
     }
   }
 
+  /** Get saved builder model (includes effort suffix, e.g. "opus[1m]:high") */
+  getBuilderModel(name: string): string | undefined {
+    const metaPath = path.join(this.getPersonaDir(name), "builder-session.json");
+    if (!fs.existsSync(metaPath)) return undefined;
+    try {
+      const meta: BuilderMeta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
+      return meta.model;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** Save builder model (combined model:effort string) */
+  saveBuilderModel(name: string, model: string): void {
+    const metaPath = path.join(this.getPersonaDir(name), "builder-session.json");
+    let meta: BuilderMeta = {};
+    if (fs.existsSync(metaPath)) {
+      try { meta = JSON.parse(fs.readFileSync(metaPath, "utf-8")); } catch { /* */ }
+    }
+    meta.model = model;
+    fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), "utf-8");
+  }
+
   /** Check if a persona has a builder session that can be resumed */
   hasBuilderSession(name: string): boolean {
     return !!this.getBuilderSessionId(name);
@@ -1892,6 +1916,7 @@ export class SessionManager {
             CLAUDE_PLAY_MODE: mode,
             CLAUDE_PLAY_AUTH_TOKEN: getInternalToken(),
             ...(personaName ? { CLAUDE_PLAY_PERSONA: personaName } : {}),
+            ...(process.env.COMFYUI_DIR ? { COMFYUI_DIR: process.env.COMFYUI_DIR } : {}),
           },
         },
       },
@@ -1936,6 +1961,9 @@ export class SessionManager {
     if (personaName) {
       lines.push(`CLAUDE_PLAY_PERSONA = ${JSON.stringify(personaName)}`);
     }
+    if (process.env.COMFYUI_DIR) {
+      lines.push(`COMFYUI_DIR = ${JSON.stringify(process.env.COMFYUI_DIR)}`);
+    }
 
     fs.writeFileSync(
       path.join(codexDir, "config.toml"),
@@ -1979,6 +2007,7 @@ export class SessionManager {
             CLAUDE_PLAY_MODE: mode,
             CLAUDE_PLAY_AUTH_TOKEN: getInternalToken(),
             ...(personaName ? { CLAUDE_PLAY_PERSONA: personaName } : {}),
+            ...(process.env.COMFYUI_DIR ? { COMFYUI_DIR: process.env.COMFYUI_DIR } : {}),
           },
         },
       },

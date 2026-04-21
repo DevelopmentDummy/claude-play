@@ -67,11 +67,14 @@ export async function POST(req: Request) {
 
   // Determine provider: explicit service > explicit model > saved provider > current instance provider > default
   const savedProvider = svc.sessions.getBuilderProvider(name);
+  const savedModel = svc.sessions.getBuilderModel(name);
   const existingInstance = getSessionInstance(name);
   const currentProvider = existingInstance?.provider || savedProvider || "claude";
-  const providerHint = body.service || (requestedModel ? providerFromModel(requestedModel) : currentProvider);
-  const resolved = resolveBuilderModel(requestedModel || undefined, providerHint);
-  console.log(`[builder/edit] name=${name} model=${resolved.combined} provider=${resolved.provider} (saved=${savedProvider} current=${currentProvider})`);
+  const effectiveModel = requestedModel || savedModel || "";
+  const providerHint = body.service || (effectiveModel ? providerFromModel(effectiveModel) : currentProvider);
+  const resolved = resolveBuilderModel(effectiveModel || undefined, providerHint);
+  console.log(`[builder/edit] name=${name} model=${resolved.combined} provider=${resolved.provider} (saved=${savedProvider}/${savedModel} current=${currentProvider})`);
+  svc.sessions.saveBuilderModel(name, resolved.combined);
 
   const instance = openSessionInstance(name, true, resolved.provider);
   const providerChanged = existingInstance ? resolved.provider !== existingInstance.provider : false;

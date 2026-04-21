@@ -77,6 +77,7 @@ export async function POST(req: Request) {
     svc.sessions.writeGeminiInstructions(personaDir, runtimeSystemPrompt);
   }
   instance.claude.spawn(personaDir, undefined, resolved.model, runtimeSystemPrompt, resolved.effort);
+  svc.sessions.saveBuilderModel(name, resolved.combined);
 
   const displayName = svc.sessions.getPersonaDisplayName(name);
   return NextResponse.json({ name, displayName, dir: personaDir, provider: resolved.provider, model: resolved.combined, opening });
