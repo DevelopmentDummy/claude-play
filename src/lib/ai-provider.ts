@@ -83,9 +83,11 @@ export const MODEL_GROUPS: ModelGroup[] = [
       { value: "opus", label: "Opus" },
       { value: "opus:medium", label: "Opus Medium" },
       { value: "opus:high", label: "Opus High" },
+      { value: "opus:xhigh", label: "Opus XHigh" },
       { value: "opus[1m]", label: "Opus 1M" },
       { value: "opus[1m]:medium", label: "Opus 1M Medium" },
       { value: "opus[1m]:high", label: "Opus 1M High" },
+      { value: "opus[1m]:xhigh", label: "Opus 1M XHigh" },
     ],
   },
   {
