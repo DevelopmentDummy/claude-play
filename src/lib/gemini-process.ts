@@ -255,11 +255,12 @@ export class GeminiProcess extends EventEmitter<GeminiProcessEvents> {
       this.proc = null;
       this.buffer = "";
 
-      // If resume failed (non-zero exit with a resumeId), retry without --resume
       if (resumeId && code !== 0) {
-        console.log("[gemini-process] Resume failed, retrying without --resume");
-        this.savedSessionId = null;
-        this.spawnProcess(prompt, undefined);
+        const msg = `Gemini resume failed (exit ${code}) for session ${resumeId}. Refusing to start a new session — prior history would be lost.`;
+        console.error(`[gemini-process] ${msg}`);
+        this.emit("error", msg);
+        this.emit("status", "disconnected");
+        this.emit("exit", code);
         return;
       }
 
