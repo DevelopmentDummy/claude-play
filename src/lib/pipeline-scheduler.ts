@@ -227,11 +227,14 @@ export async function stopPipelineScheduler(sessionId: string): Promise<{ stoppe
   const registry = getRegistry();
   const handle = registry.handles.get(sessionId) || null;
 
-  await runSessionTool(sessionId, "engine", { action: "stop_scheduler" });
-
   if (!handle) {
-    await ensureStopped(sessionId);
     return { stopped: true, hadRunningHandle: false };
+  }
+
+  try {
+    await runSessionTool(sessionId, "engine", { action: "stop_scheduler" });
+  } catch (err) {
+    console.warn(`[scheduler:${sessionId}] engine stop_scheduler failed:`, err);
   }
 
   handle.stopRequested = true;
