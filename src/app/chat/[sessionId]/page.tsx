@@ -88,9 +88,10 @@ export default function ChatPage() {
   const audioStatusRef = useRef<Record<string, { generating: boolean; totalChunks: number; readyCount: number }>>({});
   const audioQueueRef = useRef<{
     messageId: string; nextChunk: number; playing: boolean; audioPlaying: boolean; totalChunks: number; currentAudio: HTMLAudioElement | null;
+    preloadedAudio: HTMLAudioElement | null; preloadedUrl: string | null;
     // Playback queue: list of pending messages to play after current finishes
     pendingMessages: Array<{ messageId: string; totalChunks: number }>;
-  }>({ messageId: "", nextChunk: 0, playing: false, audioPlaying: false, totalChunks: 0, currentAudio: null, pendingMessages: [] });
+  }>({ messageId: "", nextChunk: 0, playing: false, audioPlaying: false, totalChunks: 0, currentAudio: null, preloadedAudio: null, preloadedUrl: null, pendingMessages: [] });
   const [ttsPlaying, setTtsPlaying] = useState(false);
   const [voiceChat, setVoiceChat] = useState(false);
   const [pendingEvents, setPendingEvents] = useState<string[]>([]);
@@ -193,8 +194,23 @@ export default function ChatPage() {
       const playingIndex = state.nextChunk;
       state.nextChunk++;
       qq.audioPlaying = true;
-      const audio = new Audio(url);
+      // Reuse preloaded Audio if URL matches; otherwise create fresh
+      const audio = qq.preloadedAudio && qq.preloadedUrl === url
+        ? qq.preloadedAudio
+        : new Audio(url);
+      qq.preloadedAudio = null;
+      qq.preloadedUrl = null;
       qq.currentAudio = audio;
+      // Kick off preload of the next chunk immediately
+      const nextUrl = urls[state.nextChunk];
+      if (nextUrl) {
+        const pre = new Audio();
+        pre.preload = "auto";
+        pre.src = nextUrl;
+        pre.load();
+        qq.preloadedAudio = pre;
+        qq.preloadedUrl = nextUrl;
+      }
       // Dispatch early autoplay hint when playback is near the end
       const remaining = state.totalChunks - state.nextChunk;
       if (playingIndex >= 1 && remaining <= 3) {
@@ -203,11 +219,11 @@ export default function ChatPage() {
       const onDone = () => {
         qq.audioPlaying = false;
         qq.currentAudio = null;
-        setTimeout(playNext, 250);
+        playNext();
       };
       audio.onended = onDone;
       audio.onerror = onDone;
-      audio.play().catch(() => { qq.audioPlaying = false; qq.currentAudio = null; setTimeout(playNext, 250); });
+      audio.play().catch(() => { qq.audioPlaying = false; qq.currentAudio = null; playNext(); });
     }
 
     playNextRef.current = playNext;

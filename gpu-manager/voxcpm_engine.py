@@ -240,13 +240,15 @@ class VoxCPMEngine:
         - Force flush at MAX_DURATION_S regardless
         - First segment uses shorter min for faster first-audio
         """
-        MIN_CHUNKS = 12         # minimum raw chunks before checking for silence
-        MAX_DURATION_S = 5.0    # force flush at this duration regardless
+        MIN_CHUNKS = 12                 # minimum raw chunks before checking for silence
+        MAX_DURATION_S = 5.0             # force flush at this duration regardless
         SILENCE_THRESHOLD = 0.01
+        MIN_SILENCE_DURATION_S = 0.3    # silence must persist this long to count as a boundary
         sr = self._model.tts_model.sample_rate
         segment_idx = 0
         chunk_count = 0
         buffer_samples = 0
+        silence_samples = 0             # consecutive silent samples; resets on speech
         audio_buffer: list[np.ndarray] = []
 
         for chunk_tuple in self._model.tts_model._generate_with_prompt_cache(
@@ -261,12 +263,19 @@ class VoxCPMEngine:
             audio_buffer.append(wav)
             buffer_samples += len(wav)
             chunk_count += 1
+
+            if self._is_silence(wav, SILENCE_THRESHOLD):
+                silence_samples += len(wav)
+            else:
+                silence_samples = 0
+
             buf_dur = buffer_samples / sr
+            silence_dur = silence_samples / sr
 
             should_flush = False
             if buf_dur >= MAX_DURATION_S:
                 should_flush = True
-            elif chunk_count >= MIN_CHUNKS and self._is_silence(wav, SILENCE_THRESHOLD):
+            elif chunk_count >= MIN_CHUNKS and silence_dur >= MIN_SILENCE_DURATION_S:
                 should_flush = True
 
             if should_flush:
@@ -274,6 +283,7 @@ class VoxCPMEngine:
                 audio_buffer.clear()
                 buffer_samples = 0
                 chunk_count = 0
+                silence_samples = 0
                 mp3 = self._encode_mp3(merged, sr)
                 item = {
                     "chunk_index": segment_idx,
