@@ -94,6 +94,9 @@ export const MODEL_GROUPS: ModelGroup[] = [
     label: "Codex",
     provider: "codex",
     options: [
+      { value: "gpt-5.5:medium", label: "GPT-5.5 Medium" },
+      { value: "gpt-5.5:high", label: "GPT-5.5 High" },
+      { value: "gpt-5.5:xhigh", label: "GPT-5.5 XHigh" },
       { value: "gpt-5.4:medium", label: "GPT-5.4 Medium" },
       { value: "gpt-5.4:high", label: "GPT-5.4 High" },
       { value: "gpt-5.4:xhigh", label: "GPT-5.4 XHigh" },
