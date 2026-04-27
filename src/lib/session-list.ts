@@ -302,3 +302,124 @@ export function relinkConversation(sessionId: string, conversationId: string): {
   }
   return { ok: true };
 }
+
+interface BuilderMeta {
+  provider?: "claude" | "codex" | "gemini";
+  claudeSessionId?: string;
+  codexThreadId?: string;
+  geminiSessionId?: string;
+  model?: string;
+}
+
+/**
+ * Builder-mode counterpart: list provider-side conversations tied to the
+ * persona directory (the cwd a builder process spawns into), and read/write
+ * the builder-session.json link instead of session.json.
+ */
+export function listConversationsForPersona(name: string): {
+  provider: "claude" | "codex" | "gemini";
+  currentId: string | null;
+  items: ConversationListItem[];
+} {
+  const personaDir = path.join(getDataDir(), "personas", name);
+  if (!fs.existsSync(personaDir)) {
+    return { provider: "claude", currentId: null, items: [] };
+  }
+  const metaPath = path.join(personaDir, "builder-session.json");
+  let meta: BuilderMeta = {};
+  if (fs.existsSync(metaPath)) {
+    try { meta = JSON.parse(fs.readFileSync(metaPath, "utf-8")) as BuilderMeta; } catch { /* */ }
+  }
+  const provider = meta.provider || detectProvider(meta.model);
+  const currentId =
+    provider === "claude" ? meta.claudeSessionId :
+    provider === "codex" ? meta.codexThreadId :
+    meta.geminiSessionId;
+
+  let items: ConversationListItem[] = [];
+  if (provider === "claude") {
+    items = listClaudeConversations(personaDir, currentId);
+  } else if (provider === "codex") {
+    // Codex builder rollouts: scan a wide date window and filter by cwd.
+    // We don't have a fixed createdAt for the builder, so use a 90-day window
+    // ending today. Cheap enough at typical scale.
+    const now = new Date();
+    items = listCodexConversationsByCwdWindow(personaDir, now, 90, currentId);
+  }
+  // Gemini: not yet supported.
+
+  items.sort((a, b) => b.mtime - a.mtime);
+  return { provider, currentId: currentId ?? null, items };
+}
+
+function listCodexConversationsByCwdWindow(
+  cwd: string,
+  endDate: Date,
+  daysBack: number,
+  currentId?: string,
+): ConversationListItem[] {
+  const root = path.join(os.homedir(), ".codex", "sessions");
+  const items: ConversationListItem[] = [];
+  for (let offset = 0; offset <= daysBack; offset++) {
+    const dt = new Date(endDate);
+    dt.setDate(dt.getDate() - offset);
+    const dayDir = path.join(
+      root,
+      String(dt.getFullYear()),
+      String(dt.getMonth() + 1).padStart(2, "0"),
+      String(dt.getDate()).padStart(2, "0"),
+    );
+    let entries: string[];
+    try {
+      entries = fs.readdirSync(dayDir);
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (!entry.endsWith(".jsonl")) continue;
+      const filePath = path.join(dayDir, entry);
+      const m = entry.match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/);
+      if (!m) continue;
+      if (!rolloutMatchesCwd(filePath, cwd)) continue;
+      const threadId = m[1];
+      const st = safeStat(filePath);
+      if (!st) continue;
+      items.push({
+        conversationId: threadId,
+        provider: "codex",
+        filePath,
+        sizeBytes: st.size,
+        mtime: st.mtimeMs,
+        lastMessage: readLastCodexMessage(filePath),
+        isCurrent: threadId === currentId,
+      });
+    }
+  }
+  return items;
+}
+
+export function relinkPersonaConversation(
+  name: string,
+  conversationId: string,
+): { ok: true } | { ok: false; error: string } {
+  const personaDir = path.join(getDataDir(), "personas", name);
+  if (!fs.existsSync(personaDir)) {
+    return { ok: false, error: "persona not found" };
+  }
+  const metaPath = path.join(personaDir, "builder-session.json");
+  let meta: BuilderMeta = {};
+  if (fs.existsSync(metaPath)) {
+    try { meta = JSON.parse(fs.readFileSync(metaPath, "utf-8")) as BuilderMeta; } catch { /* */ }
+  }
+  const provider = meta.provider || detectProvider(meta.model);
+  meta.provider = provider;
+  if (provider === "claude") meta.claudeSessionId = conversationId;
+  else if (provider === "codex") meta.codexThreadId = conversationId;
+  else meta.geminiSessionId = conversationId;
+  try {
+    fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), "utf-8");
+  } catch (e) {
+    return { ok: false, error: `cannot write builder-session.json: ${(e as Error).message}` };
+  }
+  return { ok: true };
+}

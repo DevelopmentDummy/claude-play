@@ -14,6 +14,7 @@ import VersionHistoryModal from "@/components/VersionHistoryModal";
 import ChatOptionsModal from "@/components/ChatOptionsModal";
 import ToastEffect from "@/components/ToastEffect";
 import UsageModal from "@/components/UsageModal";
+import SessionListModal from "@/components/SessionListModal";
 import { providerFromModel } from "@/lib/ai-provider";
 
 export default function BuilderPage() {
@@ -53,6 +54,7 @@ export default function BuilderPage() {
   const [optionsModalOpen, setOptionsModalOpen] = useState(false);
   const [showUsage, setShowUsage] = useState(false);
   const [usageTrigger, setUsageTrigger] = useState(0);
+  const [sessionListOpen, setSessionListOpen] = useState(false);
   const prevStreamingRef = useRef(false);
   useEffect(() => {
     if (prevStreamingRef.current && !isStreaming) {
@@ -268,6 +270,7 @@ export default function BuilderPage() {
         onUsage={() => setShowUsage(true)}
         usageRefreshTrigger={usageTrigger}
         sessionId={name}
+        onSessionList={() => setSessionListOpen(true)}
       />
       <ErrorBanner error={error} onDismiss={() => setError(null)} />
       <div className="flex-1 flex min-h-0">
@@ -323,6 +326,11 @@ export default function BuilderPage() {
         />
       )}
       {showUsage && <UsageModal onClose={() => setShowUsage(false)} provider={providerFromModel(builderModel)} sessionId={name} />}
+      <SessionListModal
+        open={sessionListOpen}
+        onClose={() => setSessionListOpen(false)}
+        apiBase={`/api/personas/${encodeURIComponent(decodedName)}`}
+      />
       <ToastEffect />
     </div>
   );
