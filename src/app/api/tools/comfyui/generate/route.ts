@@ -18,6 +18,7 @@ export async function POST(req: Request) {
     loras_right?: Array<{ name: string; strength: number }>;
     persona?: string; // For builder: generate directly into persona directory
     sessionId?: string;
+    targetScope?: "persona" | "session";
   };
 
   if (!body.filename) {
@@ -52,8 +53,23 @@ export async function POST(req: Request) {
       process.cwd(), "data", "tools", "comfyui", "skills", "generate-image", "workflows"
     );
   } else if (body.sessionId) {
-    // Session mode: save to session directory
-    targetDir = sm.getSessionDir(body.sessionId);
+    // Session mode: save to session directory by default.
+    // If `targetScope: "persona"` is provided, redirect output to the parent persona's
+    // images dir instead — used by features like a shared gallery that wants images
+    // to outlive any single session.
+    const scope = body.targetScope ?? "session";
+    if (scope === "persona") {
+      const info = sm.getSessionInfo(body.sessionId);
+      if (!info?.persona) {
+        return NextResponse.json(
+          { error: `Cannot resolve parent persona for session "${body.sessionId}"` },
+          { status: 400 }
+        );
+      }
+      targetDir = sm.getPersonaDir(info.persona);
+    } else {
+      targetDir = sm.getSessionDir(body.sessionId);
+    }
     workflowsDir = path.join(
       process.cwd(), "data", "tools", "comfyui", "skills", "generate-image", "workflows"
     );

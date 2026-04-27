@@ -439,9 +439,10 @@ export class ComfyUIClient {
 
   /** Load LoRA trigger tag table from data/tools/comfyui/lora-triggers.json */
   private loadLoraTriggers(): Record<string, string> {
-    // workflowsDir = data/tools/comfyui/skills/generate-image/workflows
-    // lora-triggers.json lives at data/tools/comfyui/lora-triggers.json
-    const triggersPath = path.join(this.workflowsDir, "..", "..", "..", "lora-triggers.json");
+    // 글로벌 트리거 테이블은 항상 data/tools/comfyui/ 아래에 산다.
+    // workflowsDir이 세션 로컬 스킬(data/sessions/.../.claude/skills/...)일 수도 있으므로
+    // cwd 기준 절대 경로로 직접 잡는다.
+    const triggersPath = path.join(process.cwd(), "data/tools/comfyui/lora-triggers.json");
     if (!fs.existsSync(triggersPath)) return {};
     try {
       const data = JSON.parse(fs.readFileSync(triggersPath, "utf-8"));
@@ -718,11 +719,14 @@ export class ComfyUIClient {
   }
 
   private loadCheckpointRegistry(): Record<string, Record<string, string>> {
-    const registryPath = path.join(this.workflowsDir, "..", "..", "..", "checkpoints.json");
+    // 글로벌 체크포인트 레지스트리는 항상 data/tools/comfyui/checkpoints.json.
+    // workflowsDir이 세션 로컬 스킬일 수도 있으므로 cwd 기준 절대 경로로 잡는다.
+    const registryPath = path.join(process.cwd(), "data/tools/comfyui/checkpoints.json");
     try {
       const data = JSON.parse(fs.readFileSync(registryPath, "utf-8"));
       return (data.checkpoints || {}) as Record<string, Record<string, string>>;
-    } catch {
+    } catch (err) {
+      console.warn(`[comfyui] checkpoints.json 로드 실패 (${registryPath}): ${(err as Error)?.message || err}`);
       return {};
     }
   }

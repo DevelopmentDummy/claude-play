@@ -587,7 +587,11 @@ export class SessionManager {
 
     // Copy persona files to session (excluding builder-only files and CLAUDE.md which is the builder prompt)
     const personaDir = this.getPersonaDir(personaName);
-    const SKIP_FILES = new Set(["builder-session.json", "panel-spec.md", "skills", ".claude", "CLAUDE.md", "GEMINI.md", "session-instructions.md", "chat-history.json"]);
+    // Note: `images/` is intentionally copied (session-local images dir is preserved).
+    // `gallery.json` is NOT copied — it's a persona-level shared archive accessed via
+    // `context.personaDir` from engine actions. Each session reads/writes the same
+    // persona-scoped gallery so curated images outlive any individual session.
+    const SKIP_FILES = new Set(["builder-session.json", "panel-spec.md", "skills", ".claude", "CLAUDE.md", "GEMINI.md", "session-instructions.md", "chat-history.json", "gallery.json"]);
     this.copyDirRecursive(personaDir, sessionDir, SKIP_FILES);
 
     // Copy session-instructions.md as both CLAUDE.md and AGENTS.md for the session
