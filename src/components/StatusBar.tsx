@@ -32,6 +32,8 @@ interface StatusBarProps {
   /** Slash commands (compact, context) */
   onCompact?: () => void;
   onContext?: () => void;
+  /** Open prior-sessions list modal */
+  onSessionList?: () => void;
   /** Version snapshot (builder mode) */
   onVersionSave?: () => void;
   onVersionHistory?: () => void;
@@ -84,6 +86,7 @@ export default function StatusBar({
   onSettings,
   onCompact,
   onContext,
+  onSessionList,
   onVersionSave,
   onVersionHistory,
   versionSaving,
@@ -130,7 +133,7 @@ export default function StatusBar({
     disconnected: "Disconnected",
   };
 
-  const hasDebugItems = onUsage || onCompact || onContext || onReinit || (!isBuilderMode && onSync) || onForceInputToggle;
+  const hasDebugItems = onUsage || onCompact || onContext || onReinit || (!isBuilderMode && onSync) || onForceInputToggle || onSessionList;
 
   return (
     <header className="flex flex-wrap items-center gap-2 px-4 py-2 bg-surface backdrop-blur-[16px] border-b border-border shrink-0">
@@ -221,6 +224,14 @@ export default function StatusBar({
                     className={menuBtnClass}
                   >
                     Usage
+                  </button>
+                )}
+                {onSessionList && (
+                  <button
+                    onClick={() => { onSessionList(); setDebugOpen(false); }}
+                    className={menuBtnClass}
+                  >
+                    Sessions
                   </button>
                 )}
                 {onForceInputToggle && (

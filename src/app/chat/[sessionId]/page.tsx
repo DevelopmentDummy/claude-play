@@ -18,6 +18,7 @@ import ModalPanel from "@/components/ModalPanel";
 import MinimizedModals from "@/components/MinimizedModals";
 import DockPanel from "@/components/DockPanel";
 import SyncModal from "@/components/SyncModal";
+import SessionListModal from "@/components/SessionListModal";
 import ChatOptionsModal from "@/components/ChatOptionsModal";
 import SteeringPresetsModal from "@/components/SteeringPresetsModal";
 import PopupEffect from "@/components/PopupEffect";
@@ -76,6 +77,8 @@ export default function ChatPage() {
   const [showOOC, setShowOOC] = useState(false);
   const [usageTrigger, setUsageTrigger] = useState(0);
   const [syncModalOpen, setSyncModalOpen] = useState(false);
+  const [sessionListOpen, setSessionListOpen] = useState(false);
+  const [personaSlug, setPersonaSlug] = useState<string>("");
   const [autoPlay, setAutoPlay] = useState(true);
   useEffect(() => {
     const stored = localStorage.getItem("tts-autoplay");
@@ -603,6 +606,7 @@ export default function ChatPage() {
 
       const data = await res.json();
       setTitle(data.displayName || data.title || data.persona);
+      if (data.persona) setPersonaSlug(data.persona);
       setLayout(data.layout);
       if (data.model) setCurrentModel(data.model);
       if (data.provider) setCurrentProvider(data.provider);
@@ -1036,6 +1040,7 @@ export default function ChatPage() {
         onCompact={currentProvider === "claude" ? handleCompact : undefined}
         onContext={currentProvider === "claude" ? handleContext : undefined}
         onSync={() => setSyncModalOpen(true)}
+        onSessionList={() => setSessionListOpen(true)}
         autoPlay={autoPlay}
         onAutoPlayToggle={handleAutoPlayToggle}
         voiceChat={voiceChat}
@@ -1258,6 +1263,16 @@ export default function ChatPage() {
         onPresetChange={setSteeringPreset}
       />
       {showUsage && <UsageModal onClose={() => setShowUsage(false)} provider={currentProvider} sessionId={sessionId} />}
+      <SessionListModal
+        open={sessionListOpen}
+        onClose={() => setSessionListOpen(false)}
+        personaSlug={personaSlug}
+        currentSessionId={sessionId}
+        onPick={(id) => {
+          setSessionListOpen(false);
+          router.push(`/chat/${id}`);
+        }}
+      />
     </div>
   );
 }

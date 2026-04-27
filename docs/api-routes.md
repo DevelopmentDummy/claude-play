@@ -24,6 +24,7 @@ Optional admin password auth via `ADMIN_PASSWORD` env var. MCP server requests i
 | `/api/personas/[name]/voice/generate` | GET, POST | Voice generation/testing |
 | `/api/personas/[name]/voice/upload` | GET, POST, DELETE | Serve/upload/remove reference audio |
 | `/api/personas/[name]/voice/youtube` | POST | Download voice reference from YouTube |
+| `/api/personas/[name]/sessions` | GET | List sessions for persona, sorted by last activity (Sessions resume menu) |
 
 ## Sessions
 
