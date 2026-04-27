@@ -154,6 +154,21 @@ prompt_right: {인물수}, 1girl|1boy, {캐릭터B identity + accessories + outf
 **중요**: 빌더 세션에서는 활성 세션이 없으므로 반드시 `"persona"` 파라미터를 포함해야 한다.
 대화 세션에서는 `"persona"` 없이 호출하면 활성 세션 디렉토리에 자동 저장된다.
 
+**저장 위치 옵션 — `targetScope`** (대화 세션에서만 의미 있음):
+- `targetScope` 생략 (기본): 활성 **세션 dir**에 저장 → 해당 세션에서만 보임 (`/api/sessions/{id}/files/images/...` 로 서빙)
+- `targetScope: "persona"`: 활성 세션의 **부모 페르소나 dir**에 저장 → 모든 세션이 공유 (`/api/sessions/{id}/persona-images?file=...` 로 서빙)
+  - 페르소나 차원에서 큐레이팅하는 갤러리, 영구 보관용 이미지 등에 사용한다.
+  - 세션 dir에는 저장되지 않으므로 해당 세션의 `images/` 목록엔 안 나타난다. 페르소나 갤러리 시스템을 갖춘 페르소나에서만 활용한다.
+
+```json
+{
+  "workflow": "scene",
+  "params": { "prompt": "..." },
+  "filename": "gen_xxx.png",
+  "targetScope": "persona"
+}
+```
+
 **MCP 도구 사용 예시:**
 ```json
 {

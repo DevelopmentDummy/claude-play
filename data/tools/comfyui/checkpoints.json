@@ -1,5 +1,5 @@
 {
-  "description": "Checkpoint registry — declares each known checkpoint file's loader type so workflow packages can validate compatibility without hardcoding names. Add a new entry here when introducing a new checkpoint.",
+  "description": "Checkpoint registry declares each known checkpoint file's loader type so workflow packages can validate compatibility without hardcoding names. Add a new entry here when introducing a new checkpoint.",
   "loaders": {
     "checkpoint_simple": "Full checkpoint usable via CheckpointLoaderSimple (UNET+CLIP+VAE bundled in one .safetensors)",
     "unet_only": "UNET-only weights requiring separate CLIP and VAE loaders (UNETLoader + CLIPLoader/LoadQwen35AnimaCLIP + VAELoader)"
@@ -52,7 +52,7 @@
     "animaCatTower_v05.safetensors": {
       "loader": "unet_only",
       "family": "anima",
-      "notes": "Anima cat tower — UNET only, pairs with Qwen3.5 CLIP or separate SDXL CLIP"
+      "notes": "Anima cat tower UNET only, pairs with Qwen3.5 CLIP or separate SDXL CLIP"
     },
     "anima-preview3-base.safetensors": {
       "loader": "unet_only",
@@ -69,6 +69,10 @@
     "animaika_v30.safetensors": {
       "loader": "unet_only",
       "family": "anima"
+    },
+    "bismuthIllustrious_v70.safetensors": {
+      "loader": "checkpoint_simple",
+      "family": "illustrious"
     }
   }
 }
