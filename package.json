@@ -5,6 +5,7 @@
   "description": "Next.js chat UI bridging to Claude Code CLI via NDJSON pipes",
   "scripts": {
     "setup": "node setup.js",
+    "lint:persona": "node scripts/lint-persona.mjs",
     "dev": "tsx watch --include .restart-trigger --exclude ./data/** --exclude ./.next/** server.ts",
     "dev:lite": "set TTS_ENABLED=false&& set GPU_MANAGER_ENABLED=false&& tsx watch --include .restart-trigger --exclude ./data/** --exclude ./.next/** server.ts",
     "build": "next build",
