@@ -36,7 +36,26 @@ export function buildSnapshot(
 ): Snapshot {
   const snapshot: Snapshot = {};
 
+  // Expand wildcard patterns (e.g. "_*_status") by matching variables.
+  // Patterns only use `*` as wildcard; exact keys take precedence.
+  const expandedRules: Array<[string, HintRule]> = [];
   for (const [key, rule] of Object.entries(hintRules)) {
+    if (key.startsWith("_") && !key.includes("*") && key !== "_passthrough" && key !== "_data_files") {
+      // Regular keys starting with _ (e.g. _master_status) still processed normally
+    }
+    if (key.includes("*")) {
+      const regex = new RegExp("^" + key.replace(/\*/g, ".*") + "$");
+      for (const varKey of Object.keys(vars)) {
+        if (regex.test(varKey) && !expandedRules.some(([k]) => k === varKey)) {
+          expandedRules.push([varKey, rule]);
+        }
+      }
+    } else if (!expandedRules.some(([k]) => k === key)) {
+      expandedRules.push([key, rule]);
+    }
+  }
+
+  for (const [key, rule] of expandedRules) {
     const value = vars[key];
     if (value === undefined) continue;
 

@@ -26,3 +26,24 @@ export async function POST(
 
   return NextResponse.json({ ok: true });
 }
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const instance = getSessionInstance(id);
+  if (!instance) {
+    return NextResponse.json({ error: "Session not found" }, { status: 404 });
+  }
+
+  const { searchParams } = new URL(req.url);
+  const panel = searchParams.get("panel");
+  const action = searchParams.get("action");
+  if (!panel || !action) {
+    return NextResponse.json({ error: "panel and action required" }, { status: 400 });
+  }
+
+  const removed = instance.removeLastAction(panel, action);
+  return NextResponse.json({ ok: true, removed });
+}

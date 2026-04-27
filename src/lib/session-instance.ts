@@ -34,6 +34,16 @@ const DIALOG_CLOSE = "</dialog_response>";
 const SPECIAL_TOKEN_REGEX = /\$(?:IMAGE|PANEL):[^$]+\$/g;
 const CHOICE_OPEN = "<choice>";
 const CHOICE_CLOSE = "</choice>";
+
+/** Event-header prefixes that should be replaced (singleton semantics) rather than accumulated.
+ *  Prefixes NOT in this set accumulate — multiple [TIME] lines, multiple [EVENT] lines, etc.
+ *  Keep this list tight; default behavior is append. */
+const REPLACE_ONLY_PREFIXES = new Set<string>([
+  "[SCHEDULE_SET]",
+  "[SCHEDULE_ERROR]",
+  "[NEW_GAME]",
+  "[MODE]",
+]);
 const HISTORY_FILE = "chat-history.json";
 
 function extractSpecialTokens(raw: string): string[] {
@@ -304,14 +314,18 @@ export class SessionInstance {
   }
 
   /** Queue an event header to prepend to the next user message.
-   *  If the header starts with a [TAG] prefix (e.g., [SCHEDULE_SET]),
-   *  any existing event with the same prefix is replaced to prevent duplicates. */
+   *  Headers accumulate by default — multiple events with the same prefix are all kept
+   *  (e.g., multiple [TIME] +1h lines from a chain of actions stay as separate lines).
+   *  Prefixes in REPLACE_ONLY_PREFIXES are treated as singletons: the latest call overrides
+   *  any prior one with the same prefix (e.g., [SCHEDULE_SET] always reflects the last state).
+   *  Exact-match duplicates are always collapsed. */
   queueEvent(header: string): void {
     let headers = this.readPendingEvents();
+    // Dedup exact duplicates (defensive, e.g., double-click)
+    headers = headers.filter(h => h !== header);
     const prefixMatch = header.match(/^\[([^\]]+)\]/);
-    if (prefixMatch) {
-      const prefix = prefixMatch[0];
-      headers = headers.filter(h => !h.startsWith(prefix));
+    if (prefixMatch && REPLACE_ONLY_PREFIXES.has(prefixMatch[0])) {
+      headers = headers.filter(h => !h.startsWith(prefixMatch[0]));
     }
     headers.push(header);
     this.writePendingEvents(headers);
@@ -420,6 +434,19 @@ export class SessionInstance {
     const actions = this.readPendingActions();
     actions.push(record);
     this.writePendingActions(actions);
+  }
+
+  /** Remove the most recent pending action matching panel+action. Returns true if removed. */
+  removeLastAction(panel: string, action: string): boolean {
+    const actions = this.readPendingActions();
+    for (let i = actions.length - 1; i >= 0; i--) {
+      if (actions[i].panel === panel && actions[i].action === action) {
+        actions.splice(i, 1);
+        this.writePendingActions(actions);
+        return true;
+      }
+    }
+    return false;
   }
 
   flushActions(): string {
@@ -1053,15 +1080,6 @@ export class SessionInstance {
       // so frontend receives audio:status (ttsPlaying=true) BEFORE result (isStreaming=false)
       if (msg.type !== "result") {
         this.broadcast("claude:message", d);
-      }
-
-      // Gemini: tool_use after text causes full re-stream; reset accumulated segments
-      if (msg.type === "content_reset") {
-        this.segments = [];
-        this.assistantFullText = null;
-        this.pushedTextsByMsgId.clear();
-        this.broadcast("claude:message", d);
-        return;
       }
 
       if (msg.type === "system" && msg.subtype === "status" && msg.status === "compacting") {
