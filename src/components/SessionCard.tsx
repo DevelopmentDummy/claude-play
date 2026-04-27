@@ -16,6 +16,7 @@ interface SessionCardProps {
   title: string;
   persona: string;
   createdAt: string;
+  lastActivity?: number;
   hasIcon?: boolean;
   model?: string;
   personaIndex?: number;
@@ -35,8 +36,9 @@ function providerInfo(model?: string): { label: string; cls: string } | null {
   return null;
 }
 
-function relativeTime(iso: string): string {
-  const ms = Date.now() - new Date(iso).getTime();
+function relativeTime(input: string | number): string {
+  const t = typeof input === "number" ? input : new Date(input).getTime();
+  const ms = Date.now() - t;
   if (ms < 0) return "방금";
   const m = Math.floor(ms / 60000);
   if (m < 1) return "방금";
@@ -47,7 +49,7 @@ function relativeTime(iso: string): string {
   if (d < 7) return `${d}일 전`;
   const w = Math.floor(d / 7);
   if (w < 5) return `${w}주 전`;
-  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return new Date(t).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 export default function SessionCard({
@@ -55,6 +57,7 @@ export default function SessionCard({
   title,
   persona,
   createdAt,
+  lastActivity,
   hasIcon,
   model,
   personaIndex = 0,
@@ -108,7 +111,7 @@ export default function SessionCard({
         <div className="text-[10px] text-text-mute mt-0.5 flex items-center gap-1.5 truncate">
           <span className="truncate">{persona}</span>
           <span className="w-[3px] h-[3px] rounded-full bg-white/30 shrink-0" />
-          <span className="shrink-0">{relativeTime(createdAt)}</span>
+          <span className="shrink-0">{relativeTime(lastActivity ?? createdAt)}</span>
           {info ? (
             <span className={`inline-flex items-center px-1 py-0 rounded text-[8px] font-semibold tracking-wide border ${info.cls}`}>
               {info.label}
