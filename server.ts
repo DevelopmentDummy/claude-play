@@ -248,6 +248,20 @@ g.__ttsPid = ttsProcess?.pid;
 g.__gpuManagerPid = gpuManagerProcess?.pid;
 g.__shuttingDown = false;
 
+// Write our own PID so external scripts (e.g. scripts/restart.mjs) can find us
+try {
+  const pidFile = path.join(process.cwd(), "data", ".server.pid");
+  fs.mkdirSync(path.dirname(pidFile), { recursive: true });
+  fs.writeFileSync(pidFile, JSON.stringify({
+    pid: process.pid,
+    port,
+    mode: dev ? "dev" : "start",
+    startedAt: new Date().toISOString(),
+  }, null, 2));
+} catch (err) {
+  console.warn("[server] failed to write PID file:", err);
+}
+
 if (!g.__cleanupRegistered) {
   g.__cleanupRegistered = true;
   for (const sig of ["exit", "SIGINT", "SIGTERM", "SIGHUP"] as const) {
