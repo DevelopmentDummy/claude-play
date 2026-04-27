@@ -75,7 +75,19 @@ export async function POST(
     }
   } catch {}
 
-  const context = { variables: { ...variables }, data, sessionDir };
+  // Resolve parent persona — lets engine actions read/write persona-scoped files
+  // (e.g. shared gallery, persona-level images) without leaving the session sandbox API.
+  let personaName: string | null = null;
+  let personaDir: string | null = null;
+  try {
+    const info = svc.sessions.getSessionInfo(sessionId);
+    if (info?.persona) {
+      personaName = info.persona;
+      personaDir = svc.sessions.getPersonaDir(info.persona);
+    }
+  } catch {}
+
+  const context = { variables: { ...variables }, data, sessionDir, personaDir, personaName };
 
   // Execute tool with timeout
   try {
