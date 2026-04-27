@@ -78,11 +78,6 @@ export default function ChatPage() {
   const [usageTrigger, setUsageTrigger] = useState(0);
   const [syncModalOpen, setSyncModalOpen] = useState(false);
   const [sessionListOpen, setSessionListOpen] = useState(false);
-  const [personaSlug, setPersonaSlug] = useState<string>(() => {
-    // session id format: "{persona}-YYYY-MM-DDTHH-MM-SS"
-    const m = sessionId?.match(/^(.+)-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}$/);
-    return m ? m[1] : "";
-  });
   const [autoPlay, setAutoPlay] = useState(true);
   useEffect(() => {
     const stored = localStorage.getItem("tts-autoplay");
@@ -610,7 +605,6 @@ export default function ChatPage() {
 
       const data = await res.json();
       setTitle(data.displayName || data.title || data.persona);
-      if (data.persona) setPersonaSlug(data.persona);
       setLayout(data.layout);
       if (data.model) setCurrentModel(data.model);
       if (data.provider) setCurrentProvider(data.provider);
@@ -1270,12 +1264,7 @@ export default function ChatPage() {
       <SessionListModal
         open={sessionListOpen}
         onClose={() => setSessionListOpen(false)}
-        personaSlug={personaSlug}
-        currentSessionId={sessionId}
-        onPick={(id) => {
-          setSessionListOpen(false);
-          router.push(`/chat/${id}`);
-        }}
+        sessionId={sessionId}
       />
     </div>
   );
