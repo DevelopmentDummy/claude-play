@@ -172,6 +172,41 @@ turn_transition(ctx) {
 
 이 분리로 패널은 Phase 1 (행동 서사) → Phase 2 (전환 서사)의 2-Phase 턴을 오케스트레이션할 수 있다.
 
+### 부작용의 투명성 — 엔진 결과를 AI에 노출하는 방법
+
+엔진 액션은 상태를 바꾸는 것만으로 끝나지 않는다. 그 결과로 일어난 일을 AI가 **서사에 반영**할 수 있도록, 부작용을 구조화된 헤더로 노출해야 한다. 이 통로가 비어 있으면 AI는 유저 자연어에서 결과를 유추하다가 재실행·상태 불일치를 낳는다.
+
+**세 가지 노출 경로:**
+
+1. **`[STATE]` 스냅샷** — variables/커스텀 데이터 변경은 자동으로 다음 메시지 상단에 반영된다. 별도 작업 불필요.
+
+2. **`[ACTION_LOG]` 라인** — `executeAction`으로 실행된 모든 패널 액션은 `[ACTION_LOG] panel.action(params)` 형식으로 자동 기록된다. AI가 "어떤 버튼이 눌렸는가"를 안다.
+
+3. **도메인 헤더 (`queueEvent`로 수동 주입)** — 상태 변경과 액션 이름만으로는 전달되지 않는 부작용(자원 획득, NPC 상태 전이, 시간 흐름, 이벤트 트리거 등)은 패널이 직접 헤더를 구성해 주입한다.
+
+```javascript
+// registerAction 내부에서 엔진 호출 직후
+__panelBridge.registerAction('harvest', async (params) => {
+  const res = await __panelBridge.runTool('engine', { action: 'harvest', field: params.field });
+  // 엔진이 반환한 결과에서 서사에 쓸만한 부작용을 헤더로 구성
+  if (res?.result?.gained) {
+    await __panelBridge.queueEvent(`[HARVEST] ${params.field}에서 ${res.result.gained} 수확`);
+  }
+  if (res?.result?.time_advanced) {
+    const t = res.result.time_advanced;
+    await __panelBridge.queueEvent(`[TIME] +${t.hours}h → Day ${t.day} ${t.period}`);
+  }
+  return res;
+});
+```
+
+**헤더 설계 원칙:**
+- 접두 태그는 **도메인별로 고유하게** 짓는다 (`[STATE]`, `[ACTION_LOG]` 외 충돌 주의). 예: `[TIME]`, `[COMBAT]`, `[RECRUIT]`.
+- 내용은 한 줄로 **요지**만. AI는 이걸 읽고 장면으로 부풀린다. 여러 줄 나열 대신 세미콜론으로 여러 이벤트를 한 줄에 적는 것도 괜찮다.
+- 수치를 그대로 노출할지(예: `+50 gold`) 서사 친화 문구로 바꿀지(예: `풍요로운 수확`)는 페르소나 톤에 따라 결정. 대개 AI가 수치를 장면화하는 게 더 유연하므로 그대로 노출을 권장.
+
+**유저 텍스트와의 관계:** 헤더는 실재의 선언이고, 유저 메시지는 해설이다. 유저가 "한 시간 보냈다"라고 써도, `[TIME]` 헤더에 +1h가 이미 찍혀 있다면 AI는 그걸 실재로 받아들이고 추가 시간 호출을 하지 않는다.
+
 ### 개별 스크립트가 유용한 경우
 
 모든 것을 engine.js에 넣을 필요는 없다. **게임 상태와 무관한 유틸리티**는 별도 파일로:
