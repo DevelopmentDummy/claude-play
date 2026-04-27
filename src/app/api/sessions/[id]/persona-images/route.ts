@@ -12,6 +12,7 @@ import { NextResponse } from "next/server";
 import { getServices } from "@/lib/services";
 import * as path from "path";
 import * as fs from "fs";
+import sharp from "sharp";
 
 const MIME_TYPES: Record<string, string> = {
   ".png": "image/png",
@@ -60,6 +61,41 @@ export async function GET(
     }
     const ext = path.extname(safeName).toLowerCase();
     const contentType = MIME_TYPES[ext] || "application/octet-stream";
+
+    // Optional thumbnail: ?thumb=240 → resize to fit within 240x240, webp output, disk-cached
+    const thumbParam = url.searchParams.get("thumb");
+    const thumbSize = thumbParam ? Math.max(32, Math.min(1024, parseInt(thumbParam, 10) || 0)) : 0;
+    if (thumbSize && IMAGE_RE.test(safeName)) {
+      try {
+        const cacheDir = path.join(imagesDir, ".thumbs");
+        if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir, { recursive: true });
+        const cacheFile = path.join(cacheDir, `${safeName}.${thumbSize}.webp`);
+        const srcStat = fs.statSync(filePath);
+        let cacheValid = false;
+        if (fs.existsSync(cacheFile)) {
+          const cacheStat = fs.statSync(cacheFile);
+          cacheValid = cacheStat.mtimeMs >= srcStat.mtimeMs;
+        }
+        if (!cacheValid) {
+          await sharp(filePath)
+            .rotate()
+            .resize(thumbSize, thumbSize, { fit: "inside", withoutEnlargement: true })
+            .webp({ quality: 78 })
+            .toFile(cacheFile);
+        }
+        const data = fs.readFileSync(cacheFile);
+        return new NextResponse(data, {
+          headers: {
+            "Content-Type": "image/webp",
+            "Cache-Control": "public, max-age=86400",
+          },
+        });
+      } catch (e) {
+        // fallthrough to original on thumbnail failure
+        console.warn("[persona-images] thumb failed:", e);
+      }
+    }
+
     const data = fs.readFileSync(filePath);
     return new NextResponse(data, {
       headers: {
