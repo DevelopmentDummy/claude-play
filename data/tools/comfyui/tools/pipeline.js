@@ -400,6 +400,40 @@ async function runFullCycle() {
   };
 }
 
+function summarizeBatchErrors(results, phase) {
+  const failures = (results || []).filter((r) => r && r.success === false && typeof r.error === 'string' && r.error.trim());
+  if (failures.length === 0) return { message: null, signature: null };
+  const counts = new Map();
+  for (const f of failures) {
+    const key = f.error.trim();
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  const sortedEntries = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  const lines = sortedEntries.map(([msg, n]) => `  - (${n}건) ${msg}`);
+  const signature = `${phase}:${sortedEntries.map(([msg]) => msg).join('|')}`;
+  const message = `[SCHEDULER_ERROR] ${phase} 배치에서 ${failures.length}건 실패. 원인 요약:\n${lines.join('\n')}`;
+  return { message, signature };
+}
+
+function readErrorDedupMarker() {
+  const p = path.join(sessionDir(), '.scheduler_error_signature');
+  try {
+    return fs.existsSync(p) ? fs.readFileSync(p, 'utf8').trim() : '';
+  } catch {
+    return '';
+  }
+}
+
+function writeErrorDedupMarker(signature) {
+  const p = path.join(sessionDir(), '.scheduler_error_signature');
+  try {
+    if (signature) fs.writeFileSync(p, signature, 'utf8');
+    else if (fs.existsSync(p)) fs.unlinkSync(p);
+  } catch {
+    // ignore
+  }
+}
+
 async function schedulerTick(args = {}) {
   const meta = currentMeta();
   const chunkSize = Number.isFinite(Number(args.chunk_size))
@@ -435,18 +469,27 @@ async function schedulerTick(args = {}) {
   if (sourcePending) {
     const result = await runSourceBatch({ max_items: chunkSize, clear_stop: false });
     const newSourceDone = sourceDone + (result.results || []).filter((r) => r.success).length;
+    const notifications = [
+      {
+        target: 'client',
+        event: 'scheduler:progress',
+        payload: { phase: 'source', done: newSourceDone, total, step: `source ${newSourceDone}/${total}` },
+      },
+    ];
+    const { message: errorMessage, signature: errorSignature } = summarizeBatchErrors(result.results, 'source');
+    const lastSignature = readErrorDedupMarker();
+    if (errorMessage && errorSignature !== lastSignature) {
+      notifications.push({ target: 'ai', mode: 'send', message: errorMessage });
+      writeErrorDedupMarker(errorSignature);
+    } else if (!errorMessage && lastSignature) {
+      writeErrorDedupMarker('');
+    }
     return {
       success: true,
       did_work: true,
       phase: 'source',
       ...result,
-      notifications: [
-        {
-          target: 'client',
-          event: 'scheduler:progress',
-          payload: { phase: 'source', done: newSourceDone, total, step: `source ${newSourceDone}/${total}` },
-        },
-      ],
+      notifications,
     };
   }
 
@@ -461,7 +504,15 @@ async function schedulerTick(args = {}) {
         payload: { phase: 'teacher', done: newTeacherDone, total, step: `teacher ${newTeacherDone}/${total}` },
       },
     ];
-    // teacher 완료 AI 알림은 idle 틱에서 통합 발송 — 여기서는 client progress만
+    const { message: errorMessage, signature: errorSignature } = summarizeBatchErrors(result.results, 'teacher');
+    const lastSignature = readErrorDedupMarker();
+    if (errorMessage && errorSignature !== lastSignature) {
+      notifications.push({ target: 'ai', mode: 'send', message: errorMessage });
+      writeErrorDedupMarker(errorSignature);
+    } else if (!errorMessage && lastSignature) {
+      writeErrorDedupMarker('');
+    }
+    // teacher 완료 AI 알림은 idle 틱에서 통합 발송 — 여기서는 client progress + 에러 요약만
     return {
       success: true,
       did_work: true,
