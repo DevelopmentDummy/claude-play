@@ -1264,7 +1264,7 @@ export default function ChatPage() {
       <SessionListModal
         open={sessionListOpen}
         onClose={() => setSessionListOpen(false)}
-        sessionId={sessionId}
+        apiBase={`/api/sessions/${encodeURIComponent(sessionId)}`}
       />
     </div>
   );

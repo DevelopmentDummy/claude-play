@@ -21,7 +21,13 @@ interface ConversationsResponse {
 interface SessionListModalProps {
   open: boolean;
   onClose: () => void;
-  sessionId: string;
+  /**
+   * REST resource base — without trailing slash. Either:
+   *   "/api/sessions/{id}"   (chat session)
+   *   "/api/personas/{name}" (builder session)
+   * Modal calls GET {base}/conversations and POST {base}/relink.
+   */
+  apiBase: string;
 }
 
 const PROVIDER_BADGE: Record<ConversationListItem["provider"], string> = {
@@ -61,18 +67,18 @@ function shortId(id: string): string {
   return id.length > 12 ? `${id.slice(0, 8)}…${id.slice(-4)}` : id;
 }
 
-export default function SessionListModal({ open, onClose, sessionId }: SessionListModalProps) {
+export default function SessionListModal({ open, onClose, apiBase }: SessionListModalProps) {
   const [data, setData] = useState<ConversationsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [relinking, setRelinking] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
-    if (!sessionId) return;
+    if (!apiBase) return;
     setData(null);
     setError(null);
     const ctrl = new AbortController();
-    fetch(`/api/sessions/${encodeURIComponent(sessionId)}/conversations`, { signal: ctrl.signal })
+    fetch(`${apiBase}/conversations`, { signal: ctrl.signal })
       .then((r) => r.json())
       .then((j) => setData(j as ConversationsResponse))
       .catch((e: unknown) => {
@@ -80,7 +86,7 @@ export default function SessionListModal({ open, onClose, sessionId }: SessionLi
         setError(e instanceof Error ? e.message : String(e));
       });
     return () => ctrl.abort();
-  }, [open, sessionId]);
+  }, [open, apiBase]);
 
   useEffect(() => {
     if (!open) return;
@@ -95,7 +101,7 @@ export default function SessionListModal({ open, onClose, sessionId }: SessionLi
     if (relinking) return;
     setRelinking(conversationId);
     try {
-      const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/relink`, {
+      const res = await fetch(`${apiBase}/relink`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ conversationId }),
