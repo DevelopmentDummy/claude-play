@@ -24,7 +24,6 @@ Optional admin password auth via `ADMIN_PASSWORD` env var. MCP server requests i
 | `/api/personas/[name]/voice/generate` | GET, POST | Voice generation/testing |
 | `/api/personas/[name]/voice/upload` | GET, POST, DELETE | Serve/upload/remove reference audio |
 | `/api/personas/[name]/voice/youtube` | POST | Download voice reference from YouTube |
-| `/api/personas/[name]/sessions` | GET | List sessions for persona, sorted by last activity (Sessions resume menu) |
 
 ## Sessions
 
@@ -34,6 +33,8 @@ Optional admin password auth via `ADMIN_PASSWORD` env var. MCP server requests i
 | `/api/sessions/[id]` | DELETE | Delete session |
 | `/api/sessions/[id]/open` | POST | Open session (spawn AI process, start panels) |
 | `/api/sessions/[id]/sync` | GET, POST | GET: diff (`?direction=reverse`); POST: selective sync with `direction` + `variablesMode` |
+| `/api/sessions/[id]/conversations` | GET | List provider-side conversations (jsonl/rollouts) tied to this session folder for the resume menu |
+| `/api/sessions/[id]/relink` | POST | Tear down live SessionInstance and rewrite session.json's provider conversation id (`{ conversationId }` body) |
 | `/api/sessions/[id]/variables` | PATCH | Patch session variables (supports `?file=` for custom data files) |
 | `/api/sessions/[id]/modals` | POST | Group-aware modal open/close/closeAll (body: `{ action, name?, mode?, except? }`) |
 | `/api/sessions/[id]/events` | POST | Queue event header for next chat message (body: `{ header: string }`) |
