@@ -1320,6 +1320,37 @@ server.registerTool(
   }
 );
 
+server.registerTool(
+  "bridge_restart_service",
+  {
+    description:
+      "Rebuild and (optionally) respawn the Claude Play main service. " +
+      "Runs `npm run build` SYNCHRONOUSLY while the old server is still alive — " +
+      "if the build fails, the server is left untouched and the build error is returned. " +
+      "On success, spawns a detached respawn orchestrator that kills + restarts the server (~1-2s downtime). " +
+      "Pass respawn=false to build-only without restarting. " +
+      "Note: the build response may take 30s-2min; this MCP session WILL disconnect during respawn. " +
+      "Watch data/restart.log for orchestrator progress.",
+    inputSchema: {
+      mode: z.enum(["dev", "start"]).optional().describe("Respawn in dev or production mode (default: auto-detect from current server)"),
+      skipBuild: z.boolean().optional().describe("Skip `npm run build` (default: false)"),
+      respawn: z.boolean().optional().describe("Whether to respawn after build (default: true)"),
+    },
+  },
+  async ({ mode, skipBuild, respawn }) => {
+    try {
+      const data = await requestJson("POST", "/api/service/restart", {
+        ...(mode ? { mode } : {}),
+        ...(skipBuild ? { skipBuild: true } : {}),
+        ...(respawn === false ? { respawn: false } : {}),
+      });
+      return ok(data);
+    } catch (error) {
+      return fail(error);
+    }
+  }
+);
+
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
