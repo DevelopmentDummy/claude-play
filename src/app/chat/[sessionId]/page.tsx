@@ -78,7 +78,11 @@ export default function ChatPage() {
   const [usageTrigger, setUsageTrigger] = useState(0);
   const [syncModalOpen, setSyncModalOpen] = useState(false);
   const [sessionListOpen, setSessionListOpen] = useState(false);
-  const [personaSlug, setPersonaSlug] = useState<string>("");
+  const [personaSlug, setPersonaSlug] = useState<string>(() => {
+    // session id format: "{persona}-YYYY-MM-DDTHH-MM-SS"
+    const m = sessionId?.match(/^(.+)-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}$/);
+    return m ? m[1] : "";
+  });
   const [autoPlay, setAutoPlay] = useState(true);
   useEffect(() => {
     const stored = localStorage.getItem("tts-autoplay");
