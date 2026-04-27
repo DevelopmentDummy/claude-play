@@ -43,6 +43,7 @@ interface Session {
   displayName?: string;
   title: string;
   createdAt: string;
+  lastActivity?: number;
   hasIcon?: boolean;
   model?: string;
 }
@@ -292,6 +293,7 @@ export default function LobbyPage() {
                 title={s.displayName || s.title}
                 persona={s.displayName || s.persona}
                 createdAt={s.createdAt}
+                lastActivity={s.lastActivity}
                 hasIcon={s.hasIcon}
                 model={s.model}
                 personaIndex={personaIndexMap.get(s.persona) ?? 0}
