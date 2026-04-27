@@ -291,21 +291,42 @@ export class PanelActionRegistry {
       );
     }
 
-    // Record via API (best-effort, don't block execution on failure)
+    // Record BEFORE running the handler. Handlers commonly call
+    // __panelBridge.sendMessage synchronously, which triggers a WS chat:send
+    // that makes the server call flushActions() on pending-actions.json. If we
+    // recorded AFTER the handler, the WS frame could reach the server before
+    // the record POST, causing [ACTION_LOG] to miss this action on the same turn.
+    // On handler failure, we undo the record so failed attempts aren't surfaced.
+    let recorded = false;
     if (this.sessionId) {
       const record: PanelActionRecord = { panel: resolvedPanel, action: actionId };
       if (params !== undefined) record.params = params;
 
-      fetch(`/api/sessions/${this.sessionId}/panel-actions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(record),
-      }).catch(() => {
-        // Silently ignore recording failures
-      });
+      try {
+        const res = await fetch(`/api/sessions/${this.sessionId}/panel-actions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(record),
+        });
+        recorded = res.ok;
+      } catch {
+        // Network error — proceed with handler anyway; logging is best-effort.
+      }
     }
 
-    await entry.handler(params);
+    try {
+      await entry.handler(params);
+    } catch (e) {
+      // Handler threw — undo the optimistic record so failed attempts don't
+      // surface to the AI as if they executed. If the handler had already
+      // called sendMessage before throwing, the record was already flushed
+      // and removeLastAction becomes a no-op; that's acceptable.
+      if (recorded && this.sessionId) {
+        const url = `/api/sessions/${this.sessionId}/panel-actions?panel=${encodeURIComponent(resolvedPanel)}&action=${encodeURIComponent(actionId)}`;
+        await fetch(url, { method: "DELETE" }).catch(() => {});
+      }
+      throw e;
+    }
   }
 
   /**
