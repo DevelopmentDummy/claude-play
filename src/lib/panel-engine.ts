@@ -64,6 +64,24 @@ export function ensureHandlebarsHelpers(): void {
   Handlebars.registerHelper("json", (val) =>
     new Handlebars.SafeString(JSON.stringify(val ?? null))
   );
+  Handlebars.registerHelper("pluck", (collection, ...args) => {
+    const keys = args.slice(0, -1) as string[];
+    const items = Array.isArray(collection)
+      ? collection
+      : collection && typeof collection === "object"
+        ? Object.values(collection)
+        : [];
+    return items
+      .map((item) =>
+        keys
+          .map((k) => {
+            const v = item == null ? "" : (item as Record<string, unknown>)[k];
+            return v == null ? "" : String(v);
+          })
+          .join(",")
+      )
+      .join("|");
+  });
 }
 
 /** Watches a session directory and emits rendered panel HTML when files change */
@@ -127,6 +145,10 @@ export class PanelEngine {
       ...this.dataFiles,
       __sessionId: sessionId,
       __imageBase: sessionId ? `/api/sessions/${sessionId}/files/images/` : "",
+      // Resource URL pointing to the parent persona's images dir.
+      // Lets session panels reference persona-scoped images without copying.
+      // Persona-scope gallery items use this base; session-scope items use __imageBase.
+      __personaImageBase: sessionId ? `/api/sessions/${sessionId}/persona-images?file=` : "",
       __layout: layout,
       __userName: userName,
     };
