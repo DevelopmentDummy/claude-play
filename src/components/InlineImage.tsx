@@ -11,11 +11,38 @@ interface InlineImageProps {
 }
 
 type ImageState = "loading" | "ready" | "error";
+type ImageSource = "session" | "persona";
 
 const POLL_INTERVAL = 2000;
 const MAX_POLLS = 23; // ~45 seconds
 
-function buildFileUrl(imgPath: string, sessionId?: string, personaName?: string, cacheBuster?: number): string {
+function isPersonaPath(imgPath: string): boolean {
+  return imgPath.startsWith("persona:") || imgPath.startsWith("persona/");
+}
+
+function personaFileName(imgPath: string): string {
+  if (imgPath.startsWith("persona:")) return imgPath.slice("persona:".length);
+  if (imgPath.startsWith("persona/")) return imgPath.slice("persona/".length);
+  return imgPath.startsWith("images/") ? imgPath.slice(7) : imgPath;
+}
+
+function buildFileUrl(
+  imgPath: string,
+  sessionId?: string,
+  personaName?: string,
+  cacheBuster?: number,
+  source: ImageSource = "session",
+): string {
+  if (source === "persona") {
+    const file = personaFileName(imgPath);
+    if (sessionId) {
+      return `/api/sessions/${encodeURIComponent(sessionId)}/persona-images?file=${encodeURIComponent(file)}&v=${cacheBuster}`;
+    }
+    if (personaName) {
+      return `/api/personas/${encodeURIComponent(personaName)}/images?file=${encodeURIComponent(file)}&v=${cacheBuster}`;
+    }
+  }
+
   if (personaName) {
     // Builder mode: strip "images/" prefix for persona images API
     const file = imgPath.startsWith("images/") ? imgPath.slice(7) : imgPath;
@@ -27,6 +54,7 @@ function buildFileUrl(imgPath: string, sessionId?: string, personaName?: string,
 
 export default function InlineImage({ sessionId, personaName, path: imgPath, onReady }: InlineImageProps) {
   const [state, setState] = useState<ImageState>("loading");
+  const [source, setSource] = useState<ImageSource>(isPersonaPath(imgPath) ? "persona" : "session");
   const [showModal, setShowModal] = useState(false);
   const cacheBuster = useRef(Date.now()).current;
   const [retryKey, setRetryKey] = useState(0);
@@ -35,16 +63,26 @@ export default function InlineImage({ sessionId, personaName, path: imgPath, onR
   const readyNotifiedRef = useRef(false);
 
   useEffect(() => {
+    setSource(isPersonaPath(imgPath) ? "persona" : "session");
+    setState("loading");
+  }, [imgPath]);
+
+  useEffect(() => {
     let cancelled = false;
     pollCountRef.current = 0;
     readyNotifiedRef.current = false;
+    const explicitPersona = isPersonaPath(imgPath);
+    if (explicitPersona && source !== "persona") {
+      setSource("persona");
+      return;
+    }
 
     const poll = async () => {
       if (cancelled) return;
 
       try {
         const res = await fetch(
-          buildFileUrl(imgPath, sessionId, personaName, cacheBuster),
+          buildFileUrl(imgPath, sessionId, personaName, cacheBuster, source),
           {
             method: "HEAD",
             cache: "no-store",
@@ -63,6 +101,10 @@ export default function InlineImage({ sessionId, personaName, path: imgPath, onR
         }
 
         if (res.status === 404) {
+          if (!explicitPersona && source === "session" && sessionId && imgPath.startsWith("images/")) {
+            setSource("persona");
+            return;
+          }
           pollCountRef.current++;
           if (pollCountRef.current >= MAX_POLLS) {
             setState("error");
@@ -97,7 +139,7 @@ export default function InlineImage({ sessionId, personaName, path: imgPath, onR
       cancelled = true;
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [sessionId, personaName, imgPath, retryKey]);
+  }, [sessionId, personaName, imgPath, retryKey, source, cacheBuster]);
 
   if (state === "loading") {
     return (
@@ -122,7 +164,7 @@ export default function InlineImage({ sessionId, personaName, path: imgPath, onR
     );
   }
 
-  const src = buildFileUrl(imgPath, sessionId, personaName, cacheBuster);
+  const src = buildFileUrl(imgPath, sessionId, personaName, cacheBuster, source);
   const handleImageLoad = () => {
     if (readyNotifiedRef.current) return;
     readyNotifiedRef.current = true;

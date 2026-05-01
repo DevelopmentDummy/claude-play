@@ -587,12 +587,27 @@ export class SessionManager {
 
     // Copy persona files to session (excluding builder-only files and CLAUDE.md which is the builder prompt)
     const personaDir = this.getPersonaDir(personaName);
-    // Note: `images/` is intentionally copied (session-local images dir is preserved).
-    // `gallery.json` is NOT copied — it's a persona-level shared archive accessed via
-    // `context.personaDir` from engine actions. Each session reads/writes the same
-    // persona-scoped gallery so curated images outlive any individual session.
-    const SKIP_FILES = new Set(["builder-session.json", "panel-spec.md", "skills", ".claude", "CLAUDE.md", "GEMINI.md", "session-instructions.md", "chat-history.json", "gallery.json"]);
+    // Note: `images/` is NOT recursively copied — persona galleries can grow large
+    // and would multiply per session. Only profile.png/icon.png (used by SessionCard,
+    // chat header, etc.) are explicitly copied below. Gallery images are served from
+    // the persona dir directly via /api/sessions/{id}/persona-images.
+    // `gallery.json` is also persona-level — accessed via context.personaDir in engine actions.
+    const SKIP_FILES = new Set(["builder-session.json", "panel-spec.md", "skills", ".claude", "CLAUDE.md", "GEMINI.md", "session-instructions.md", "chat-history.json", "gallery.json", "images"]);
     this.copyDirRecursive(personaDir, sessionDir, SKIP_FILES);
+
+    // Selectively copy ONLY profile.png and icon.png from persona images.
+    // Sessions need these for their card/header UI; gallery images stay in persona dir.
+    const personaImagesDirSrc = path.join(personaDir, "images");
+    if (fs.existsSync(personaImagesDirSrc)) {
+      const sessionImagesDir = path.join(sessionDir, "images");
+      fs.mkdirSync(sessionImagesDir, { recursive: true });
+      for (const baseFile of ["profile.png", "icon.png"]) {
+        const src = path.join(personaImagesDirSrc, baseFile);
+        if (fs.existsSync(src)) {
+          fs.copyFileSync(src, path.join(sessionImagesDir, baseFile));
+        }
+      }
+    }
 
     // Copy session-instructions.md as both CLAUDE.md and AGENTS.md for the session
     // Also keep a copy of session-instructions.md in session for accurate sync diff

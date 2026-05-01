@@ -687,6 +687,7 @@ server.registerTool(
         strength: z.number().min(-5).max(5),
       })).optional(),
       persona: z.string().optional(),
+      targetScope: z.enum(["persona", "session"]).optional(),
     },
   },
   async (input) => {
@@ -731,6 +732,7 @@ server.registerTool(
               filename,
               extraFiles: input.extraFiles,
               ...(input.persona ? { persona: input.persona } : {}),
+              ...(input.targetScope ? { targetScope: input.targetScope } : {}),
             }
           : {
               workflow,
@@ -741,6 +743,7 @@ server.registerTool(
               loras_left: input.loras_left,
               loras_right: input.loras_right,
               ...(input.persona ? { persona: input.persona } : {}),
+              ...(input.targetScope ? { targetScope: input.targetScope } : {}),
             }
       );
       const data = await requestJson("POST", "/api/tools/comfyui/generate", payload);
@@ -822,6 +825,7 @@ server.registerTool(
         strength: z.number().min(-5).max(5),
       })).optional(),
       persona: z.string().optional(),
+      targetScope: z.enum(["persona", "session"]).optional(),
     },
   },
   async (input) => {
@@ -913,6 +917,7 @@ server.registerTool(
         loras_left: input.loras_left,
         loras_right: input.loras_right,
         ...(input.persona ? { persona: input.persona } : {}),
+        ...(input.targetScope ? { targetScope: input.targetScope } : {}),
       });
       const data = await requestJson("POST", "/api/tools/comfyui/generate", payload);
       const imagePath =
@@ -1343,6 +1348,7 @@ server.registerTool(
         ...(mode ? { mode } : {}),
         ...(skipBuild ? { skipBuild: true } : {}),
         ...(respawn === false ? { respawn: false } : {}),
+        ...(sessionId ? { sessionId, triggeredBy: "mcp:bridge_restart_service" } : {}),
       });
       return ok(data);
     } catch (error) {
