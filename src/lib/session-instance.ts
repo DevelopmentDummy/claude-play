@@ -342,6 +342,12 @@ export class SessionInstance {
     return new Promise(resolve => this.idleResolvers.push(resolve));
   }
 
+  /** Wait until the underlying AI process is ready to accept input.
+   *  Resolves true if ready within timeout, false otherwise. */
+  waitForReady(timeoutMs = 20_000): Promise<boolean> {
+    return this._process.waitForReady(timeoutMs);
+  }
+
   /** Reset pending turn state and resolve all idle waiters. */
   private flushIdleWaiters(): void {
     this._pendingTurn = false;

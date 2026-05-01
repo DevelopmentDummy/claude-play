@@ -234,6 +234,36 @@ export class CodexProcess extends EventEmitter<CodexProcessEvents> {
     return !!(this.proc && this.initialized);
   }
 
+  /** Resolve once the JSON-RPC initialize handshake has completed. Returns false
+   *  on timeout, error, or premature exit. */
+  async waitForReady(timeoutMs = 20_000): Promise<boolean> {
+    if (this.isRunning()) return true;
+    if (!this.proc) return false;
+
+    return new Promise<boolean>((resolve) => {
+      let settled = false;
+      const finish = (ok: boolean) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        this.off("status", onStatus);
+        this.off("error", onError);
+        this.off("exit", onExit);
+        resolve(ok);
+      };
+      const onStatus = (s: string) => { if (s === "connected") finish(true); };
+      const onError = () => finish(false);
+      const onExit = () => finish(false);
+      const timer = setTimeout(() => finish(false), timeoutMs);
+      timer.unref?.();
+      this.on("status", onStatus);
+      this.on("error", onError);
+      this.on("exit", onExit);
+      // Re-check after binding listeners in case state flipped meanwhile
+      if (this.isRunning()) finish(true);
+    });
+  }
+
   /**
    * Send a user message. Creates/resumes thread if needed, then starts a turn.
    */
