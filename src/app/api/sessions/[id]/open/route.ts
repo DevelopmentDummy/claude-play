@@ -3,6 +3,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { getServices, openSessionInstance } from "@/lib/services";
 import { providerFromModel, parseModelEffort } from "@/lib/ai-provider";
+import { consumeRestartMarker } from "@/lib/restart-notification";
 
 export async function POST(
   req: Request,
@@ -128,6 +129,12 @@ export async function POST(
 
   const voiceConfig = svc.sessions.readVoiceConfig(sessionDir);
   const voiceEnabled = voiceConfig?.enabled ?? false;
+
+  // If this session triggered a service restart on the previous boot, deliver
+  // the silent "restart completed" notification once the AI process is ready.
+  // No-op when no marker exists. Atomic — safe under concurrent open calls.
+  // Fire-and-forget: don't block the open response on the AI handshake.
+  void consumeRestartMarker(sessionDir, instance);
 
   return NextResponse.json({ ...info, opening, isResume, layout, panels, panelContext, sharedPlacements, popups: popups || [], profileImage, iconImage, model: effectiveRaw || "", provider, voiceEnabled, chatOptions: resolvedOptions });
 }
