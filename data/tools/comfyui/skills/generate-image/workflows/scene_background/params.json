@@ -1,0 +1,91 @@
+{
+  "description": "배경화면 전용 16:9 장면 (1536x864) — scene 패키지와 동일한 디테일러/업스케일 체인, 해상도만 16:9로 조정",
+  "compatibility": {
+    "requires": {
+      "loader": "checkpoint_simple"
+    },
+    "incompatible_message": "scene_background 패키지는 단일 세이프텐서 체크포인트(CheckpointLoaderSimple)만 지원합니다."
+  },
+  "features": {
+    "checkpoint_auto": true,
+    "lora_injection": true,
+    "lora_couple_branches": false,
+    "seed_randomize": true,
+    "trigger_tags": true,
+    "detailer_chain": true
+  },
+  "detailer_chain": {
+    "source": {
+      "node": "6",
+      "output": 0
+    },
+    "sink": {
+      "node": "30",
+      "field": "image"
+    }
+  },
+  "params": {
+    "prompt": {
+      "node": "2",
+      "field": "text",
+      "type": "string",
+      "required": true
+    },
+    "negative_prompt": {
+      "node": "3",
+      "field": "text",
+      "type": "string",
+      "default": "bad quality, worst quality, worst detail, sketch, censored, watermark, signature, extra fingers, mutated hands, bad anatomy"
+    },
+    "width": {
+      "node": "4",
+      "field": "width",
+      "type": "number",
+      "default": 1536
+    },
+    "height": {
+      "node": "4",
+      "field": "height",
+      "type": "number",
+      "default": 864
+    },
+    "steps": {
+      "node": "5",
+      "field": "steps",
+      "type": "number",
+      "default": 35
+    },
+    "cfg": {
+      "node": "5",
+      "field": "cfg",
+      "type": "number",
+      "default": 6
+    },
+    "seed": {
+      "node": "5",
+      "field": "seed",
+      "type": "number",
+      "default": -1
+    },
+    "detailer_face": {
+      "type": "boolean",
+      "default": true,
+      "description": "Enable/disable face detailer"
+    },
+    "detailer_hand": {
+      "type": "boolean",
+      "default": true,
+      "description": "Enable/disable hand detailer"
+    },
+    "detailer_pussy": {
+      "type": "boolean",
+      "default": false,
+      "description": "Enable/disable pussy detailer"
+    },
+    "detailer_anus": {
+      "type": "boolean",
+      "default": false,
+      "description": "Enable/disable anus detailer"
+    }
+  }
+}

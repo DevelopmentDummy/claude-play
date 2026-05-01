@@ -19,6 +19,10 @@ data/*.db-shm
 .restart-trigger
 data/.server.pid
 data/restart.log
+data/restart-build.log
+data/restart-newserver.log
+data/restart-orchestrator.log
+data/tools/comfyui/_debug/
 gpu-manager/__pycache__/
 gpu-manager/venv/
 comfyui_submodule/venv/
