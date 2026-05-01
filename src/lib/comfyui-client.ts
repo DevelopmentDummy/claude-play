@@ -1505,6 +1505,42 @@ export class ComfyUIClient {
     sessionDir: string,
     extraFiles?: Record<string, string>
   ): Promise<GenerateResult> {
+    // Defensive sanitization: ComfyUI iterates every top-level prompt key as
+    // a node and calls `node.get('_meta')` / `node['inputs'].items()` — if any
+    // value is a non-object (string/number/etc), the server crashes with
+    // `'str' object has no attribute 'get'`. Strip such stray metadata keys
+    // (e.g. callers accidentally merging `targetScope` into the graph) and
+    // log them so the upstream bug stays visible.
+    {
+      const stray: string[] = [];
+      for (const k of Object.keys(prompt)) {
+        const v = (prompt as Record<string, unknown>)[k];
+        if (v === null || typeof v !== "object" || Array.isArray(v)) {
+          stray.push(k);
+          delete (prompt as Record<string, unknown>)[k];
+        }
+      }
+      if (stray.length > 0) {
+        console.warn(
+          `[comfyui] Stripped non-node top-level keys from prompt before submit: ${stray.join(", ")}. ` +
+          `These should not be in the prompt graph — fix the caller.`,
+        );
+      }
+    }
+
+    // [DEBUG] dump the prompt sent to ComfyUI for diagnosing missing_node_type errors.
+    // Remove once anima-mixed-scene corruption is identified.
+    try {
+      const dumpDir = path.join(process.cwd(), "data", "tools", "comfyui", "_debug");
+      fs.mkdirSync(dumpDir, { recursive: true });
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const dumpPath = path.join(dumpDir, `prompt_${stamp}_${filename.replace(/[^a-zA-Z0-9._-]/g, "_")}.json`);
+      fs.writeFileSync(dumpPath, JSON.stringify(prompt, null, 2));
+      console.log(`[comfyui-debug] Dumped submitted prompt to ${dumpPath}`);
+    } catch (e) {
+      console.warn(`[comfyui-debug] Failed to dump prompt: ${(e as Error).message}`);
+    }
+
     const useGpuManager = await this.gpuManagerAvailable();
 
     if (useGpuManager) {

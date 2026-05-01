@@ -35,7 +35,17 @@ class ComfyUIProxy:
             f"{self.comfyui_url}/prompt",
             json={"prompt": prompt},
         )
-        resp.raise_for_status()
+        if resp.status_code >= 400:
+            # ComfyUI returns the actual diagnostic (missing_node_type, node_errors,
+            # invalid_inputs, …) in the response body. raise_for_status() drops it,
+            # leaving callers blind. Surface it instead.
+            try:
+                detail = resp.json()
+            except Exception:
+                detail = resp.text
+            raise RuntimeError(
+                f"ComfyUI rejected prompt ({resp.status_code}): {detail}"
+            )
         prompt_id = resp.json()["prompt_id"]
         logger.info("Submitted prompt %s to ComfyUI", prompt_id)
 

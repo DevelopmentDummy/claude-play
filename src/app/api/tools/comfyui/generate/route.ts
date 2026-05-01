@@ -35,6 +35,31 @@ export async function POST(req: Request) {
     );
   }
 
+  // If `raw` is provided, it must look like a real ComfyUI prompt graph:
+  // an object whose values are node objects ({ class_type, inputs, ... }).
+  // Reject early with a clear message instead of letting ComfyUI explode on
+  // `'str' object has no attribute 'get'` when callers accidentally stuff
+  // metadata fields (e.g. targetScope) into `raw`.
+  if (body.raw) {
+    const entries = Object.entries(body.raw);
+    const hasNodeShaped = entries.some(
+      ([, v]) => v !== null && typeof v === "object" && !Array.isArray(v),
+    );
+    if (!hasNodeShaped) {
+      return NextResponse.json(
+        {
+          error:
+            "Invalid `raw` payload: expected a ComfyUI prompt graph " +
+            "(object of node objects). Did you accidentally put metadata " +
+            "fields like `targetScope` inside `raw`? Move them to the top " +
+            "level of the request body.",
+          received_keys: entries.map(([k]) => k),
+        },
+        { status: 400 },
+      );
+    }
+  }
+
   // Determine target directory: active session or persona dir (for builder)
   let targetDir: string;
   let workflowsDir: string;
