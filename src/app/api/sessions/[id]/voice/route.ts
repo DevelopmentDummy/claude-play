@@ -24,23 +24,28 @@ export async function PATCH(
   const { sessions } = getServices();
   const dir = sessions.getSessionDir(id);
 
-  // Sync ttsAutoPlay to live session instance (controls TTS generation)
+  // Sync ttsAutoPlay to live session instance AND persist to voice.json.enabled.
+  // Each TTS provider already early-returns when its own config is missing
+  // (voiceFile/edgeVoice/etc.), so flipping enabled=true with no setup is harmless.
+  let persistEnabled: boolean | undefined;
   if (body.ttsAutoPlay !== undefined) {
+    const next = !!body.ttsAutoPlay;
     const instance = getSessionInstance(id);
     if (instance) {
-      instance.ttsAutoPlay = !!body.ttsAutoPlay;
-      console.log(`[voice] ttsAutoPlay=${instance.ttsAutoPlay} for ${id}`);
+      instance.ttsAutoPlay = next;
+      console.log(`[voice] ttsAutoPlay=${next} for ${id}`);
     } else {
-      console.warn(`[voice] No active instance for ${id}, ttsAutoPlay not applied`);
+      console.warn(`[voice] No active instance for ${id}, ttsAutoPlay not applied to runtime`);
     }
-    // Don't persist ttsAutoPlay to voice.json — it's a runtime toggle
+    persistEnabled = next;
     delete body.ttsAutoPlay;
-    if (Object.keys(body).length === 0) {
-      return NextResponse.json({ ok: true });
-    }
   }
 
   const existing = sessions.readVoiceConfig(dir) || { enabled: false };
-  sessions.writeVoiceConfig(dir, { ...existing, ...body });
+  const merged = { ...existing, ...body };
+  if (persistEnabled !== undefined) {
+    merged.enabled = persistEnabled;
+  }
+  sessions.writeVoiceConfig(dir, merged);
   return NextResponse.json({ ok: true });
 }
