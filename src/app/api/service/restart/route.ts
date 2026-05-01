@@ -2,67 +2,73 @@ import { NextResponse } from "next/server";
 import { spawn } from "child_process";
 import path from "path";
 import fs from "fs";
+import { getServices } from "@/lib/services";
+import { markRestartTriggered } from "@/lib/restart-notification";
 
-export const maxDuration = 600;
+export const maxDuration = 30;
 
-interface BuildResult {
-  ok: boolean;
-  exitCode: number | null;
-  durationMs: number;
-  stdoutTail: string;
-  stderrTail: string;
-}
-
-function tailLines(text: string, n: number): string {
-  const lines = text.split(/\r?\n/);
-  return lines.slice(Math.max(0, lines.length - n)).join("\n");
-}
-
-function runBuild(root: string): Promise<BuildResult> {
-  return new Promise((resolve) => {
-    const isWin = process.platform === "win32";
-    const start = Date.now();
-    const child = spawn(isWin ? "npm.cmd" : "npm", ["run", "build"], {
-      cwd: root,
-      env: { ...process.env, NODE_OPTIONS: "" },
-      stdio: ["ignore", "pipe", "pipe"],
-      windowsHide: true,
-    });
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (b: Buffer) => { stdout += b.toString(); });
-    child.stderr.on("data", (b: Buffer) => { stderr += b.toString(); });
-    child.on("close", (code) => {
-      resolve({
-        ok: code === 0,
-        exitCode: code,
-        durationMs: Date.now() - start,
-        stdoutTail: tailLines(stdout, 50),
-        stderrTail: tailLines(stderr, 50),
-      });
-    });
-  });
-}
-
-function spawnRespawnOrchestrator(root: string, mode: string | undefined): number | null {
+function spawnRespawnOrchestrator(
+  root: string,
+  mode: string | undefined,
+  skipBuild: boolean,
+): number | null {
   const script = path.join(root, "scripts", "restart.mjs");
-  const args = [script];
+  const orchArgs: string[] = [script];
   if (mode === "dev" || mode === "start") {
-    args.push("--mode", mode);
+    orchArgs.push("--mode", mode);
   }
-  const child = spawn("node", args, {
-    cwd: root,
-    detached: true,
-    stdio: "ignore",
-    windowsHide: true,
-    env: { ...process.env, NODE_OPTIONS: "" },
-  });
+  if (skipBuild) {
+    orchArgs.push("--skip-build");
+  }
+  const isWin = process.platform === "win32";
+
+  // Capture orchestrator's stdout/stderr to a file so we can debug crashes that
+  // happen before its own logger initializes (e.g. import errors).
+  const dataDir = path.join(root, "data");
+  fs.mkdirSync(dataDir, { recursive: true });
+  const orchLogPath = path.join(dataDir, "restart-orchestrator.log");
+  fs.appendFileSync(
+    orchLogPath,
+    `\n[${new Date().toISOString()}] === api route spawning orchestrator (mode=${mode || "auto"}, skipBuild=${skipBuild}, isWin=${isWin}) ===\n`,
+  );
+  const orchOutFd = fs.openSync(orchLogPath, "a");
+  const orchErrFd = fs.openSync(orchLogPath, "a");
+
+  // On Windows, spawn through `cmd /c start /B` so the orchestrator's PPID points to
+  // a short-lived cmd.exe that exits immediately. This detaches it from the current
+  // server's PID tree — otherwise `taskkill /T /F /PID <server>` walks the tree and
+  // kills the orchestrator before it can spawn the replacement server.
+  const child = isWin
+    ? spawn("cmd", ["/c", "start", "/B", "node", ...orchArgs], {
+        cwd: root,
+        detached: true,
+        stdio: ["ignore", orchOutFd, orchErrFd],
+        windowsHide: true,
+        env: { ...process.env, NODE_OPTIONS: "" },
+      })
+    : spawn("node", orchArgs, {
+        cwd: root,
+        detached: true,
+        stdio: ["ignore", orchOutFd, orchErrFd],
+        windowsHide: true,
+        env: { ...process.env, NODE_OPTIONS: "" },
+      });
+
+  // Parent doesn't need these fds anymore — child has its own dup'd handles
+  try { fs.closeSync(orchOutFd); } catch { /* already closed */ }
+  try { fs.closeSync(orchErrFd); } catch { /* already closed */ }
   child.unref();
   return child.pid ?? null;
 }
 
 export async function POST(req: Request) {
-  let body: { mode?: string; skipBuild?: boolean; respawn?: boolean } = {};
+  let body: {
+    mode?: string;
+    skipBuild?: boolean;
+    respawn?: boolean;
+    sessionId?: string;
+    triggeredBy?: string;
+  } = {};
   try {
     body = await req.json();
   } catch {
@@ -78,33 +84,50 @@ export async function POST(req: Request) {
   const respawn = body.respawn !== false;
   const skipBuild = !!body.skipBuild;
 
-  let build: BuildResult | null = null;
-  if (!skipBuild) {
-    build = await runBuild(root);
-    if (!build.ok) {
-      return NextResponse.json({
-        ok: false,
-        stage: "build",
-        message: "Build failed — server NOT restarted",
-        build,
-      }, { status: 500 });
-    }
+  if (!respawn) {
+    return NextResponse.json({
+      ok: true,
+      stage: "noop",
+      note: "respawn disabled; nothing to do.",
+    });
   }
 
-  let orchestratorPid: number | null = null;
-  if (respawn) {
-    orchestratorPid = spawnRespawnOrchestrator(root, body.mode);
+  // If a session triggered this restart (e.g. via MCP tool), drop a marker so the
+  // session gets a silent "restart completed" notification when it's reactivated
+  // on the new server. See restart-notification.ts.
+  console.log(`[restart] POST received: sessionId=${body.sessionId ?? "<none>"} triggeredBy=${body.triggeredBy ?? "<none>"} skipBuild=${skipBuild} respawn=${respawn}`);
+  let markerWritten = false;
+  if (body.sessionId) {
+    try {
+      const svc = getServices();
+      const sessionDir = svc.sessions.getSessionDir(body.sessionId);
+      const sessionInfo = svc.sessions.getSessionInfo(body.sessionId);
+      if (sessionInfo) {
+        markRestartTriggered(sessionDir, body.sessionId, body.triggeredBy || "api");
+        markerWritten = true;
+      } else {
+        console.warn(`[restart] sessionId=${body.sessionId} provided but session not found — marker NOT written`);
+      }
+    } catch (err) {
+      console.warn(`[restart] failed to write notification marker:`, err);
+    }
+  } else {
+    console.log(`[restart] no sessionId provided — silent notification will not be delivered`);
   }
+
+  // Spawn orchestrator and return immediately — orchestrator runs build → kill → respawn
+  // in the background. This keeps the running server unaffected during build.
+  const orchestratorPid = spawnRespawnOrchestrator(root, body.mode, skipBuild);
 
   return NextResponse.json({
     ok: true,
-    stage: respawn ? "respawn-spawned" : "build-only",
-    build,
-    respawn,
+    stage: "scheduled",
     orchestratorPid,
     mode: body.mode || "auto",
-    note: respawn
-      ? "Server will be killed and respawned within ~1-2s. Reconnect after a few seconds. See data/restart.log."
-      : "Build complete; respawn skipped.",
+    skipBuild,
+    notificationMarker: markerWritten,
+    note: skipBuild
+      ? "Orchestrator spawned (skipBuild). It will kill and respawn the server. See data/restart.log."
+      : "Orchestrator spawned. It will run 'npm run build' first, then kill and respawn on success. See data/restart.log and data/restart-build.log.",
   });
 }
