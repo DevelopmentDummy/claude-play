@@ -53,7 +53,14 @@ export function useWebSocket({
 
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const params = new URLSearchParams();
-    if (sessionId) params.set("sessionId", sessionId);
+    if (sessionId) {
+      // Next.js useParams() returns URL-encoded route segments (e.g. Korean → %EC%8B%9C...).
+      // URLSearchParams.set() will encode again, producing %25EC%258B%259C... (double-encoded).
+      // Decode once first so the wire format ends up single-encoded.
+      let sid = sessionId;
+      try { sid = decodeURIComponent(sid); } catch { /* leave as-is if not encoded */ }
+      params.set("sessionId", sid);
+    }
     if (isBuilder) params.set("builder", "true");
     const url = `${protocol}//${window.location.host}/ws?${params}`;
 
@@ -63,9 +70,12 @@ export function useWebSocket({
 
     ws.onopen = () => {
       if (sessionId || isBuilder) {
+        // Decode once (same reason as URL above) so server-side normalizeSessionId yields the raw id.
+        let sid: string | undefined = sessionId;
+        if (sid) { try { sid = decodeURIComponent(sid); } catch { /* keep raw */ } }
         ws.send(JSON.stringify({
           type: "session:bind",
-          sessionId,
+          sessionId: sid,
           isBuilder: !!isBuilder,
         }));
       }
