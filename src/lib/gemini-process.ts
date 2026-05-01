@@ -40,10 +40,6 @@ export class GeminiProcess extends EventEmitter<GeminiProcessEvents> {
 
   // Track whether any delta events were received in the current turn
   private seenDeltaInTurn = false;
-  // Gemini 3 streams thinking text as regular message deltas, terminated by "[Thought: true]".
-  // We buffer until the marker flushes (keeping only post-marker content) or a tool_use arrives.
-  private thinkingBuffer = "";
-  private thinkingDone = false;
 
   /**
    * Ensure a directory is registered as trusted in ~/.gemini/trustedFolders.json.
@@ -113,8 +109,6 @@ export class GeminiProcess extends EventEmitter<GeminiProcessEvents> {
     this.savedSessionId = resumeId || null;
     this.pendingFirstMessage = true;
     this.seenDeltaInTurn = false;
-    this.thinkingBuffer = "";
-    this.thinkingDone = false;
 
     // Ensure cwd is trusted so Gemini loads .gemini/settings.json (MCP config)
     this.ensureGeminiTrust(cwd);
@@ -198,8 +192,6 @@ export class GeminiProcess extends EventEmitter<GeminiProcessEvents> {
 
     this.buffer = "";
     this.seenDeltaInTurn = false;
-    this.thinkingBuffer = "";
-    this.thinkingDone = false;
 
     this.proc = spawn(cmd, args, {
       env,
@@ -299,32 +291,6 @@ export class GeminiProcess extends EventEmitter<GeminiProcessEvents> {
   }
 
   /**
-   * Gemini 3 CLI emits thinking as regular assistant message deltas, closing each
-   * thinking block with a literal "[Thought: true]" marker. Multiple thinking
-   * blocks can chain within a single turn (e.g. "...done.\n[Thought: true]**Next
-   * Step**..."). Buffer across deltas so a marker split by chunk boundary still
-   * resolves, and only return text that lies after the final marker.
-   */
-  private extractNonThinking(content: string): string {
-    if (this.thinkingDone) return content;
-    this.thinkingBuffer += content;
-    const marker = "[Thought: true]";
-    const lastIdx = this.thinkingBuffer.lastIndexOf(marker);
-    if (lastIdx === -1) {
-      // Keep tail that might contain a partial marker split across chunks.
-      // Anything older than marker.length - 1 chars from the end is safe to discard.
-      if (this.thinkingBuffer.length > marker.length) {
-        this.thinkingBuffer = this.thinkingBuffer.slice(-(marker.length - 1));
-      }
-      return "";
-    }
-    const afterMarker = this.thinkingBuffer.slice(lastIdx + marker.length);
-    this.thinkingBuffer = "";
-    this.thinkingDone = true;
-    return afterMarker.replace(/^\s+/, "");
-  }
-
-  /**
    * Normalize Gemini stream events to the shared EventEmitter interface.
    */
   private handleGeminiEvent(event: Record<string, unknown>): void {
@@ -346,15 +312,13 @@ export class GeminiProcess extends EventEmitter<GeminiProcessEvents> {
         if (!content) break;
 
         if (event.delta === true) {
-          const emitText = this.extractNonThinking(content);
-          if (!emitText) break;
           this.seenDeltaInTurn = true;
           this.emit("message", {
             type: "assistant",
             subtype: "text_delta",
             message: {
               role: "assistant",
-              content: emitText,
+              content,
             },
           });
         } else {
@@ -374,10 +338,6 @@ export class GeminiProcess extends EventEmitter<GeminiProcessEvents> {
       }
 
       case "tool_use": {
-        // A tool_use implies any pre-tool buffered text was internal reasoning —
-        // drop it and treat post-tool output as the actual response.
-        this.thinkingBuffer = "";
-        this.thinkingDone = true;
         const toolName = event.tool_name as string | undefined;
         const parameters = (event.parameters ?? {}) as unknown;
         this.emit("message", {
@@ -398,8 +358,6 @@ export class GeminiProcess extends EventEmitter<GeminiProcessEvents> {
 
       case "result": {
         this.seenDeltaInTurn = false;
-        this.thinkingBuffer = "";
-        this.thinkingDone = false;
         this.emit("message", { type: "result" });
         break;
       }
@@ -423,6 +381,12 @@ export class GeminiProcess extends EventEmitter<GeminiProcessEvents> {
   isRunning(): boolean {
     // Ready if process is running OR we're waiting for the first message
     return !!(this.proc) || this.pendingFirstMessage;
+  }
+
+  /** Resolve once the wrapper is ready to accept a message. Gemini is "ready"
+   *  synchronously after spawn (lazy process start on first send). */
+  async waitForReady(_timeoutMs = 20_000): Promise<boolean> {
+    return this.isRunning();
   }
 
   private killCurrentProc(): void {
