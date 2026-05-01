@@ -102,7 +102,7 @@ export async function POST(
     profile: "images/profile.png",
     icon: iconResult?.success ? "images/icon.png" : null,
     timestamp,
-  });
+  }, { sessionId: id });
 
   return NextResponse.json({
     status: "success",

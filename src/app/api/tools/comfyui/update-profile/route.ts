@@ -126,7 +126,7 @@ export async function POST(req: Request) {
     profile: "images/profile.png",
     icon: iconResult?.success ? "images/icon.png" : null,
     timestamp,
-  });
+  }, { sessionId });
 
   return NextResponse.json({
     status: "success",

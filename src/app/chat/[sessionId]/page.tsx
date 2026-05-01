@@ -509,7 +509,10 @@ export default function ChatPage() {
         setPendingEvents(headers || []);
       },
       "profile:update": (p) => {
-        const update = p as { profile?: string; timestamp?: number };
+        const update = p as { profile?: string; timestamp?: number; sessionId?: string };
+        // Defensive: ignore profile updates from other sessions (server should already filter,
+        // but guard against legacy unfiltered broadcasts).
+        if (update.sessionId && update.sessionId !== sessionId) return;
         if (update.profile) {
           const t = update.timestamp || Date.now();
           setProfileImage(`/api/sessions/${sessionId}/files/${update.profile}?t=${t}`);
