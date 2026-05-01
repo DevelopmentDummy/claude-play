@@ -313,6 +313,12 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
     return !!(this.proc?.stdin?.writable);
   }
 
+  /** Resolve once the process is ready to accept input. Claude is ready synchronously
+   *  after spawn (stdin pipe is immediately writable). */
+  async waitForReady(_timeoutMs = 20_000): Promise<boolean> {
+    return this.isRunning();
+  }
+
   send(text: string): void {
     if (!this.proc?.stdin?.writable) {
       this.emit("error", "Claude process not running");
