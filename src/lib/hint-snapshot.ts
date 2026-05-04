@@ -7,6 +7,12 @@ export interface HintRule {
   max_key?: string;
   tiers?: { max: number; hint: string }[];
   tier_mode?: "percentage" | "value";
+  /** 빈 문자열, 0, false, null 일 때 STATE 헤더에서 생략 (다이어트용 opt-in 플래그). */
+  omit_when_empty?: boolean;
+  /** 0일 때 생략 (omit_when_empty의 부분집합 — 카운터 다이어트용). */
+  omit_when_zero?: boolean;
+  /** false일 때 생략 (boolean 다이어트용). */
+  omit_when_false?: boolean;
 }
 
 export type HintRules = Record<string, HintRule>;
@@ -58,6 +64,15 @@ export function buildSnapshot(
   for (const [key, rule] of expandedRules) {
     const value = vars[key];
     if (value === undefined) continue;
+
+    // STATE 헤더 다이어트용 — opt-in 생략 플래그 처리
+    if (rule.omit_when_empty) {
+      if (value === null || value === "" || value === 0 || value === false) continue;
+      if (Array.isArray(value) && value.length === 0) continue;
+    } else {
+      if (rule.omit_when_zero && value === 0) continue;
+      if (rule.omit_when_false && value === false) continue;
+    }
 
     const entry: { display: string; hint?: string } = { display: "" };
 
