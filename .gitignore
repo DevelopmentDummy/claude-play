@@ -27,6 +27,7 @@ gpu-manager/__pycache__/
 gpu-manager/venv/
 comfyui_submodule/venv/
 data/tools/comfyui/lora-triggers.json
+data/tools/comfyui/lora-triggers.from-cheatsheet.json
 data/tools/comfyui/skills/generate-image/lora-cheatsheet.md
 comfyui_submodule/models/
 comfyui_submodule/output/

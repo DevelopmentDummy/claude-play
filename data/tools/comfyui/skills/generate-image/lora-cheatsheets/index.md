@@ -9,22 +9,30 @@
 - 이미지 생성 시에는 현재 워크플로우/체크포인트/텍스트 인코더 조합에 맞는 치트시트를 먼저 고른다.
 - 새 LoRA를 추가하면 공통 문서 하나에 몰아넣지 말고 **해당 베이스 문서에만 기록**한다.
 
-## 어떤 파일을 먼저 볼까
+## 어떤 파일을 먼저 볼까 (Manifest + Full 2-stage)
 
-- `anima.md`
-  - Anima 계열 워크플로우
-  - 혼합형 프롬프트: 자연어 본문 + 핵심 태그 보조
-  - `anima-mixed-scene` 같은 전용 패키지 우선
+LoRA 룩업은 **2단계**다. 매번 풀 마크다운(35KB)을 통째로 읽지 마라.
 
-- `illustrious.md`
-  - Illustrious / SDXL anime 계열 워크플로우
-  - Danbooru 태그 우선
-  - 기존 portrait / scene / scene-couple 계열에 우선 적용
+**1차 (매니페스트, 항상 여기부터):**
+- `illustrious.manifest.txt` — Illustrious/SDXL anime 워크플로우 (`portrait`/`scene`/`scene-real`/`scene-couple`/`profile`)
+- `anima.manifest.txt` — Anima 계열 워크플로우 (`anima-mixed-scene`)
+- `qwen-image.manifest.txt` — Qwen-Image 워크플로우
 
-- `qwen-image.md`
-  - Qwen-Image 계열 워크플로우
-  - 문장형 지시 우선, 태그는 보조
-  - 과도한 태그 나열보다 장면 설명과 관계 지시를 우선
+활성 워크플로의 매니페스트 **한 개만** 로드한다. 모델 간 LoRA 비호환.
+
+매니페스트 한 줄 포맷: `파일명 [카테고리,플래그(,auto-trig)] 짧은 용도 │ 강도 [│ trig?: 후보 태그]`
+
+- `auto-trig` 플래그 — `lora-triggers.json`에 등록되어 서버가 자동 주입. 토큰 값은 매니페스트에 안 적힘 (중복 제거).
+- `trig?:` — selective. 옵션/바리에이션이 섞여 자동 주입에서 제외. 후보 토큰만 노출, 매번 사용자가 골라 수동으로 박을 것.
+- 둘 다 없으면 트리거 정의 없는 LoRA.
+
+**2차 (풀 노트, 디테일 필요 시 핀포인트 grep):**
+- `anima.md` — 혼합형 프롬프트 (자연어 + 핵심 태그). baseLoras 정책, 운영 노트 포함
+- `illustrious.md` — Danbooru 태그 우선. [BASE]/[NSFW-BASE] 체인 포함
+- `qwen-image.md` — 문장형 지시 우선
+- `anima.compat-log.md` — Anima 호환성 시점 기록 (참조 빈도 낮음)
+
+**갱신:** `.md` 수정 후 `node build-manifest.mjs` 실행. 모든 매니페스트 자동 재생성.
 
 ## 공통 기록 형식
 
