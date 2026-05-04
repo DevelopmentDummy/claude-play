@@ -194,19 +194,21 @@ function loadRuntimeTriggers() {
 }
 
 /** lora-triggers.json 엔트리 → 매니페스트 표기 결정
- * 반환: { hasAuto: boolean, options: string|null }
+ * 반환: { hasAuto: boolean, options: string|null, registered: boolean }
+ *  - registered=false: undefined (json에 없음, 진짜 미등록)
+ *  - registered=true + hasAuto=false + options=null: 빈 문자열 또는 {auto:""} (의도적 트리거-없음)
  */
 function classifyTrigger(entry) {
-  if (entry === undefined) return { hasAuto: false, options: null };
+  if (entry === undefined) return { hasAuto: false, options: null, registered: false };
   if (typeof entry === "string") {
-    return { hasAuto: entry.trim().length > 0, options: null };
+    return { hasAuto: entry.trim().length > 0, options: null, registered: true };
   }
   if (entry && typeof entry === "object") {
     const auto = typeof entry.auto === "string" ? entry.auto.trim() : "";
     const opts = typeof entry.options === "string" ? entry.options.trim() : "";
-    return { hasAuto: auto.length > 0, options: opts || null };
+    return { hasAuto: auto.length > 0, options: opts || null, registered: true };
   }
-  return { hasAuto: false, options: null };
+  return { hasAuto: false, options: null, registered: false };
 }
 
 function formatManifest(entries, sourcePath, runtimeTriggers) {
@@ -215,8 +217,9 @@ function formatManifest(entries, sourcePath, runtimeTriggers) {
     `# 원본: ${path.basename(sourcePath)}`,
     `# 생성: ${new Date().toISOString()}`,
     `# 포맷: 파일명 [카테고리,플래그] 짧은 용도 │ 강도 [│ trig?: 후보 태그]`,
-    `# 플래그: base, nsfw-base, nsfw, warn(⚠️), broken(❌), auto-trig`,
-    `# auto-trig: lora-triggers.json의 auto 토큰이 서버에서 자동 주입됨 (값은 매니페스트에 표시 안 함)`,
+    `# 플래그: base, nsfw-base, nsfw, warn(⚠️), broken(❌), auto-trig, no-trigger`,
+    `# auto-trig:  lora-triggers.json의 auto 토큰이 서버에서 자동 주입됨 (값은 매니페스트에 표시 안 함)`,
+    `# no-trigger: lora-triggers.json에 등록되어 있지만 의도적으로 트리거 없음 (quality/style 부스터)`,
     `# trig?:    selective — 매번 사용자가 골라 직접 박을 후보 토큰`,
     `# 분류는 lora-triggers.json의 스키마에 따른다 (string=auto / {auto,options} 객체)`,
     ``,
@@ -227,6 +230,7 @@ function formatManifest(entries, sourcePath, runtimeTriggers) {
       const cls = classifyTrigger(runtimeTriggers[e.filename]);
       const flags = e.flags.split(",");
       if (cls.hasAuto) flags.push("auto-trig");
+      else if (cls.registered && !cls.options) flags.push("no-trigger");
       const base = `${e.filename} [${flags.join(",")}] ${e.use} │ ${e.strength}`;
       if (cls.options) {
         return `${base} │ trig?: ${cls.options}`;
@@ -248,15 +252,16 @@ function processFile(mdPath, runtimeTriggers) {
 }
 
 function summarize(entries, runtimeTriggers) {
-  let auto = 0, autoPlus = 0, opt = 0, none = 0;
+  let auto = 0, autoPlus = 0, opt = 0, noTrig = 0, none = 0;
   for (const e of entries) {
     const cls = classifyTrigger(runtimeTriggers[e.filename]);
     if (cls.hasAuto && cls.options) autoPlus++;
     else if (cls.hasAuto) auto++;
     else if (cls.options) opt++;
+    else if (cls.registered) noTrig++;
     else none++;
   }
-  return { auto, autoPlus, opt, none };
+  return { auto, autoPlus, opt, noTrig, none };
 }
 
 function main() {
@@ -282,7 +287,7 @@ function main() {
       const r = processFile(t, rawTriggers);
       const s = summarize(r.entries, rawTriggers);
       console.log(`  ✓ ${path.basename(t)} → ${path.basename(r.outPath)}`);
-      console.log(`      LoRA ${r.count}개 — auto ${s.auto} / auto+옵션 ${s.autoPlus} / 옵션만 ${s.opt} / 미등록 ${s.none} (${r.bytes}B)`);
+      console.log(`      LoRA ${r.count}개 — auto ${s.auto} / auto+옵션 ${s.autoPlus} / 옵션만 ${s.opt} / no-trigger ${s.noTrig} / 미등록 ${s.none} (${r.bytes}B)`);
     } catch (e) {
       console.error(`  ✗ ${path.basename(t)}: ${e.message}`);
     }
