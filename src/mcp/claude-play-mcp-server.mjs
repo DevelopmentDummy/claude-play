@@ -842,6 +842,7 @@ server.registerTool(
       persona: z.string().optional(),
       targetScope: z.enum(["persona", "session"]).optional(),
       async: z.boolean().optional().describe("Fire-and-forget mode: returns predicted path immediately without waiting for generation. Frontend polls the file URL via InlineImage. Use for response-pipelining."),
+      nsfw: z.boolean().optional().describe("NSFW 모드. true면 활성 프리셋의 nsfwLoras(예: BuAnime)가 자동으로 baseLoras에 결합되어 주입된다. NSFW 씬(노출·성행위·BDSM 등)에서 사용."),
     },
   },
   async (input) => {
@@ -924,6 +925,7 @@ server.registerTool(
 
       params.negative_prompt = getComfyNegative(input.negative_prompt);
       if (typeof input.seed === "number") params.seed = input.seed;
+      if (input.nsfw === true) params.nsfw = true;
 
       const finalFilename = deduplicateImageFilename(pickString(input.filename) || `comfyui_${Date.now()}.png`);
       const payload = withPersona({

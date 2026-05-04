@@ -664,24 +664,15 @@ export class ComfyUIClient {
     }
   }
 
-  /** Auto-inject trigger tags for active LoRAs into the prompt text, with deduplication */
+  /** Auto-inject trigger tags for active LoRAs into the prompt text, with deduplication.
+   *  Multi-prompt workflows (scene-couple etc.) inject into all prompt_* params. */
   private injectTriggerTags(
     prompt: Record<string, unknown>,
     meta: WorkflowPackageMeta,
     triggerTable: Record<string, string>,
     activeLoRAs: string[]
   ): void {
-    const promptDef = meta.params["prompt"];
-    if (!promptDef) return;
-
-    const node = prompt[promptDef.node] as Record<string, unknown> | undefined;
-    if (!node) return;
-    const inputs = node.inputs as Record<string, unknown> | undefined;
-    if (!inputs) return;
-
-    const currentPrompt = (inputs[promptDef.field] as string) || "";
-
-    // Collect trigger tags from all active LoRAs
+    // Collect trigger tags from all active LoRAs (once)
     const triggerTags: string[] = [];
     for (const loraName of activeLoRAs) {
       const triggers = triggerTable[loraName];
@@ -692,17 +683,34 @@ export class ComfyUIClient {
         }
       }
     }
-
     if (triggerTags.length === 0) return;
 
-    // Deduplicate against tags already in the prompt (case-insensitive)
-    const promptLower = currentPrompt.toLowerCase();
-    const newTags = triggerTags.filter(tag => !promptLower.includes(tag.toLowerCase()));
+    // Discover all positive-prompt-like params: "prompt", "prompt_left", "prompt_right", ...
+    // Negative prompts and non-prompt params are skipped.
+    const promptKeys = Object.keys(meta.params).filter(k => k === "prompt" || /^prompt_/.test(k));
+    if (promptKeys.length === 0) return;
 
-    if (newTags.length === 0) return;
+    let injectedCount = 0;
+    for (const key of promptKeys) {
+      const promptDef = meta.params[key];
+      if (!promptDef?.node || !promptDef?.field) continue;
+      const node = prompt[promptDef.node] as Record<string, unknown> | undefined;
+      if (!node) continue;
+      const inputs = node.inputs as Record<string, unknown> | undefined;
+      if (!inputs) continue;
 
-    inputs[promptDef.field] = currentPrompt + ", " + newTags.join(", ");
-    console.log(`[comfyui] Auto-injected trigger tags: ${newTags.join(", ")}`);
+      const currentPrompt = (inputs[promptDef.field] as string) || "";
+      const currentLower = currentPrompt.toLowerCase();
+      const newTags = triggerTags.filter(tag => !currentLower.includes(tag.toLowerCase()));
+      if (newTags.length === 0) continue;
+      inputs[promptDef.field] = currentPrompt + ", " + newTags.join(", ");
+      injectedCount += newTags.length;
+      if (key !== "prompt") {
+        console.log(`[comfyui] Auto-injected trigger tags into ${key}: ${newTags.join(", ")}`);
+      }
+    }
+    if (injectedCount === 0) return;
+    console.log(`[comfyui] Auto-injected ${injectedCount} trigger tags across ${promptKeys.length} prompt(s)`);
   }
 
   /** Resolve the best available checkpoint name */
@@ -892,18 +900,36 @@ export class ComfyUIClient {
     // 4a.5: checkpoint compatibility validation
     this.validateCheckpointCompatibility(prompt, pkg);
 
-    // 4b: lora_injection (base LoRAs + dynamic LoRAs + pruning)
+    // 4b: lora_injection (base LoRAs + nsfw LoRAs + dynamic LoRAs + pruning)
     if (features.lora_injection) {
       // baseLoras resolution: session/persona dir overrides global fallback.
       // (Mirrors checkpoint resolution semantics — see resolveCheckpoint.)
       let baseLoras: Array<{ name: string; strength: number }> = [];
+      let nsfwLoras: Array<{ name: string; strength: number }> = [];
+      // Helper: read `nsfwLoras` from a config preset
+      const readNsfwLorasFromConfig = (cfg: Record<string, unknown> | null): Array<{ name: string; strength: number }> => {
+        if (!cfg) return [];
+        const ap = cfg.active_preset as string | undefined;
+        const presets = cfg.presets as Record<string, Record<string, unknown>> | undefined;
+        const preset = ap ? presets?.[ap] : undefined;
+        const list = preset?.nsfwLoras ?? (cfg as Record<string, unknown>).nsfwLoras;
+        return Array.isArray(list) ? list as Array<{ name: string; strength: number }> : [];
+      };
       if (sessionDir) {
         const dirConfig = this.readDirConfig(sessionDir);
         if (dirConfig.baseLoras && dirConfig.baseLoras.length > 0) {
           baseLoras = dirConfig.baseLoras;
         }
+        // Try to read nsfwLoras from session/persona config
+        try {
+          const sessionConfigPath = path.join(sessionDir, "comfyui-config.json");
+          if (fs.existsSync(sessionConfigPath)) {
+            const cfg = JSON.parse(fs.readFileSync(sessionConfigPath, "utf-8"));
+            nsfwLoras = readNsfwLorasFromConfig(cfg);
+          }
+        } catch { /* ignore */ }
       }
-      if (baseLoras.length === 0) {
+      if (baseLoras.length === 0 || nsfwLoras.length === 0) {
         // Fallback to global comfyui-config.json
         try {
           const globalConfigPath = path.join(process.cwd(), "data/tools/comfyui/comfyui-config.json");
@@ -911,12 +937,23 @@ export class ComfyUIClient {
             const globalConfig = JSON.parse(fs.readFileSync(globalConfigPath, "utf-8"));
             const globalPreset = globalConfig.active_preset && globalConfig.presets?.[globalConfig.active_preset];
             const globalLoras = globalPreset?.baseLoras || globalConfig.baseLoras;
-            if (Array.isArray(globalLoras) && globalLoras.length > 0) {
+            if (baseLoras.length === 0 && Array.isArray(globalLoras) && globalLoras.length > 0) {
               baseLoras = globalLoras;
               console.log(`[comfyui] Using ${baseLoras.length} base LoRAs from global comfyui-config.json (no override in session/persona)`);
             }
+            if (nsfwLoras.length === 0) {
+              nsfwLoras = readNsfwLorasFromConfig(globalConfig);
+            }
           }
         } catch { /* ignore */ }
+      }
+      // NSFW 자동 주입: params.nsfw === true 면 baseLoras에 nsfwLoras를 결합한다.
+      // 이름이 겹치면 후자(nsfwLoras)의 strength로 덮어쓴다.
+      if (params.nsfw === true && nsfwLoras.length > 0) {
+        const byName = new Map(baseLoras.map(l => [l.name, l]));
+        for (const nl of nsfwLoras) byName.set(nl.name, nl);
+        baseLoras = Array.from(byName.values());
+        console.log(`[comfyui] NSFW mode — appended ${nsfwLoras.length} nsfwLoras (${nsfwLoras.map(l => l.name).join(", ")})`);
       }
       if (baseLoras.length > 0) {
         this.injectBaseLoRAs(prompt, baseLoras);

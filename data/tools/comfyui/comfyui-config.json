@@ -10,13 +10,16 @@
       "baseLoras": [
         { "name": "illustrious_masterpieces_v3.safetensors", "strength": 0.4 },
         { "name": "AddMicroDetails_Illustrious_v6.safetensors", "strength": 0.5 },
-        { "name": "Smooth_Booster_v5.safetensors", "strength": 0.4 },
+        { "name": "Smooth_Booster_v5.safetensors", "strength": 0.6 },
         { "name": "sexy_details_v4.safetensors", "strength": 0.4 },
         { "name": "Age_V2.5.safetensors", "strength": -3 },
         { "name": "eye_detail_glossy_stylized.safetensors", "strength": 0.6 },
-        { "name": "anime_screencap-IL-NOOB_v3.safetensors", "strength": 0.5 },
+        { "name": "Anime_Screencap_Enhancement-v1.safetensors", "strength": 0.5 },
         { "name": "S1 Dramatic Lighting Illustrious_V2.safetensors", "strength": 0.5 },
         { "name": "QAQv5p2_IL-40.safetensors", "strength": 0.4 }
+      ],
+      "nsfwLoras": [
+        { "name": "BuAnime_NSFW_Style_v5.safetensors", "strength": 0.8 }
       ]
     },
     "anima": {
