@@ -319,6 +319,8 @@ await __panelBridge.executeAction('confirm_schedule', {
 
 → Handlebars 헬퍼 & CSS 패턴 상세: `references/helpers-and-patterns.md`
 
+> **`<select>` 색상 처리:** `layout.json`의 `theme` 토큰 (`accent`, `bg`, `text`, `border` 등)이 모든 select의 닫힌 컨트롤·드롭다운 팝업·호버/선택 하이라이트에 자동 적용된다. 패널 HTML에 select 색상 CSS를 박지 마라. 크기/폰트 조정만. 상세는 `helpers-and-patterns.md`의 "Form 컨트롤 다크 테마" 섹션.
+
 ### Step 4: 레이아웃 등록
 
 `layout.json`의 `panels.placement`에 이름 등록 (파일명에서 숫자 prefix 제거):

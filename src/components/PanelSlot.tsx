@@ -6,6 +6,93 @@ import { installImagePolling } from "@/lib/panel-image-polling";
 import { usePanelBridge } from "@/lib/use-panel-bridge";
 import { getPanelActionRegistry, parsePanelActions, stripPanelActions } from "@/lib/panel-action-registry";
 
+/**
+ * Default stylesheet injected into every panel's shadow DOM.
+ *
+ * Shadow DOM doesn't inherit CSS from the host page, but native form controls
+ * (`<select>`, `<input>`, `<button>`, `<textarea>`) still receive user-agent
+ * styling. Without `appearance: none`, system dropdown chrome and OS focus
+ * rings leak through whatever theme the panel author wrote, producing the
+ * "콤보박스 스타일이 적용 안됨" effect.
+ *
+ * This base style:
+ *   1) sets host typography defaults
+ *   2) neutralizes user-agent form-control chrome so panel CSS can theme freely
+ *   3) provides a custom <select> dropdown arrow (since `appearance: none` removes it)
+ *
+ * Panel-author CSS is loaded AFTER this via `<style>` blocks inside the panel HTML,
+ * so any rule defined by the persona automatically overrides these defaults.
+ */
+const PANEL_BASE_STYLE = `<style>
+:host { display: block; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Serif KR", sans-serif; font-size: 13px; line-height: 1.6; color: #e0e0e0; color-scheme: dark; }
+img { cursor: zoom-in; }
+button, input, textarea {
+  font-family: inherit; font-size: inherit; color: inherit;
+  background: #1a1a1a; border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 3px; padding: 4px 8px; box-sizing: border-box;
+  -webkit-appearance: none; -moz-appearance: none; appearance: none;
+  outline: none;
+}
+button { cursor: pointer; }
+button:hover { filter: brightness(1.15); }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  border-color: currentColor; box-shadow: 0 0 0 1px rgba(255,255,255,0.2);
+}
+input[type="checkbox"], input[type="radio"] { -webkit-appearance: auto; appearance: auto; }
+
+/* select — Chrome 135+ customizable select 사용. 드롭다운 팝업까지 풀 CSS 스타일링.
+   미지원 브라우저는 자동 native fallback.
+   색상은 layout.json의 theme.* 토큰(--bg, --text, --accent 등)에서 자동 흘러온다.
+   페르소나는 layout.theme만 설정하면 모든 select가 그 톤을 따른다. */
+select, ::picker(select) {
+  appearance: base-select;
+  font-family: inherit; font-size: inherit;
+  background: var(--bg, #1a1a1a);
+  color: var(--text, #e0e0e0);
+  border: 1px solid var(--border, rgba(255,255,255,0.15));
+  border-radius: 3px; padding: 4px 8px; box-sizing: border-box;
+  outline: none;
+}
+::picker(select) {
+  padding: 2px;
+  min-width: anchor-size(width);
+  max-height: 50vh; overflow-y: auto;
+  background: var(--bg, #1a1a1a);
+  border: 1px solid var(--border, rgba(255,255,255,0.15));
+  border-radius: 3px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+}
+option {
+  padding: 3px 8px;
+  background: var(--bg, #1a1a1a);
+  color: var(--text, #e0e0e0);
+  cursor: pointer;
+}
+option:hover, option:focus {
+  background: var(--accent-glow, rgba(255,255,255,0.15));
+  color: var(--text, #ffffff);
+}
+option:checked {
+  background: var(--accent, #c9a961);
+  color: var(--bg, #1a1a1a);
+  font-weight: bold;
+}
+option:disabled { color: var(--text-dim, #666); }
+optgroup { background: var(--bg, #1a1a1a); color: var(--text-dim, #c0c0c0); font-style: italic; }
+select::picker-icon { color: var(--text-dim, #999); }
+
+/* Legacy fallback — Chrome <135 또는 base-select 미지원 시 */
+@supports not (appearance: base-select) {
+  select {
+    -webkit-appearance: none; -moz-appearance: none; appearance: none;
+    padding-right: 22px;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6' fill='%23999'><path d='M0 0l5 6 5-6z'/></svg>");
+    background-repeat: no-repeat; background-position: right 7px center; background-size: 9px;
+  }
+  select::-ms-expand { display: none; }
+}
+</style>`;
+
 interface PanelSlotProps {
   name: string;
   html: string;
@@ -84,7 +171,7 @@ export default function PanelSlot({ name, html, sessionId, panelData, onSendMess
     prevHtmlRef.current = html;
 
     shadow.innerHTML =
-      `<style>:host{display:block;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:13px;line-height:1.6;color:#e0e0e0;}img{cursor:zoom-in;}</style>` +
+      PANEL_BASE_STYLE +
       stripPanelActions(html);
 
     // Auto-poll images that haven't loaded yet (deferred generation)
