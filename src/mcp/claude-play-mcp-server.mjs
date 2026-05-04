@@ -112,19 +112,12 @@ function deduplicateImageFilename(name) {
   return candidate;
 }
 
-function buildComfyPrompt(prompt, useDefaults = true) {
-  const body = pickString(prompt);
-  if (!body) return "";
-  if (!useDefaults) return body;
-
-  const config = readComfyConfig();
-  const preset = getActivePreset(config);
-  const quality = preset?.quality_tags || config?.style?.quality_tags || COMFY_DEFAULT_QUALITY;
-  const style = preset?.style_tags || config?.style?.style_tags || "";
-
-  // quality + style + user prompt. Trigger tags are auto-injected by the server based on active LoRAs.
-  const parts = [quality, style, body].filter(s => s.trim());
-  return parts.join(", ");
+function buildComfyPrompt(prompt, _useDefaults = true) {
+  // 2026-05-04: quality_tags/style_tags 자동 prepend는 워크플로 패키지 책임으로 이관됨.
+  // 각 패키지의 params.json에서 `prompt.prefix`/`prompt.suffix`로 정의하면 workflow-resolver가 합쳐준다.
+  // (이전엔 여기서 active preset의 quality_tags를 prepend했으나, 사용자가 직접 quality 토큰을 넣었을 때
+  //  중복 prepend되는 문제가 있었음. 이제 그냥 본문만 통과시킨다.)
+  return pickString(prompt) || "";
 }
 
 function readComfyConfig() {
@@ -688,6 +681,7 @@ server.registerTool(
       })).optional(),
       persona: z.string().optional(),
       targetScope: z.enum(["persona", "session"]).optional(),
+      async: z.boolean().optional().describe("Fire-and-forget mode: returns predicted path immediately. Frontend polls via InlineImage."),
     },
   },
   async (input) => {
@@ -746,6 +740,27 @@ server.registerTool(
               ...(input.targetScope ? { targetScope: input.targetScope } : {}),
             }
       );
+      // Async/fire-and-forget mode for comfyui_generate.
+      if (input.async) {
+        const predictedPath = `images/${filename}`;
+        requestJson("POST", "/api/tools/comfyui/generate", payload).catch((err) => {
+          const msg = err?.message || String(err);
+          console.error(`[comfyui_generate:async] background gen failed for ${filename}:`, msg);
+          if (mode === "session" && sessionId) {
+            requestJson("POST", `/api/sessions/${encodeURIComponent(sessionId)}/events`, {
+              header: `[이미지 생성 실패] ${filename} — ${msg.slice(0, 200)}`,
+            }).catch(() => { /* ignore secondary failure */ });
+          }
+        });
+        return ok({
+          status: "queued",
+          path: predictedPath,
+          filename,
+          output_token: `$IMAGE:${predictedPath}$`,
+          async: true,
+        });
+      }
+
       const data = await requestJson("POST", "/api/tools/comfyui/generate", payload);
       const imagePath =
         data && typeof data === "object" && data.path && typeof data.path === "string"
@@ -826,6 +841,7 @@ server.registerTool(
       })).optional(),
       persona: z.string().optional(),
       targetScope: z.enum(["persona", "session"]).optional(),
+      async: z.boolean().optional().describe("Fire-and-forget mode: returns predicted path immediately without waiting for generation. Frontend polls the file URL via InlineImage. Use for response-pipelining."),
     },
   },
   async (input) => {
@@ -909,16 +925,47 @@ server.registerTool(
       params.negative_prompt = getComfyNegative(input.negative_prompt);
       if (typeof input.seed === "number") params.seed = input.seed;
 
+      const finalFilename = deduplicateImageFilename(pickString(input.filename) || `comfyui_${Date.now()}.png`);
       const payload = withPersona({
         workflow,
         params,
-        filename: deduplicateImageFilename(pickString(input.filename) || `comfyui_${Date.now()}.png`),
+        filename: finalFilename,
         loras: input.loras,
         loras_left: input.loras_left,
         loras_right: input.loras_right,
         ...(input.persona ? { persona: input.persona } : {}),
         ...(input.targetScope ? { targetScope: input.targetScope } : {}),
       });
+
+      // Async/fire-and-forget: kick off the generation, return predicted path immediately.
+      // InlineImage in chat polls the file URL and renders when the gen finishes.
+      // On failure, POST a failure event header so the user sees a toast and the AI
+      // gets the failure on its next turn (instead of silently 404-polling forever).
+      if (input.async) {
+        const predictedPath = `images/${finalFilename}`;
+        requestJson("POST", "/api/tools/comfyui/generate", payload)
+          .then(() => {
+            // Success — no event needed; the file appears and InlineImage's poll picks it up.
+          })
+          .catch((err) => {
+            const msg = err?.message || String(err);
+            console.error(`[generate_image:async] background gen failed for ${finalFilename}:`, msg);
+            // Notify the chat session so the user and AI both see the failure.
+            if (mode === "session" && sessionId) {
+              requestJson("POST", `/api/sessions/${encodeURIComponent(sessionId)}/events`, {
+                header: `[이미지 생성 실패] ${finalFilename} — ${msg.slice(0, 200)}`,
+              }).catch(() => { /* swallow secondary failure */ });
+            }
+          });
+        return ok({
+          status: "queued",
+          path: predictedPath,
+          filename: finalFilename,
+          output_token: `$IMAGE:${predictedPath}$`,
+          async: true,
+        });
+      }
+
       const data = await requestJson("POST", "/api/tools/comfyui/generate", payload);
       const imagePath =
         data && typeof data === "object" && data.path && typeof data.path === "string"

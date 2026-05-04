@@ -29,7 +29,8 @@
       "node": "2",
       "field": "text",
       "type": "string",
-      "required": true
+      "required": true,
+      "prefix": "masterpiece, best quality, amazing quality, very aesthetic, absurdres, high detail, dynamic angle"
     },
     "negative_prompt": {
       "node": "3",

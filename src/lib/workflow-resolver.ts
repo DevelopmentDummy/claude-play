@@ -11,6 +11,10 @@ export interface ParamDef {
   required?: boolean;
   default?: unknown;
   description?: string;
+  /** 문자열 파라미터 한정. 패키지가 자체 보유한 워크플로 고정 prefix(예: quality_tags)를 본문 앞에 ", "로 합쳐 노드에 쓴다. */
+  prefix?: string;
+  /** 문자열 파라미터 한정. 본문 뒤에 ", "로 suffix를 합친다. */
+  suffix?: string;
 }
 
 export interface WorkflowFeatures {
@@ -153,11 +157,19 @@ function applyDefaultResolve(
     if (!paramDef.node || !paramDef.field) continue;
     const node = workflow[paramDef.node] as Record<string, unknown> | undefined;
     if (!node) continue;
+    // 문자열 prefix/suffix가 있으면 합쳐서 최종 값을 만든다 (워크플로 고정 quality_tags 등).
+    let finalValue: unknown = value;
+    if (typeof finalValue === "string") {
+      const parts = [paramDef.prefix, finalValue, paramDef.suffix]
+        .map(s => (typeof s === "string" ? s.trim() : ""))
+        .filter(Boolean);
+      finalValue = parts.join(", ");
+    }
     const inputs = node.inputs as Record<string, unknown> | undefined;
     if (!inputs) {
-      node.inputs = { [paramDef.field]: value };
+      node.inputs = { [paramDef.field]: finalValue };
     } else {
-      inputs[paramDef.field] = value;
+      inputs[paramDef.field] = finalValue;
     }
   }
   return workflow;
