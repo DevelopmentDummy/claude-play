@@ -235,8 +235,17 @@ export function setupWebSocket(server: HTTPServer): void {
       const sessionActive = instance ? instance.claude.isRunning() : false;
       // Replay current AI status so a reconnecting client renders the live
       // streaming/compacting/connected state instead of whatever it had at
-      // disconnect.
-      const currentStatus = instance ? instance.getStatus() : "disconnected";
+      // disconnect. Guarded with optional-call: a stale .next build (or the
+      // dual-realm where Next.js webpack and tsx each load SessionInstance
+      // separately) can hand back an instance whose prototype predates the
+      // getStatus method, and we'd rather degrade gracefully than crash the
+      // upgrade handler.
+      const currentStatus =
+        typeof instance?.getStatus === "function"
+          ? instance.getStatus()
+          : sessionActive
+            ? "connected"
+            : "disconnected";
       try {
         sendJson(ws, {
           event: "connected",
