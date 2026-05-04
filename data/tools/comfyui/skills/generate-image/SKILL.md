@@ -612,9 +612,12 @@ LoRA 룩업은 **2단계**로 진행한다 — 먼저 압축 매니페스트로 
 플래그: `base`(워크플로우 자동 주입), `nsfw-base`(NSFW 컷에서만 자동), `nsfw`, `warn`(⚠️), `broken`(❌), `auto-trig`(트리거 자동 주입)
 
 **`auto-trig` vs `trig?:` 차이 (중요):**
-- `auto-trig` 플래그가 있으면 — 해당 LoRA의 트리거가 `lora-triggers.json`에 등록되어 LoRA 활성화 시 서버가 프롬프트에 **자동 주입**한다. 매니페스트엔 토큰 값을 적지 않는다 (중복 제거). 활성화만 하면 끝.
-- `trig?:`이 있으면 — selective. 트리거 컬럼에 `(+옵션`, `바리에이션 태그`, `+ 보조`, 슬래시 옵션(`vaginal/anal`), `<lora:>` 메타, 또는 8개 초과 토큰이 섞여 있는 LoRA. **자동 주입에서 제외**되었으므로, 매번 장면에 맞는 토큰을 골라 프롬프트에 직접 박아야 한다. `trig?:` 뒤의 값은 "참고용 후보 토큰" — 그대로 전부 박지 말고 큐레이션할 것.
-- 둘 다 없으면 트리거가 정의되지 않은 LoRA (일부 무트리거 LoRA는 강도만으로 작동).
+- `auto-trig` 플래그가 있으면 — 해당 LoRA의 `auto` 토큰이 `lora-triggers.json`에 등록되어 LoRA 활성화 시 서버가 프롬프트에 **자동 주입**한다. 매니페스트엔 토큰 값을 적지 않는다 (중복 제거).
+- `trig?:`이 있으면 — selective. `lora-triggers.json`에 `options` 필드로 등록된 후보 토큰. **자동 주입되지 않는다.** 매번 장면에 맞는 토큰을 골라 프롬프트에 직접 박아야 한다.
+- 둘 다 있으면 (`auto-trig` 플래그 + `trig?:`) — `auto`는 자동 주입, `options`는 선택. 가장 일반적인 분리 패턴.
+- 둘 다 없으면 — `lora-triggers.json`에 미등록. 풀 .md 봐서 작가 권장 사용법 확인 필요.
+
+분류는 **`lora-triggers.json`의 명시적 객체 스키마**가 결정한다 (휴리스틱이나 토큰 수 임계값으로 추측하지 않는다). 새 LoRA 등록 시 직접 어떤 토큰을 auto로 어떤 토큰을 options로 둘지 큐레이션한다.
 
 활성 워크플로의 **한 개 매니페스트만** 로드하라. 모델 간 LoRA는 호환되지 않는다.
 
@@ -628,23 +631,33 @@ LoRA 룩업은 **2단계**로 진행한다 — 먼저 압축 매니페스트로 
 
 **풀 .md 전체 Read는 최후 수단** — 카테고리 전체를 둘러봐야 하거나 매니페스트로 후보가 명확히 추려지지 않을 때만.
 
-**매니페스트 갱신:** 치트시트 `.md`를 수정한 직후에는 반드시
+**매니페스트 갱신:** 치트시트 `.md` 또는 `lora-triggers.json`을 수정한 직후에는 반드시
 ```
 node lora-cheatsheets/build-manifest.mjs
 ```
-를 실행해 매니페스트를 재생성한다. 인자 없이 실행하면 모든 `.md`(compat-log/index 제외) → 같은 이름 `.manifest.txt`로 변환되고, 부산물로 `data/tools/comfyui/lora-triggers.from-cheatsheet.json` (검토용 추출본)이 생성된다.
+를 실행해 매니페스트를 재생성한다. 매니페스트는 두 입력(`.md` + `lora-triggers.json`)을 합성한 결과물이다.
 
-**런타임 트리거 동기화:**
-- 서버가 자동으로 프롬프트에 주입하는 SSOT는 `data/tools/comfyui/lora-triggers.json`이다 (`comfyui-client.ts`의 `loadLoraTriggers()`가 매 생성마다 읽음).
-- 매니페스트 빌드는 부산물로 `data/tools/comfyui/lora-triggers.from-cheatsheet.json` (검토용 추출본)을 생성하고, runtime과 diff를 stdout에 출력한다.
-- selective(`trig?:`) 항목은 추출본에서 자동 제외 → runtime에도 등록되지 않음 → 자동 주입되지 않는다 (의도된 동작).
-- 빌드 출력의 "자동주입 후보 N개 / selective 제외 N개" 리포트와 "➕ runtime에 없음 (백필 후보)" 항목을 사용자에게 보여주고, 필요하면 runtime json에 머지하도록 안내한다.
-- **스크립트는 runtime을 자동으로 덮어쓰지 않는다.** 사용자 큐레이션 보존이 우선.
+**런타임 트리거 SSOT — `lora-triggers.json` (2026-05-04 v3 객체 스키마):**
+
+```json
+{
+  "file.safetensors": "tokens here",                              // 전부 auto (backward-compat string)
+  "file.safetensors": { "auto": "core" },                         // auto만
+  "file.safetensors": { "auto": "core", "options": "opt1,opt2" }, // auto + 매뉴얼 옵션 후보
+  "file.safetensors": { "options": "opt1,opt2" }                  // pure selective (자동 주입 X)
+}
+```
+
+- 서버 (`comfyui-client.ts`의 `loadLoraTriggers()`)는 string 값 또는 `auto` 필드만 읽어 자동 주입한다. `options` 필드는 무시.
+- build-manifest는 같은 json을 읽어 매니페스트 한 줄에 표기:
+  - `auto` 있음 → `auto-trig` 플래그
+  - `options` 있음 → `trig?: <options>` 노출
+- 새 LoRA 등록은 lora-triggers.json 직접 편집. 휴리스틱(토큰 수 임계값 등) 없음 — 의도가 100% 명시되어야 한다.
 
 **프롬프트 조립 시:**
-- 후보 LoRA에 `auto-trig` 플래그가 있으면 → 트리거는 서버가 알아서 박으므로, 프롬프트에 별도로 명시할 필요 없음. 정확한 토큰이 궁금하면 `lora-triggers.json` 또는 풀 .md를 조회.
-- `trig?:`이 있으면 → 매니페스트의 후보 토큰 목록에서 장면에 필요한 것만 골라 프롬프트에 직접 박는다. 모르면 풀 .md를 grep해서 작가 권장 사용법(예: pet_my_cat 10단계 프로토콜)을 확인할 것.
-- 둘 다 없으면 → 트리거 정의가 없는 LoRA. 강도만으로 작동하는지, 아니면 풀 .md에서 작가 권장 프롬프트 방식(예: "자연어 본문 우선") 확인 필요.
+- 후보 LoRA에 `auto-trig` 플래그가 있으면 → `auto` 토큰은 서버가 알아서 박으므로 프롬프트에 별도로 명시할 필요 없음.
+- `trig?:`이 있으면 → 후보 토큰 목록에서 장면에 필요한 것만 골라 프롬프트에 직접 박는다. 전부 박지 말고 큐레이션.
+- 둘 다 없으면 → 트리거 미등록. 풀 .md 봐서 작가 권장 사용법 확인.
 
 ### Quality/Style 토큰 — 워크플로 패키지가 소유 (2026-05-04 개편)
 

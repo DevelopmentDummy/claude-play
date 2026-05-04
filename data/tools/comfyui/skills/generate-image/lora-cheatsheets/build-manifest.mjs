@@ -1,31 +1,29 @@
 #!/usr/bin/env node
-// build-manifest.mjs — LoRA 치트시트 .md → .manifest.txt 변환기 (v2: 트리거 포함)
+// build-manifest.mjs — LoRA 치트시트 .md → .manifest.txt 변환기 (v3: lora-triggers.json SSOT)
 //
 // 사용법:
-//   node build-manifest.mjs                  # 모든 *.md → *.manifest.txt + lora-triggers.from-cheatsheet.json
+//   node build-manifest.mjs                  # 모든 *.md → *.manifest.txt
 //   node build-manifest.mjs illustrious.md   # 단일 파일
 //
-// 출력 한 줄 포맷:
-//   filename.safetensors [cat,flag1,flag2] 짧은 용도 │ 강도
-//   filename.safetensors [cat,flag1,flag2,auto-trig] 짧은 용도 │ 강도
-//   filename.safetensors [cat,flag1,flag2] 짧은 용도 │ 강도 │ trig?: tag1, tag2
+// 책임 분담 (2026-05-04 개편):
+//   - data/tools/comfyui/lora-triggers.json  : 트리거 SSOT (auto / options 분리)
+//   - 치트시트 .md                            : 사람용 문서 (트리거 컬럼은 참고 표시)
+//   - .manifest.txt (이 스크립트 출력)        : 에이전트용 압축 카탈로그
 //
-// auto-trig: lora-triggers.json에 등록되어 서버가 자동 주입한다 → 토큰 값은 매니페스트에서 생략
-// trig?:     selective — 옵션/바리에이션 동반. 자동 주입 X, 매번 사용자가 골라 박을 후보 토큰 노출
-// (트리거 없는 항목은 두 표기 모두 생략)
+// 매니페스트 한 줄 포맷:
+//   filename [cat,flags] use │ strength                       (트리거 미등록)
+//   filename [cat,flags,auto-trig] use │ strength             (auto만, string 또는 {auto: "..."})
+//   filename [cat,flags,auto-trig] use │ strength │ trig?: ... (auto + options)
+//   filename [cat,flags] use │ strength │ trig?: ...          (options만, pure selective)
 //
-// flag:
-//   base       - [BASE]/[ANIMA-BASE]   (워크플로우에 자동 주입됨)
-//   nsfw-base  - [NSFW-BASE]            (NSFW 컷에서만 자동 주입)
-//   nsfw       - 카테고리에 NSFW 키워드
-//   warn       - 비고에 ⚠️
-//   broken     - 비고에 ❌
-//   auto-trig  - 트리거가 lora-triggers.json에 등록됨 (서버가 자동 주입)
+// lora-triggers.json 스키마:
+//   "filename.safetensors": "trigger string"           // 전부 auto (backward-compat)
+//   "filename.safetensors": { "auto": "..." }          // auto만 (1번과 등가)
+//   "filename.safetensors": { "auto": "...", "options": "..." }
+//   "filename.safetensors": { "options": "..." }       // pure selective, 자동 주입 없음
 //
-// 부산물:
-//   lora-triggers.from-cheatsheet.json  치트시트에서 추출한 트리거 매핑 (검토용).
-//                                       비교 결과를 stdout에 리포트하고, runtime인
-//                                       lora-triggers.json은 절대 자동 덮어쓰지 않는다.
+// 더 이상 휴리스틱(토큰 수, 슬래시 등)으로 selective를 결정하지 않는다.
+// 분류는 사용자가 lora-triggers.json에서 명시한 구조에 따른다.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -34,7 +32,6 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "../../../../../..");
 const RUNTIME_TRIGGERS_PATH = path.join(REPO_ROOT, "data/tools/comfyui/lora-triggers.json");
-const SUGGESTION_PATH = path.join(REPO_ROOT, "data/tools/comfyui/lora-triggers.from-cheatsheet.json");
 
 const CATEGORY_ALIAS = {
   "퀄리티/디테일": "quality",
@@ -59,6 +56,27 @@ const CATEGORY_ALIAS = {
   "포즈 / 체위 (NSFW)": "pose",
   "특수 컨셉 / 밈": "concept",
   "배경": "background",
+  "오럴/페라": "oral",
+  "파이즈리": "paizuri",
+  "착유/수유": "lactation",
+  "컨셉/상황": "concept",
+  "구속/본디지 장비": "bdsm",
+  "최면/정신조작": "mindcontrol",
+  "난교/멀티": "group",
+  "특수 체위/장비": "pose",
+  "X-ray/내부 묘사": "xray",
+  "사정/정액": "cum",
+  "NSFW 해부학": "anatomy",
+  "유두/가슴 특화": "breast",
+  "분위기/배경": "background",
+  "임신/번식": "pregnancy",
+  "노출/NTR": "ntr",
+  "촉수/부패 시퀀스": "tentacle",
+  "마법/이펙트": "effect",
+  "변신/상태이상": "transformation",
+  "풋잡/페티시": "footjob",
+  "자위": "masturbation",
+  "장소/가구 특화": "location",
 };
 
 function slugCategory(heading) {
@@ -88,66 +106,12 @@ function compactStrength(cell) {
   return s;
 }
 
-// 트리거 컬럼 파싱
-// 반환: { value: string, selective: boolean }
-//   selective=true → 자동 주입에서 제외 (사용자가 수동으로 골라야 함)
-//   - 옵션/바리에이션 마커 동반
-//   - 슬래시 옵션 표기 (vaginal/anal 같은)
-//   - 메타 토큰 누출 (<lora:> 등)
-//   - 토큰 수가 비정상적으로 많음 (8개 초과 → 상황 묘사로 간주)
-function extractTriggers(cell) {
-  const empty = { value: "", selective: false };
-  if (!cell) return empty;
-  const cleaned = cell.replace(/\s+/g, " ").trim();
-
-  if (/^(없음|무트리거|명시\s*없음|—|–|-)/i.test(cleaned)) return empty;
-
-  // 옵션/바리에이션/보조 마커 감지 → selective
-  const hasOptionMarker = /(\(\+?옵션|바리에이션\s*태그|\+\s*보조|옵션:)/.test(cell);
-
-  // 옵션 부분 잘라내기 (selective 판정과 별개로, 매니페스트 표기에서 옵션은 제거)
-  const truncated = cell
-    .replace(/\s*\(\+?옵션[\s\S]*?\)/g, "")
-    .replace(/\s*바리에이션\s*태그\s*:[\s\S]*$/m, "")
-    .replace(/\s*\+\s*보조[\s\S]*$/, "");
-
-  // 코드 스팬 추출
-  const spans = [...truncated.matchAll(/`([^`]+)`/g)].map(m => m[1].trim()).filter(Boolean);
-  let value = "";
-  if (spans.length > 0) {
-    value = cleanTriggerString(spans.join(", "));
-  } else {
-    if (/(태그와|태그 필수|함께|직접 서술|프롬프트 권장|프롬프트와)/.test(cleaned)) return empty;
-    if (/^[\w\s,()@\-\\:]+$/.test(cleaned) && cleaned.length < 200) {
-      value = cleanTriggerString(cleaned);
-    }
-  }
-
-  if (!value) return empty;
-
-  // selective 판정
-  let selective = hasOptionMarker;
-  if (/<lora/i.test(value)) selective = true;          // 메타 토큰 누출
-  if (/\//.test(value)) selective = true;              // 슬래시 옵션 (vaginal/anal 등)
-  const tokenCount = value.split(",").map(s => s.trim()).filter(Boolean).length;
-  if (tokenCount > 8) selective = true;                // 너무 많으면 상황 묘사로 간주
-
-  return { value, selective };
-}
-
-function cleanTriggerString(s) {
-  return s
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/[,;]\s*$/, "");
-}
-
 function detectFlags(category, notesCell, nameCell) {
   const flags = [];
   const allText = `${notesCell} ${nameCell}`;
   if (/\[BASE\]/.test(allText) || /\[ANIMA-BASE\]/.test(allText)) flags.push("base");
   if (/\[NSFW-BASE\]/.test(allText)) flags.push("nsfw-base");
-  if (/nsfw|체위|exposure|bdsm|밈/i.test(category)) flags.push("nsfw");
+  if (/nsfw|체위|exposure|bdsm|밈|cum|ntr|oral|footjob|masturbation/i.test(category)) flags.push("nsfw");
   if (/❌/.test(notesCell)) flags.push("broken");
   if (/⚠️/.test(notesCell)) flags.push("warn");
   return [...new Set(flags)];
@@ -174,7 +138,7 @@ function parseMarkdown(md) {
 
   for (const line of lines) {
     if (/^#{2,4}\s+/.test(line) && !line.startsWith("####")) {
-      if (/^##\s+(LoRA 목록|사용 방법|프롬프트 운영 원칙|운영 노트|baseLoras|운영 추천)/.test(line)) {
+      if (/^##\s+(LoRA 목록|사용 방법|프롬프트 운영 원칙|운영 노트|baseLoras|운영 추천|규칙)/.test(line)) {
         inTable = false;
         tableHeaderSeen = false;
         continue;
@@ -204,7 +168,7 @@ function parseMarkdown(md) {
     if (isSeparator(cells)) continue;
     if (!inTable) continue;
 
-    const [nameCell, strengthCell, useCell, triggerCell = "", notesCell = ""] = cells;
+    const [nameCell, strengthCell, useCell, , notesCell = ""] = cells;
     const filename = extractFilename(nameCell);
     if (!filename) continue;
 
@@ -212,56 +176,10 @@ function parseMarkdown(md) {
     const flagStr = [currentCategory, ...flags].join(",");
     const strength = compactStrength(strengthCell);
     const use = shortenUse(useCell);
-    const trig = extractTriggers(triggerCell);
 
-    entries.push({
-      filename,
-      flags: flagStr,
-      use,
-      strength,
-      triggers: trig.value,
-      triggersSelective: trig.selective,
-    });
+    entries.push({ filename, flags: flagStr, use, strength });
   }
   return entries;
-}
-
-function formatManifest(entries, sourcePath, runtimeTriggers) {
-  const header = [
-    `# 자동 생성된 LoRA 매니페스트 — 직접 편집 금지`,
-    `# 원본: ${path.basename(sourcePath)}`,
-    `# 생성: ${new Date().toISOString()}`,
-    `# 포맷: 파일명 [카테고리,플래그] 짧은 용도 │ 강도 [│ trig?: 태그]`,
-    `# 플래그: base, nsfw-base, nsfw, warn(⚠️), broken(❌), auto-trig`,
-    `# auto-trig: lora-triggers.json에 등록되어 서버가 자동 주입 (토큰 값은 매니페스트에 안 적음)`,
-    `# trig?:    selective — 옵션/바리에이션 동반. 자동 주입 X, 후보 토큰에서 골라 직접 박을 것`,
-    `# 풀 노트가 필요하면 원본 .md를 grep`,
-    ``,
-  ].join("\n");
-
-  const body = entries
-    .map(e => {
-      const flags = e.flags.split(",");
-      const isAuto = !!e.triggers && !e.triggersSelective && runtimeTriggers[e.filename];
-      if (isAuto) flags.push("auto-trig");
-      const base = `${e.filename} [${flags.join(",")}] ${e.use} │ ${e.strength}`;
-      if (e.triggers && e.triggersSelective) {
-        return `${base} │ trig?: ${e.triggers}`;
-      }
-      return base;
-    })
-    .join("\n");
-
-  return header + body + "\n";
-}
-
-function processFile(mdPath, runtimeTriggers = {}) {
-  const md = fs.readFileSync(mdPath, "utf-8");
-  const entries = parseMarkdown(md);
-  const outPath = mdPath.replace(/\.md$/, ".manifest.txt");
-  const manifest = formatManifest(entries, mdPath, runtimeTriggers);
-  fs.writeFileSync(outPath, manifest, "utf-8");
-  return { outPath, count: entries.length, bytes: manifest.length, entries };
 }
 
 function loadRuntimeTriggers() {
@@ -275,28 +193,70 @@ function loadRuntimeTriggers() {
   }
 }
 
-function writeSuggestionFile(allEntries) {
-  const suggestion = {
-    _comment: "자동 추출된 LoRA → 트리거 매핑 (build-manifest.mjs). selective(옵션/바리에이션 동반) 항목은 제외됨. 검토 후 lora-triggers.json에 머지하라. 이 파일은 매 빌드마다 덮어써진다.",
-  };
-  const sorted = [...allEntries].sort((a, b) => a.filename.localeCompare(b.filename));
-  let excluded = 0;
-  for (const e of sorted) {
-    if (!e.triggers) continue;
-    if (e.triggersSelective) { excluded++; continue; }
-    suggestion[e.filename] = e.triggers;
+/** lora-triggers.json 엔트리 → 매니페스트 표기 결정
+ * 반환: { hasAuto: boolean, options: string|null }
+ */
+function classifyTrigger(entry) {
+  if (entry === undefined) return { hasAuto: false, options: null };
+  if (typeof entry === "string") {
+    return { hasAuto: entry.trim().length > 0, options: null };
   }
-  fs.writeFileSync(SUGGESTION_PATH, JSON.stringify(suggestion, null, 2) + "\n", "utf-8");
-  return { suggestion, excluded };
+  if (entry && typeof entry === "object") {
+    const auto = typeof entry.auto === "string" ? entry.auto.trim() : "";
+    const opts = typeof entry.options === "string" ? entry.options.trim() : "";
+    return { hasAuto: auto.length > 0, options: opts || null };
+  }
+  return { hasAuto: false, options: null };
 }
 
-function diffTriggers(suggestion, runtime) {
-  const sKeys = new Set(Object.keys(suggestion).filter(k => k !== "_comment"));
-  const rKeys = new Set(Object.keys(runtime));
-  const onlyInSuggestion = [...sKeys].filter(k => !rKeys.has(k));
-  const onlyInRuntime = [...rKeys].filter(k => !sKeys.has(k));
-  const conflicting = [...sKeys].filter(k => rKeys.has(k) && runtime[k] !== suggestion[k]);
-  return { onlyInSuggestion, onlyInRuntime, conflicting };
+function formatManifest(entries, sourcePath, runtimeTriggers) {
+  const header = [
+    `# 자동 생성된 LoRA 매니페스트 — 직접 편집 금지`,
+    `# 원본: ${path.basename(sourcePath)}`,
+    `# 생성: ${new Date().toISOString()}`,
+    `# 포맷: 파일명 [카테고리,플래그] 짧은 용도 │ 강도 [│ trig?: 후보 태그]`,
+    `# 플래그: base, nsfw-base, nsfw, warn(⚠️), broken(❌), auto-trig`,
+    `# auto-trig: lora-triggers.json의 auto 토큰이 서버에서 자동 주입됨 (값은 매니페스트에 표시 안 함)`,
+    `# trig?:    selective — 매번 사용자가 골라 직접 박을 후보 토큰`,
+    `# 분류는 lora-triggers.json의 스키마에 따른다 (string=auto / {auto,options} 객체)`,
+    ``,
+  ].join("\n");
+
+  const body = entries
+    .map(e => {
+      const cls = classifyTrigger(runtimeTriggers[e.filename]);
+      const flags = e.flags.split(",");
+      if (cls.hasAuto) flags.push("auto-trig");
+      const base = `${e.filename} [${flags.join(",")}] ${e.use} │ ${e.strength}`;
+      if (cls.options) {
+        return `${base} │ trig?: ${cls.options}`;
+      }
+      return base;
+    })
+    .join("\n");
+
+  return header + body + "\n";
+}
+
+function processFile(mdPath, runtimeTriggers) {
+  const md = fs.readFileSync(mdPath, "utf-8");
+  const entries = parseMarkdown(md);
+  const outPath = mdPath.replace(/\.md$/, ".manifest.txt");
+  const manifest = formatManifest(entries, mdPath, runtimeTriggers);
+  fs.writeFileSync(outPath, manifest, "utf-8");
+  return { outPath, count: entries.length, bytes: manifest.length, entries };
+}
+
+function summarize(entries, runtimeTriggers) {
+  let auto = 0, autoPlus = 0, opt = 0, none = 0;
+  for (const e of entries) {
+    const cls = classifyTrigger(runtimeTriggers[e.filename]);
+    if (cls.hasAuto && cls.options) autoPlus++;
+    else if (cls.hasAuto) auto++;
+    else if (cls.options) opt++;
+    else none++;
+  }
+  return { auto, autoPlus, opt, none };
 }
 
 function main() {
@@ -312,48 +272,26 @@ function main() {
   }
 
   const runtime = loadRuntimeTriggers();
-  console.log(`[manifest] ${targets.length} 파일 처리 (runtime 트리거 ${Object.keys(runtime).length}개 참조)`);
-  const allEntries = [];
+  // For classification we need raw values (string|object), not the post-load extraction.
+  // Strip _comment but keep raw structure.
+  const rawTriggers = { ...runtime };
+
+  console.log(`[manifest] ${targets.length} 파일 처리 (lora-triggers ${Object.keys(rawTriggers).length}개 항목 참조)`);
   for (const t of targets) {
     try {
-      const r = processFile(t, runtime);
-      const auto = r.entries.filter(e => e.triggers && !e.triggersSelective && runtime[e.filename]).length;
-      const selective = r.entries.filter(e => e.triggersSelective).length;
-      console.log(`  ✓ ${path.basename(t)} → ${path.basename(r.outPath)} (${r.count}개, auto-trig ${auto}, trig? ${selective}, ${r.bytes}B)`);
-      allEntries.push(...r.entries);
+      const r = processFile(t, rawTriggers);
+      const s = summarize(r.entries, rawTriggers);
+      console.log(`  ✓ ${path.basename(t)} → ${path.basename(r.outPath)}`);
+      console.log(`      LoRA ${r.count}개 — auto ${s.auto} / auto+옵션 ${s.autoPlus} / 옵션만 ${s.opt} / 미등록 ${s.none} (${r.bytes}B)`);
     } catch (e) {
       console.error(`  ✗ ${path.basename(t)}: ${e.message}`);
     }
   }
-
-  if (args.length === 0) {
-    // Full build → also emit suggestion file + diff vs runtime
-    const { suggestion, excluded } = writeSuggestionFile(allEntries);
-    const diff = diffTriggers(suggestion, runtime);
-    const sCount = Object.keys(suggestion).filter(k => k !== "_comment").length;
-    console.log("");
-    console.log(`[triggers] 자동주입 후보 ${sCount}개 / selective 제외 ${excluded}개 → ${path.relative(REPO_ROOT, SUGGESTION_PATH)}`);
-    console.log(`  runtime(lora-triggers.json) 항목: ${Object.keys(runtime).length}개`);
-    if (diff.onlyInSuggestion.length > 0) {
-      console.log(`  ➕ runtime에 없음 (백필 후보): ${diff.onlyInSuggestion.length}개`);
-      diff.onlyInSuggestion.slice(0, 10).forEach(k => console.log(`     - ${k}`));
-      if (diff.onlyInSuggestion.length > 10) console.log(`     ... 외 ${diff.onlyInSuggestion.length - 10}개`);
-    }
-    if (diff.conflicting.length > 0) {
-      console.log(`  ⚠️ 값 충돌: ${diff.conflicting.length}개`);
-      diff.conflicting.forEach(k => {
-        console.log(`     ${k}`);
-        console.log(`       runtime    : ${runtime[k]}`);
-        console.log(`       cheatsheet : ${suggestion[k]}`);
-      });
-    }
-    if (diff.onlyInRuntime.length > 0) {
-      console.log(`  ℹ️ 치트시트에 없음 (runtime 단독): ${diff.onlyInRuntime.length}개`);
-    }
-    console.log("");
-    console.log(`[hint] runtime 백필이 필요하면 ${path.basename(SUGGESTION_PATH)}를 참고해 lora-triggers.json에 수동 머지하라.`);
-    console.log(`       (스크립트는 runtime 파일을 자동 덮어쓰지 않는다.)`);
-  }
+  console.log("");
+  console.log(`[hint] 새 LoRA 추가 / selective 분류는 lora-triggers.json 직접 편집:`);
+  console.log(`       "file.safetensors": "trigger"                              // 전부 auto`);
+  console.log(`       "file.safetensors": { "auto": "core", "options": "..." }   // 분리`);
+  console.log(`       "file.safetensors": { "options": "..." }                   // pure selective`);
 }
 
 main();

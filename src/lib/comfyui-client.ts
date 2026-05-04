@@ -437,7 +437,15 @@ export class ComfyUIClient {
     return {};
   }
 
-  /** Load LoRA trigger tag table from data/tools/comfyui/lora-triggers.json */
+  /** Load LoRA trigger tag table from data/tools/comfyui/lora-triggers.json
+   *
+   * Schema (2026-05-04 v2):
+   * - string  → 전부 auto-inject (backward-compat)
+   * - object  → { auto?: string, options?: string }
+   *             auto 만 자동 주입, options는 매니페스트 표시용 (서버 무시)
+   *
+   * 반환은 항상 `Record<string, string>` (auto 토큰만 추출). options는 서버 동작에 영향 없음.
+   */
   private loadLoraTriggers(): Record<string, string> {
     // 글로벌 트리거 테이블은 항상 data/tools/comfyui/ 아래에 산다.
     // workflowsDir이 세션 로컬 스킬(data/sessions/.../.claude/skills/...)일 수도 있으므로
@@ -445,10 +453,21 @@ export class ComfyUIClient {
     const triggersPath = path.join(process.cwd(), "data/tools/comfyui/lora-triggers.json");
     if (!fs.existsSync(triggersPath)) return {};
     try {
-      const data = JSON.parse(fs.readFileSync(triggersPath, "utf-8"));
-      // Remove _comment key if present
-      delete data._comment;
-      return data;
+      const raw = JSON.parse(fs.readFileSync(triggersPath, "utf-8"));
+      delete raw._comment;
+      const result: Record<string, string> = {};
+      for (const [filename, value] of Object.entries(raw)) {
+        if (typeof value === "string") {
+          if (value.trim()) result[filename] = value;
+        } else if (value && typeof value === "object") {
+          const obj = value as { auto?: unknown; options?: unknown };
+          if (typeof obj.auto === "string" && obj.auto.trim()) {
+            result[filename] = obj.auto;
+          }
+          // options 필드는 서버 자동 주입 대상 아님 — 무시
+        }
+      }
+      return result;
     } catch {
       console.warn("[comfyui] Failed to parse lora-triggers.json");
       return {};
@@ -688,14 +707,29 @@ export class ComfyUIClient {
 
   /** Resolve the best available checkpoint name */
   private resolveCheckpoint(availableCheckpoints: string[], sessionDir?: string): string {
-    // Priority: 1) comfyui-config.json in session dir, 2) env var, 3) auto-detect
+    // Priority: 1) comfyui-config.json in session/persona dir, 2) global comfyui-config.json,
+    //          3) env var, 4) auto-detect
     let configured = this.checkpointName;
+
+    // Global config fallback (data/tools/comfyui/comfyui-config.json)
+    try {
+      const globalConfigPath = path.join(process.cwd(), "data/tools/comfyui/comfyui-config.json");
+      if (fs.existsSync(globalConfigPath)) {
+        const globalConfig = JSON.parse(fs.readFileSync(globalConfigPath, "utf-8"));
+        const globalPreset = globalConfig.active_preset && globalConfig.presets?.[globalConfig.active_preset];
+        const globalCkpt = globalPreset?.checkpoint || globalConfig.checkpoint;
+        if (globalCkpt) {
+          configured = globalCkpt;
+          console.log(`[comfyui] Using checkpoint from global comfyui-config.json: ${configured}`);
+        }
+      }
+    } catch { /* ignore */ }
 
     if (sessionDir) {
       const dirConfig = this.readDirConfig(sessionDir);
       if (dirConfig.checkpoint) {
         configured = dirConfig.checkpoint;
-        console.log(`[comfyui] Using checkpoint from comfyui-config.json: ${configured}`);
+        console.log(`[comfyui] Using checkpoint from session/persona comfyui-config.json: ${configured}`);
       }
     }
 
@@ -860,11 +894,32 @@ export class ComfyUIClient {
 
     // 4b: lora_injection (base LoRAs + dynamic LoRAs + pruning)
     if (features.lora_injection) {
+      // baseLoras resolution: session/persona dir overrides global fallback.
+      // (Mirrors checkpoint resolution semantics — see resolveCheckpoint.)
+      let baseLoras: Array<{ name: string; strength: number }> = [];
       if (sessionDir) {
         const dirConfig = this.readDirConfig(sessionDir);
         if (dirConfig.baseLoras && dirConfig.baseLoras.length > 0) {
-          this.injectBaseLoRAs(prompt, dirConfig.baseLoras);
+          baseLoras = dirConfig.baseLoras;
         }
+      }
+      if (baseLoras.length === 0) {
+        // Fallback to global comfyui-config.json
+        try {
+          const globalConfigPath = path.join(process.cwd(), "data/tools/comfyui/comfyui-config.json");
+          if (fs.existsSync(globalConfigPath)) {
+            const globalConfig = JSON.parse(fs.readFileSync(globalConfigPath, "utf-8"));
+            const globalPreset = globalConfig.active_preset && globalConfig.presets?.[globalConfig.active_preset];
+            const globalLoras = globalPreset?.baseLoras || globalConfig.baseLoras;
+            if (Array.isArray(globalLoras) && globalLoras.length > 0) {
+              baseLoras = globalLoras;
+              console.log(`[comfyui] Using ${baseLoras.length} base LoRAs from global comfyui-config.json (no override in session/persona)`);
+            }
+          }
+        } catch { /* ignore */ }
+      }
+      if (baseLoras.length > 0) {
+        this.injectBaseLoRAs(prompt, baseLoras);
       }
       this.pruneUnavailableLoRAs(prompt, models.loras);
       if (loras && loras.length > 0) {
