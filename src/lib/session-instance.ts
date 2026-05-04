@@ -212,6 +212,7 @@ export class SessionInstance {
   private pushedTextsByMsgId = new Map<string, Set<string>>();
   private isCompacting = false;
   private isSlashCommand = false;
+  private _currentStatus: string = "disconnected";
   private historyId = 0;
   private destroyed = false;
 
@@ -282,6 +283,19 @@ export class SessionInstance {
     } else {
       this.broadcastFn(event, data, { sessionId: this.id });
     }
+  }
+
+  /** Update + broadcast the AI runtime status. Tracking the current value lets
+   *  the WS server replay it on (re)connect — otherwise a client reconnecting
+   *  mid-turn would render whatever stale status it had at disconnect time. */
+  private setStatus(status: string): void {
+    this._currentStatus = status;
+    this.broadcast("claude:status", status);
+  }
+
+  /** Current AI runtime status (for replay on WS connect). */
+  getStatus(): string {
+    return this._currentStatus;
   }
 
   // --- Event queue (file-backed: pending-events.json) ---
@@ -1193,7 +1207,7 @@ export class SessionInstance {
 
       if (msg.type === "system" && msg.subtype === "status" && msg.status === "compacting") {
         this.isCompacting = true;
-        this.broadcast("claude:status", "compacting");
+        this.setStatus("compacting");
       }
 
       // Track subagent tasks for result merging
@@ -1217,7 +1231,7 @@ export class SessionInstance {
         // Compacting finished — resume streaming status
         if (this.isCompacting) {
           this.isCompacting = false;
-          this.broadcast("claude:status", "streaming");
+          this.setStatus("streaming");
         }
         const event = msg.event as Record<string, unknown> | undefined;
         if (!event) return;
@@ -1306,10 +1320,10 @@ export class SessionInstance {
     });
 
     p.on("error", (e) => this.broadcast("claude:error", e));
-    p.on("status", (s) => this.broadcast("claude:status", s));
+    p.on("status", (s) => this.setStatus(s as string));
     p.on("exit", () => {
       this.flushIdleWaiters();
-      this.broadcast("claude:status", "disconnected");
+      this.setStatus("disconnected");
     });
 
     p.on("sessionId", (sessionId: string) => {

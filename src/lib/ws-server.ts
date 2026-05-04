@@ -233,10 +233,14 @@ export function setupWebSocket(server: HTTPServer): void {
 
       const instance = sessionId ? getSessionInstance(sessionId) : null;
       const sessionActive = instance ? instance.claude.isRunning() : false;
+      // Replay current AI status so a reconnecting client renders the live
+      // streaming/compacting/connected state instead of whatever it had at
+      // disconnect.
+      const currentStatus = instance ? instance.getStatus() : "disconnected";
       try {
         sendJson(ws, {
           event: "connected",
-          data: { sessionId, isBuilder, sessionActive },
+          data: { sessionId, isBuilder, sessionActive, currentStatus },
         });
 
         if (instance) {

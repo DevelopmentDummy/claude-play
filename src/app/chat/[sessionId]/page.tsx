@@ -338,7 +338,15 @@ export default function ChatPage() {
   // WebSocket connection — only connect after session open completes
   const { sendChat, sendCancel, send: wsSend } = useWebSocket({
     sessionId,
+    onDisconnect: () => setStatus("disconnected"),
     handlers: {
+      "connected": (d) => {
+        // Server replays current AI status on every (re)connect — sync the
+        // local indicator immediately instead of waiting for the next
+        // claude:status event (which may not arrive if the AI is idle).
+        const { currentStatus } = d as { currentStatus?: string };
+        if (typeof currentStatus === "string") setStatus(currentStatus);
+      },
       "chat:user": (d) => {
         const { text, isOOC } = d as { text: string; isOOC?: boolean };
         addUserMessage(text, isOOC);

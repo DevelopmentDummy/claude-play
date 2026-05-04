@@ -62,6 +62,69 @@ function killPid(pid) {
   }
 }
 
+// Look up a Windows process's PPID and command line via PowerShell.
+function getProcessInfoWin(pid) {
+  if (!isWin || !pid) return null;
+  const res = spawnSync(
+    "powershell",
+    [
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      `$p = Get-CimInstance Win32_Process -Filter "ProcessId=${pid}" -ErrorAction SilentlyContinue; if ($p) { $p | Select-Object ProcessId,ParentProcessId,CommandLine | ConvertTo-Json -Compress }`,
+    ],
+    { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+  );
+  if (!res.stdout || !res.stdout.trim()) return null;
+  try {
+    const obj = JSON.parse(res.stdout);
+    return {
+      pid: Number(obj.ProcessId) || null,
+      ppid: Number(obj.ParentProcessId) || null,
+      cmd: String(obj.CommandLine || ""),
+    };
+  } catch {
+    return null;
+  }
+}
+
+// Walk up the parent chain from the leaf server pid and return the topmost
+// ancestor that still looks like part of the claude-bridge launch tree
+// (npm.cmd run / tsx server.ts / cmd.exe wrappers including `cmd /K`).
+//
+// `.server.pid` records the deepest node process — but `taskkill /T /F` only
+// kills DESCENDANTS, leaving the wrapper chain (cmd /K from `start /B
+// npm.cmd`, npm-cli.js, the inner cmd /d /s /c, tsx) alive. Those orphans
+// either keep the port held or accumulate across restarts.
+function findTopmostBridgeAncestor(leafPid) {
+  if (!isWin || !leafPid) return leafPid;
+  const rootLower = ROOT.toLowerCase();
+  const looksRelated = (cmdLine) => {
+    const c = (cmdLine || "").toLowerCase();
+    if (!c) return false;
+    if (c.includes(rootLower)) return true;
+    if (c.includes("server.ts")) return true;
+    if (/\bnpm(?:\.cmd|-cli\.js)?\b.*\brun\b/.test(c)) return true;
+    if (/\btsx\b/.test(c)) return true;
+    return false;
+  };
+  let topmost = leafPid;
+  let current = leafPid;
+  const seen = new Set([leafPid]);
+  for (let depth = 0; depth < 12; depth++) {
+    const info = getProcessInfoWin(current);
+    if (!info || !info.ppid) break;
+    if (seen.has(info.ppid)) break;
+    seen.add(info.ppid);
+    const parent = getProcessInfoWin(info.ppid);
+    if (!parent) break;
+    if (!looksRelated(parent.cmd)) break;
+    topmost = info.ppid;
+    current = info.ppid;
+  }
+  return topmost;
+}
+
 function runBuild() {
   return new Promise((resolve) => {
     const start = Date.now();
@@ -138,7 +201,12 @@ function spawnNewServer(mode) {
   let child;
   try {
     if (isWin) {
-      child = spawn("cmd", ["/c", "start", "/B", "npm.cmd", "run", script], {
+      // `start /B npm.cmd ...` makes Windows auto-wrap the .cmd launch in
+      // `cmd /K npm.cmd ...`, and /K never exits — the wrapper survives every
+      // future restart's taskkill and accumulates as a zombie. Forcing an
+      // explicit `cmd /c` makes `start` see a regular .exe (no /K injection),
+      // and /c exits cleanly once npm finishes.
+      child = spawn("cmd", ["/c", "start", "/B", "cmd", "/c", "npm.cmd", "run", script], {
         cwd: ROOT,
         env: { ...process.env, NODE_OPTIONS: "" },
         detached: true,
@@ -205,8 +273,13 @@ async function main() {
   log("post-build delay complete");
 
   if (oldPid) {
-    log(`killing old server pid=${oldPid} (and child tree)`);
-    killPid(oldPid);
+    const topPid = findTopmostBridgeAncestor(oldPid);
+    if (topPid !== oldPid) {
+      log(`killing old server tree from topmost ancestor pid=${topPid} (leaf=${oldPid})`);
+    } else {
+      log(`killing old server pid=${oldPid} (and child tree)`);
+    }
+    killPid(topPid);
     log(`taskkill returned, orchestrator still alive (pid=${process.pid})`);
   } else {
     log("no PID file found — relying on port-free wait");

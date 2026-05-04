@@ -15,6 +15,8 @@ interface UseWebSocketOptions {
   enabled?: boolean;
   /** Called when reconnecting to a session that is no longer active on the server */
   onSessionLost?: () => void;
+  /** Called the moment the socket closes (server restart, network drop). */
+  onDisconnect?: () => void;
 }
 
 const wsTextDecoder = new TextDecoder("utf-8");
@@ -35,11 +37,14 @@ export function useWebSocket({
   handlers,
   enabled = true,
   onSessionLost,
+  onDisconnect,
 }: UseWebSocketOptions) {
   const handlersRef = useRef(handlers);
   handlersRef.current = handlers;
   const onSessionLostRef = useRef(onSessionLost);
   onSessionLostRef.current = onSessionLost;
+  const onDisconnectRef = useRef(onDisconnect);
+  onDisconnectRef.current = onDisconnect;
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -104,6 +109,7 @@ export function useWebSocket({
 
     ws.onclose = () => {
       wsRef.current = null;
+      onDisconnectRef.current?.();
       // Reconnect after 2 seconds
       reconnectTimer.current = setTimeout(connect, 2000);
     };
