@@ -1,0 +1,39 @@
+# Anima LoRA 치트시트 (예시 템플릿)
+
+이 파일은 `.example` 템플릿이다. 실제 `anima.md`는 `.gitignore` 처리되어 로컬에서만 관리된다.
+민감한 LoRA 파일명 / 트리거 토큰이 외부에 노출되지 않도록 본문은 푸시하지 않는다.
+
+Anima 계열 워크플로우(`anima-mixed-scene` 등) 전용. `[ANIMA-BASE]` 표시 LoRA는 워크플로우에 이미 고정 포함되어 있다.
+
+`loras` 파라미터로 base LoRA를 오버라이드할 수 있다:
+- **강도 0** → 해당 base LoRA를 체인에서 **제거**
+- **다른 값** → 해당 base LoRA의 강도를 **오버라이드**
+- base에 없는 LoRA → 체인 뒤에 **동적 추가**
+
+## 사용 방법
+
+`generate_image` 또는 `comfyui_generate` 도구의 `loras` 파라미터로 전달:
+
+```json
+{
+  "loras": [
+    { "name": "<style-lora>.safetensors", "strength": 0.55 },
+    { "name": "<custom-lora>.safetensors", "strength": 0.8 }
+  ]
+}
+```
+
+## 프롬프트 운영 원칙
+
+- Anima는 **자연어 본문 + 핵심 태그 보조**가 기본이다.
+- 권장 순서: 품질 1개 → 스타일 1개 → 필요 시 디테일러/특수 컨셉 추가.
+
+## LoRA 목록 (실제 항목은 로컬 anima.md 참조)
+
+### 카테고리 예시
+
+| LoRA 파일명 | 강도 | 용도 | 트리거 태그 | 비고 |
+|---|---|---|---|---|
+| `<example-lora>.safetensors` | 0.6~0.9 | 용도 설명 | `<trigger>` | 메모 |
+
+> 실제 LoRA 등록은 로컬 `anima.md` 수정 후 `node build-manifest.mjs` 실행으로 매니페스트 재생성.

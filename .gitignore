@@ -29,6 +29,13 @@ comfyui_submodule/venv/
 data/tools/comfyui/lora-triggers.json
 data/tools/comfyui/lora-triggers.from-cheatsheet.json
 data/tools/comfyui/skills/generate-image/lora-cheatsheet.md
+
+# Local LoRA cheatsheet content — push only .example templates + index.md + build script
+data/tools/comfyui/skills/generate-image/lora-cheatsheets/*.md
+data/tools/comfyui/skills/generate-image/lora-cheatsheets/*.manifest.txt
+!data/tools/comfyui/skills/generate-image/lora-cheatsheets/*.example.md
+!data/tools/comfyui/skills/generate-image/lora-cheatsheets/*.example.manifest.txt
+!data/tools/comfyui/skills/generate-image/lora-cheatsheets/index.md
 comfyui_submodule/models/
 comfyui_submodule/output/
 comfyui_submodule/input/

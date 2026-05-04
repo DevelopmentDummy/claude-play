@@ -1,0 +1,10 @@
+# 자동 생성된 LoRA 매니페스트 — 직접 편집 금지
+# 원본: illustrious.md
+# 포맷: 파일명 [카테고리,플래그] 짧은 용도 │ 강도 [│ trig?: 후보 태그]
+# 플래그: base, nsfw-base, nsfw, warn(⚠️), broken(❌), auto-trig
+# auto-trig: lora-triggers.json의 auto 토큰이 서버에서 자동 주입됨 (값은 매니페스트에 표시 안 함)
+# trig?:    selective — 매번 사용자가 골라 직접 박을 후보 토큰
+# 분류는 lora-triggers.json의 스키마에 따른다 (string=auto / {auto,options} 객체)
+#
+# 이 .example 파일은 구조 참고용이다. 실제 illustrious.manifest.txt는 .gitignore 처리되어
+# 로컬에만 존재하며, build-manifest.mjs가 illustrious.md로부터 자동 생성한다.

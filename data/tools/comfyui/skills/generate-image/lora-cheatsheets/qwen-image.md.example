@@ -1,0 +1,23 @@
+# Qwen-Image LoRA 치트시트 (예시 템플릿)
+
+이 파일은 `.example` 템플릿이다. 실제 `qwen-image.md`는 `.gitignore` 처리되어 로컬에서만 관리된다.
+
+Qwen-Image 워크플로우 전용. 문장형 지시 우선.
+
+## 사용 방법
+
+```json
+{
+  "loras": [
+    { "name": "<lora>.safetensors", "strength": 0.6 }
+  ]
+}
+```
+
+## LoRA 목록 (실제 항목은 로컬 qwen-image.md 참조)
+
+| LoRA 파일명 | 강도 | 용도 | 트리거 태그 | 비고 |
+|---|---|---|---|---|
+| `<example-lora>.safetensors` | 0.6 | 용도 설명 | `<trigger>` | 메모 |
+
+> 실제 LoRA 등록은 로컬 `qwen-image.md` 수정 후 `node build-manifest.mjs` 실행으로 매니페스트 재생성.

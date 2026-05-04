@@ -1,0 +1,32 @@
+# Illustrious LoRA 치트시트 (예시 템플릿)
+
+이 파일은 `.example` 템플릿이다. 실제 `illustrious.md`는 `.gitignore` 처리되어 로컬에서만 관리된다.
+
+Illustrious / SDXL anime 계열 워크플로우(`portrait` / `scene` / `scene-real` / `scene-couple` / `profile`) 전용.
+
+`[BASE]` / `[NSFW-BASE]` 표시 LoRA는 워크플로우에 고정 포함된다. Anima `[ANIMA-BASE]`와 혼용 금지 (파이프라인 다름).
+
+## 사용 방법
+
+```json
+{
+  "loras": [
+    { "name": "<base-lora>.safetensors", "strength": 0.6 }
+  ]
+}
+```
+
+## 프롬프트 운영 원칙
+
+- Illustrious는 **Danbooru 태그 우선**.
+- `[BASE]` 체인 → 스타일 1개 → 필요 시 포즈/컨셉/디테일러 순으로 쌓는다.
+
+## LoRA 목록 (실제 항목은 로컬 illustrious.md 참조)
+
+### 카테고리 예시
+
+| LoRA 파일명 | 강도 | 용도 | 트리거 태그 | 비고 |
+|---|---|---|---|---|
+| `<example-lora>.safetensors` | 0.5~0.8 | 용도 설명 | `<trigger>` | 메모 |
+
+> 실제 LoRA 등록은 로컬 `illustrious.md` 수정 후 `node build-manifest.mjs` 실행으로 매니페스트 재생성.

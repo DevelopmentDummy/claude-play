@@ -1,0 +1,28 @@
+# Anima LoRA 호환성 테스트 로그 (예시 템플릿)
+
+이 파일은 `.example` 템플릿이다. 실제 `anima.compat-log.md`는 `.gitignore` 처리되어 로컬에서만 관리된다.
+
+`anima.md`에서 분리된 시점 기록. 본문에서 자주 참조되지 않으므로 별도 파일로 보관한다.
+
+## YYYY-MM-DD — 호환성 테스트 (예시)
+
+전체 N종을 동일 조건으로 테스트.
+
+- seed: `<seed>`
+- 해상도: `1024x1024`
+- steps: `<steps>`
+- base: `<checkpoint>`
+- 강도: `<strength>`
+- 워크플로우: `anima-mixed-scene`
+
+### ✅ 호환 확인
+
+| 파일명 | 관찰 메모 |
+|---|---|
+| `<example-lora>.safetensors` | 메모 |
+
+### ⚠️ 부분 호환 / ❌ 비호환
+
+| 파일명 | 사유 |
+|---|---|
+| `<example-lora>.safetensors` | 메모 |
