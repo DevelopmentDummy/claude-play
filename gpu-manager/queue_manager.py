@@ -16,8 +16,8 @@ class TaskType(str, Enum):
     CREATE_VOICE = "create_voice"
 
 
-TASK_TIMEOUTS: dict[TaskType, float] = {
-    TaskType.COMFYUI: 600.0,      # 10 minutes
+TASK_TIMEOUTS: dict[TaskType, float | None] = {
+    TaskType.COMFYUI: None,       # no timeout — long queues / heavy LoRAs can run arbitrarily long
     TaskType.TTS: 120.0,          # 2 minutes
     TaskType.CREATE_VOICE: 300.0, # 5 minutes
 }
@@ -67,7 +67,10 @@ class QueueManager:
 
             timeout = TASK_TIMEOUTS.get(task.type, 120.0)
             try:
-                result = await asyncio.wait_for(handler(task.payload), timeout=timeout)
+                if timeout is None:
+                    result = await handler(task.payload)
+                else:
+                    result = await asyncio.wait_for(handler(task.payload), timeout=timeout)
                 future.set_result(result)
             except asyncio.TimeoutError:
                 logger.error("Task %s timed out after %.0fs", task.type, timeout)

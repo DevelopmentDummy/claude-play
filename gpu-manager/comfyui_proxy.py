@@ -28,7 +28,8 @@ class ComfyUIProxy:
     async def generate(self, payload: dict) -> dict:
         """Submit prompt to ComfyUI, poll until complete, return filenames."""
         prompt = payload["prompt"]
-        timeout_ms = payload.get("timeout", 600_000)
+        # timeout: 0 / negative / None → infinite wait. Otherwise interpret as milliseconds.
+        timeout_ms = payload.get("timeout", 0)
 
         # Submit prompt
         resp = await self._client.post(
@@ -49,8 +50,9 @@ class ComfyUIProxy:
         prompt_id = resp.json()["prompt_id"]
         logger.info("Submitted prompt %s to ComfyUI", prompt_id)
 
-        # Poll history
-        history = await self._poll_history(prompt_id, timeout_ms / 1000)
+        # Poll history (timeout_s <= 0 → poll forever)
+        timeout_s = (timeout_ms / 1000) if (timeout_ms and timeout_ms > 0) else 0.0
+        history = await self._poll_history(prompt_id, timeout_s)
 
         # Extract filenames
         filenames = self._extract_filenames(history)
@@ -65,15 +67,19 @@ class ComfyUIProxy:
     async def _poll_history(
         self, prompt_id: str, timeout_s: float
     ) -> dict:
-        """Poll GET /history/{prompt_id}: wait 10s before first poll, then 2s→8s backoff."""
-        deadline = time.monotonic() + timeout_s
+        """Poll GET /history/{prompt_id}: wait 10s before first poll, then 2s→8s backoff.
+
+        timeout_s <= 0 → poll forever (no deadline).
+        """
+        infinite = timeout_s <= 0
+        deadline = None if infinite else time.monotonic() + timeout_s
 
         # Image generation rarely finishes in <10s — skip early polling entirely
         # to avoid hammering ComfyUI (and exhausting ephemeral ports).
         await asyncio.sleep(10.0)
 
         delay = 2.0
-        while time.monotonic() < deadline:
+        while infinite or time.monotonic() < deadline:
             try:
                 resp = await self._client.get(
                     f"{self.comfyui_url}/history/{prompt_id}"
@@ -87,7 +93,7 @@ class ComfyUIProxy:
             await asyncio.sleep(delay)
             delay = min(delay * 1.5, 8.0)
 
-        # Timeout — try to cancel
+        # Timeout — try to cancel (only reachable when not infinite)
         try:
             await self._client.post(
                 f"{self.comfyui_url}/queue",

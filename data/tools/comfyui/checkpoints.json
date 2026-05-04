@@ -73,6 +73,11 @@
     "bismuthIllustrious_v70.safetensors": {
       "loader": "checkpoint_simple",
       "family": "illustrious"
+    },
+    "hakutoxl_v2.safetensors": {
+      "loader": "checkpoint_simple",
+      "family": "illustrious",
+      "notes": "HakutoXL V2 (6.94GB fp16). 작가 권장: Euler a, SGM Uniform, CFG 5, steps 28, ENSD 31337. 네거티브에 hair ribbon 권장. 일러스트 톤이 평면적·신선한 결 (newest, very awa 계열)"
     }
   }
 }
