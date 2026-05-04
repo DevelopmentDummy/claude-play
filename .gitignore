@@ -41,3 +41,7 @@ comfyui_submodule/output/
 comfyui_submodule/input/
 .mcp.json
 *.lnk
+
+# Local style-drift tracking artifacts (fire_ai check outputs)
+style-drift-report.md
+style-drift-test.md
