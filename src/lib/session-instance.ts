@@ -8,6 +8,7 @@ import { PanelEngine } from "./panel-engine";
 import { AIProvider } from "./ai-provider";
 import { generateEdgeTts } from "./edge-tts-client";
 import { buildHintSnapshotLine } from "./hint-snapshot";
+import { spawnBackgroundClaude } from "./background-session";
 
 // --- Constants & helpers (extracted from services.ts) ---
 
@@ -572,6 +573,99 @@ export class SessionInstance {
     }
   }
 
+  /**
+   * Run session hooks/on-assistant.js if it exists.
+   * Called right after AI stream completes and the assistant message is persisted.
+   * Hook receives { variables, data, sessionDir, response } where response is the
+   * just-finished assistant message text. May return { variables?, data? } patches.
+   * Use case: static analysis of the AI response (style tic detection, etc.)
+   * that should surface in next turn's [STATE] header.
+   */
+  runAssistantHooks(responseText: string): void {
+    const dir = this.getDir();
+    if (!dir) return;
+    const hookPath = path.join(dir, "hooks", "on-assistant.js");
+    if (!fs.existsSync(hookPath)) return;
+
+    try {
+      const varsPath = path.join(dir, "variables.json");
+      let variables: Record<string, unknown> = {};
+      try { variables = JSON.parse(fs.readFileSync(varsPath, "utf-8")); } catch {}
+
+      const SYSTEM_JSON = new Set([
+        "variables.json", "session.json", "builder-session.json", "layout.json",
+        "chat-history.json", "pending-events.json", "pending-actions.json",
+        "package.json", "tsconfig.json", "voice.json", "chat-options.json",
+      ]);
+      const data: Record<string, unknown> = {};
+      try {
+        for (const f of fs.readdirSync(dir)) {
+          if (f.endsWith(".json") && !SYSTEM_JSON.has(f)) {
+            try { data[f.replace(".json", "")] = JSON.parse(fs.readFileSync(path.join(dir, f), "utf-8")); } catch {}
+          }
+        }
+      } catch {}
+
+      // eslint-disable-next-line no-eval
+      const nativeRequire = eval("require") as NodeRequire;
+      delete nativeRequire.cache[hookPath];
+      const mod = nativeRequire(hookPath);
+      const fn = typeof mod === "function" ? mod : mod.default;
+      if (typeof fn !== "function") return;
+
+      const result = fn({ variables: { ...variables }, data, sessionDir: dir, response: responseText });
+      if (!result || typeof result !== "object") return;
+
+      if (result.variables && typeof result.variables === "object") {
+        const current = JSON.parse(fs.readFileSync(varsPath, "utf-8"));
+        const merged = { ...current, ...result.variables };
+        fs.writeFileSync(varsPath, JSON.stringify(merged, null, 2), "utf-8");
+      }
+
+      if (result.data && typeof result.data === "object") {
+        for (const [rawKey, patch] of Object.entries(result.data as Record<string, Record<string, unknown>>)) {
+          if (!patch || typeof patch !== "object") continue;
+          const fileName = rawKey.endsWith(".json") ? rawKey : `${rawKey}.json`;
+          if (SYSTEM_JSON.has(fileName)) continue;
+          const filePath = path.join(dir, fileName);
+          let current: Record<string, unknown> = {};
+          try { if (fs.existsSync(filePath)) current = JSON.parse(fs.readFileSync(filePath, "utf-8")); } catch {}
+          fs.writeFileSync(filePath, JSON.stringify({ ...current, ...patch }, null, 2), "utf-8");
+        }
+      }
+
+      // Optional fire-and-forget background AI request — hook returns
+      // { fireAi: { prompt, model?, effort?, notify?, useSessionContext? } } to spawn analysis agent.
+      if (result.fireAi && typeof result.fireAi === "object") {
+        try {
+          const fa = result.fireAi as {
+            prompt?: string;
+            model?: string;
+            effort?: string;
+            notify?: boolean;
+            useSessionContext?: boolean;
+          };
+          if (typeof fa.prompt === "string" && fa.prompt.trim()) {
+            console.log(`[hooks/on-assistant fireAi] spawning bg claude for ${this.id} (model=${fa.model || "default"}, effort=${fa.effort || "default"})`);
+            spawnBackgroundClaude({
+              sessionDir: dir,
+              prompt: fa.prompt,
+              model: fa.model,
+              effort: fa.effort,
+              notify: fa.notify ?? false,
+              callerSessionId: this.id,
+              useSessionContext: fa.useSessionContext ?? false,
+            });
+          }
+        } catch (err) {
+          console.error("[hooks/on-assistant fireAi] spawn error:", err);
+        }
+      }
+    } catch (err) {
+      console.error("[hooks/on-assistant] error:", err);
+    }
+  }
+
   /** Clear __popups from variables.json (called on new user message) */
   clearPopups(): void {
     const dir = this.getDir();
@@ -1033,6 +1127,15 @@ export class SessionInstance {
         }
       }
       this.saveHistory();
+
+      // Run on-assistant hook with the just-finished assistant response.
+      // Skip for OOC / slash to avoid noise. Use the last assistant message text.
+      if (!isOOC) {
+        const lastAsst = [...this.chatHistory].reverse().find(m => m.role === "assistant");
+        if (lastAsst && typeof lastAsst.content === "string" && lastAsst.content) {
+          this.runAssistantHooks(lastAsst.content);
+        }
+      }
     }
 
     this.isOOC = false;

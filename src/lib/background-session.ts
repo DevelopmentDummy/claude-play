@@ -14,7 +14,23 @@ export interface FireAIOptions {
   effort?: string;
   notify?: boolean;
   callerSessionId?: string;
+  /** When true, inject the full persona system prompt (CLAUDE.md, persona.md, worldview).
+   *  When false (default), use a minimal task-execution prompt — the spawn focuses on
+   *  *acting on the user prompt* (calling tools, writing files) rather than roleplaying. */
+  useSessionContext?: boolean;
 }
+
+/** Minimal system prompt for task-execution spawns.
+ *  Optimised for tool use — explicitly tells the model to use Write/Read/etc. tools
+ *  rather than producing in-character narrative responses. */
+const TASK_EXECUTION_SYSTEM_PROMPT = [
+  "You are a focused background agent executing a single task in a session directory.",
+  "You are NOT roleplaying any character. You are NOT producing narrative dialogue.",
+  "When the user prompt asks you to write a file, ALWAYS call the Write tool — do not respond with text describing what you would write.",
+  "When the user prompt asks you to read or analyse files, ALWAYS use the Read/Glob/Grep tools — do not fabricate contents.",
+  "Your final text response should be brief (one short sentence) confirming the action you took. The actual work happens through tool calls.",
+  "If a tool fails, report the failure verbatim. Do not invent success.",
+].join("\n");
 
 export interface FireAIResult {
   pid: number;
@@ -81,10 +97,13 @@ function pushCompletionEvent(callerSessionId: string, pid: number, exitCode: num
  * Returns immediately with the PID — does not wait for completion.
  */
 export function spawnBackgroundClaude(opts: FireAIOptions): FireAIResult {
-  const { sessionDir, prompt, model, effort, notify, callerSessionId } = opts;
+  const { sessionDir, prompt, model, effort, notify, callerSessionId, useSessionContext } = opts;
 
-  // Build system prompt using the same pipeline as normal sessions
-  const systemPrompt = buildSystemPromptForSession(sessionDir);
+  // Default: minimal task-execution prompt (spawns *do* tasks, they don't roleplay).
+  // Opt-in: full persona system prompt for cases where character context is genuinely needed.
+  const systemPrompt = useSessionContext
+    ? buildSystemPromptForSession(sessionDir)
+    : TASK_EXECUTION_SYSTEM_PROMPT;
 
   // Build args: one-shot mode (no --input-format / --output-format)
   const args: string[] = [
