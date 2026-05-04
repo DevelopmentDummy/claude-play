@@ -29,6 +29,19 @@ export interface WorkflowFeatures {
 export interface DetailerChainConfig {
   source: { node: string; output: number };  // e.g. { node: "9", output: 0 } = VAEDecode
   sink: { node: string; field: string };     // e.g. { node: "30", field: "image" } = Upscale input
+  /**
+   * Optional: explicit CLIP source for detailers. Used when the workflow's KSampler
+   * positive doesn't trace back to a CLIPTextEncode (e.g. couple-branch workflows
+   * that go through Attention couple/ConditioningCombine). Falls back to KSampler
+   * positive trace if absent.
+   */
+  clip_source?: { node: string; output: number };
+  /**
+   * Optional: explicit model source for detailers. Defaults to KSampler.model.
+   * Useful when detailers should use a different model output than the sampler
+   * (e.g. couple workflows where sampler model is post-Attention-couple).
+   */
+  model_source?: { node: string; output: number };
 }
 
 export interface WorkflowOutputDef {

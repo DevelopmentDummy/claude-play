@@ -1064,8 +1064,14 @@ export class ComfyUIClient {
       ? ((vaeDecodeEntry[1] as Record<string, unknown>).inputs as Record<string, unknown>)
       : null;
 
-    // Resolve clip by tracing KSampler → positive → CLIPTextEncode.clip
+    // Resolve CLIP for detailer wiring.
+    // Priority: chainConfig.clip_source (explicit override) → KSampler.positive trace → null.
+    // Couple-branch workflows (Attention couple, ConditioningCombine) MUST set clip_source
+    // because the sampler positive doesn't trace back to a CLIPTextEncode.
     const resolveClip = (): unknown => {
+      if (chainConfig.clip_source) {
+        return [chainConfig.clip_source.node, chainConfig.clip_source.output];
+      }
       const posRef = samplerInputs?.positive as [string, number] | undefined;
       if (posRef) {
         const posNode = prompt[posRef[0]] as Record<string, unknown> | undefined;
@@ -1074,6 +1080,13 @@ export class ComfyUIClient {
         }
       }
       return null;
+    };
+    // Resolve model for detailer wiring. Default = sampler model. Override via chainConfig.model_source.
+    const resolveModel = (): unknown => {
+      if (chainConfig.model_source) {
+        return [chainConfig.model_source.node, chainConfig.model_source.output];
+      }
+      return samplerInputs?.model;
     };
 
     // Determine which modules are enabled (in fixed order)
@@ -1157,7 +1170,7 @@ export class ComfyUIClient {
       const detailerId = nodeIdMap.detailer;
       const detailerInputs = (prompt[detailerId] as Record<string, unknown>).inputs as Record<string, unknown>;
 
-      detailerInputs.model = samplerInputs?.model;
+      detailerInputs.model = resolveModel();
       detailerInputs.clip = resolveClip();
       detailerInputs.vae = vaeDecodeInputs?.vae;
 

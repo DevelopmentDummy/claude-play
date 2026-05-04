@@ -22,6 +22,14 @@
     "sink": {
       "node": "30",
       "field": "image"
+    },
+    "clip_source": {
+      "node": "1",
+      "output": 1
+    },
+    "model_source": {
+      "node": "1",
+      "output": 0
     }
   },
   "params": {

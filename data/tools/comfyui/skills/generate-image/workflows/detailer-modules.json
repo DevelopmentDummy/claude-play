@@ -36,11 +36,25 @@
           "cycle": 1
         },
         "_meta": { "title": "face-detailer" }
+      },
+      "pos_prompt": {
+        "class_type": "CLIPTextEncode",
+        "inputs": { "text": "detailed face, beautiful eyes, natural skin, detailed facial features, sharp eyes, expressive eyes" },
+        "_meta": { "title": "face-pos" }
+      },
+      "neg_prompt": {
+        "class_type": "CLIPTextEncode",
+        "inputs": { "text": "blurry face, bad face, deformed face, asymmetric eyes, cross-eyed, lazy eye, malformed pupil, extra eyes" },
+        "_meta": { "title": "face-neg" }
       }
     },
-    "use_main_prompt": true,
+    "use_main_prompt": false,
     "internal_wiring": {
-      "detailer.bbox_detector": ["detector", 0]
+      "detailer.bbox_detector": ["detector", 0],
+      "detailer.positive": ["pos_prompt", 0],
+      "detailer.negative": ["neg_prompt", 0],
+      "pos_prompt.clip": "__clip__",
+      "neg_prompt.clip": "__clip__"
     }
   },
   "hand": {
