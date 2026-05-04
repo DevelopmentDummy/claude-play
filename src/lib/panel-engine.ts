@@ -61,6 +61,12 @@ export function ensureHandlebarsHelpers(): void {
   Handlebars.registerHelper("formatNumber", (n) =>
     Number(n).toLocaleString()
   );
+  Handlebars.registerHelper("floor", (n) => Math.floor(Number(n) || 0));
+  Handlebars.registerHelper("round", (n) => Math.round(Number(n) || 0));
+  Handlebars.registerHelper("concat", (...args) => {
+    // Last arg is Handlebars options object — drop it
+    return args.slice(0, -1).map((v) => (v == null ? "" : String(v))).join("");
+  });
   Handlebars.registerHelper("json", (val) =>
     new Handlebars.SafeString(JSON.stringify(val ?? null))
   );
