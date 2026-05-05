@@ -45,3 +45,6 @@ comfyui_submodule/input/
 # Local style-drift tracking artifacts (fire_ai check outputs)
 style-drift-report.md
 style-drift-test.md
+
+# Personal superpowers workflow notes (handoffs, plans, specs) — contain absolute paths and persona names
+docs/superpowers/
