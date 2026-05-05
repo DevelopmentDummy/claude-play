@@ -292,6 +292,18 @@ function renderInline(
   return nodes;
 }
 
+/** Block-level scene-break ornament. Used between distinct scene/space/time shifts in narrative.
+ *  AI emits <break/> or <break> (or <scene_break/>) where ***. visual divide is wanted. */
+function SceneBreak({ keyId }: { keyId: string }) {
+  return (
+    <div key={keyId} className="my-4 flex items-center justify-center select-none" aria-hidden>
+      <span className="flex-1 h-px bg-gradient-to-r from-transparent via-[#5a3a3a]/50 to-[#5a3a3a]/30" />
+      <span className="px-3 text-[#9a8868] text-[10px] tracking-[0.4em] font-light">❖ ❖ ❖</span>
+      <span className="flex-1 h-px bg-gradient-to-l from-transparent via-[#5a3a3a]/50 to-[#5a3a3a]/30" />
+    </div>
+  );
+}
+
 function renderMarkdown(
   text: string,
   sessionId?: string,
@@ -299,25 +311,36 @@ function renderMarkdown(
   onMediaReady?: () => void,
   personaName?: string,
 ): React.ReactNode[] {
-  const parts = text.split(/(```[\s\S]*?```)/g);
+  // Split first on scene-break tags. Accepts <break>, <break/>, <scene_break>, <scene_break/> (case-insensitive).
+  // Trims surrounding whitespace/newlines so the ornament sits cleanly without extra blank lines.
+  const SCENE_BREAK_RE = /\s*<\/?\s*(?:scene_break|break)\s*\/?>\s*/gi;
+  const segments = text.split(SCENE_BREAK_RE);
   const nodes: React.ReactNode[] = [];
 
-  parts.forEach((part, i) => {
-    if (part.startsWith("```") && part.endsWith("```")) {
-      const inner = part.slice(3, -3);
-      const nl = inner.indexOf("\n");
-      const code = nl >= 0 ? inner.slice(nl + 1) : inner;
-      nodes.push(
-        <pre
-          key={i}
-          className="bg-code-bg p-2.5 rounded-lg overflow-x-auto my-1.5 text-[13px]"
-        >
-          <code className="font-mono text-[13px]">{code}</code>
-        </pre>
-      );
-    } else {
-      nodes.push(...renderInline(part, `${i}`, sessionId, panels, onMediaReady, personaName));
+  segments.forEach((segment, segIdx) => {
+    if (segIdx > 0) {
+      nodes.push(<SceneBreak key={`break-${segIdx}`} keyId={`break-${segIdx}`} />);
     }
+    if (!segment) return;
+    const parts = segment.split(/(```[\s\S]*?```)/g);
+    parts.forEach((part, i) => {
+      const partKey = `${segIdx}-${i}`;
+      if (part.startsWith("```") && part.endsWith("```")) {
+        const inner = part.slice(3, -3);
+        const nl = inner.indexOf("\n");
+        const code = nl >= 0 ? inner.slice(nl + 1) : inner;
+        nodes.push(
+          <pre
+            key={partKey}
+            className="bg-code-bg p-2.5 rounded-lg overflow-x-auto my-1.5 text-[13px]"
+          >
+            <code className="font-mono text-[13px]">{code}</code>
+          </pre>
+        );
+      } else {
+        nodes.push(...renderInline(part, partKey, sessionId, panels, onMediaReady, personaName));
+      }
+    });
   });
 
   return nodes;
