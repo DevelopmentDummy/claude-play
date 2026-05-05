@@ -78,6 +78,11 @@
       "loader": "checkpoint_simple",
       "family": "illustrious",
       "notes": "HakutoXL V2 (6.94GB fp16). 작가 권장: Euler a, SGM Uniform, CFG 5, steps 28, ENSD 31337. 네거티브에 hair ribbon 권장. 일러스트 톤이 평면적·신선한 결 (newest, very awa 계열)"
+    },
+    "lewdakaexplicitillus_v1.safetensors": {
+      "loader": "checkpoint_simple",
+      "family": "illustrious",
+      "notes": "LewDakaExplicitIllustraIL v1 (6.77GB fp16). NSFW/explicit 강조형 Illustrious 머지. 작가 샘플 메타: Euler a, CFG 5, steps 25, clip skip 2, 1024x1408 + Hires 2x (4x-UltraSharp, denoise 0.15). Trained words 없음. 권장 quality 헤더: 'masterpiece, ultra HD, high detail, depth of field, best quality, 8k, anime coloring, anime screencap:1.5, official art'. 'uncensored' 태그 활용 시 노출 표현 강화. CivitAI: 2519299@2831549"
     }
   }
 }
