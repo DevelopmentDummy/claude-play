@@ -76,6 +76,74 @@ function extractChoiceBlock(raw: string): string | null {
   return raw.substring(openIdx, closeIdx + CHOICE_CLOSE.length);
 }
 
+/** Known top-level tags the response pipeline understands. */
+const KNOWN_TAGS = new Set<string>(["dialog_response", "choice"]);
+
+/** Check for malformed/typo'd tags in AI response and log warnings.
+ *  Catches common errors:
+ *  - typo close tag (e.g. `</dialog_source>` paired with `<dialog_response>`)
+ *  - unknown opening tag that looks tag-like
+ *  - unclosed dialog_response/choice block
+ */
+function validateResponseTags(raw: string, sessionId: string): void {
+  if (!raw || typeof raw !== "string") return;
+  const issues: string[] = [];
+
+  // 1. Scan all <foo>/</foo> tags. Flag tags whose name isn't in KNOWN_TAGS.
+  const tagRegex = /<\/?([a-z_][a-z0-9_]*)>/gi;
+  const seenUnknown = new Set<string>();
+  let match: RegExpExecArray | null;
+  while ((match = tagRegex.exec(raw)) !== null) {
+    const tagName = match[1].toLowerCase();
+    if (KNOWN_TAGS.has(tagName)) continue;
+    if (seenUnknown.has(tagName)) continue;
+    seenUnknown.add(tagName);
+    // Suggest closest known tag if name is similar (Levenshtein <=4)
+    let suggestion = "";
+    for (const known of KNOWN_TAGS) {
+      if (levenshtein(tagName, known) <= 4) {
+        suggestion = ` (did you mean <${known}>?)`;
+        break;
+      }
+    }
+    issues.push(`unknown tag <${tagName}>${suggestion}`);
+  }
+
+  // 2. Open/close mismatch — count opens vs closes for each known tag.
+  for (const tag of KNOWN_TAGS) {
+    const openMatches = raw.match(new RegExp(`<${tag}>`, "g"))?.length || 0;
+    const closeMatches = raw.match(new RegExp(`</${tag}>`, "g"))?.length || 0;
+    if (openMatches !== closeMatches) {
+      issues.push(`<${tag}> open/close mismatch: ${openMatches} open, ${closeMatches} close`);
+    }
+  }
+
+  if (issues.length > 0) {
+    console.warn(`[session:${sessionId}] response tag validation: ${issues.join("; ")}`);
+  }
+}
+
+function levenshtein(a: string, b: string): number {
+  if (a === b) return 0;
+  const m = a.length, n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  const dp: number[] = Array(n + 1);
+  for (let j = 0; j <= n; j++) dp[j] = j;
+  for (let i = 1; i <= m; i++) {
+    let prev = dp[0];
+    dp[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const tmp = dp[j];
+      dp[j] = a[i - 1] === b[j - 1]
+        ? prev
+        : Math.min(prev, dp[j], dp[j - 1]) + 1;
+      prev = tmp;
+    }
+  }
+  return dp[n];
+}
+
 function extractDialog(raw: string): string {
   const parts: string[] = [];
   let searchFrom = 0;
@@ -1147,6 +1215,7 @@ export class SessionInstance {
       if (!isOOC) {
         const lastAsst = [...this.chatHistory].reverse().find(m => m.role === "assistant");
         if (lastAsst && typeof lastAsst.content === "string" && lastAsst.content) {
+          validateResponseTags(lastAsst.content, this.id);
           this.runAssistantHooks(lastAsst.content);
         }
       }
@@ -1208,6 +1277,23 @@ export class SessionInstance {
       if (msg.type === "system" && msg.subtype === "status" && msg.status === "compacting") {
         this.isCompacting = true;
         this.setStatus("compacting");
+      }
+
+      // Compact end markers: CLI sends one of
+      //   {subtype:"status", status:null, compact_result:"success"}
+      //   {subtype:"compact_boundary", ...}
+      // either may arrive without a following stream_event (e.g. compact during
+      // idle), so we must clear the compacting flag here — otherwise the UI
+      // badge gets stuck on "Compacting..." indefinitely.
+      if (
+        msg.type === "system" &&
+        ((msg.subtype === "status" && msg.status === null && typeof msg.compact_result !== "undefined") ||
+          msg.subtype === "compact_boundary")
+      ) {
+        if (this.isCompacting) {
+          this.isCompacting = false;
+          this.setStatus("connected");
+        }
       }
 
       // Track subagent tasks for result merging
