@@ -78,15 +78,35 @@ function buildSystemPromptForSession(sessionDir: string): string {
   return sm.buildServiceSystemPrompt(personaName, "claude", resolvedOptions, userName);
 }
 
-/** Push a completion event to the caller session's pending-events.json */
-function pushCompletionEvent(callerSessionId: string, pid: number, exitCode: number | null): void {
+/** Push a completion event to the caller session's pending-events.json.
+ *  Tries the live SessionInstance first (so the WS broadcast fires); falls back to
+ *  direct disk write when the instance has been cleaned up (10-min grace expired,
+ *  page closed, etc.) — otherwise the notification is lost forever. */
+function pushCompletionEvent(sessionDir: string, callerSessionId: string, pid: number, exitCode: number | null): void {
+  const header = `[BACKGROUND_SESSION_COMPLETE] pid=${pid} exit_code=${exitCode ?? "null"}`;
   try {
     const instance = getSessionInstance(callerSessionId);
     if (instance) {
-      instance.queueEvent(`[BACKGROUND_SESSION_COMPLETE] pid=${pid} exit_code=${exitCode ?? "null"}`);
+      instance.queueEvent(header);
+      return;
     }
   } catch (err) {
-    console.error("[background-session] Failed to push completion event:", err);
+    console.error("[background-session] queueEvent via instance failed, falling back to disk:", err);
+  }
+  // Fallback: write directly to pending-events.json so the next session open picks it up.
+  try {
+    const fp = path.join(sessionDir, "pending-events.json");
+    let headers: string[] = [];
+    if (fs.existsSync(fp)) {
+      const raw = fs.readFileSync(fp, "utf-8");
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) headers = parsed;
+    }
+    headers = headers.filter(h => h !== header);
+    headers.push(header);
+    fs.writeFileSync(fp, JSON.stringify(headers), "utf-8");
+  } catch (err) {
+    console.error("[background-session] Failed to persist completion event to disk:", err);
   }
 }
 
@@ -195,7 +215,7 @@ export function spawnBackgroundClaude(opts: FireAIOptions): FireAIResult {
 
     // Push completion event to caller session if requested
     if (notify && callerSessionId) {
-      pushCompletionEvent(callerSessionId, pid, code);
+      pushCompletionEvent(sessionDir, callerSessionId, pid, code);
     }
   });
 

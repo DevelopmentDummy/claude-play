@@ -316,8 +316,11 @@ function handleMessage(
       // Run per-persona message hooks (e.g. dynamic hint data)
       if (!isOOC) instance.runMessageHooks(text);
 
-      // Flush pending event headers and prepend to AI message
-      const eventHeaders = isOOC ? "" : instance.flushEvents();
+      // Flush pending event headers and prepend to AI message.
+      // Events flush in OOC too — system notifications like [BACKGROUND_SESSION_COMPLETE],
+      // [SCHEDULE_ERROR], [정의] must reach the AI regardless of conversation mode.
+      // hintSnapshot / actionHistory stay OOC-excluded (they're RP world-state, not system signals).
+      const eventHeaders = instance.flushEvents();
       const hintSnapshot = isOOC ? "" : instance.buildHintSnapshot();
       const actionHistory = isOOC ? "" : instance.flushActions();
       const jsonLint = instance.buildJsonLint();
