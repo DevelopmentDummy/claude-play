@@ -83,7 +83,17 @@ export async function POST(
   const resolvedOptions = svc.sessions.resolveOptions(sessionDir);
   if (!instance.claude.isRunning() || rawModel) {
     const profile = info.profileSlug ? svc.sessions.getProfile(info.profileSlug) : undefined;
-    const runtimeSystemPrompt = svc.sessions.buildServiceSystemPrompt(info.persona, provider, resolvedOptions, profile?.name);
+    let runtimeSystemPrompt = svc.sessions.buildServiceSystemPrompt(info.persona, provider, resolvedOptions, profile?.name);
+    // Append session-specific panel action definitions (if any). Static so the
+    // prompt cache stays warm; the [정의] event handles per-error reminders.
+    try {
+      const { readPanelActionsMeta, formatPanelActionsAsMarkdown } = await import("@/lib/panel-actions-meta");
+      const panelMeta = readPanelActionsMeta(sessionDir);
+      const panelMarkdown = formatPanelActionsAsMarkdown(panelMeta);
+      if (panelMarkdown) {
+        runtimeSystemPrompt = `${runtimeSystemPrompt}\n\n${panelMarkdown}`;
+      }
+    } catch { /* optional — skip on failure */ }
     // For Codex: write instructions file (file-based prompt delivery via model_instructions_file)
     if (provider === "codex") {
       svc.sessions.writeCodexInstructions(sessionDir, runtimeSystemPrompt);

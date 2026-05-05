@@ -51,11 +51,22 @@ interface ActionEntry {
 // Class
 // ---------------------------------------------------------------------------
 
+/** Per-action spec sourced from panels/_actions.meta.json (server-side sidecar). */
+export interface ActionSpec {
+  label: string;
+  required?: string[];
+  values?: Record<string, string[]>;
+  note?: string;
+}
+
 export class PanelActionRegistry {
   /** panel → actionId → entry */
   private entries: Map<string, Map<string, ActionEntry>> = new Map();
   private variables: Record<string, unknown> = {};
   private sessionId: string | null = null;
+  /** panel → actionId → spec (loaded from panels/_actions.meta.json on init) */
+  private specs: Map<string, Map<string, ActionSpec>> = new Map();
+  private specLoadPromise: Promise<void> | null = null;
 
   // -------------------------------------------------------------------------
   // Session
@@ -63,6 +74,56 @@ export class PanelActionRegistry {
 
   setSessionId(id: string): void {
     this.sessionId = id;
+    // Kick off async spec load. Failures are non-fatal — execute() handles
+    // missing specs gracefully (no [정의] event emitted).
+    this.specLoadPromise = this.loadSpecs(id).catch(() => {
+      // swallow — specs are optional metadata
+    });
+  }
+
+  /** Fetch panel action specs from server. Idempotent. */
+  private async loadSpecs(sessionId: string): Promise<void> {
+    try {
+      const res = await fetch(`/api/sessions/${sessionId}/panel-actions-meta`);
+      if (!res.ok) return;
+      const data = await res.json() as { panels?: Record<string, Record<string, ActionSpec>> };
+      this.specs.clear();
+      const panels = data.panels || {};
+      for (const [panel, actions] of Object.entries(panels)) {
+        const m = new Map<string, ActionSpec>();
+        for (const [actionId, spec] of Object.entries(actions)) {
+          m.set(actionId, spec);
+        }
+        this.specs.set(panel, m);
+      }
+    } catch {
+      // Network or parse error — leave specs empty
+    }
+  }
+
+  /** Lookup a single action spec. Used by execute() catch hook to emit [정의]. */
+  getSpec(panel: string, actionId: string): ActionSpec | null {
+    return this.specs.get(panel)?.get(actionId) ?? null;
+  }
+
+  /** Format a single spec as a one-line definition string for [정의] events. */
+  formatSpecLine(panel: string, actionId: string, spec: ActionSpec): string {
+    const required = spec.required ?? [];
+    const reqParts: string[] = [];
+    for (const param of required) {
+      const values = spec.values?.[param];
+      if (values && values.length > 0) {
+        const enumStr = values.length <= 6
+          ? values.join(",")
+          : `${values.slice(0, 5).join(",")},...총 ${values.length}개`;
+        reqParts.push(`${param} ∈ {${enumStr}}`);
+      } else {
+        reqParts.push(param);
+      }
+    }
+    const sig = reqParts.length > 0 ? `필수: ${reqParts.join(", ")}` : "no-arg";
+    const noteSuffix = spec.note ? ` — ${spec.note}` : "";
+    return `${panel}.${actionId}(${sig}) [${spec.label}]${noteSuffix}`;
   }
 
   // -------------------------------------------------------------------------
@@ -315,7 +376,12 @@ export class PanelActionRegistry {
     }
 
     try {
-      await entry.handler(params);
+      // Normalize params to {} so handlers can safely write `params.foo` without
+      // TypeError when callers (AI choices, dry actions) omit the params object.
+      // Required-param validation is the handler's responsibility — this guard
+      // only prevents the *outer* `params is undefined` crash that would surface
+      // as a console error before the handler can emit `[액션 실패]` feedback.
+      await entry.handler(params ?? {});
     } catch (e) {
       // Handler threw — undo the optimistic record so failed attempts don't
       // surface to the AI as if they executed. If the handler had already
@@ -324,6 +390,25 @@ export class PanelActionRegistry {
       if (recorded && this.sessionId) {
         const url = `/api/sessions/${this.sessionId}/panel-actions?panel=${encodeURIComponent(resolvedPanel)}&action=${encodeURIComponent(actionId)}`;
         await fetch(url, { method: "DELETE" }).catch(() => {});
+      }
+      // Queue [정의] event with this action's spec so the AI receives a
+      // targeted reminder of the required params on the next turn. Static
+      // panel definitions are also injected into the system prompt at session
+      // open; this dynamic event ensures the just-failed action's spec is
+      // *adjacent* to the [액션 실패] header in the next [STATE].
+      const spec = this.getSpec(resolvedPanel, actionId);
+      if (spec && this.sessionId) {
+        try {
+          await fetch(`/api/sessions/${this.sessionId}/events`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              header: `[정의] ${this.formatSpecLine(resolvedPanel, actionId, spec)}`,
+            }),
+          });
+        } catch {
+          // Best-effort — never let event queuing failures mask the handler error
+        }
       }
       throw e;
     }

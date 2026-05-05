@@ -330,7 +330,9 @@ function ChatInput({ disabled, isStreaming, onSend, onCancel, sessionId, choices
 
       } else if (act.tool) {
         // ═══ Legacy Tool Action ═══
-        const toolBody = { args: { action: act.action, ...(act.params || act.args || {}) } };
+        // Wrap inner params separately to avoid key collision (e.g. besra_evening's params.action vs outer action)
+        const innerParams = act.params || act.args || {};
+        const toolBody = { args: { action: act.action, params: innerParams } };
         console.log("[choice tool action] sending:", JSON.stringify(toolBody));
         const toolRes = await fetch(`/api/sessions/${sessionId}/tools/${encodeURIComponent(act.tool)}`, {
           method: "POST",
