@@ -416,10 +416,11 @@ export class GeminiProcess extends EventEmitter<GeminiProcessEvents> {
     }
   }
 
-  /** Respawn with the last used parameters (for recovery after cancel). */
+  /** Respawn with the last used parameters (for recovery after cancel).
+   *  Resumes the saved session id so context survives a mid-turn STOP. */
   respawn(): void {
     if (!this.spawnCwd) return;
-    this.spawn(this.spawnCwd, undefined, this.spawnModel);
+    this.spawn(this.spawnCwd, this.savedSessionId || undefined, this.spawnModel);
   }
 
   get running(): boolean {

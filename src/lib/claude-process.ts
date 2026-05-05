@@ -16,6 +16,7 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
   private proc: ChildProcess | null = null;
   private buffer = "";
   private logStream: fs.WriteStream | null = null;
+  private lastSessionId: string | null = null;
 
   /**
    * Detect and repair mojibake (Latin-1 mis-decoded UTF-8).
@@ -117,6 +118,7 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
         parsed.subtype === "init" &&
         parsed.session_id
       ) {
+        this.lastSessionId = parsed.session_id;
         this.emit("sessionId", parsed.session_id);
       }
 
@@ -363,11 +365,14 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
     }
   }
 
-  /** Respawn with the last used parameters (for recovery after cancel). */
+  /** Respawn with the last used parameters (for recovery after cancel).
+   *  Resumes the most recently observed session_id so context is preserved.
+   *  Why: Claude emits session_id via stream-json `system/init` only on turn start,
+   *  so cancelling mid-turn means the just-emitted id is the one we must resume. */
   respawn(): void {
     if (!this.lastSpawnParams) return;
     const p = this.lastSpawnParams;
-    this.spawn(p.cwd, undefined, p.model, p.appendSystemPrompt, p.effort, p.skipPermissions);
+    this.spawn(p.cwd, this.lastSessionId || undefined, p.model, p.appendSystemPrompt, p.effort, p.skipPermissions);
   }
 
   get running(): boolean {
