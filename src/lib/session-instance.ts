@@ -3,6 +3,7 @@ import * as path from "path";
 import { ClaudeProcess } from "./claude-process";
 import { CodexProcess } from "./codex-process";
 import { GeminiProcess } from "./gemini-process";
+import { KimiProcess } from "./kimi-process";
 import { SessionManager } from "./session-manager";
 import { PanelEngine } from "./panel-engine";
 import { AIProvider } from "./ai-provider";
@@ -126,7 +127,7 @@ export interface HistoryMessage {
   ooc?: boolean;
 }
 
-export type AIProcess = ClaudeProcess | CodexProcess | GeminiProcess;
+export type AIProcess = ClaudeProcess | CodexProcess | GeminiProcess | KimiProcess;
 
 export type BroadcastFn = (
   event: string,
@@ -137,6 +138,7 @@ export type BroadcastFn = (
 function createProcess(provider: AIProvider): AIProcess {
   if (provider === "codex") return new CodexProcess();
   if (provider === "gemini") return new GeminiProcess();
+  if (provider === "kimi") return new KimiProcess();
   return new ClaudeProcess();
 }
 
@@ -1352,6 +1354,8 @@ export class SessionInstance {
             this.sessions.saveCodexThreadId(this.id, sessionId);
           } else if (this._provider === "gemini") {
             this.sessions.saveGeminiSessionId(this.id, sessionId);
+          } else if (this._provider === "kimi") {
+            this.sessions.saveKimiSessionId(this.id, sessionId);
           } else {
             this.sessions.saveClaudeSessionId(this.id, sessionId);
           }

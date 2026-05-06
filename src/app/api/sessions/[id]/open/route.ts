@@ -60,11 +60,23 @@ export async function POST(
   svc.sessions.ensureClaudeRuntimeConfig(sessionDir, info.persona, "session");
 
   // Resume previous session based on provider
-  const resumeId = provider === "codex"
+  let resumeId = provider === "codex"
     ? svc.sessions.getCodexThreadId(id)
     : provider === "gemini"
     ? svc.sessions.getGeminiSessionId(id)
+    : provider === "kimi"
+    ? svc.sessions.getKimiSessionId(id)
     : svc.sessions.getClaudeSessionId(id);
+  if (provider === "kimi" && !resumeId) {
+    try {
+      const { listConversationsForSession } = await import("@/lib/session-list");
+      const latest = listConversationsForSession(id).items[0];
+      if (latest?.conversationId) {
+        resumeId = latest.conversationId;
+        svc.sessions.saveKimiSessionId(id, resumeId);
+      }
+    } catch { /* best-effort backfill */ }
+  }
   const isResume = !!resumeId;
   instance.loadHistory(); // Load from chat-history.json (empty if new)
 
@@ -99,6 +111,8 @@ export async function POST(
       svc.sessions.writeCodexInstructions(sessionDir, runtimeSystemPrompt);
     } else if (provider === "gemini") {
       svc.sessions.writeGeminiInstructions(sessionDir, runtimeSystemPrompt);
+    } else if (provider === "kimi") {
+      svc.sessions.writeKimiInstructions(sessionDir, runtimeSystemPrompt);
     }
     const skipPerms = resolvedOptions.skipPermissions !== false;
     instance.claude.spawn(sessionDir, resumeId, effectiveModel || undefined, runtimeSystemPrompt, finalEffort, skipPerms);

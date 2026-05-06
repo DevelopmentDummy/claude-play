@@ -15,7 +15,13 @@ import ChatOptionsModal from "@/components/ChatOptionsModal";
 import ToastEffect from "@/components/ToastEffect";
 import UsageModal from "@/components/UsageModal";
 import SessionListModal from "@/components/SessionListModal";
-import { providerFromModel } from "@/lib/ai-provider";
+import { AIProvider, providerFromModel } from "@/lib/ai-provider";
+
+type UsageProvider = Exclude<AIProvider, "kimi">;
+
+function toUsageProvider(provider: AIProvider): UsageProvider | undefined {
+  return provider === "kimi" ? undefined : provider;
+}
 
 export default function BuilderPage() {
   const { name } = useParams<{ name: string }>();
@@ -247,6 +253,9 @@ export default function BuilderPage() {
     setVersionSaving(false);
   }, [decodedName, versionSaving, setError]);
 
+  const builderProvider = providerFromModel(builderModel);
+  const usageProvider = toUsageProvider(builderProvider);
+
   return (
     <div className="flex flex-col h-screen">
       <StatusBar
@@ -294,7 +303,7 @@ export default function BuilderPage() {
             onSend={sendMessage}
             onCancel={sendCancel}
             voiceChat={voiceChat}
-            usageProvider={providerFromModel(builderModel)}
+            usageProvider={usageProvider}
             usageSessionId={name}
             usageRefreshTrigger={usageTrigger}
             onUsageClick={() => setShowUsage(true)}
@@ -325,7 +334,7 @@ export default function BuilderPage() {
           onClose={() => setOptionsModalOpen(false)}
         />
       )}
-      {showUsage && <UsageModal onClose={() => setShowUsage(false)} provider={providerFromModel(builderModel)} sessionId={name} />}
+      {showUsage && usageProvider && <UsageModal onClose={() => setShowUsage(false)} provider={usageProvider} sessionId={name} />}
       <SessionListModal
         open={sessionListOpen}
         onClose={() => setSessionListOpen(false)}

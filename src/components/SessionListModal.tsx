@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 interface ConversationListItem {
   conversationId: string;
-  provider: "claude" | "codex" | "gemini";
+  provider: "claude" | "codex" | "gemini" | "kimi";
   filePath: string;
   sizeBytes: number;
   mtime: number;
@@ -13,7 +13,7 @@ interface ConversationListItem {
 }
 
 interface ConversationsResponse {
-  provider: "claude" | "codex" | "gemini";
+  provider: "claude" | "codex" | "gemini" | "kimi";
   currentId: string | null;
   items: ConversationListItem[];
 }
@@ -34,12 +34,14 @@ const PROVIDER_BADGE: Record<ConversationListItem["provider"], string> = {
   claude: "bg-[#4a2a1a]/60 text-[#ff9f43]/80 border-[#ff9f43]/15",
   codex: "bg-[#2a5a3a]/60 text-[#4dff91]/80 border-[#4dff91]/15",
   gemini: "bg-[#1a3a5c]/60 text-[#64b5f6]/80 border-[#64b5f6]/15",
+  kimi: "bg-[#173735]/70 text-[#74f5dc]/90 border-[#74f5dc]/20",
 };
 
 const PROVIDER_LABEL: Record<ConversationListItem["provider"], string> = {
   claude: "Claude",
   codex: "Codex",
   gemini: "Gemini",
+  kimi: "Kimi",
 };
 
 function relativeTime(ms: number): string {
@@ -158,7 +160,7 @@ export default function SessionListModal({ open, onClose, apiBase }: SessionList
           {items && items.length === 0 && (
             <div className="px-3 py-6 text-xs text-text-dim text-center">
               대화 기록이 없습니다.
-              {data?.provider === "gemini" && (
+              {(data?.provider === "gemini") && (
                 <div className="mt-1 text-text-mute">(Gemini는 아직 미지원)</div>
               )}
             </div>

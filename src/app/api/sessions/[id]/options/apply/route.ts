@@ -51,10 +51,21 @@ export async function POST(
 
     const resumeId = provider === "codex"
       ? sm.getCodexThreadId(id)
+      : provider === "gemini"
+      ? sm.getGeminiSessionId(id)
+      : provider === "kimi"
+      ? sm.getKimiSessionId(id)
       : sm.getClaudeSessionId(id);
 
     const profile = info.profileSlug ? sm.getProfile(info.profileSlug) : undefined;
     const runtimeSystemPrompt = sm.buildServiceSystemPrompt(info.persona, provider, resolvedOptions, profile?.name);
+    if (provider === "codex") {
+      sm.writeCodexInstructions(sessionDir, runtimeSystemPrompt);
+    } else if (provider === "gemini") {
+      sm.writeGeminiInstructions(sessionDir, runtimeSystemPrompt);
+    } else if (provider === "kimi") {
+      sm.writeKimiInstructions(sessionDir, runtimeSystemPrompt);
+    }
     const skipPerms = resolvedOptions.skipPermissions !== false;
     instance.claude.spawn(sessionDir, resumeId, model || undefined, runtimeSystemPrompt, effort, skipPerms);
 

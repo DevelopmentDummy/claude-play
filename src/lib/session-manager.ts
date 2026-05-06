@@ -4,7 +4,7 @@ import Handlebars from "handlebars";
 import { getDataDir } from "./data-dir";
 import { ensureHandlebarsHelpers } from "./panel-engine";
 import { getInternalToken } from "./auth";
-import { providerFromModel } from "./ai-provider";
+import { AIProvider, providerFromModel } from "./ai-provider";
 
 /** Read the selected writing style content for a persona, if any */
 function readPersonaStyleContent(personaDir: string): string | null {
@@ -162,6 +162,7 @@ interface SessionMeta {
   claudeSessionId?: string;
   codexThreadId?: string;
   geminiSessionId?: string;
+  kimiSessionId?: string;
   profileSlug?: string;
   model?: string;
 }
@@ -170,7 +171,8 @@ interface BuilderMeta {
   claudeSessionId?: string;
   codexThreadId?: string;
   geminiSessionId?: string;
-  provider?: "claude" | "codex" | "gemini";
+  kimiSessionId?: string;
+  provider?: AIProvider;
   model?: string;
 }
 
@@ -592,7 +594,24 @@ export class SessionManager {
     // chat header, etc.) are explicitly copied below. Gallery images are served from
     // the persona dir directly via /api/sessions/{id}/persona-images.
     // `gallery.json` is also persona-level — accessed via context.personaDir in engine actions.
-    const SKIP_FILES = new Set(["builder-session.json", "panel-spec.md", "skills", ".claude", "CLAUDE.md", "GEMINI.md", "session-instructions.md", "chat-history.json", "gallery.json", "images"]);
+    const SKIP_FILES = new Set([
+      "builder-session.json",
+      "panel-spec.md",
+      "skills",
+      ".claude",
+      ".agents",
+      ".codex",
+      ".gemini",
+      ".kimi",
+      ".mcp.json",
+      "CLAUDE.md",
+      "AGENTS.md",
+      "GEMINI.md",
+      "session-instructions.md",
+      "chat-history.json",
+      "gallery.json",
+      "images",
+    ]);
     this.copyDirRecursive(personaDir, sessionDir, SKIP_FILES);
 
     // Selectively copy ONLY profile.png and icon.png from persona images.
@@ -687,20 +706,24 @@ export class SessionManager {
       fs.copyFileSync(panelSpecSrc, path.join(sessionDir, "panel-spec.md"));
     }
 
-    // Copy persona skills/ to both .claude/skills/ and .agents/skills/ (Claude + Codex)
+    // Copy persona skills/ to provider-specific skill directories.
     const personaSkillsSrc = path.join(personaDir, "skills");
     const claudeSkillsDest = path.join(sessionDir, ".claude", "skills");
     const agentsSkillsDest = path.join(sessionDir, ".agents", "skills");
+    const kimiSkillsDest = path.join(sessionDir, ".kimi", "skills");
     fs.mkdirSync(claudeSkillsDest, { recursive: true });
     fs.mkdirSync(agentsSkillsDest, { recursive: true });
+    fs.mkdirSync(kimiSkillsDest, { recursive: true });
     if (fs.existsSync(personaSkillsSrc)) {
       this.copyDirRecursive(personaSkillsSrc, claudeSkillsDest);
       this.copyDirRecursive(personaSkillsSrc, agentsSkillsDest);
+      this.copyDirRecursive(personaSkillsSrc, kimiSkillsDest);
     }
 
     // Copy global tool skills (data/tools/*/skills/*) to session
     this.copyToolSkills(claudeSkillsDest);
     this.copyToolSkills(agentsSkillsDest);
+    this.copyToolSkills(kimiSkillsDest);
 
     return { id, ...meta, displayName: this.getPersonaDisplayName(personaName) };
   }
@@ -873,6 +896,29 @@ export class SessionManager {
     }
   }
 
+  /** Save Kimi session ID for resume */
+  saveKimiSessionId(id: string, kimiSessionId: string): void {
+    const metaPath = path.join(this.getSessionDir(id), "session.json");
+    if (!fs.existsSync(metaPath)) return;
+    try {
+      const meta: SessionMeta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
+      meta.kimiSessionId = kimiSessionId;
+      fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), "utf-8");
+    } catch { /* ignore */ }
+  }
+
+  /** Get saved Kimi session ID for resume */
+  getKimiSessionId(id: string): string | undefined {
+    const metaPath = path.join(this.getSessionDir(id), "session.json");
+    if (!fs.existsSync(metaPath)) return undefined;
+    try {
+      const meta: SessionMeta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
+      return meta.kimiSessionId;
+    } catch {
+      return undefined;
+    }
+  }
+
   /** Sync updated files from persona to session (panels, variables, opening, layout, skills) */
   /** Full sync — syncs all elements from persona to session */
   syncPersonaToSession(id: string): void {
@@ -1038,6 +1084,7 @@ export class SessionManager {
         path.join(sessionDir, ".claude", "skills"),
         path.join(sessionDir, ".agents", "skills"),
         path.join(sessionDir, ".gemini", "skills"),
+        path.join(sessionDir, ".kimi", "skills"),
       ];
       if (fs.existsSync(personaSkills)) {
         for (const targetDir of targets) {
@@ -1122,7 +1169,7 @@ export class SessionManager {
     // Check skills — compare persona skills against the provider-specific CLI skill dir
     {
       const provider = meta.model ? providerFromModel(meta.model) : "claude";
-      const cliSkillDir = provider === "codex" ? ".agents" : provider === "gemini" ? ".gemini" : ".claude";
+      const cliSkillDir = provider === "codex" ? ".agents" : provider === "gemini" ? ".gemini" : provider === "kimi" ? ".kimi" : ".claude";
       const pSkills = path.join(personaDir, "skills");
       const sSkills = path.join(sessionDir, cliSkillDir, "skills");
       result.push({ key: "skills", label: "스킬 (skills/)", hasChanges: this.personaSkillsDiffer(pSkills, sSkills) });
@@ -1211,7 +1258,7 @@ export class SessionManager {
     // Check skills — compare session's CLI skill dir against persona skills
     {
       const provider = meta.model ? providerFromModel(meta.model) : "claude";
-      const cliSkillDir = provider === "codex" ? ".agents" : provider === "gemini" ? ".gemini" : ".claude";
+      const cliSkillDir = provider === "codex" ? ".agents" : provider === "gemini" ? ".gemini" : provider === "kimi" ? ".kimi" : ".claude";
       const sSkills = path.join(sessionDir, cliSkillDir, "skills");
       const pSkills = path.join(personaDir, "skills");
       result.push({ key: "skills", label: "스킬 (skills/)", hasChanges: this.personaSkillsDiffer(sSkills, pSkills) });
@@ -1374,7 +1421,7 @@ export class SessionManager {
     // Sync skills (session CLI skill dir → persona, persona skills only — exclude global tool skills)
     if (elements.skills) {
       const provider = meta.model ? providerFromModel(meta.model) : "claude";
-      const cliSkillDir = provider === "codex" ? ".agents" : provider === "gemini" ? ".gemini" : ".claude";
+      const cliSkillDir = provider === "codex" ? ".agents" : provider === "gemini" ? ".gemini" : provider === "kimi" ? ".kimi" : ".claude";
       const sessionSkills = path.join(sessionDir, cliSkillDir, "skills");
       const personaSkills = path.join(personaDir, "skills");
       // Only sync skills that exist in the persona (don't copy global tool skills back)
@@ -1629,6 +1676,7 @@ export class SessionManager {
       ".claude/",
       ".agents/",
       ".gemini/",
+      ".kimi/",
       ".codex/",
       "",
     ].join("\n");
@@ -1656,7 +1704,7 @@ export class SessionManager {
   }
 
   /** Save builder session info for resume */
-  saveBuilderSession(name: string, provider: "claude" | "codex" | "gemini", sessionId: string): void {
+  saveBuilderSession(name: string, provider: AIProvider, sessionId: string): void {
     const metaPath = path.join(this.getPersonaDir(name), "builder-session.json");
     let meta: BuilderMeta = {};
     if (fs.existsSync(metaPath)) {
@@ -1667,6 +1715,8 @@ export class SessionManager {
       meta.codexThreadId = sessionId;
     } else if (provider === "gemini") {
       meta.geminiSessionId = sessionId;
+    } else if (provider === "kimi") {
+      meta.kimiSessionId = sessionId;
     } else {
       meta.claudeSessionId = sessionId;
     }
@@ -1674,20 +1724,26 @@ export class SessionManager {
   }
 
   /** Get saved builder session ID for resume (provider-aware) */
-  getBuilderSessionId(name: string, provider?: "claude" | "codex" | "gemini"): string | undefined {
+  getBuilderSessionId(name: string, provider?: AIProvider): string | undefined {
     const metaPath = path.join(this.getPersonaDir(name), "builder-session.json");
     if (!fs.existsSync(metaPath)) return undefined;
     try {
       const meta: BuilderMeta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
       const p = provider || meta.provider || "claude";
-      return p === "codex" ? meta.codexThreadId : p === "gemini" ? meta.geminiSessionId : meta.claudeSessionId;
+      return p === "codex"
+        ? meta.codexThreadId
+        : p === "gemini"
+        ? meta.geminiSessionId
+        : p === "kimi"
+        ? meta.kimiSessionId
+        : meta.claudeSessionId;
     } catch {
       return undefined;
     }
   }
 
   /** Get saved builder provider */
-  getBuilderProvider(name: string): "claude" | "codex" | "gemini" | undefined {
+  getBuilderProvider(name: string): AIProvider | undefined {
     const metaPath = path.join(this.getPersonaDir(name), "builder-session.json");
     if (!fs.existsSync(metaPath)) return undefined;
     try {
@@ -1833,12 +1889,15 @@ export class SessionManager {
     const claudeSkillsDest = path.join(sessionDir, ".claude", "skills");
     const agentsSkillsDest = path.join(sessionDir, ".agents", "skills");
     const geminiSkillsDest = path.join(sessionDir, ".gemini", "skills");
+    const kimiSkillsDest = path.join(sessionDir, ".kimi", "skills");
     fs.mkdirSync(claudeSkillsDest, { recursive: true });
     fs.mkdirSync(agentsSkillsDest, { recursive: true });
     fs.mkdirSync(geminiSkillsDest, { recursive: true });
+    fs.mkdirSync(kimiSkillsDest, { recursive: true });
     this.copyToolSkills(claudeSkillsDest);
     this.copyToolSkills(agentsSkillsDest);
     this.copyToolSkills(geminiSkillsDest);
+    this.copyToolSkills(kimiSkillsDest);
   }
 
   /** Copy global shared skills (data/skills/) and tool-specific skills (data/tools/X/skills/) into the session skills dir */
@@ -2067,6 +2126,28 @@ export class SessionManager {
     console.log(`[gemini] Wrote GEMINI.md: ${projectDir} (${combined.length} chars, instructions: ${sessionInstructions.length})`);
   }
 
+  /**
+   * Write AGENTS.md with session instructions + runtime system prompt combined.
+   * Kimi Code CLI loads AGENTS.md from the working directory.
+   */
+  writeKimiInstructions(projectDir: string, runtimePrompt: string): void {
+    let sessionInstructions = "";
+    const claudeMdPath = path.join(projectDir, "CLAUDE.md");
+    try {
+      if (fs.existsSync(claudeMdPath)) {
+        sessionInstructions = fs.readFileSync(claudeMdPath, "utf-8").trim();
+      }
+    } catch { /* ignore */ }
+
+    const combined = sessionInstructions
+      ? `${sessionInstructions}\n\n---\n\n${runtimePrompt}`
+      : runtimePrompt;
+
+    const agentsMdPath = path.join(projectDir, "AGENTS.md");
+    fs.writeFileSync(agentsMdPath, combined, "utf-8");
+    console.log(`[kimi] Wrote AGENTS.md: ${projectDir} (${combined.length} chars, instructions: ${sessionInstructions.length})`);
+  }
+
   private ensurePolicyContext(projectDir: string): void {
     const policyPath = path.join(projectDir, POLICY_CONTEXT_FILE);
     if (!fs.existsSync(policyPath)) {
@@ -2101,11 +2182,13 @@ export class SessionManager {
     }
   }
 
-  buildServiceSystemPrompt(personaName?: string, provider?: "claude" | "codex" | "gemini", options?: Record<string, unknown>, userName?: string): string {
+  buildServiceSystemPrompt(personaName?: string, provider?: AIProvider, options?: Record<string, unknown>, userName?: string): string {
     const files = provider === "codex"
       ? SERVICE_SESSION_GUIDE_FILES_CODEX
       : provider === "gemini"
       ? SERVICE_SESSION_GUIDE_FILES_GEMINI
+      : provider === "kimi"
+      ? SERVICE_SESSION_GUIDE_FILES_CODEX
       : SERVICE_SESSION_GUIDE_FILES_CLAUDE;
     return this.buildPromptFromGuideFiles(files, personaName, options, userName);
   }

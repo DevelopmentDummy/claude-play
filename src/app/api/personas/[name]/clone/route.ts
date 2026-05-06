@@ -10,6 +10,7 @@ const EXCLUDE = new Set([
   ".claude",
   ".codex",
   ".gemini",
+  ".kimi",
   ".mcp.json",
   "builder-session.json",
   "chat-history.json",

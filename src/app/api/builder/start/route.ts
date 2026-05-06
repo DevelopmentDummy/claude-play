@@ -75,6 +75,8 @@ export async function POST(req: Request) {
     svc.sessions.writeCodexInstructions(personaDir, runtimeSystemPrompt);
   } else if (resolved.provider === "gemini") {
     svc.sessions.writeGeminiInstructions(personaDir, runtimeSystemPrompt);
+  } else if (resolved.provider === "kimi") {
+    svc.sessions.writeKimiInstructions(personaDir, runtimeSystemPrompt);
   }
   instance.claude.spawn(personaDir, undefined, resolved.model, runtimeSystemPrompt, resolved.effort);
   svc.sessions.saveBuilderModel(name, resolved.combined);

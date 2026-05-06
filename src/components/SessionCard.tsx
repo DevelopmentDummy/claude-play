@@ -24,9 +24,11 @@ interface SessionCardProps {
   onDelete: () => void;
 }
 
-function providerInfo(model?: string): { label: string; cls: string } | null {
+function providerInfo(model?: string): { label: string; cls: string; mark?: "kimi" } | null {
   if (!model) return null;
   const lower = model.split(":")[0].toLowerCase();
+  if (lower === "kimi-auto" || lower.startsWith("kimi-") || lower.startsWith("moonshot-ai/kimi-"))
+    return { label: "Kimi", mark: "kimi", cls: "bg-[#173735]/70 text-[#74f5dc]/90 border-[#74f5dc]/20 shadow-[0_0_14px_rgba(116,245,220,0.10)]" };
   if (/^(gpt-5|codex-mini|o3|o4)/.test(lower))
     return { label: "Codex", cls: "bg-[#2a5a3a]/60 text-[#4dff91]/80 border-[#4dff91]/15" };
   if (/^gemini/.test(lower))
@@ -113,7 +115,13 @@ export default function SessionCard({
           <span className="w-[3px] h-[3px] rounded-full bg-white/30 shrink-0" />
           <span className="shrink-0">{relativeTime(lastActivity ?? createdAt)}</span>
           {info ? (
-            <span className={`inline-flex items-center px-1 py-0 rounded text-[8px] font-semibold tracking-wide border ${info.cls}`}>
+            <span className={`inline-flex items-center gap-0.5 px-1 py-0 rounded text-[8px] font-semibold tracking-wide border ${info.cls}`}>
+              {info.mark === "kimi" && (
+                <span className="relative inline-flex w-[7px] h-[7px] shrink-0" aria-hidden="true">
+                  <span className="absolute inset-[1px] rounded-full bg-current opacity-90" />
+                  <span className="absolute left-[-1px] top-[3px] w-[9px] h-[1px] rounded-full bg-current opacity-45 rotate-[-25deg]" />
+                </span>
+              )}
               {info.label}
             </span>
           ) : model ? (

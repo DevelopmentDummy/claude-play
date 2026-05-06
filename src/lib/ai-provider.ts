@@ -1,15 +1,20 @@
-export type AIProvider = "claude" | "codex" | "gemini";
+export type AIProvider = "claude" | "codex" | "gemini" | "kimi";
 
+const EXTERNAL_CODEX_MODEL_PREFIX = "external/";
 const CODEX_MODEL_PREFIXES = ["gpt-5", "codex-mini"];
 const CODEX_MODEL_EXACT = new Set(["codex-mini-latest", "o3", "o4-mini"]);
 
 const GEMINI_MODEL_PREFIXES = ["gemini-"];
 const GEMINI_MODEL_EXACT = new Set(["gemini-pro", "gemini-flash"]);
 
+const KIMI_MODEL_PREFIXES = ["kimi-", "moonshot-ai/kimi-"];
+const KIMI_MODEL_EXACT = new Set(["kimi-auto"]);
+
 export function providerFromModel(model: string): AIProvider {
   if (!model) return "claude";
   // Strip effort suffix (e.g. "opus:medium" → "opus")
   const base = model.split(":")[0].toLowerCase();
+  if (base.startsWith(EXTERNAL_CODEX_MODEL_PREFIX)) return "codex";
   if (CODEX_MODEL_EXACT.has(base)) return "codex";
   for (const prefix of CODEX_MODEL_PREFIXES) {
     if (base.startsWith(prefix)) return "codex";
@@ -18,7 +23,21 @@ export function providerFromModel(model: string): AIProvider {
   for (const prefix of GEMINI_MODEL_PREFIXES) {
     if (base.startsWith(prefix)) return "gemini";
   }
+  if (KIMI_MODEL_EXACT.has(base)) return "kimi";
+  for (const prefix of KIMI_MODEL_PREFIXES) {
+    if (base.startsWith(prefix)) return "kimi";
+  }
   return "claude";
+}
+
+export function isExternalCodexModel(model?: string): boolean {
+  return !!model && model.toLowerCase().startsWith(EXTERNAL_CODEX_MODEL_PREFIX);
+}
+
+export function normalizeCodexModel(model?: string): string | undefined {
+  if (!model) return model;
+  if (!isExternalCodexModel(model)) return model;
+  return model.slice(EXTERNAL_CODEX_MODEL_PREFIX.length);
 }
 
 /**
@@ -49,6 +68,7 @@ const DEFAULT_MODELS: Record<AIProvider, string> = {
   claude: "opus[1m]",
   codex: "gpt-5.4",
   gemini: "gemini-3.1-pro-preview",
+  kimi: "kimi-auto",
 };
 
 /** Default effort per provider (used when no effort is specified) */
@@ -56,6 +76,7 @@ const DEFAULT_EFFORTS: Record<AIProvider, string | undefined> = {
   claude: "medium",
   codex: "medium",
   gemini: undefined,
+  kimi: undefined,
 };
 
 /**
@@ -103,12 +124,30 @@ export const MODEL_GROUPS: ModelGroup[] = [
     ],
   },
   {
+    label: "External Gateway",
+    provider: "codex",
+    options: [
+      { value: "external/deepseek/deepseek-chat", label: "DeepSeek Chat" },
+      { value: "external/qwen/qwen-max", label: "Qwen Max" },
+      { value: "external/zai/glm-4.6", label: "GLM 4.6" },
+    ],
+  },
+  {
     label: "Gemini",
     provider: "gemini" as AIProvider,
     options: [
       { value: "gemini-auto", label: "Gemini Auto" },
       { value: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro" },
       { value: "gemini-3-flash-preview", label: "Gemini 3 Flash" },
+    ],
+  },
+  {
+    label: "Kimi",
+    provider: "kimi",
+    options: [
+      { value: "kimi-auto", label: "Kimi Auto" },
+      { value: "moonshot-ai/kimi-k2.6", label: "Kimi 2.6" },
+      { value: "moonshot-ai/kimi-k2.6:thinking", label: "Kimi 2.6 Thinking" },
     ],
   },
 ];

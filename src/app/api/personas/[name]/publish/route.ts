@@ -19,6 +19,7 @@ const GITIGNORE_ENTRIES = [
   ".claude/",
   ".agents/",
   ".gemini/",
+  ".kimi/",
   ".codex/",
 ];
 

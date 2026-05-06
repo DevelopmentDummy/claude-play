@@ -3,10 +3,12 @@ import path from "node:path";
 import os from "node:os";
 import { getDataDir } from "./data-dir";
 
+type ConversationProvider = "claude" | "codex" | "gemini" | "kimi";
+
 export interface ConversationListItem {
   /** Provider-side conversation/session id (jsonl name, codex thread id, gemini session id) */
   conversationId: string;
-  provider: "claude" | "codex" | "gemini";
+  provider: ConversationProvider;
   filePath: string;
   sizeBytes: number;
   mtime: number;
@@ -23,6 +25,7 @@ interface SessionMeta {
   claudeSessionId?: string;
   codexThreadId?: string;
   geminiSessionId?: string;
+  kimiSessionId?: string;
 }
 
 const TAIL_BYTES = 256 * 1024;
@@ -37,11 +40,12 @@ function readMeta(folderPath: string): SessionMeta | null {
   }
 }
 
-function detectProvider(model?: string): "claude" | "codex" | "gemini" {
+function detectProvider(model?: string): ConversationProvider {
   if (!model) return "claude";
   const lower = model.split(":")[0].toLowerCase();
   if (/^(gpt-5|codex-mini|o3|o4)/.test(lower)) return "codex";
   if (/^gemini/.test(lower)) return "gemini";
+  if (lower === "kimi-auto" || lower.startsWith("kimi-") || lower.startsWith("moonshot-ai/kimi-")) return "kimi";
   return "claude";
 }
 
@@ -162,6 +166,74 @@ function rolloutMatchesCwd(filePath: string, sessionDir: string): boolean {
   }
 }
 
+function normalizeForSearch(value: string): string {
+  return path.normalize(value).replace(/\\/g, "/").toLowerCase();
+}
+
+function readHead(filePath: string, maxBytes: number): string {
+  let fd: number | null = null;
+  try {
+    const stat = fs.statSync(filePath);
+    const len = Math.min(stat.size, maxBytes);
+    const buf = Buffer.alloc(len);
+    fd = fs.openSync(filePath, "r");
+    fs.readSync(fd, buf, 0, len, 0);
+    return buf.toString("utf-8");
+  } catch {
+    return "";
+  } finally {
+    if (fd !== null) { try { fs.closeSync(fd); } catch { /* ignore */ } }
+  }
+}
+
+function kimiContextMatchesCwd(conversationDir: string, cwd: string): boolean {
+  const head = readHead(path.join(conversationDir, "context.jsonl"), 256 * 1024);
+  if (!head) return false;
+  return normalizeForSearch(head).includes(normalizeForSearch(path.resolve(cwd)));
+}
+
+function listKimiConversations(cwd: string, currentId?: string): ConversationListItem[] {
+  const root = path.join(os.homedir(), ".kimi", "sessions");
+  const items: ConversationListItem[] = [];
+  let projectDirs: fs.Dirent[];
+  try {
+    projectDirs = fs.readdirSync(root, { withFileTypes: true });
+  } catch {
+    return items;
+  }
+
+  for (const project of projectDirs) {
+    if (!project.isDirectory()) continue;
+    const projectDir = path.join(root, project.name);
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(projectDir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const conversationDir = path.join(projectDir, entry.name);
+      if (!kimiContextMatchesCwd(conversationDir, cwd)) continue;
+      const wirePath = path.join(conversationDir, "wire.jsonl");
+      const contextPath = path.join(conversationDir, "context.jsonl");
+      const filePath = fs.existsSync(wirePath) ? wirePath : contextPath;
+      const st = safeStat(filePath);
+      if (!st) continue;
+      items.push({
+        conversationId: entry.name,
+        provider: "kimi",
+        filePath,
+        sizeBytes: st.size,
+        mtime: st.mtimeMs,
+        lastMessage: readLastKimiMessage(filePath),
+        isCurrent: entry.name === currentId,
+      });
+    }
+  }
+  return items;
+}
+
 function readLastClaudeMessage(filePath: string): { role: "user" | "assistant"; preview: string } | null {
   return readLastJsonlMessage(filePath, (raw) => {
     // Claude jsonl: { type: "user" | "assistant", message: { role, content: [{type:"text", text}, ...] }, ... }
@@ -213,6 +285,26 @@ function readLastCodexMessage(filePath: string): { role: "user" | "assistant"; p
   });
 }
 
+function readLastKimiMessage(filePath: string): { role: "user" | "assistant"; preview: string } | null {
+  return readLastJsonlMessage(filePath, (obj) => {
+    const raw = obj as Record<string, unknown>;
+    const msg = (raw.message && typeof raw.message === "object" ? raw.message : raw) as Record<string, unknown>;
+    const type = msg.type as string | undefined;
+    const payload = (msg.payload && typeof msg.payload === "object" ? msg.payload : {}) as Record<string, unknown>;
+    if (type === "TurnBegin" && typeof payload.user_input === "string") {
+      return { role: "user", text: payload.user_input };
+    }
+    if (type === "ContentPart" && payload.type === "text" && typeof payload.text === "string") {
+      return { role: "assistant", text: payload.text };
+    }
+    const role = raw.role as string | undefined;
+    if ((role === "user" || role === "assistant") && typeof raw.content === "string") {
+      return { role, text: raw.content };
+    }
+    return null;
+  });
+}
+
 function readLastJsonlMessage(
   filePath: string,
   extract: (obj: unknown) => { role: "user" | "assistant"; text: string } | null,
@@ -255,7 +347,7 @@ function readLastJsonlMessage(
  * the user can pick a different conversation to resume.
  */
 export function listConversationsForSession(sessionId: string): {
-  provider: "claude" | "codex" | "gemini";
+  provider: ConversationProvider;
   currentId: string | null;
   items: ConversationListItem[];
 } {
@@ -267,13 +359,16 @@ export function listConversationsForSession(sessionId: string): {
   const currentId =
     provider === "claude" ? meta.claudeSessionId :
     provider === "codex" ? meta.codexThreadId :
-    meta.geminiSessionId;
+    provider === "gemini" ? meta.geminiSessionId :
+    meta.kimiSessionId;
 
   let items: ConversationListItem[] = [];
   if (provider === "claude") {
     items = listClaudeConversations(sessionDir, currentId);
   } else if (provider === "codex") {
     items = listCodexConversations(sessionDir, meta, currentId);
+  } else if (provider === "kimi") {
+    items = listKimiConversations(sessionDir, currentId);
   }
   // Gemini: storage location not yet identified; return empty list.
 
@@ -294,6 +389,7 @@ export function relinkConversation(sessionId: string, conversationId: string): {
   const provider = detectProvider(meta.model);
   if (provider === "claude") meta.claudeSessionId = conversationId;
   else if (provider === "codex") meta.codexThreadId = conversationId;
+  else if (provider === "kimi") meta.kimiSessionId = conversationId;
   else meta.geminiSessionId = conversationId;
   try {
     fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), "utf-8");
@@ -304,10 +400,11 @@ export function relinkConversation(sessionId: string, conversationId: string): {
 }
 
 interface BuilderMeta {
-  provider?: "claude" | "codex" | "gemini";
+  provider?: ConversationProvider;
   claudeSessionId?: string;
   codexThreadId?: string;
   geminiSessionId?: string;
+  kimiSessionId?: string;
   model?: string;
 }
 
@@ -317,7 +414,7 @@ interface BuilderMeta {
  * the builder-session.json link instead of session.json.
  */
 export function listConversationsForPersona(name: string): {
-  provider: "claude" | "codex" | "gemini";
+  provider: ConversationProvider;
   currentId: string | null;
   items: ConversationListItem[];
 } {
@@ -334,7 +431,8 @@ export function listConversationsForPersona(name: string): {
   const currentId =
     provider === "claude" ? meta.claudeSessionId :
     provider === "codex" ? meta.codexThreadId :
-    meta.geminiSessionId;
+    provider === "gemini" ? meta.geminiSessionId :
+    meta.kimiSessionId;
 
   let items: ConversationListItem[] = [];
   if (provider === "claude") {
@@ -345,6 +443,8 @@ export function listConversationsForPersona(name: string): {
     // ending today. Cheap enough at typical scale.
     const now = new Date();
     items = listCodexConversationsByCwdWindow(personaDir, now, 90, currentId);
+  } else if (provider === "kimi") {
+    items = listKimiConversations(personaDir, currentId);
   }
   // Gemini: not yet supported.
 
@@ -415,6 +515,7 @@ export function relinkPersonaConversation(
   meta.provider = provider;
   if (provider === "claude") meta.claudeSessionId = conversationId;
   else if (provider === "codex") meta.codexThreadId = conversationId;
+  else if (provider === "kimi") meta.kimiSessionId = conversationId;
   else meta.geminiSessionId = conversationId;
   try {
     fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), "utf-8");

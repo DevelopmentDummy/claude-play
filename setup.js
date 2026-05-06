@@ -292,10 +292,32 @@ async function stepEnvLocal(port, hasComfyUI) {
     return;
   }
   const lines = [
+    `# Claude Play Configuration`,
     `PORT=${port}`,
     `DATA_DIR=./data`,
     `ADMIN_PASSWORD=`,
     `TTS_ENABLED=true`,
+    ``,
+    `# API keys (optional)`,
+    `# OPENAI_API_KEY=`,
+    `# OPENAI_IMAGE_MODEL=gpt-image-1.5`,
+    `# GEMINI_API_KEY=`,
+    `# GEMINI_IMAGE_MODEL=gemini-3.1-flash-image-preview`,
+    `# CIVITAI_API_KEY=`,
+    ``,
+    `# External LLM Codex gateway routing (optional)`,
+    `# These are inherited by spawned Claude Code / Codex CLI processes.`,
+    `# Claude Play does not validate these values; the target CLI/gateway validates them.`,
+    `# Existing Claude/Codex/Gemini OAuth models do not use these values.`,
+    `# External Gateway models run through Codex app-server with per-process config.`,
+    `# CODEX_EXTERNAL_BASE_URL=http://localhost:4000/v1`,
+    `# CODEX_EXTERNAL_API_KEY=`,
+    `# CODEX_EXTERNAL_ENV_KEY=CODEX_EXTERNAL_API_KEY`,
+    `# MOONSHOT_API_KEY=  # Custom gateways only; native Kimi CLI uses its own login`,
+    `# DEEPSEEK_API_KEY=`,
+    `# OPENROUTER_API_KEY=`,
+    `# QWEN_API_KEY=`,
+    `# ZAI_API_KEY=`,
   ];
   if (hasComfyUI) {
     lines.push(`COMFYUI_HOST=127.0.0.1`);

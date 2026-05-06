@@ -4,6 +4,7 @@ import { StringDecoder } from "string_decoder";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
+import { isExternalCodexModel, normalizeCodexModel } from "./ai-provider";
 export interface CodexProcessEvents {
   message: [data: unknown];
   error: [err: string];
@@ -95,7 +96,9 @@ export class CodexProcess extends EventEmitter<CodexProcessEvents> {
 
     this.cwd = cwd;
     this.threadId = resumeId || null;
-    this.model = model;
+    const useExternalGateway = isExternalCodexModel(model);
+    const normalizedModel = normalizeCodexModel(model);
+    this.model = normalizedModel;
     this.effort = effort;
     this.initialized = false;
     this.threadCreated = false;
@@ -127,6 +130,24 @@ export class CodexProcess extends EventEmitter<CodexProcessEvents> {
     args.push("-c", 'sandbox="danger-full-access"');
     const reasoningEffort = this.effort || "medium";
     args.push("-c", `model_reasoning_effort="${reasoningEffort}"`);
+
+    if (useExternalGateway) {
+      const baseUrl = process.env.CODEX_EXTERNAL_BASE_URL;
+      if (!baseUrl) {
+        this.emit("error", "CODEX_EXTERNAL_BASE_URL is required for external Codex gateway models");
+        this.emit("status", "disconnected");
+        return;
+      }
+
+      const envKey = process.env.CODEX_EXTERNAL_ENV_KEY || "CODEX_EXTERNAL_API_KEY";
+      args.push("-c", 'model_provider="external"');
+      args.push("-c", 'model_providers.external.name="External LLM Gateway"');
+      args.push("-c", `model_providers.external.base_url=${JSON.stringify(baseUrl)}`);
+      args.push("-c", 'model_providers.external.wire_api="responses"');
+      if (process.env[envKey]) {
+        args.push("-c", `model_providers.external.env_key=${JSON.stringify(envKey)}`);
+      }
+    }
 
     // Ensure cwd is registered as a trusted project in global ~/.codex/config.toml.
     // Codex ignores project .codex/config.toml (including MCP settings) unless the

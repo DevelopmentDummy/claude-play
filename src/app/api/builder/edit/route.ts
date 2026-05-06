@@ -3,10 +3,10 @@ import * as fs from "fs";
 import * as path from "path";
 import { getServices, openSessionInstance, getSessionInstance } from "@/lib/services";
 import { getAppRoot } from "@/lib/data-dir";
-import { providerFromModel, resolveBuilderModel } from "@/lib/ai-provider";
+import { AIProvider, providerFromModel, resolveBuilderModel } from "@/lib/ai-provider";
 
 export async function POST(req: Request) {
-  const body = (await req.json()) as { name: string; model?: string; service?: "claude" | "codex" | "gemini" };
+  const body = (await req.json()) as { name: string; model?: string; service?: AIProvider };
   const { name } = body;
   const requestedModel = body.model || "";
   const svc = getServices();
@@ -96,6 +96,8 @@ export async function POST(req: Request) {
       svc.sessions.writeCodexInstructions(personaDir, runtimeSystemPrompt);
     } else if (resolved.provider === "gemini") {
       svc.sessions.writeGeminiInstructions(personaDir, runtimeSystemPrompt);
+    } else if (resolved.provider === "kimi") {
+      svc.sessions.writeKimiInstructions(personaDir, runtimeSystemPrompt);
     }
     instance.claude.spawn(personaDir, resumeId, resolved.model, runtimeSystemPrompt, resolved.effort);
   }

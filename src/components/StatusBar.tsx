@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { MODEL_GROUPS } from "@/lib/ai-provider";
+import { AIProvider, MODEL_GROUPS } from "@/lib/ai-provider";
 
 interface StatusBarProps {
   title: string;
@@ -14,7 +14,7 @@ interface StatusBarProps {
   showPanelButton?: boolean;
   /** Chat mode: model within the locked provider */
   model?: string;
-  provider?: "claude" | "codex" | "gemini";
+  provider?: AIProvider;
   onModelChange?: (model: string) => void;
   /** Builder mode: model selector (full list) */
   builderModel?: string;

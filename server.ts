@@ -4,11 +4,14 @@ import { parse } from "url";
 import { spawn, execSync, type ChildProcess } from "child_process";
 import * as path from "path";
 import * as fs from "fs";
+import { loadEnvConfig } from "@next/env";
 import { setupWebSocket } from "./src/lib/ws-server";
 import { handleTtsRequest } from "./src/lib/tts-handler";
 import { isAuthEnabled, verifyAuthToken, parseCookieToken } from "./src/lib/auth";
 import { shouldRedirectToSetup } from "./src/lib/setup-guard";
 import { destroyAllBackgroundProcesses } from "./src/lib/background-session";
+
+loadEnvConfig(process.cwd());
 
 const dev = process.env.NODE_ENV !== "production";
 const hostname = "0.0.0.0";

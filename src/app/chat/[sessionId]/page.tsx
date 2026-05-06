@@ -27,6 +27,7 @@ import UsageModal from "@/components/UsageModal";
 import { dispatchBridgeEvent } from "@/lib/use-panel-bridge";
 import { buildAutoplayMessage, calculateAutoplayDelay, getSelectedPreset, type SteeringPreset } from "@/lib/autoplay";
 import { getPanelActionRegistry, destroyPanelActionRegistry, parsePanelActions, parsePanelMeta } from "@/lib/panel-action-registry";
+import { AIProvider } from "@/lib/ai-provider";
 
 interface Panel {
   name: string;
@@ -73,7 +74,7 @@ export default function ChatPage() {
   const [wsEnabled, setWsEnabled] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [currentModel, setCurrentModel] = useState(searchParams.get("model") || "");
-  const [currentProvider, setCurrentProvider] = useState<"claude" | "codex" | "gemini">("claude");
+  const [currentProvider, setCurrentProvider] = useState<AIProvider>("claude");
   const [showOOC, setShowOOC] = useState(false);
   const [usageTrigger, setUsageTrigger] = useState(0);
   const [syncModalOpen, setSyncModalOpen] = useState(false);
@@ -1141,7 +1142,7 @@ export default function ChatPage() {
               onAutoplayToggle={handleAutoplayToggle}
               steeringPresetName={steeringPreset?.name}
               onSteeringEdit={() => setSteeringModalOpen(true)}
-              usageProvider={currentProvider}
+              usageProvider={currentProvider === "kimi" ? undefined : currentProvider}
               usageSessionId={sessionId}
               usageRefreshTrigger={usageTrigger}
               onUsageClick={() => setShowUsage(true)}
@@ -1271,7 +1272,7 @@ export default function ChatPage() {
         onClose={() => setSteeringModalOpen(false)}
         onPresetChange={setSteeringPreset}
       />
-      {showUsage && <UsageModal onClose={() => setShowUsage(false)} provider={currentProvider} sessionId={sessionId} />}
+      {showUsage && currentProvider !== "kimi" && <UsageModal onClose={() => setShowUsage(false)} provider={currentProvider} sessionId={sessionId} />}
       <SessionListModal
         open={sessionListOpen}
         onClose={() => setSessionListOpen(false)}
