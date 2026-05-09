@@ -133,6 +133,8 @@ Browser ◀──WebSocket──▶ server.ts ◀──NDJSON/JSON-RPC──┘
 | `ADMIN_PASSWORD` | — | 관리자 비밀번호 (비워두면 인증 비활성화) |
 | `COMFYUI_HOST` | `127.0.0.1` | ComfyUI 호스트 |
 | `COMFYUI_PORT` | `8188` | ComfyUI 포트 |
+| `COMFYUI_DIR` | — | ComfyUI 설치 경로 |
+| `COMFYUI_AUTOSTART` | `false` | `true`로 설정 시 서버 시작과 함께 ComfyUI 자식 프로세스 spawn (포트 이미 사용 중이면 skip) |
 | `GEMINI_API_KEY` | — | Gemini 이미지 생성 API 키 |
 | `TTS_ENABLED` | `true` | TTS 전역 활성화/비활성화 |
 

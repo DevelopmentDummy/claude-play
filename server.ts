@@ -22,6 +22,7 @@ const GPU_MANAGER_PYTHON = process.env.GPU_MANAGER_PYTHON || "python";
 interface ServerGlobals extends Record<string, unknown> {
   __ttsPid?: number;
   __gpuManagerPid?: number;
+  __comfyuiPid?: number;
   __cleanupRegistered?: boolean;
   __shuttingDown?: boolean;
 }
@@ -169,6 +170,126 @@ async function waitForGpuManager(maxWaitMs = 30_000): Promise<boolean> {
   }
 }
 
+/**
+ * Resolve the Python interpreter to use for ComfyUI.
+ * Priority: COMFYUI_PYTHON env > <comfyuiDir>/venv (Scripts|bin)/python(.exe).
+ * Returns null if no usable interpreter is found — caller should skip spawn.
+ */
+function resolveComfyuiPython(comfyuiDir: string): string | null {
+  if (process.env.COMFYUI_PYTHON) return process.env.COMFYUI_PYTHON;
+  const venvPython = process.platform === "win32"
+    ? path.join(comfyuiDir, "venv", "Scripts", "python.exe")
+    : path.join(comfyuiDir, "venv", "bin", "python");
+  return fs.existsSync(venvPython) ? venvPython : null;
+}
+
+/** Check if any process is LISTENING on a given port. */
+function isPortInUse(p: number): boolean {
+  if (process.platform === "win32") {
+    try {
+      const out = execSync(`netstat -ano | findstr :${p} | findstr LISTENING`, {
+        encoding: "utf8", stdio: ["pipe", "pipe", "ignore"],
+      });
+      return !!out.trim();
+    } catch { return false; }
+  }
+  try {
+    const out = execSync(`lsof -i :${p} -t`, { encoding: "utf8", stdio: ["pipe", "pipe", "ignore"] });
+    return !!out.trim();
+  } catch { return false; }
+}
+
+/**
+ * Spawn ComfyUI as a child process. Opt-in via COMFYUI_AUTOSTART=true and
+ * COMFYUI_DIR. Skips if the configured port already has a LISTENING process
+ * (treated as "already running").
+ */
+function spawnComfyui(): ChildProcess | null {
+  if (process.env.COMFYUI_AUTOSTART !== "true") return null;
+  const comfyuiDir = process.env.COMFYUI_DIR;
+  if (!comfyuiDir) {
+    console.log("[comfyui] COMFYUI_AUTOSTART=true but COMFYUI_DIR unset — skipping");
+    return null;
+  }
+  if (!fs.existsSync(path.join(comfyuiDir, "main.py"))) {
+    console.warn(`[comfyui] main.py not found in ${comfyuiDir} — skipping`);
+    return null;
+  }
+
+  const comfyuiHost = process.env.COMFYUI_HOST || "127.0.0.1";
+  const comfyuiPort = parseInt(process.env.COMFYUI_PORT || "8188", 10);
+
+  if (isPortInUse(comfyuiPort)) {
+    console.log(`[comfyui] port ${comfyuiPort} already in use — assuming external instance, skipping spawn`);
+    return null;
+  }
+
+  const python = resolveComfyuiPython(comfyuiDir);
+  if (!python) {
+    console.warn(`[comfyui] no venv python at ${comfyuiDir}/venv — set COMFYUI_PYTHON or create the venv. Skipping.`);
+    return null;
+  }
+
+  console.log(`[comfyui] spawning ${python} main.py --listen ${comfyuiHost} --port ${comfyuiPort}`);
+  const child = spawn(python, [
+    "main.py",
+    "--listen", comfyuiHost,
+    "--port", String(comfyuiPort),
+  ], {
+    cwd: comfyuiDir,
+    stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env },
+    windowsHide: true,
+  });
+
+  child.stdout?.on("data", (d: Buffer) => process.stdout.write(d));
+  child.stderr?.on("data", (d: Buffer) => process.stderr.write(d));
+
+  child.on("exit", (code) => {
+    if (!g.__shuttingDown && code !== null && code !== 0) {
+      console.error(`[comfyui] exited with code ${code}`);
+    }
+  });
+
+  return child;
+}
+
+function killComfyui(child: ChildProcess | null) {
+  if (!child || child.killed || !child.pid) return;
+  try {
+    if (process.platform === "win32") {
+      execSync(`taskkill /T /F /PID ${child.pid}`, { stdio: "ignore" });
+    } else {
+      child.kill("SIGTERM");
+    }
+  } catch {
+    try { child.kill(); } catch {}
+  }
+}
+
+/** Wait until ComfyUI's HTTP API is responsive (or timeout). */
+async function waitForComfyui(maxWaitMs = 60_000): Promise<boolean> {
+  const host = process.env.COMFYUI_HOST || "127.0.0.1";
+  const port = parseInt(process.env.COMFYUI_PORT || "8188", 10);
+  const url = `http://${host}:${port}/system_stats`;
+  const deadline = Date.now() + maxWaitMs;
+  const dotInterval = setInterval(() => process.stdout.write("."), 1000);
+  process.stdout.write("[comfyui] waiting");
+  try {
+    while (Date.now() < deadline) {
+      try {
+        const res = await fetch(url);
+        if (res.ok) { process.stdout.write("\n"); return true; }
+      } catch { /* not ready yet */ }
+      await new Promise(r => setTimeout(r, 1000));
+    }
+    process.stdout.write("\n");
+    return false;
+  } finally {
+    clearInterval(dotInterval);
+  }
+}
+
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
 
@@ -236,19 +357,23 @@ function cleanupManagedProcesses(): void {
   g.__shuttingDown = true;
   killPid(g.__ttsPid);
   killPid(g.__gpuManagerPid);
+  killPid(g.__comfyuiPid);
   destroyAllBackgroundProcesses();
 }
 
 // Kill previous child processes from prior hot-reload cycle
 killPid(g.__ttsPid);
 killPid(g.__gpuManagerPid);
+killPid(g.__comfyuiPid);
 // Also kill anything still on GPU Manager port (fallback)
 killProcessOnPort(GPU_MANAGER_PORT);
 
 const ttsProcess = spawnTtsServer();
 let gpuManagerProcess = spawnGpuManager();
+const comfyuiProcess = spawnComfyui();
 g.__ttsPid = ttsProcess?.pid;
 g.__gpuManagerPid = gpuManagerProcess?.pid;
+g.__comfyuiPid = comfyuiProcess?.pid;
 g.__shuttingDown = false;
 
 // Write our own PID so external scripts (e.g. scripts/restart.mjs) can find us
@@ -280,6 +405,16 @@ app.prepare().then(async () => {
       console.log("[gpu-manager] ready");
     } else {
       console.warn("[gpu-manager] failed to start, GPU features may be unavailable");
+    }
+  }
+  // Wait for ComfyUI to be ready (when auto-spawned). Failures are non-fatal —
+  // ComfyUI clients will surface errors per-call; we just log here.
+  if (comfyuiProcess) {
+    const ready = await waitForComfyui();
+    if (ready) {
+      console.log("[comfyui] ready");
+    } else {
+      console.warn("[comfyui] failed to start within timeout — image features may be unavailable");
     }
   }
   const server = createServer(async (req, res) => {
