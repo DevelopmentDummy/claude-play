@@ -22,19 +22,20 @@ Detailed documentation is split into topic-specific files under `docs/`:
 | Document | Contents |
 |----------|----------|
 | [Architecture](docs/architecture.md) | Stack, server entry, GPU Manager, Core Libraries (`src/lib/`), MCP Server & Tools |
-| [API Routes](docs/api-routes.md) | Complete API route table (50+ endpoints) |
-| [Frontend](docs/frontend.md) | Pages (5) and Components (30+) |
+| [API Routes](docs/api-routes.md) | Complete API route table (70+ endpoints) |
+| [Frontend](docs/frontend.md) | Pages (5), hooks, and Components (35+) |
 | [Data Model](docs/data-model.md) | File-based data directory structure |
 | [Shared Documents](docs/shared-documents.md) | Root-level shared document map and assembly flow |
 | [Change Propagation](docs/change-propagation.md) | What to update when changing what |
-| [Session Lifecycle](docs/session-lifecycle.md) | Session lifecycle steps, Triple Runtime (Claude/Codex/Gemini) |
+| [Session Lifecycle](docs/session-lifecycle.md) | Session lifecycle steps, Quad Runtime (Claude/Codex/Gemini/Kimi), fire-ai, scheduler, restart recovery |
 | [Infrastructure](docs/infrastructure.md) | Conventions, all environment variables |
+| [External LLM Routing](docs/external-llm-routing.md) | Codex external gateway / Kimi CLI routing notes |
 
 ## Quick Reference
 
 **Stack**: Next.js 15 (App Router) + React 19 + Tailwind CSS 3 + TypeScript (strict). Path alias `@/*` → `src/*`.
 
-**Triple Runtime**: Claude (`claude -p`), Codex (`codex app-server`), Gemini (`gemini --resume`). Provider determined by model at session creation. All share same EventEmitter interface.
+**Quad Runtime**: Claude (`claude -p`), Codex (`codex app-server`), Gemini (`gemini --resume`), Kimi (`kimi --wire`). Provider determined by model at session creation. All share same EventEmitter interface.
 
 **Key Entry Points**:
 - `server.ts` — Custom HTTP server, WebSocket, spawns TTS server + GPU Manager

@@ -14,7 +14,12 @@ Optional admin password auth via `ADMIN_PASSWORD` env var. MCP server requests i
 | Route | Methods | Purpose |
 |-------|---------|---------|
 | `/api/personas` | GET, POST | List all personas / create new persona |
-| `/api/personas/[name]` | DELETE | Delete persona |
+| `/api/personas/import` | POST | Install a persona from a GitHub repo URL |
+| `/api/personas/import/preview` | POST | Inspect a persona repo's metadata (name, description, icon) before import |
+| `/api/personas/[name]` | DELETE | Delete persona (moved to `data/deleted_personas/`) |
+| `/api/personas/[name]/check-update` | POST | Compare local commit against remote for installed personas |
+| `/api/personas/[name]/clone` | GET, POST | GET: name availability check / POST: duplicate persona under a new name |
+| `/api/personas/[name]/publish` | POST | Push persona dir to a GitHub repo |
 | `/api/personas/[name]/file` | GET, PUT | Read/write individual persona files |
 | `/api/personas/[name]/overview` | GET | Full persona overview (files, panels, skills, data) |
 | `/api/personas/[name]/images` | GET | Serve persona images |
@@ -27,12 +32,19 @@ Optional admin password auth via `ADMIN_PASSWORD` env var. MCP server requests i
 | `/api/personas/[name]/conversations` | GET | List provider-side conversations tied to the persona dir (builder Sessions menu) |
 | `/api/personas/[name]/relink` | POST | Tear down builder SessionInstance and rewrite builder-session.json's conversation id (`{ conversationId }` body) |
 
+## Profiles
+
+| Route | Methods | Purpose |
+|-------|---------|---------|
+| `/api/profiles` | GET, POST | List profiles / create new profile |
+| `/api/profiles/[slug]` | GET, PUT, DELETE | Read / update / delete a profile |
+
 ## Sessions
 
 | Route | Methods | Purpose |
 |-------|---------|---------|
 | `/api/sessions` | GET, POST | List sessions / create new session |
-| `/api/sessions/[id]` | DELETE | Delete session |
+| `/api/sessions/[id]` | DELETE | Delete session (moved to `data/deleted_sessions/`) |
 | `/api/sessions/[id]/open` | POST | Open session (spawn AI process, start panels) |
 | `/api/sessions/[id]/sync` | GET, POST | GET: diff (`?direction=reverse`); POST: selective sync with `direction` + `variablesMode` |
 | `/api/sessions/[id]/conversations` | GET | List provider-side conversations (jsonl/rollouts) tied to this session folder for the resume menu |
@@ -40,6 +52,12 @@ Optional admin password auth via `ADMIN_PASSWORD` env var. MCP server requests i
 | `/api/sessions/[id]/variables` | PATCH | Patch session variables (supports `?file=` for custom data files) |
 | `/api/sessions/[id]/modals` | POST | Group-aware modal open/close/closeAll (body: `{ action, name?, mode?, except? }`) |
 | `/api/sessions/[id]/events` | POST | Queue event header for next chat message (body: `{ header: string }`) |
+| `/api/sessions/[id]/panel-actions` | POST, DELETE | POST: queue a panel action / DELETE: pop the last queued action |
+| `/api/sessions/[id]/panel-actions-meta` | GET | Read the panel-action spec metadata (`panels/_actions.meta.json`) |
+| `/api/sessions/[id]/fire-ai` | POST | Spawn a detached background Claude run for long jobs |
+| `/api/sessions/[id]/pipeline-scheduler/start` | POST | Start the per-session pipeline scheduler |
+| `/api/sessions/[id]/pipeline-scheduler/stop` | POST | Stop the per-session pipeline scheduler |
+| `/api/sessions/[id]/persona-images` | GET | List persona images / serve a single image (thumbnail support) |
 | `/api/sessions/[id]/files` | GET, HEAD | Serve session files (images, etc.) |
 | `/api/sessions/[id]/files/[...filepath]` | GET, HEAD | Serve session files (nested path) |
 | `/api/sessions/[id]/images` | GET | List session images |
@@ -47,6 +65,7 @@ Optional admin password auth via `ADMIN_PASSWORD` env var. MCP server requests i
 | `/api/sessions/[id]/options` | GET, PUT | Read/write session options |
 | `/api/sessions/[id]/options/apply` | POST | Apply options changes to active session |
 | `/api/sessions/[id]/crop-profile` | POST | Crop and save profile image |
+| `/api/sessions/[id]/crop-source` | GET | Serve images from a `character-lora-dataset` source dir for cropping UI |
 | `/api/sessions/[id]/voice` | GET, PATCH | Read/update session voice config |
 | `/api/sessions/[id]/tools/[name]` | POST | Execute custom panel tool script |
 
@@ -82,18 +101,32 @@ Optional admin password auth via `ADMIN_PASSWORD` env var. MCP server requests i
 | `/api/setup/test-gemini` | POST | Test Gemini API key |
 | `/api/setup/tts-status` | GET | Check TTS server status |
 
+## Service
+
+| Route | Methods | Purpose |
+|-------|---------|---------|
+| `/api/service/status` | GET | Active sessions, instances, schedulers, WS-client snapshot |
+| `/api/service/restart` | POST | Rebuild and restart the server via the background restart orchestrator |
+
+## Usage
+
+| Route | Methods | Purpose |
+|-------|---------|---------|
+| `/api/usage` | GET | Provider token usage (`?provider=claude\|codex\|gemini`) — utilization windows, `resets_at`, time progress (30s cache) |
+
 ## Styles
 
 | Route | Methods | Purpose |
 |-------|---------|---------|
 | `/api/styles` | GET, POST, DELETE | List/create/delete writing style presets |
 
-## Tools (Image Generation)
+## Tools (Image Generation & Health)
 
 | Route | Methods | Purpose |
 |-------|---------|---------|
 | `/api/tools/comfyui/generate` | POST | Trigger ComfyUI image generation |
 | `/api/tools/comfyui/models` | GET | List ComfyUI models |
+| `/api/tools/comfyui/health` | GET | ComfyUI + GPU Manager connectivity status |
 | `/api/tools/comfyui/stt` | POST | Speech-to-text via ComfyUI |
 | `/api/tools/comfyui/update-profile` | POST | Update profile image via ComfyUI |
 | `/api/tools/gemini/generate` | POST | Trigger Gemini image generation |
