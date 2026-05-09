@@ -972,6 +972,42 @@ yt-dlp "ytsearch5:{검색어}" --flat-playlist --dump-json --no-download 2>/dev/
 ```
 {{/if}}
 
+### `.sessionignore` — 세션 복사 제외 목록 (선택)
+
+새 세션을 생성할 때, 페르소나 디렉토리의 파일들이 세션 디렉토리로 복사된다. 페르소나에는 두되 **세션에는 복사되지 않아야 하는 파일/디렉토리**가 있다면 페르소나 루트에 `.sessionignore` 파일을 만들어 제외 목록을 관리한다.
+
+**언제 만드는가:**
+- 페르소나 작성/유지보수용 노트, 초안, 참고 자료처럼 세션에서는 불필요한 파일이 있을 때
+- 캐릭터 설정 백업본, 폐기된 패널 초안, 작가 메모 등 빌더 단계에서만 의미 있는 파일
+- 용량이 크고 세션마다 복제될 필요가 없는 자료(예: 분석용 원본 데이터, 큰 첨부파일)
+- 대부분의 페르소나에는 필요하지 않다 — 위 같은 사유가 분명할 때만 생성하라
+
+**형식:**
+- 한 줄에 하나의 이름. 빈 줄과 `#`로 시작하는 주석은 무시
+- **페르소나 루트의 최상위 항목 이름과 정확히 일치**해야 한다 (파일명 또는 디렉토리명)
+- 와일드카드/glob/하위 경로(`notes/draft.md`)는 지원하지 않는다 — 정확한 이름 매칭만
+- `.sessionignore` 파일 자체는 항상 자동 제외되므로 적을 필요 없다
+
+**예시 (`.sessionignore`):**
+```
+# 빌더 단계에서만 쓰는 작가 노트
+notes.md
+draft-personality.md
+
+# 폐기된 패널 초안 디렉토리
+panels-old
+
+# 페르소나 분석용 큰 원본 자료
+research-dump.json
+```
+
+**자동 제외 항목 (적을 필요 없음):**
+시스템이 이미 제외하는 항목 — `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `session-instructions.md`, `panel-spec.md`, `builder-session.json`, `chat-history.json`, `gallery.json`, `images/`(단 `profile.png`/`icon.png`은 별도 복사), `skills/`, `.claude/`, `.agents/`, `.codex/`, `.gemini/`, `.kimi/`, `.mcp.json`.
+
+**주의:**
+- 제외하려는 항목이 세션 동작에 필요하지 않은지 반드시 확인하라 — `variables.json`, `panels/`, `tools/`, `voice.json` 같은 파일을 잘못 등록하면 세션이 깨진다
+- 이미 만들어진 세션에는 소급 적용되지 않는다. 새로 생성되는 세션부터 반영된다
+
 ---
 
 ## 파일 생성 시 체크리스트

@@ -611,7 +611,21 @@ export class SessionManager {
       "chat-history.json",
       "gallery.json",
       "images",
+      ".sessionignore",
     ]);
+    // Per-persona exclusions: read top-level entry names from `.sessionignore`
+    // (gitignore-style: `#` comments and blank lines ignored, exact name match only).
+    const sessionIgnorePath = path.join(personaDir, ".sessionignore");
+    if (fs.existsSync(sessionIgnorePath)) {
+      try {
+        const content = fs.readFileSync(sessionIgnorePath, "utf-8");
+        for (const rawLine of content.split(/\r?\n/)) {
+          const line = rawLine.trim();
+          if (!line || line.startsWith("#")) continue;
+          SKIP_FILES.add(line);
+        }
+      } catch { /* malformed .sessionignore must not break session creation */ }
+    }
     this.copyDirRecursive(personaDir, sessionDir, SKIP_FILES);
 
     // Selectively copy ONLY profile.png and icon.png from persona images.
