@@ -15,7 +15,7 @@
           "cfg": 4,
           "sampler_name": "euler_ancestral",
           "scheduler": "simple",
-          "denoise": 0.4,
+          "denoise": 0.3,
           "guide_size": 512,
           "guide_size_for": true,
           "max_size": 1024,
@@ -39,7 +39,7 @@
       },
       "pos_prompt": {
         "class_type": "CLIPTextEncode",
-        "inputs": { "text": "detailed face, beautiful eyes, natural skin, detailed facial features, sharp eyes, expressive eyes" },
+        "inputs": { "text": "detailed face, beautiful eyes, natural skin, detailed facial features" },
         "_meta": { "title": "face-pos" }
       },
       "neg_prompt": {
@@ -48,7 +48,7 @@
         "_meta": { "title": "face-neg" }
       }
     },
-    "use_main_prompt": false,
+    "use_main_prompt": true,
     "internal_wiring": {
       "detailer.bbox_detector": ["detector", 0],
       "detailer.positive": ["pos_prompt", 0],
@@ -97,7 +97,7 @@
       },
       "pos_prompt": {
         "class_type": "CLIPTextEncode",
-        "inputs": { "text": "detailed hands, perfect fingers, natural hand, fingernails" },
+        "inputs": { "text": "masterpiece, best quality, amazing quality, very aesthetic, absurdres, high detail, detailed hands, perfect fingers, natural hand, fingernails" },
         "_meta": { "title": "hand-pos" }
       },
       "neg_prompt": {
@@ -155,7 +155,7 @@
       },
       "pos_prompt": {
         "class_type": "CLIPTextEncode",
-        "inputs": { "text": "detailed pussy, detailed vulva, labia, clitoris, anatomically correct, fair skin, matte skin, consistent skin texture" },
+        "inputs": { "text": "masterpiece, best quality, amazing quality, very aesthetic, absurdres, high detail, detailed pussy, detailed vulva, labia, clitoris, anatomically correct, fair skin, matte skin, consistent skin texture" },
         "_meta": { "title": "pussy-pos" }
       },
       "neg_prompt": {
@@ -213,7 +213,7 @@
       },
       "pos_prompt": {
         "class_type": "CLIPTextEncode",
-        "inputs": { "text": "detailed anus, anatomically correct, fair skin, matte skin, consistent skin texture, soft shading" },
+        "inputs": { "text": "masterpiece, best quality, amazing quality, very aesthetic, absurdres, high detail, detailed anus, anatomically correct, fair skin, matte skin, consistent skin texture, soft shading" },
         "_meta": { "title": "anus-pos" }
       },
       "neg_prompt": {
