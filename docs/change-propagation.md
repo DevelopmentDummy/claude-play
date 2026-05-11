@@ -27,6 +27,7 @@
 | fire-ai 백그라운드 세션 동작 변경 | `background-session.ts` + MCP `fire_ai` 핸들러 + `docs/architecture.md` |
 | 파이프라인 스케줄러 동작 변경 | `pipeline-scheduler.ts` + `bridge_scheduler_*` MCP 도구 + `docs/architecture.md` |
 | 재시작 후 복구 흐름 변경 | `restart-notification.ts` + `service/restart` 라우트 + `docs/session-lifecycle.md` |
+| 페르소나 lifecycle hook 추가/시그니처 변경 (`hooks/on-*.js`) | `session-instance.ts` (run*Hooks 메서드) + `docs/session-lifecycle.md` (Hooks 단계) + `docs/data-model.md` (`hooks/` 디렉토리 예시) |
 
 ## 빌더 변경
 

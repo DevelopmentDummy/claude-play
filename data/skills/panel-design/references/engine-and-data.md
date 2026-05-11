@@ -431,6 +431,14 @@ module.exports = function({ variables, data, sessionDir, message }) {
 - `_` 접두사 관례로 파생 변수 구분 (예: `_hp_danger`, `_weather_mood`)
 - 동기 실행이므로 I/O 최소화 (비동기 불가)
 
+### `hooks/on-assistant.js` — 응답 후처리 (선택)
+
+AI 응답 종료·히스토리 저장 직후 실행. 정적 분석(어휘 틱·태그 오타) 결과를 `_` 접두사 변수로 저장해 다음 턴 [STATE]에 노출하거나, `fireAi: { prompt, model?, effort?, useSessionContext? }`로 백그라운드 정성 평가를 발사. OOC/슬래시에서는 미실행. 동기 함수라 무거운 분석은 fire-ai로 위임.
+
+### `hooks/on-compaction-resume.js` — 컴팩션 복귀 (선택, Claude 전용)
+
+Claude CLI의 컨텍스트 컴팩션(`/compact` 또는 자동 트리거)이 끝나면 호출. `{ variables, data, sessionDir }`만 받고 `{ contextBlock?: string }` 반환 (Promise OK). contextBlock이 비어있지 않으면 silent system turn으로 AI에 주입돼 누적 상태(현재 의뢰·진척·관계 등)를 재정착시킨다. block 끝에 "한 줄 ack만" 류 지시를 박아 노이즈 최소화 권장. Codex/Gemini/Kimi에는 무영향.
+
 ### 스냅샷 출력 예시
 
 AI가 `run_tool` 결과로 받는 스냅샷:

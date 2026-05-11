@@ -584,6 +584,89 @@ module.exports = function({ variables, data }) {
 - 매 턴마다 여러 변수를 조합한 파생 상태를 AI에게 전달해야 할 때
 - 단순 정적 힌트만 필요하면 `hint-rules.json`만으로 충분
 
+### `hooks/on-assistant.js` — 응답 후처리 훅 (선택)
+
+AI 응답이 끝나고 히스토리에 저장된 직후 실행되는 훅. 방금 끝난 응답 텍스트를 받아 **정적 분석(어휘 틱·태그 오타·금지 패턴)** 결과를 다음 턴 변수로 노출하거나, **fire-ai로 백그라운드 정성 평가**를 발사할 수 있다. OOC/슬래시 응답에서는 실행되지 않는다.
+
+**인터페이스:**
+```javascript
+// hooks/on-assistant.js
+module.exports = function({ variables, data, sessionDir, response }) {
+  // response: 방금 끝난 assistant 메시지 텍스트 (전체)
+  const out = { variables: {} };
+
+  // 예: 같은 어휘가 반복되는지 카운트해서 다음 [STATE]에 경고 노출
+  const tic = (response.match(/한\s*박자/g) || []).length;
+  out.variables.style_warning = tic > 3 ? `자기 반복: '한 박자' ${tic}회` : "";
+
+  return out;
+};
+```
+
+**fire-ai 트리거 — 주기적 백그라운드 평가:**
+```javascript
+return {
+  variables: { ... },
+  fireAi: {
+    prompt: "최근 8개 응답을 받아 문체 표류를 평가하고 보고서를 Write 도구로 파일에 저장하라...",
+    model: "opus",        // 생략 시 기본
+    effort: "xhigh",      // 생략 시 기본
+    notify: false,        // true면 완료 시 토스트
+    useSessionContext: false,  // true면 페르소나 전체 컨텍스트, false면 최소 시스템 프롬프트
+  },
+};
+```
+
+**설계 원칙:**
+- **동기 실행** — I/O 최소화. 비동기 불가. 무거운 분석은 fire-ai로 위임
+- 정적 분석 결과는 `_` 접두사 변수로 저장하고 hint-rules에서 `tier_mode` 없이 그대로 노출
+- fire-ai가 작성한 보고서는 다음 턴의 on-message 훅에서 읽어 한 줄 요약 변수로 가공 (예: `style_drift_verdict`)
+
+**언제 만드는가:**
+- 페르소나가 일관된 문체/톤 유지를 강하게 요구할 때
+- 응답마다 누적 카운터·진척도가 필요할 때 (예: `_consecutive_no_image` 같은 streak)
+- 단순 정적 hint만으로 충분하면 불필요
+
+### `hooks/on-compaction-resume.js` — 컴팩션 복귀 훅 (선택, Claude 전용)
+
+Claude CLI가 자체 컨텍스트 컴팩션(`/compact` 슬래시 또는 자동 트리거)을 마친 직후 실행되는 훅. 컴팩션은 긴 대화 히스토리를 LLM 요약으로 대체해 토큰을 회수하는데, 이 과정에서 **페르소나의 핵심 상태(현재 의뢰, 진행 중인 슬롯, NPC 관계 등)가 압축돼 사라질 위험**이 있다. 이 훅이 핵심 상태를 markdown으로 만들어 반환하면 시스템이 silent system turn으로 AI에 주입해 재정착시킨다.
+
+**인터페이스:**
+```javascript
+// hooks/on-compaction-resume.js
+module.exports = function({ variables, data, sessionDir }) {
+  // variables / data / sessionDir만 받는다 (message·response 없음)
+  // 비동기 가능 (Promise 반환 OK)
+
+  if (variables.phase === "training") {
+    return {
+      contextBlock: [
+        "## 🔄 [Compaction Resume — 핵심 상태 재정착]",
+        "",
+        `현재 트레이니: ${variables.trainee_name} (의뢰 ${variables.commission_id})`,
+        `진척: ${variables.commission_progress_summary || "(미집계)"}`,
+        `다음 단계: ${variables.next_step_guide}`,
+        "",
+        "위 상태에 정합하게 다음 사용자 입력을 기다려라. 짧은 ack만 출력.",
+      ].join("\n"),
+    };
+  }
+
+  return {}; // contextBlock 없으면 no-op
+};
+```
+
+**동작:**
+- compaction END 감지(`compact_boundary` 또는 `status:null + compact_result`) → `runCompactionResumeHook()` 발사
+- 훅이 `{contextBlock: string}` 반환 → `waitForIdle()` 후 `sendToAI(block)`로 silent system turn 주입
+- AI가 그 block에 응답하며 핵심 상태를 다시 인지. 응답이 채팅에 표시되므로 **block 끝부분에 "한 줄 ack만"** 류 지시를 박아 노이즈 최소화 권장
+- `contextBlock`이 없거나 빈 문자열이면 no-op (다른 페르소나·다른 provider 무영향)
+
+**언제 만드는가:**
+- 페르소나가 **누적된 상태(진행 중인 의뢰·관계·진척도)**에 강하게 의존하고, 컴팩션으로 그 상태가 잊히면 응답 톤이 무너지는 경우
+- 정적 [STATE] 라인만으로 부족하고, 상황별로 강조해야 할 핵심이 다를 때
+- Codex/Gemini/Kimi 전용 페르소나에는 불필요 (이 훅은 Claude 컴팩션 이벤트에만 반응)
+
 ### `hint-rules.json` — 상시 상태 스냅샷 규칙 (선택)
 
 AI에게 현재 게임/세션 상태를 자동으로 전달하기 위한 규칙 파일. 두 가지 경로로 전달된다:

@@ -29,7 +29,7 @@ data/
 │   ├── skills/                      # Persona-specific skills copied to sessions
 │   ├── images/                      # icon.png, profile.png, generated images
 │   ├── tools/                       # Server-side custom tool scripts (*.js / *.mjs)
-│   ├── hooks/                       # Lifecycle hooks (e.g. on-message.js, on-assistant.js)
+│   ├── hooks/                       # Lifecycle hooks (on-message.js, on-assistant.js, on-compaction-resume.js)
 │   ├── voice.json                   # TTS voice configuration
 │   ├── voice-ref.*                  # TTS reference audio file
 │   ├── hint-rules.json              # Snapshot formatting rules for MCP run_tool responses

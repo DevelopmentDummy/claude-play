@@ -682,6 +682,65 @@ export class SessionInstance {
     }
   }
 
+  /**
+   * Run session hooks/on-compaction-resume.js if it exists.
+   * Called when CLI compaction completes (compact_boundary / status=null+compact_result),
+   * giving the persona a chance to re-anchor the AI onto critical state that may have
+   * been compressed away (active trainee card, recent diary, commission progress, etc.).
+   *
+   * Hook receives { variables, data, sessionDir } and may return { contextBlock?: string }.
+   * If contextBlock is a non-empty string, it's sent as a silent system turn after the
+   * runtime returns to idle. The AI's response to it is broadcast normally — personas
+   * should phrase the block so the AI absorbs it without producing in-character content.
+   */
+  async runCompactionResumeHook(): Promise<void> {
+    const dir = this.getDir();
+    if (!dir) return;
+    const hookPath = path.join(dir, "hooks", "on-compaction-resume.js");
+    if (!fs.existsSync(hookPath)) return;
+
+    try {
+      const varsPath = path.join(dir, "variables.json");
+      let variables: Record<string, unknown> = {};
+      try { variables = JSON.parse(fs.readFileSync(varsPath, "utf-8")); } catch {}
+
+      const SYSTEM_JSON = new Set([
+        "variables.json", "session.json", "builder-session.json", "layout.json",
+        "chat-history.json", "pending-events.json", "pending-actions.json",
+        "package.json", "tsconfig.json", "voice.json", "chat-options.json",
+      ]);
+      const data: Record<string, unknown> = {};
+      try {
+        for (const f of fs.readdirSync(dir)) {
+          if (f.endsWith(".json") && !SYSTEM_JSON.has(f)) {
+            try { data[f.replace(".json", "")] = JSON.parse(fs.readFileSync(path.join(dir, f), "utf-8")); } catch {}
+          }
+        }
+      } catch {}
+
+      // eslint-disable-next-line no-eval
+      const nativeRequire = eval("require") as NodeRequire;
+      delete nativeRequire.cache[hookPath];
+      const mod = nativeRequire(hookPath);
+      const fn = typeof mod === "function" ? mod : mod.default;
+      if (typeof fn !== "function") return;
+
+      const result = await Promise.resolve(fn({ variables: { ...variables }, data, sessionDir: dir }));
+      if (!result || typeof result !== "object") return;
+
+      const block = (result as { contextBlock?: unknown }).contextBlock;
+      if (typeof block !== "string" || !block.trim()) return;
+
+      // Settle any in-flight turn (e.g. mid-turn compact) before injecting.
+      await this.waitForIdle();
+      if (!this.claude.isRunning() || this.destroyed) return;
+      console.log(`[session:${this.id}] compaction-resume: injecting ${block.length} char context block`);
+      this.sendToAI(block);
+    } catch (err) {
+      console.error("[hooks/on-compaction-resume] error:", err);
+    }
+  }
+
   /** Clear __popups from variables.json (called on new user message) */
   clearPopups(): void {
     const dir = this.getDir();
@@ -1226,6 +1285,10 @@ export class SessionInstance {
         if (this.isCompacting) {
           this.isCompacting = false;
           this.setStatus("connected");
+          // Fire-and-forget: persona hook re-anchors AI on critical state.
+          this.runCompactionResumeHook().catch((err) =>
+            console.error(`[session:${this.id}] runCompactionResumeHook failed:`, err)
+          );
         }
       }
 
