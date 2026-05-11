@@ -11,8 +11,16 @@ export function useSSE(
   const handlersRef = useRef(handlers);
   handlersRef.current = handlers;
 
+  const esRef = useRef<EventSource | null>(null);
+  const reconnectTimerRef = useRef<number | null>(null);
+  const cancelledRef = useRef(false);
+
   const connect = useCallback(() => {
+    if (cancelledRef.current) return;
+    esRef.current?.close();
+
     const es = new EventSource("/api/events");
+    esRef.current = es;
 
     const eventTypes = [
       "claude:message",
@@ -34,16 +42,29 @@ export function useSSE(
 
     es.onerror = () => {
       es.close();
-      // Reconnect after 2 seconds
-      setTimeout(connect, 2000);
+      if (cancelledRef.current) return;
+      if (reconnectTimerRef.current !== null) {
+        clearTimeout(reconnectTimerRef.current);
+      }
+      reconnectTimerRef.current = window.setTimeout(() => {
+        reconnectTimerRef.current = null;
+        connect();
+      }, 2000);
     };
-
-    return es;
   }, []);
 
   useEffect(() => {
     if (!enabled) return;
-    const es = connect();
-    return () => es.close();
+    cancelledRef.current = false;
+    connect();
+    return () => {
+      cancelledRef.current = true;
+      if (reconnectTimerRef.current !== null) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+      esRef.current?.close();
+      esRef.current = null;
+    };
   }, [connect, enabled]);
 }
