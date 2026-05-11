@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { NextResponse } from "next/server";
 import { getServices, getSessionInstance } from "@/lib/services";
+import { spawnBackgroundClaude } from "@/lib/background-session";
 
 const PROTECTED_FILES = new Set([
   "session.json", "builder-session.json", "layout.json",
@@ -178,6 +179,36 @@ export async function POST(
           const merged = { ...current, ...patch };
           fs.writeFileSync(filePath, JSON.stringify(merged, null, 2), "utf-8");
         } catch {}
+      }
+    }
+
+    // Honor fire-and-forget background AI request from engine result.
+    // Engine actions can return `result.fireAi: { prompt, model?, effort?, notify?, useSessionContext? }`
+    // to spawn a background Claude session — used for auto daily summaries on day advance.
+    const fireAi = (result?.result as { fireAi?: unknown })?.fireAi;
+    if (fireAi && typeof fireAi === "object") {
+      try {
+        const fa = fireAi as {
+          prompt?: string;
+          model?: string;
+          effort?: string;
+          notify?: boolean;
+          useSessionContext?: boolean;
+        };
+        if (typeof fa.prompt === "string" && fa.prompt.trim()) {
+          console.log(`[tools/${name} fireAi] spawning bg claude for ${sessionId} (model=${fa.model || "default"}, effort=${fa.effort || "default"})`);
+          spawnBackgroundClaude({
+            sessionDir,
+            prompt: fa.prompt,
+            model: fa.model,
+            effort: fa.effort,
+            notify: fa.notify ?? false,
+            useSessionContext: fa.useSessionContext ?? true,
+            callerSessionId: sessionId,
+          });
+        }
+      } catch (err) {
+        console.error(`[tools/${name} fireAi] spawn error:`, err);
       }
     }
 
