@@ -8,6 +8,7 @@ import InlineImage from "./InlineImage";
 import InlinePanel from "./InlinePanel";
 import DockPanel from "./DockPanel";
 import type { DockPanelEntry } from "./DockPanel";
+import { tokenize } from "@/lib/inline-formatter";
 
 interface PanelInfo {
   name: string;
@@ -190,105 +191,66 @@ function renderInline(
   onMediaReady?: () => void,
   personaName?: string,
 ): React.ReactNode[] {
-  const regex = /(\$PANEL:[^$]+\$|\$IMAGE:[^$]+\$|\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`|\u2018[^\u2019]+\u2019|'[^']+['''])/g;
+  const tokens = tokenize(text);
+
+  // whitespace-pre-wrap would render blank lines around $IMAGE blocks as
+  // visible gaps. Trim trailing \n+ on the token before an image, and
+  // leading \n+ on the token after \u2014 preserves the previous renderInline
+  // behavior exactly.
+  for (let i = 0; i < tokens.length; i++) {
+    if (tokens[i].type !== "image") continue;
+    const prev = tokens[i - 1];
+    if (prev && prev.type === "text") prev.value = prev.value.replace(/\n+$/, "");
+    const next = tokens[i + 1];
+    if (next && next.type === "text") next.value = next.value.replace(/^\n+/, "");
+  }
+
   const nodes: React.ReactNode[] = [];
-  let lastIndex = 0;
-  let match;
-
-  while ((match = regex.exec(text)) !== null) {
-    const m = match[0];
-    const isImageToken = m.startsWith("$IMAGE:") && m.endsWith("$");
-
-    if (match.index > lastIndex) {
-      let preText = text.slice(lastIndex, match.index);
-      // Strip trailing newlines before $IMAGE: tokens (whitespace-pre-wrap would render them as blank lines)
-      if (isImageToken) preText = preText.replace(/\n+$/, "");
-      if (preText) {
+  tokens.forEach((tok, i) => {
+    const key = `${keyPrefix}-${i}`;
+    switch (tok.type) {
+      case "text":
+        if (tok.value) nodes.push(<span key={key}>{tok.value}</span>);
+        break;
+      case "bold":
+        nodes.push(<strong key={key} className="font-semibold">{tok.value}</strong>);
+        break;
+      case "italic":
+        nodes.push(<em key={key} className="italic text-[#e8a862]">{tok.value}</em>);
+        break;
+      case "code":
         nodes.push(
-          <span key={`${keyPrefix}-${lastIndex}`}>
-            {preText}
-          </span>
+          <code key={key} className="bg-code-bg px-1 py-0.5 rounded text-[13px] font-mono">
+            {tok.value}
+          </code>
         );
+        break;
+      case "thought":
+        nodes.push(<span key={key} className="text-[#7eb8e0] italic">{tok.value}</span>);
+        break;
+      case "panel": {
+        if (!panels) break;
+        const panel = panels.find((p) => p.name === tok.name);
+        if (panel) {
+          nodes.push(<InlinePanel key={key} html={panel.html} sessionId={sessionId} />);
+        }
+        break;
       }
-    }
-
-    if (m.startsWith("$PANEL:") && m.endsWith("$") && panels) {
-      const panelName = m.slice(7, -1);
-      const panel = panels.find((p) => p.name === panelName);
-      if (panel) {
+      case "image": {
+        if (!sessionId && !personaName) break;
         nodes.push(
-          <InlinePanel
-            key={`${keyPrefix}-panel-${match.index}`}
-            html={panel.html}
+          <InlineImage
+            key={key}
             sessionId={sessionId}
+            personaName={personaName}
+            path={tok.path}
+            onReady={onMediaReady}
           />
         );
+        break;
       }
-    } else if (m.startsWith("$IMAGE:") && m.endsWith("$") && (sessionId || personaName)) {
-      const imgPath = m.slice(7, -1);
-      nodes.push(
-        <InlineImage
-          key={`${keyPrefix}-img-${match.index}`}
-          sessionId={sessionId}
-          personaName={personaName}
-          path={imgPath}
-          onReady={onMediaReady}
-        />
-      );
-      // Skip leading newlines after image token
-      const afterIdx = match.index + m.length;
-      const leadingNl = text.slice(afterIdx).match(/^\n+/);
-      if (leadingNl) lastIndex = afterIdx + leadingNl[0].length;
-      else lastIndex = afterIdx;
-      continue;
-    } else if (m.startsWith("**") && m.endsWith("**")) {
-      nodes.push(
-        <strong key={`${keyPrefix}-${match.index}`} className="font-semibold">
-          {m.slice(2, -2)}
-        </strong>
-      );
-    } else if (m.startsWith("`") && m.endsWith("`")) {
-      nodes.push(
-        <code
-          key={`${keyPrefix}-${match.index}`}
-          className="bg-code-bg px-1 py-0.5 rounded text-[13px] font-mono"
-        >
-          {m.slice(1, -1)}
-        </code>
-      );
-    } else if (m.startsWith("\u2018") || m.startsWith("\u2019") || m.startsWith("'")) {
-      // 'thought/inner monologue'
-      nodes.push(
-        <span
-          key={`${keyPrefix}-${match.index}`}
-          className="text-[#7eb8e0] italic"
-        >
-          {m}
-        </span>
-      );
-    } else {
-      // *action/narration*
-      nodes.push(
-        <em
-          key={`${keyPrefix}-${match.index}`}
-          className="italic text-[#e8a862]"
-        >
-          {m.slice(1, -1)}
-        </em>
-      );
     }
-
-    lastIndex = match.index + m.length;
-  }
-
-  if (lastIndex < text.length) {
-    nodes.push(
-      <span key={`${keyPrefix}-${lastIndex}`}>
-        {text.slice(lastIndex)}
-      </span>
-    );
-  }
-
+  });
   return nodes;
 }
 
