@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { getPanelActionRegistry, type PanelActionHandler } from "./panel-action-registry";
+import { formatInlineHtml, type FormatInlineHtmlOptions } from "./inline-formatter";
 
 /** Internal event prefix for bridge events dispatched on window */
 const EVT_PREFIX = "__bridge_evt:";
@@ -186,6 +187,11 @@ export function usePanelBridge(
         if (!sessionId) return;
         const panel = panelName || (window as unknown as Record<string, unknown>).__currentPanelName as string || "";
         await getPanelActionRegistry(sessionId).execute(panel, actionId, params);
+      },
+      /** Format inline RP markdown (bold/italic/thought/code) to HTML with inline color styles.
+       *  Use in panels (Shadow DOM) to render history/snippets with the same look as the main chat stream. */
+      formatInline(text: string, opts?: FormatInlineHtmlOptions): string {
+        return formatInlineHtml(text, opts);
       },
       sessionId,
       data: panelData || {},
