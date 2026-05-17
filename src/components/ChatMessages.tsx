@@ -32,6 +32,7 @@ interface ChatMessagesProps {
   dockRight?: DockPanelEntry[];
   dockMaxSize?: number | string;
   dockWidth?: number | string;
+  dockLockDuringStreaming?: boolean;
   panelData?: Record<string, unknown>;
   onDockClose?: (name: string) => void;
   audioMap?: Record<string, string[]>;
@@ -339,6 +340,7 @@ export default function ChatMessages({
   dockRight,
   dockMaxSize,
   dockWidth: dockWidthProp,
+  dockLockDuringStreaming = true,
   panelData,
   onDockClose,
   audioMap,
@@ -711,6 +713,7 @@ export default function ChatMessages({
               maxSize={dockMaxSize}
               sessionId={sessionId}
               panelData={panelData}
+              lockDuringStreaming={dockLockDuringStreaming}
               onClose={onDockClose}
               floating
               open={hasDockFloat && (activeDockPanels?.length ?? 0) > 0}

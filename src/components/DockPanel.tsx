@@ -18,6 +18,8 @@ interface DockPanelProps {
   maxSize?: number | string;
   sessionId?: string;
   panelData?: Record<string, unknown>;
+  /** When true (default), an overlay blocks panel interaction while AI is streaming. */
+  lockDuringStreaming?: boolean;
   onClose: (name: string) => void;
   floating?: boolean;
   open?: boolean;
@@ -29,6 +31,7 @@ export default function DockPanel({
   maxSize,
   sessionId,
   panelData,
+  lockDuringStreaming = true,
   onClose,
   floating,
   open = true,
@@ -238,7 +241,7 @@ export default function DockPanel({
         {/* Content */}
         <div className="overflow-y-auto px-4 py-3 flex-1 min-h-0 relative">
           <div ref={containerRef} />
-          {streaming && (
+          {streaming && lockDuringStreaming && (
             <div
               className="absolute inset-0 z-10"
               style={{ cursor: "not-allowed" }}

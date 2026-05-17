@@ -103,6 +103,17 @@ allowed-tools: Read, Write, Edit, Bash
 - [ ] 큰 모달이면 `<panel-meta>`로 `maxWidth` / `maxHeight` 기본값 선언
 - [ ] 최상위 root에 `box-sizing: border-box; width: 100%; max-width: 100%; min-width: 0;` 적용
 - [ ] 일반 모달은 가로 스크롤이 생기지 않게 설계 (긴 행/그리드는 줄바꿈 또는 내부 재배치)
+- [ ] **필수 모드(`true`)면 패널 내부에 상태 해제 트리거가 반드시 존재** (`sendMessage` / `closeModal` / `__modals` 패치 버튼) — 시스템 X·ESC가 막혀 있어서 내부 버튼이 없으면 유저가 갇힘. 그 버튼은 초기 렌더 상태에서 즉시 보여야 함
+
+### 풀스크린 패널 (`full-screen`)
+- [ ] `panels/{번호}-{이름}.html` 파일 생성
+- [ ] `layout.json` → `panels.placement.{이름}` = `"full-screen"`
+- [ ] `variables.json` → `__modals.{이름}` = `false` (초기값) — modal과 동일한 on/off
+- [ ] 열기: `__panelBridge.openModal('{이름}', 'dismissible')` 또는 `true` (필수 모드)
+- [ ] 화면 전체를 덮으므로 패널 내부에서 자체 헤더/네비/스크롤 영역을 설계 (시스템 chrome은 닫기 버튼만 제공)
+- [ ] 배경 클릭으로 닫히지 않음 — dismissible여도 X 버튼 또는 ESC로만 닫힘
+- [ ] 적합 용도: 타이틀 화면, 엔딩 컷씬, 전체화면 미니게임, 큰 매핑/지도 UI 등 다른 모든 UI를 완전히 가려야 하는 경우
+- [ ] **🚨 패널 내부에 상태 해제 트리거가 반드시 존재해야 함** — 배경 대화창마저 안 보이는 풀스크린에서 이건 옵션이 아니라 의무다. dismissible이라도 X 버튼 하나에만 의존하지 말고 패널 본문에 명시적인 진행/닫기 버튼(`__panelBridge.sendMessage(...)` 또는 `__panelBridge.closeModal('{이름}')`)을 두자. 비동기 액션이 실패해도 재시도/닫기 경로가 남아 있어야 함
 
 **모달 동작 원리:**
 - 모달 패널은 **항상 마운트**되어 있다 (`display:none`으로 숨김). 닫아도 DOM과 핸들러가 유지된다.
@@ -258,6 +269,7 @@ await __panelBridge.executeAction('confirm_schedule', {
 | 캐릭터 일러스트 / 씬 이미지 | `left` / `dock-left` | 시각적 참조용 |
 | 일회성 선택지 (거래, 퀴즈) | 인라인 (`$PANEL:이름$`) | 대화 흐름에 자연 삽입 |
 | 전체화면 인터랙션 (전투, 모험) | `modal` + `autoRefresh: false` | 복잡한 JS 상태 보존 |
+| 타이틀 / 엔딩 / 컷씬 / 전체화면 연출 | `full-screen` | 배경 대화·패널 완전히 가림, 100vw × 100vh |
 
 **결정 기준:**
 - 항상 보여야 하는가? → 사이드바
@@ -354,6 +366,24 @@ await __panelBridge.executeAction('confirm_schedule', {
 - `__modals.{name}`이 truthy일 때 표시
 - `true` = 필수 (ESC/X/배경 클릭 닫기 불가), `"dismissible"` = 자유롭게 닫기
 - 여러 모달 겹침 가능 (z-index 자동 증가, ESC는 최상위만 닫음)
+
+### 풀스크린 (`full-screen`)
+- `__modals.{name}`이 truthy일 때 표시 (modal과 동일한 제어)
+- viewport 전체(100vw × 100vh)를 덮고, 배경은 `--bg` 색으로 불투명 — 뒤의 대화/패널을 완전히 가린다
+- 둥근 모서리/그림자/외곽 여백 없이 전체화면 — 패널 내부에서 자체 레이아웃을 책임진다
+- 일반 모달보다 더 높은 z-index에 렌더링 (항상 최상위)
+- 배경 클릭으로 닫히지 않음 — `"dismissible"`일 때만 X 버튼 / ESC로 닫힘
+- 용도: 타이틀, 엔딩, 컷씬, 전체화면 미니게임 등
+
+> 🚨 **스턱 방지 규칙 (모달·풀스크린 공통, 풀스크린은 특히 필수):**
+>
+> 필수 모드(`true`)는 시스템 X 버튼도 ESC도 작동하지 않는다. 그래서 **패널 내부에 상태를 해제할 수 있는 트리거가 반드시 있어야 한다** — 없으면 유저가 영구히 갇힌다. 풀스크린은 배경 대화창마저 안 보이므로 dismissible여도 같은 원칙 적용.
+>
+> - 진행 버튼: `__panelBridge.sendMessage('계속한다')` — AI 턴이 진행되며 패널이 자동으로 닫힘
+> - 명시적 닫기: `__panelBridge.closeModal('{이름}')`
+> - 상태 패치: `__panelBridge.updateVariables({ __modals: { '{이름}': false } })`
+>
+> 그 버튼은 패널 초기 렌더에서 **즉시 보여야** 한다 (조건 분기 깊은 곳에서야 등장하면 안 됨). 비동기 액션이 실패해도 재시도/닫기 경로가 살아 있어야 한다.
 
 **모달 그룹** — 상호 배타적 UI 흐름:
 ```json

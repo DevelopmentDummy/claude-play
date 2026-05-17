@@ -274,6 +274,8 @@ d['game-state']   // game-state.json
 ### `__panelBridge.isStreaming`
 AI가 현재 응답 중인지 (boolean). 스트리밍 중 버튼 비활성화 등에 활용.
 
+기본 동작상 스트리밍 중에는 모달/도크 패널 위에 차단 오버레이가 깔려 모든 클릭이 막힌다. `layout.json`의 `panels.lockDuringStreaming: false`를 두면 이 오버레이가 사라져 응답 중에도 패널을 조작할 수 있다. 옵션과 무관하게 `isStreaming` 값 자체는 그대로 노출되므로, 일부 액션만 막고 싶다면 패널 스크립트가 직접 비활성화 처리한다.
+
 ---
 
 ## 이미지 리소스

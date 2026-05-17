@@ -9,12 +9,14 @@ export interface LayoutConfig {
     size: number;
     leftSize?: number;
     rightSize?: number;
-    placement?: Record<string, "left" | "right" | "modal" | "modal-dismissible" | "dock" | "dock-left" | "dock-right" | "dock-bottom">;
+    placement?: Record<string, "left" | "right" | "modal" | "modal-dismissible" | "full-screen" | "dock" | "dock-left" | "dock-right" | "dock-bottom">;
     modalSize?: Record<string, { maxWidth?: string; maxHeight?: string }>;
     dockSize?: number | string;   // deprecated, use dockHeight
     dockHeight?: number | string;
     dockWidth?: number | string;
     showProfileImage?: boolean;
+    /** When false, AI streaming will not block modal/dock panel interaction. Default true. */
+    lockDuringStreaming?: boolean;
   };
   chat: {
     maxWidth: number | null;

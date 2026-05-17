@@ -17,8 +17,12 @@ interface ModalPanelProps {
   isTopmost?: boolean;
   maxWidth?: string;
   maxHeight?: string;
+  /** When true, render as full-screen panel: opaque backdrop, fills entire viewport, no rounded shell. */
+  fullScreen?: boolean;
   sessionId?: string;
   panelData?: Record<string, unknown>;
+  /** When true (default), an overlay blocks panel interaction while AI is streaming. */
+  lockDuringStreaming?: boolean;
   onClose: () => void;
   onMinimize?: () => void;
   onSendMessage?: (text: string) => void;
@@ -33,16 +37,19 @@ export default function ModalPanel({
   isTopmost = true,
   maxWidth = "860px",
   maxHeight = "80vh",
+  fullScreen = false,
   sessionId,
   panelData,
+  lockDuringStreaming = true,
   onClose,
   onMinimize,
   onSendMessage,
 }: ModalPanelProps) {
   const VIEWPORT_INSET_X = 32; // outer p-4 => 16px * 2
   const CONTENT_CHROME_X = 40; // content px-5 => 20px * 2
-  const backdropZ = 9998 + zIndex * 2;
-  const contentZ = 9999 + zIndex * 2;
+  // Full-screen panels render above regular modals (which start at 9998)
+  const backdropZ = fullScreen ? 19998 + zIndex * 2 : 9998 + zIndex * 2;
+  const contentZ = fullScreen ? 19999 + zIndex * 2 : 9999 + zIndex * 2;
   const containerRef = useRef<HTMLDivElement>(null);
   const shadowRef = useRef<ShadowRoot | null>(null);
   const prevHtmlRef = useRef<string>("");
@@ -53,7 +60,10 @@ export default function ModalPanel({
   // Counter to force shadow re-render when modal becomes active
   const [renderEpoch, setRenderEpoch] = useState(0);
   const [streaming, setStreaming] = useState(false);
-  const effectiveMaxWidth = `min(calc(100vw - ${VIEWPORT_INSET_X}px), calc(${maxWidth} + ${CONTENT_CHROME_X}px))`;
+  const effectiveMaxWidth = fullScreen
+    ? "100vw"
+    : `min(calc(100vw - ${VIEWPORT_INSET_X}px), calc(${maxWidth} + ${CONTENT_CHROME_X}px))`;
+  const effectiveMaxHeight = fullScreen ? "100vh" : maxHeight;
 
   // Track streaming state via global event
   useEffect(() => {
@@ -226,15 +236,15 @@ export default function ModalPanel({
         className="fixed inset-0 transition-opacity duration-200"
         style={{
           zIndex: backdropZ,
-          backgroundColor: "rgba(0, 0, 0, 0.5)",
-          backdropFilter: "blur(4px)",
+          backgroundColor: fullScreen ? "var(--bg, rgb(10, 10, 18))" : "rgba(0, 0, 0, 0.5)",
+          backdropFilter: fullScreen ? undefined : "blur(4px)",
           opacity: visible ? 1 : 0,
         }}
-        onClick={dismissible ? handleClose : undefined}
+        onClick={dismissible && !fullScreen ? handleClose : undefined}
       />
       {/* Modal container */}
       <div
-        className="fixed inset-0 flex items-center justify-center p-4 pointer-events-none"
+        className={`fixed inset-0 flex items-center justify-center pointer-events-none ${fullScreen ? "p-0" : "p-4"}`}
         style={{
           zIndex: contentZ,
           opacity: minimizing ? 0 : undefined,
@@ -245,26 +255,35 @@ export default function ModalPanel({
           className="relative pointer-events-auto w-full max-w-full"
           style={{
             maxWidth: effectiveMaxWidth,
-            maxHeight,
+            maxHeight: effectiveMaxHeight,
+            width: fullScreen ? "100vw" : undefined,
+            height: fullScreen ? "100vh" : undefined,
             opacity: (visible && !minimizing) ? 1 : 0,
             transform: minimizing
               ? "scale(0.2) translate(60%, 60%)"
               : visible
                 ? "scale(1) translateY(0)"
-                : "scale(0.95) translateY(10px)",
+                : fullScreen
+                  ? "scale(1) translateY(0)"
+                  : "scale(0.95) translateY(10px)",
             transformOrigin: "bottom right",
             transition: minimizing
               ? "transform 0.28s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s ease-in"
-              : "all 0.2s ease",
+              : fullScreen
+                ? "opacity 0.2s ease"
+                : "all 0.2s ease",
           }}
         >
           {/* Panel card */}
           <div
-            className="rounded-2xl overflow-hidden border border-white/[0.1] shadow-[0_8px_40px_rgba(0,0,0,0.5)]"
+            className={fullScreen
+              ? "overflow-hidden h-full flex flex-col"
+              : "rounded-2xl overflow-hidden border border-white/[0.1] shadow-[0_8px_40px_rgba(0,0,0,0.5)]"}
             style={{
-              backgroundColor: "var(--surface, rgb(15, 15, 26))",
+              backgroundColor: fullScreen ? "transparent" : "var(--surface, rgb(15, 15, 26))",
               width: "100%",
               maxWidth: "100%",
+              height: fullScreen ? "100%" : undefined,
             }}
           >
             {/* Header */}
@@ -320,11 +339,15 @@ export default function ModalPanel({
             </div>
             {/* Content */}
             <div
-              className="px-5 py-4 overflow-y-auto overflow-x-hidden relative"
-              style={{ maxHeight: `calc(${maxHeight} - 52px)`, width: "100%", maxWidth: "100%" }}
+              className={fullScreen
+                ? "px-5 py-4 overflow-y-auto overflow-x-hidden relative flex-1 min-h-0"
+                : "px-5 py-4 overflow-y-auto overflow-x-hidden relative"}
+              style={fullScreen
+                ? { width: "100%", maxWidth: "100%" }
+                : { maxHeight: `calc(${maxHeight} - 52px)`, width: "100%", maxWidth: "100%" }}
             >
               <div ref={containerRef} />
-              {streaming && (
+              {streaming && lockDuringStreaming && (
                 <div
                   className="absolute inset-0 z-10"
                   style={{ cursor: "not-allowed" }}
