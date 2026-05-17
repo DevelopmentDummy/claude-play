@@ -15,7 +15,7 @@ interface SyncModalProps {
   open: boolean;
   sessionId: string;
   onClose: () => void;
-  onSynced: () => void;
+  onSynced: (syncedLabels: string[]) => void;
 }
 
 export default function SyncModal({ open, sessionId, onClose, onSynced }: SyncModalProps) {
@@ -90,7 +90,11 @@ export default function SyncModal({ open, sessionId, onClose, onSynced }: SyncMo
       if (res.ok) {
         // Only notify AI for forward sync (reverse doesn't change session files)
         if (direction === "forward") {
-          onSynced();
+          // Report items that were both selected AND had actual changes
+          const syncedLabels = items
+            .filter((it) => effectiveElements[it.key] && it.hasChanges)
+            .map((it) => it.label);
+          onSynced(syncedLabels);
         }
         onClose();
       }

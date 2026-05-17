@@ -1259,9 +1259,13 @@ export default function ChatPage() {
         open={syncModalOpen}
         sessionId={sessionId}
         onClose={() => setSyncModalOpen(false)}
-        onSynced={() => {
-          // Notify Claude about the sync via OOC message
-          sendMessage("OOC: 대화 세션이 원본 페르소나 데이터에 동기화 되었습니다. 변경사항을 확인하세요.");
+        onSynced={(syncedLabels) => {
+          // Skip notification when nothing actually changed
+          if (syncedLabels.length === 0) return;
+          const changeList = syncedLabels.map((l) => `- ${l}`).join("\n");
+          sendMessage(
+            `OOC: 대화 세션이 원본 페르소나 데이터에 동기화되었습니다.\n\n변경된 항목:\n${changeList}\n\n변경사항을 확인하세요.`
+          );
         }}
       />
       {optionsModalOpen && chatOptionsSchema.length > 0 && (
