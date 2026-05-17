@@ -16,6 +16,17 @@ type ImageSource = "session" | "persona";
 const POLL_INTERVAL = 2000;
 const MAX_POLLS = 60; // ~120 seconds — async gens may queue behind other ComfyUI work
 
+// `<img>` GET retry cap when the request *itself* fails (e.g. ERR_NO_BUFFER_SPACE on
+// Windows, transient connection refused). The retries use exponential backoff with
+// a cap, so we don't make the situation worse by reflooding the network stack.
+const MAX_IMG_RETRIES = 6;
+const IMG_RETRY_BASE_MS = 800;
+const IMG_RETRY_CAP_MS = 8000;
+
+function imgBackoffMs(retryCount: number): number {
+  return Math.min(IMG_RETRY_BASE_MS * Math.pow(1.5, retryCount), IMG_RETRY_CAP_MS);
+}
+
 function isPersonaPath(imgPath: string): boolean {
   return imgPath.startsWith("persona:") || imgPath.startsWith("persona/");
 }
@@ -26,45 +37,65 @@ function personaFileName(imgPath: string): string {
   return imgPath.startsWith("images/") ? imgPath.slice(7) : imgPath;
 }
 
+/** Stable URL — no per-mount cache buster. The browser cache is now an ally:
+ *  same imgPath returns the same URL across mounts, so re-rendered chat does not
+ *  reflood the network. Explicit refresh after regeneration is handled by
+ *  `bustImageCache()` in panel-image-polling (for panels) or the imgRetryCount
+ *  marker below (for `<img>` GET failures). */
 function buildFileUrl(
   imgPath: string,
   sessionId?: string,
   personaName?: string,
-  cacheBuster?: number,
   source: ImageSource = "session",
 ): string {
   if (source === "persona") {
     const file = personaFileName(imgPath);
     if (sessionId) {
-      return `/api/sessions/${encodeURIComponent(sessionId)}/persona-images?file=${encodeURIComponent(file)}&v=${cacheBuster}`;
+      return `/api/sessions/${encodeURIComponent(sessionId)}/persona-images?file=${encodeURIComponent(file)}`;
     }
     if (personaName) {
-      return `/api/personas/${encodeURIComponent(personaName)}/images?file=${encodeURIComponent(file)}&v=${cacheBuster}`;
+      return `/api/personas/${encodeURIComponent(personaName)}/images?file=${encodeURIComponent(file)}`;
     }
   }
 
   if (personaName) {
     // Builder mode: strip "images/" prefix for persona images API
     const file = imgPath.startsWith("images/") ? imgPath.slice(7) : imgPath;
-    return `/api/personas/${encodeURIComponent(personaName)}/images?file=${encodeURIComponent(file)}&v=${cacheBuster}`;
+    return `/api/personas/${encodeURIComponent(personaName)}/images?file=${encodeURIComponent(file)}`;
   }
   const encodedPath = imgPath.split('/').map(encodeURIComponent).join('/');
-  return `/api/sessions/${sessionId}/files/${encodedPath}?v=${cacheBuster}`;
+  return `/api/sessions/${sessionId}/files/${encodedPath}`;
+}
+
+/** Append a retry marker so the browser actually re-issues GET after an error.
+ *  retryCount === 0 returns the URL unchanged so the cache can serve repeat mounts. */
+function withRetryMarker(url: string, retryCount: number): string {
+  if (retryCount <= 0) return url;
+  const sep = url.includes("?") ? "&" : "?";
+  return `${url}${sep}r=${retryCount}`;
 }
 
 export default function InlineImage({ sessionId, personaName, path: imgPath, onReady }: InlineImageProps) {
   const [state, setState] = useState<ImageState>("loading");
   const [source, setSource] = useState<ImageSource>(isPersonaPath(imgPath) ? "persona" : "session");
   const [showModal, setShowModal] = useState(false);
-  const cacheBuster = useRef(Date.now()).current;
   const [retryKey, setRetryKey] = useState(0);
+  // `<img>` GET retry counter — survives across renders, drives src cache-buster.
+  // Bumped by the onError handler with exponential backoff; reset on imgPath change.
+  const [imgRetryCount, setImgRetryCount] = useState(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const imgRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollCountRef = useRef(0);
   const readyNotifiedRef = useRef(false);
 
   useEffect(() => {
     setSource(isPersonaPath(imgPath) ? "persona" : "session");
     setState("loading");
+    setImgRetryCount(0);
+    if (imgRetryTimerRef.current) {
+      clearTimeout(imgRetryTimerRef.current);
+      imgRetryTimerRef.current = null;
+    }
   }, [imgPath]);
 
   useEffect(() => {
@@ -95,7 +126,7 @@ export default function InlineImage({ sessionId, personaName, path: imgPath, onR
 
       // Fire HEAD for every candidate URL in parallel; the first OK wins.
       const checks = candidateSources.map((src) =>
-        fetch(buildFileUrl(imgPath, sessionId, personaName, cacheBuster, src), {
+        fetch(buildFileUrl(imgPath, sessionId, personaName, src), {
           method: "HEAD",
           cache: "no-store",
           headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
@@ -136,7 +167,13 @@ export default function InlineImage({ sessionId, personaName, path: imgPath, onR
       cancelled = true;
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [sessionId, personaName, imgPath, retryKey, cacheBuster]);
+  }, [sessionId, personaName, imgPath, retryKey]);
+
+  useEffect(() => {
+    return () => {
+      if (imgRetryTimerRef.current) clearTimeout(imgRetryTimerRef.current);
+    };
+  }, []);
 
   if (state === "loading") {
     return (
@@ -177,11 +214,26 @@ export default function InlineImage({ sessionId, personaName, path: imgPath, onR
     );
   }
 
-  const src = buildFileUrl(imgPath, sessionId, personaName, cacheBuster, source);
+  const src = withRetryMarker(buildFileUrl(imgPath, sessionId, personaName, source), imgRetryCount);
   const handleImageLoad = () => {
     if (readyNotifiedRef.current) return;
     readyNotifiedRef.current = true;
     onReady?.();
+  };
+
+  // <img> GET failed (most often ERR_NO_BUFFER_SPACE on Windows during burst loads).
+  // HEAD succeeded so the file is *there* — schedule a backoff retry by bumping the
+  // src marker. After MAX_IMG_RETRIES, surface the manual-regenerate UI.
+  const handleImageError = () => {
+    if (imgRetryTimerRef.current) clearTimeout(imgRetryTimerRef.current);
+    if (imgRetryCount >= MAX_IMG_RETRIES) {
+      setState("error");
+      return;
+    }
+    const delay = imgBackoffMs(imgRetryCount);
+    imgRetryTimerRef.current = setTimeout(() => {
+      setImgRetryCount((c) => c + 1);
+    }, delay);
   };
 
   return (
@@ -192,6 +244,7 @@ export default function InlineImage({ sessionId, personaName, path: imgPath, onR
           alt={imgPath}
           className="max-w-full rounded-lg max-h-[600px] object-contain hover:opacity-90 transition-opacity"
           onLoad={handleImageLoad}
+          onError={handleImageError}
         />
       </div>
       {showModal && <ImageModal src={src} onClose={() => setShowModal(false)} />}

@@ -13,6 +13,13 @@
 const POLL_INTERVAL = 2000;
 const MAX_POLLS = 120;
 const ATTR = "data-poll-active";
+const POLL_BACKOFF_CAP_MS = 15000;
+const POST_RELOAD_COOLDOWN_MS = 800;
+
+/** Exponential backoff for polling. Starts at POLL_INTERVAL, grows 1.3^n, caps. */
+function pollBackoffMs(attempt: number): number {
+  return Math.min(POLL_INTERVAL * Math.pow(1.3, Math.min(attempt, 10)), POLL_BACKOFF_CAP_MS);
+}
 
 /** Global set of all active Shadow DOMs (auto-cleaned via WeakRef) */
 const trackedShadows = new Set<WeakRef<ShadowRoot>>();
@@ -52,49 +59,65 @@ export function installImagePolling(shadow: ShadowRoot): void {
     img.setAttribute(ATTR, "1");
 
     let pollCount = 0;
+    let polling = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
 
     const poll = async () => {
+      // HEAD-poll the *base* URL (without any prior cache-buster) so the server's
+      // ETag/Last-Modified can still help if it ever serves 304. cache: "no-store"
+      // already guarantees a fresh check.
+      const probeUrl = img.src.replace(/[?&]_t=\d+/, "");
       try {
-        const res = await fetch(src, {
+        const res = await fetch(probeUrl, {
           method: "HEAD",
           cache: "no-store",
           headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
         });
 
         if (res.ok) {
-          // Image is ready — force reload by busting cache
-          const sep = src.includes("?") ? "&" : "?";
-          img.src = `${src}${sep}_t=${Date.now()}`;
+          // Image is ready — force reload by busting cache.
+          const base = probeUrl;
+          const sep = base.includes("?") ? "&" : "?";
+          img.src = `${base}${sep}_t=${Date.now()}`;
+          // Release `polling` after a short cooldown so a *follow-up* GET failure
+          // (e.g. ERR_NO_BUFFER_SPACE on the same burst) can re-arm the cycle.
+          // pollCount is intentionally NOT reset — it caps total attempts.
+          if (timer) clearTimeout(timer);
+          timer = setTimeout(() => { polling = false; }, POST_RELOAD_COOLDOWN_MS);
           return;
         }
       } catch {
-        // Network error, keep polling
+        // Network error (ERR_NO_BUFFER_SPACE etc), keep polling.
       }
 
       pollCount++;
       if (pollCount < MAX_POLLS) {
-        timer = setTimeout(poll, POLL_INTERVAL);
+        timer = setTimeout(poll, pollBackoffMs(pollCount));
+      } else {
+        // Give up — restore opacity so the user sees the broken icon and can refresh.
+        polling = false;
+        img.style.opacity = "";
       }
     };
 
-    // Use the native error event to start polling only when the image actually fails
-    img.addEventListener(
-      "error",
-      () => {
-        // Don't start polling if already active (e.g. re-triggered after src change)
-        if (pollCount > 0) return;
-        // Hide broken image icon while polling
-        img.style.opacity = "0.3";
-        poll();
-      },
-      { once: true }
-    );
+    // Persistent error handler (NOT once: true). Lets us catch subsequent failures
+    // after a forced reload, while the `polling` flag stops us from kicking off
+    // overlapping HEAD chains.
+    img.addEventListener("error", () => {
+      if (polling) return;
+      if (pollCount >= MAX_POLLS) return;
+      polling = true;
+      img.style.opacity = "0.3";
+      poll();
+    });
 
     // When image eventually loads (after polling or naturally), restore opacity
+    // and stop the retry cycle.
     img.addEventListener("load", () => {
       img.style.opacity = "";
       if (timer) clearTimeout(timer);
+      polling = false;
+      pollCount = 0;
     });
   }
 }
