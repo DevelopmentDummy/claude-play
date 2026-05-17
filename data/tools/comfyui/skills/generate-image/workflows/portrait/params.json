@@ -25,6 +25,12 @@
     }
   },
   "params": {
+    "checkpoint": {
+      "node": "1",
+      "field": "ckpt_name",
+      "type": "string",
+      "description": "체크포인트 파일명 오버라이드 (예: fantasyAnime_v16.safetensors). 생략 시 comfyui-config.json의 active_preset.checkpoint 사용"
+    },
     "prompt": {
       "node": "2",
       "field": "text",

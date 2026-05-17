@@ -886,13 +886,22 @@ export class ComfyUIClient {
     // === Phase 4: Runtime Transforms (gated by features flags) ===
 
     // 4a: checkpoint_auto
+    // Only auto-resolve when the node's current ckpt_name is not already a valid
+    // available model (i.e., the workflow's hardcoded default like "model.safetensors"
+    // or empty). If a caller passed an explicit `checkpoint` param via Phase 3
+    // mapping, it will already be a valid model name and we leave it intact.
     if (features.checkpoint_auto) {
-      const resolvedCkpt = this.resolveCheckpoint(models.checkpoints, sessionDir);
+      const availableSet = new Set(models.checkpoints);
+      let resolvedCkpt: string | null = null;
       for (const node of Object.values(prompt)) {
         const n = node as Record<string, unknown>;
         if (n.class_type === "CheckpointLoaderSimple") {
           const inputs = n.inputs as Record<string, unknown>;
-          if (inputs) inputs.ckpt_name = resolvedCkpt;
+          if (!inputs) continue;
+          const current = typeof inputs.ckpt_name === "string" ? inputs.ckpt_name : "";
+          if (current && availableSet.has(current)) continue; // explicit override wins
+          if (resolvedCkpt === null) resolvedCkpt = this.resolveCheckpoint(models.checkpoints, sessionDir);
+          inputs.ckpt_name = resolvedCkpt;
         }
       }
     }

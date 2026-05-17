@@ -1,0 +1,86 @@
+{
+  "1": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": ""
+    },
+    "_meta": {
+      "title": "input-portrait"
+    }
+  },
+  "2": {
+    "class_type": "UltralyticsDetectorProvider",
+    "inputs": {
+      "model_name": "bbox/face_yolov8m.pt"
+    },
+    "_meta": {
+      "title": "yolo-face-detector"
+    }
+  },
+  "3": {
+    "class_type": "BboxDetectorSEGS",
+    "inputs": {
+      "bbox_detector": [
+        "2",
+        0
+      ],
+      "image": [
+        "1",
+        0
+      ],
+      "threshold": 0.4,
+      "dilation": 0,
+      "crop_factor": 1.4,
+      "drop_size": 10,
+      "labels": "all"
+    },
+    "_meta": {
+      "title": "face-detect"
+    }
+  },
+  "4": {
+    "class_type": "SEGSToImageList",
+    "inputs": {
+      "segs": [
+        "3",
+        0
+      ],
+      "fallback_image_opt": [
+        "1",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "extract-face-crop"
+    }
+  },
+  "5": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": [
+        "4",
+        0
+      ],
+      "width": 256,
+      "height": 256,
+      "upscale_method": "lanczos",
+      "crop": "center"
+    },
+    "_meta": {
+      "title": "resize-256"
+    }
+  },
+  "6": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "face-icon",
+      "images": [
+        "5",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "save-icon"
+    }
+  }
+}

@@ -151,14 +151,22 @@ prompt_right: {인물수}, 1girl|1boy, {캐릭터B identity + accessories + outf
 
 **MCP 도구 우선 사용.** 가능하면 `generate_image` 또는 `comfyui_generate`를 먼저 사용한다.
 
-**중요**: 빌더 세션에서는 활성 세션이 없으므로 반드시 `"persona"` 파라미터를 포함해야 한다.
-대화 세션에서는 `"persona"` 없이 호출하면 활성 세션 디렉토리에 자동 저장된다.
+**저장 위치 결정 — `persona` vs `targetScope` (혼동 주의):**
 
-**저장 위치 옵션 — `targetScope`** (대화 세션에서만 의미 있음):
-- `targetScope` 생략 (기본): 활성 **세션 dir**에 저장 → 해당 세션에서만 보임 (`/api/sessions/{id}/files/images/...` 로 서빙)
-- `targetScope: "persona"`: 활성 세션의 **부모 페르소나 dir**에 저장 → 모든 세션이 공유 (`/api/sessions/{id}/persona-images?file=...` 로 서빙)
-  - 페르소나 차원에서 큐레이팅하는 갤러리, 영구 보관용 이미지 등에 사용한다.
-  - 세션 dir에는 저장되지 않으므로 해당 세션의 `images/` 목록엔 안 나타난다. 페르소나 갤러리 시스템을 갖춘 페르소나에서만 활용한다.
+이 두 파라미터는 서로 다른 시그널이고 **동시에 사용하면 안 된다.** 둘 다 넘기면 라우팅이 꼬여 InlineImage의 polling이 두 엔드포인트 모두에서 fail할 수 있다.
+
+| 상황 | 어느 걸 쓰나 | 결과 저장 위치 | 서빙 경로 |
+|---|---|---|---|
+| **대화 세션 — 일반 장면 (해당 세션에서만 사용)** | 둘 다 **생략** | `data/sessions/{id}/images/...` | `/api/sessions/{id}/files/images/...` |
+| **대화 세션 — 페르소나 공유 자산** (사건 카드, 정착지 배너 등 definitions에서 참조되는 영구 자산) | `targetScope: "persona"` | `data/personas/{name}/images/...` | `/api/sessions/{id}/persona-images?file=...` |
+| **빌더 세션** (활성 세션 없음) | `persona: "<이름>"` 필수 | `data/personas/{name}/images/...` | `/api/personas/{name}/images?file=...` |
+
+**판단 규칙:**
+1. 활성 세션(대화 모드)이면 → **`persona` 파라미터를 절대 넘기지 마라.** 캐릭터 1회용 장면이면 둘 다 생략. 영구 공유 자산(여러 세션이 봐야 하는 정의 파일 참조 이미지 등)이면 `targetScope: "persona"`.
+2. 빌더 모드(활성 세션 없음, persona 빌더 채팅에서 호출)에서만 → `persona`로 페르소나 이름 명시.
+3. **`persona` + `targetScope` 동시 사용은 금지.** 두 시그널이 충돌해 라우팅을 망친다.
+
+**🚫 흔한 실수:** "이 페르소나에 속한 이미지니까 persona 박아야겠지?" — 아니다. 페르소나 소속 여부는 활성 세션의 부모 페르소나로 자동 추론된다. 활성 세션에서 `persona`를 명시하는 건 빌더 모드 진입 신호로 잘못 해석될 수 있다.
 
 ```json
 {

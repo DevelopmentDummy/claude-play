@@ -1,0 +1,44 @@
+{
+  "description": "기존 portrait 이미지에서 YOLO로 얼굴 영역만 검출 → 256x256 정사각 크롭. 입력만 받고 디퓨전 없음 (1~2초 처리). YOLO가 얼굴을 못 찾으면 전체 이미지를 fallback으로 center-crop.",
+  "compatibility": {
+    "requires": {},
+    "incompatible_message": "face-crop은 LoadImage 기반이므로 체크포인트나 LoRA가 필요 없습니다."
+  },
+  "features": {
+    "checkpoint_auto": false,
+    "lora_injection": false,
+    "lora_couple_branches": false,
+    "seed_randomize": false,
+    "trigger_tags": false,
+    "detailer_chain": false
+  },
+  "outputs": {
+    "icon": {
+      "node": "6",
+      "description": "256x256 face crop"
+    }
+  },
+  "params": {
+    "input_image": {
+      "node": "1",
+      "field": "image",
+      "type": "string",
+      "required": true,
+      "description": "ComfyUI input 폴더 기준 파일 경로 (예: girls/g_xxx.png)"
+    },
+    "threshold": {
+      "node": "3",
+      "field": "threshold",
+      "type": "number",
+      "default": 0.4,
+      "description": "YOLO 검출 임계값 (낮을수록 관대)"
+    },
+    "crop_factor": {
+      "node": "3",
+      "field": "crop_factor",
+      "type": "number",
+      "default": 1.4,
+      "description": "얼굴 영역 확장 배수 (1.0 = bbox 그대로, 1.4 = 머리/어깨까지 포함)"
+    }
+  }
+}
