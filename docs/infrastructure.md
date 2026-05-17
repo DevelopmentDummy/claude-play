@@ -48,7 +48,7 @@
 | `GEMINI_API_KEY` | (none) | Gemini image generation API key |
 | `GEMINI_IMAGE_MODEL` | `gemini-3.1-flash-image-preview` | Gemini image model |
 | `OPENAI_API_KEY` | (none) | OpenAI image generation API key |
-| `OPENAI_IMAGE_MODEL` | `gpt-image-1.5` | OpenAI image model |
+| `OPENAI_IMAGE_MODEL` | `gpt-image-2` | OpenAI image model |
 | `CIVITAI_API_KEY` | (none) | CivitAI model download key |
 
 ### TTS & GPU

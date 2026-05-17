@@ -118,7 +118,7 @@ Python FastAPI child process (port 3342 by default) for serial GPU task queueing
 | `gemini_generate` | Direct Gemini image API call (legacy wrapper) |
 | `generate_image` | High-level template-mode image generation (auto-picks ComfyUI defaults / trigger tags) |
 | `generate_image_gemini` | High-level Gemini image generation |
-| `generate_image_openai` | High-level OpenAI image generation (`gpt-image-1.5`) |
+| `generate_image_openai` | High-level OpenAI image generation (`gpt-image-2`) |
 | `update_profile` | Replace persona profile image and auto-crop a 256×256 icon |
 | `policy_review` | Local content-policy review (allow / deny / uncertain) with decision logging |
 | `policy_context` | Read roleplay policy context (extreme traits, reviewed scenarios, intimacy policy) |

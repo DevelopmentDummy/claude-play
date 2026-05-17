@@ -27,7 +27,7 @@ export class OpenAIImageClient {
 
   constructor(config: OpenAIImageConfig) {
     this.apiKey = config.apiKey;
-    this.model = config.model || "gpt-image-1.5";
+    this.model = config.model || "gpt-image-2";
   }
 
   /** Sanitize a relative file path: preserve subdirectories but prevent traversal */
@@ -65,7 +65,6 @@ export class OpenAIImageClient {
         formData.append("model", this.model);
         formData.append("prompt", req.prompt);
         formData.append("n", "1");
-        formData.append("response_format", "b64_json");
         if (req.size) formData.append("size", req.size);
         if (req.quality) formData.append("quality", req.quality);
 
@@ -86,7 +85,6 @@ export class OpenAIImageClient {
             model: this.model,
             prompt: req.prompt,
             n: 1,
-            response_format: "b64_json",
             ...(req.size ? { size: req.size } : {}),
             ...(req.quality ? { quality: req.quality } : {}),
           }),

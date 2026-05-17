@@ -49,7 +49,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const model = process.env.OPENAI_IMAGE_MODEL || "gpt-image-1.5";
+  const model = process.env.OPENAI_IMAGE_MODEL || "gpt-image-2";
   const client = new OpenAIImageClient({ apiKey, model });
 
   const resultPath = `images/${filename}`;
