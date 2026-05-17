@@ -91,8 +91,17 @@ function stripChoiceTags(text: string): string {
   return text.replace(/<choice>[\s\S]*?<\/choice>/g, "").trim();
 }
 
+// <interaction girl_id="...">...</interaction> blocks are sidechanneled to per-character
+// history (see persona hooks/on-assistant.js). Tokens inside them belong to that
+// private channel and must NOT leak into the main chat stream — strip the blocks before
+// scanning for special tokens.
+const INTERACTION_BLOCK_REGEX = /<interaction\b[^>]*>[\s\S]*?<\/interaction>/g;
+function stripInteractionBlocks(raw: string): string {
+  return raw.replace(INTERACTION_BLOCK_REGEX, "");
+}
+
 function extractSpecialTokens(raw: string): string[] {
-  const matches = raw.match(SPECIAL_TOKEN_REGEX) || [];
+  const matches = stripInteractionBlocks(raw).match(SPECIAL_TOKEN_REGEX) || [];
   const unique: string[] = [];
   const seen = new Set<string>();
   for (const token of matches) {
