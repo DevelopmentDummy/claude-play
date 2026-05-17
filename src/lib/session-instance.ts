@@ -651,7 +651,7 @@ export class SessionInstance {
       }
 
       // Optional fire-and-forget background AI request — hook returns
-      // { fireAi: { prompt, model?, effort?, notify?, useSessionContext? } } to spawn analysis agent.
+      // { fireAi: { prompt, model?, effort?, notify?, useSessionContext?, onExit? } } to spawn analysis agent.
       if (result.fireAi && typeof result.fireAi === "object") {
         try {
           const fa = result.fireAi as {
@@ -660,6 +660,10 @@ export class SessionInstance {
             effort?: string;
             notify?: boolean;
             useSessionContext?: boolean;
+            onExit?: {
+              broadcast?: { event: string; data?: unknown };
+              script?: string;
+            };
           };
           if (typeof fa.prompt === "string" && fa.prompt.trim()) {
             console.log(`[hooks/on-assistant fireAi] spawning bg claude for ${this.id} (model=${fa.model || "default"}, effort=${fa.effort || "default"})`);
@@ -671,6 +675,7 @@ export class SessionInstance {
               notify: fa.notify ?? false,
               callerSessionId: this.id,
               useSessionContext: fa.useSessionContext ?? false,
+              onExit: fa.onExit,
             });
           }
         } catch (err) {

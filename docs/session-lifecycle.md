@@ -26,7 +26,10 @@
 - MCP `fire_ai` 도구 또는 hook 반환값(`fireAi`)으로 트리거
 - `background-session.ts`의 `spawnBackgroundClaude()`가 detached Claude를 spawn — PID 즉시 반환, 메인 턴 비차단
 - `useSessionContext: true`이면 페르소나 전체 컨텍스트, 아니면 최소 시스템 프롬프트
-- 완료 시 toast/popup으로 결과 전달, 실패 시 disk-first fallback으로 알림 영속화
+- 종료 시점 옵션 (모두 독립적, 순서: `onExit.broadcast` → `onExit.script` → `notify`):
+  - `notify: true` — `[BACKGROUND_SESSION_COMPLETE]` silent system event를 caller 세션에 주입 → AI가 다음 턴에 응답. 라이브 인스턴스 없으면 `pending-events.json` disk fallback
+  - `onExit.broadcast: { event, data }` — caller 세션 클라이언트에게만 WS 메시지(`wsBroadcast(..., { sessionId: callerSessionId })`). UI 스피너 숨김·지연 reveal·토스트 등 AI 턴 비개입 용도
+  - `onExit.script: "hooks/xxx.js"` — `sessionDir` 안의 JS 모듈을 `require`해서 호출. 인자 `{ pid, exitCode, sessionDir, logTail }`, 반환 `{ broadcast?, queueEvent? }`로 동적 처리. path traversal 차단(세션 dir 밖 경로 거부), `require.cache`는 매 호출마다 invalidate
 
 ## Pipeline Scheduler
 

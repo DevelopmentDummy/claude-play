@@ -4,8 +4,22 @@ import * as path from "path";
 import { StringDecoder } from "string_decoder";
 import { getSessionManager } from "./session-registry";
 import { getSessionInstance } from "./session-registry";
+import { wsBroadcast } from "./ws-server";
 
 // ── Interfaces ──────────────────────────────────────────────
+
+/** Exit-time actions for a background spawn.
+ *  `broadcast` fires a static WS message to the caller's clients (UI spinners, badges, delayed
+ *  reveal, etc.). `script` requires a JS module inside the session dir and lets it return
+ *  *dynamic* broadcasts/queueEvents based on exit code or log tail. */
+export interface FireAIOnExit {
+  /** Static WS broadcast to the caller session's clients. */
+  broadcast?: { event: string; data?: unknown };
+  /** Path (relative to sessionDir) to a Node module exporting a function.
+   *  Receives `{ pid, exitCode, sessionDir, logTail }`, may return
+   *  `{ broadcast?: { event, data }, queueEvent?: string }`. */
+  script?: string;
+}
 
 export interface FireAIOptions {
   sessionDir: string;
@@ -18,6 +32,8 @@ export interface FireAIOptions {
    *  When false (default), use a minimal task-execution prompt — the spawn focuses on
    *  *acting on the user prompt* (calling tools, writing files) rather than roleplaying. */
   useSessionContext?: boolean;
+  /** Exit-time hook beyond `notify`. WS broadcast and/or callback script. */
+  onExit?: FireAIOnExit;
 }
 
 /** Minimal system prompt for task-execution spawns.
@@ -110,6 +126,125 @@ function pushCompletionEvent(sessionDir: string, callerSessionId: string, pid: n
   }
 }
 
+/** Read the tail of a file safely (returns "" on any error). Used to give onExit scripts
+ *  a small slice of the spawn log so they can detect specific failure strings. */
+function tailFile(fp: string, maxBytes = 4096): string {
+  try {
+    const stat = fs.statSync(fp);
+    const start = Math.max(0, stat.size - maxBytes);
+    const fd = fs.openSync(fp, "r");
+    try {
+      const len = stat.size - start;
+      if (len <= 0) return "";
+      const buf = Buffer.alloc(len);
+      fs.readSync(fd, buf, 0, len, start);
+      return buf.toString("utf-8");
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    return "";
+  }
+}
+
+/** Resolve and validate an onExit.script path. Refuses paths that escape sessionDir
+ *  (path traversal). Returns the absolute path, or null if rejected/missing. */
+function resolveScriptPath(sessionDir: string, scriptRel: string): string | null {
+  const sessionRoot = path.resolve(sessionDir);
+  const abs = path.resolve(sessionRoot, scriptRel);
+  if (abs !== sessionRoot && !abs.startsWith(sessionRoot + path.sep)) {
+    console.error(`[background-session] onExit.script rejected (outside sessionDir): ${scriptRel}`);
+    return null;
+  }
+  if (!fs.existsSync(abs)) {
+    console.error(`[background-session] onExit.script not found: ${abs}`);
+    return null;
+  }
+  return abs;
+}
+
+/** Run the onExit hook. Order: static broadcast → script callback → script-returned
+ *  broadcast/queueEvent. The `notify` completion event is handled separately by the caller. */
+function runOnExit(
+  onExit: FireAIOnExit,
+  sessionDir: string,
+  callerSessionId: string | undefined,
+  pid: number,
+  exitCode: number | null
+): void {
+  // 1) Static broadcast — caller-session-scoped only.
+  if (onExit.broadcast && typeof onExit.broadcast.event === "string") {
+    if (callerSessionId) {
+      try {
+        wsBroadcast(onExit.broadcast.event, onExit.broadcast.data ?? {}, { sessionId: callerSessionId });
+      } catch (err) {
+        console.error("[background-session] onExit.broadcast failed:", err);
+      }
+    } else {
+      console.warn("[background-session] onExit.broadcast skipped — no callerSessionId");
+    }
+  }
+
+  // 2) Script callback — sessionDir-scoped JS module.
+  if (typeof onExit.script === "string" && onExit.script.trim()) {
+    const scriptPath = resolveScriptPath(sessionDir, onExit.script);
+    if (scriptPath) {
+      try {
+        const logPath = path.join(sessionDir, "background-session.log");
+        const logTail = tailFile(logPath, 4096);
+
+        // eslint-disable-next-line no-eval
+        const nativeRequire = eval("require") as NodeRequire;
+        delete nativeRequire.cache[scriptPath];
+        const mod = nativeRequire(scriptPath);
+        const fn = typeof mod === "function" ? mod : mod.default;
+        if (typeof fn !== "function") {
+          console.error(`[background-session] onExit.script has no callable export: ${scriptPath}`);
+        } else {
+          const result = fn({ pid, exitCode, sessionDir, logTail });
+          if (result && typeof result === "object") {
+            const r = result as { broadcast?: { event: string; data?: unknown }; queueEvent?: string };
+
+            if (r.broadcast && typeof r.broadcast.event === "string" && callerSessionId) {
+              try {
+                wsBroadcast(r.broadcast.event, r.broadcast.data ?? {}, { sessionId: callerSessionId });
+              } catch (err) {
+                console.error("[background-session] onExit.script broadcast failed:", err);
+              }
+            }
+
+            if (typeof r.queueEvent === "string" && r.queueEvent.trim() && callerSessionId) {
+              try {
+                const instance = getSessionInstance(callerSessionId);
+                if (instance) {
+                  instance.queueEvent(r.queueEvent);
+                } else {
+                  // Same disk fallback as pushCompletionEvent.
+                  const fp = path.join(sessionDir, "pending-events.json");
+                  let headers: string[] = [];
+                  if (fs.existsSync(fp)) {
+                    try {
+                      const parsed = JSON.parse(fs.readFileSync(fp, "utf-8"));
+                      if (Array.isArray(parsed)) headers = parsed;
+                    } catch { /* ignore corrupt file */ }
+                  }
+                  headers = headers.filter(h => h !== r.queueEvent);
+                  headers.push(r.queueEvent);
+                  fs.writeFileSync(fp, JSON.stringify(headers), "utf-8");
+                }
+              } catch (err) {
+                console.error("[background-session] onExit.script queueEvent failed:", err);
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.error(`[background-session] onExit.script error (${scriptPath}):`, err);
+      }
+    }
+  }
+}
+
 // ── Core function ───────────────────────────────────────────
 
 /**
@@ -117,7 +252,7 @@ function pushCompletionEvent(sessionDir: string, callerSessionId: string, pid: n
  * Returns immediately with the PID — does not wait for completion.
  */
 export function spawnBackgroundClaude(opts: FireAIOptions): FireAIResult {
-  const { sessionDir, prompt, model, effort, notify, callerSessionId, useSessionContext } = opts;
+  const { sessionDir, prompt, model, effort, notify, callerSessionId, useSessionContext, onExit } = opts;
 
   // Default: minimal task-execution prompt (spawns *do* tasks, they don't roleplay).
   // Opt-in: full persona system prompt for cases where character context is genuinely needed.
@@ -212,6 +347,12 @@ export function spawnBackgroundClaude(opts: FireAIOptions): FireAIResult {
     logStream.end();
 
     console.log(`[background-session] pid=${pid} exited with code=${code}`);
+
+    // onExit (broadcast / script) runs first so UI updates and side-effects land
+    // before any silent system event would advance the next turn.
+    if (onExit && (onExit.broadcast || onExit.script)) {
+      runOnExit(onExit, sessionDir, callerSessionId, pid, code);
+    }
 
     // Push completion event to caller session if requested
     if (notify && callerSessionId) {

@@ -1024,7 +1024,7 @@ server.registerTool(
 server.registerTool(
   "generate_image_openai",
   {
-    description: "Generate an image using OpenAI GPT image model (gpt-image-1.5). Supports reference image via /v1/images/edits endpoint.",
+    description: "Generate an image using OpenAI GPT image model (gpt-image-2). Supports reference image via /v1/images/edits endpoint.",
     inputSchema: {
       prompt: z.string().min(1),
       filename: z.string().optional(),
@@ -1348,12 +1348,36 @@ server.registerTool(
       "Fire an independent AI session in the background. " +
       "Spawns claude in one-shot mode with the current session's system prompt and MCP tools. " +
       "Returns immediately without waiting for completion. " +
-      "Use for time-consuming content generation that shouldn't block the conversation.",
+      "Use for time-consuming content generation that shouldn't block the conversation.\n" +
+      "Exit-time options:\n" +
+      "  - notify=true: silent system event injected into next user turn (AI responds to it).\n" +
+      "  - onExit.broadcast: WS event to this session's clients (UI spinners, delayed reveal, badges).\n" +
+      "  - onExit.script: relative JS module inside the session dir, called with " +
+      "{ pid, exitCode, sessionDir, logTail }; may return { broadcast, queueEvent }.",
     inputSchema: {
       prompt: z.string().min(1).describe("The prompt/task to execute in the background session"),
       model: z.string().optional().describe("Model override (e.g. sonnet, opus)"),
       effort: z.string().optional().describe("Reasoning effort: low, medium, high"),
       notify: z.boolean().optional().describe("Send completion event to this session when done (default: false)"),
+      onExit: z
+        .object({
+          broadcast: z
+            .object({
+              event: z.string().min(1).describe("WS event name sent to this session's clients on exit"),
+              data: z.any().optional().describe("Arbitrary JSON payload for the broadcast"),
+            })
+            .optional()
+            .describe("Static WS broadcast to fire when the background process exits"),
+          script: z
+            .string()
+            .optional()
+            .describe(
+              "Path (relative to sessionDir) to a Node module exporting a function. " +
+                "Called with { pid, exitCode, sessionDir, logTail }, may return { broadcast, queueEvent }."
+            ),
+        })
+        .optional()
+        .describe("Exit-time actions: WS broadcast and/or in-session JS callback"),
     },
   },
   async (input) => {
@@ -1366,6 +1390,7 @@ server.registerTool(
         model: input.model,
         effort: input.effort,
         notify: input.notify ?? false,
+        onExit: input.onExit,
       });
       return ok(result);
     } catch (error) {
@@ -1379,23 +1404,22 @@ server.registerTool(
   {
     description:
       "Rebuild and (optionally) respawn the Claude Play main service. " +
-      "Runs `npm run build` SYNCHRONOUSLY while the old server is still alive — " +
-      "if the build fails, the server is left untouched and the build error is returned. " +
+      "ALWAYS runs `npm run build` first — even in dev mode, because tsx watch only watches server.ts " +
+      "and won't catch TypeScript errors elsewhere (build is the source of truth). " +
+      "Build runs SYNCHRONOUSLY while the old server is still alive; if it fails, the server is left untouched and the error is returned. " +
       "On success, spawns a detached respawn orchestrator that kills + restarts the server (~1-2s downtime). " +
       "Pass respawn=false to build-only without restarting. " +
       "Note: the build response may take 30s-2min; this MCP session WILL disconnect during respawn. " +
       "Watch data/restart.log for orchestrator progress.",
     inputSchema: {
       mode: z.enum(["dev", "start"]).optional().describe("Respawn in dev or production mode (default: auto-detect from current server)"),
-      skipBuild: z.boolean().optional().describe("Skip `npm run build` (default: false)"),
       respawn: z.boolean().optional().describe("Whether to respawn after build (default: true)"),
     },
   },
-  async ({ mode, skipBuild, respawn }) => {
+  async ({ mode, respawn }) => {
     try {
       const data = await requestJson("POST", "/api/service/restart", {
         ...(mode ? { mode } : {}),
-        ...(skipBuild ? { skipBuild: true } : {}),
         ...(respawn === false ? { respawn: false } : {}),
         ...(sessionId ? { sessionId, triggeredBy: "mcp:bridge_restart_service" } : {}),
       });

@@ -1,6 +1,22 @@
 import { NextResponse } from "next/server";
 import { getServices } from "@/lib/services";
-import { spawnBackgroundClaude } from "@/lib/background-session";
+import { spawnBackgroundClaude, type FireAIOnExit } from "@/lib/background-session";
+
+function sanitizeOnExit(raw: unknown): FireAIOnExit | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const r = raw as { broadcast?: unknown; script?: unknown };
+  const out: FireAIOnExit = {};
+  if (r.broadcast && typeof r.broadcast === "object") {
+    const b = r.broadcast as { event?: unknown; data?: unknown };
+    if (typeof b.event === "string" && b.event.trim()) {
+      out.broadcast = { event: b.event, data: b.data };
+    }
+  }
+  if (typeof r.script === "string" && r.script.trim()) {
+    out.script = r.script;
+  }
+  return out.broadcast || out.script ? out : undefined;
+}
 
 export async function POST(
   req: Request,
@@ -10,11 +26,12 @@ export async function POST(
     const { id: rawId } = await params;
     const id = decodeURIComponent(rawId);
     const body = await req.json().catch(() => ({}));
-    const { prompt, model, effort, notify } = body as {
+    const { prompt, model, effort, notify, onExit } = body as {
       prompt?: string;
       model?: string;
       effort?: string;
       notify?: boolean;
+      onExit?: unknown;
     };
 
     if (!prompt) {
@@ -42,6 +59,7 @@ export async function POST(
       effort,
       notify: notify ?? false,
       callerSessionId: id,
+      onExit: sanitizeOnExit(onExit),
     });
 
     return NextResponse.json(result);

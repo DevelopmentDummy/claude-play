@@ -433,7 +433,7 @@ module.exports = function({ variables, data, sessionDir, message }) {
 
 ### `hooks/on-assistant.js` — 응답 후처리 (선택)
 
-AI 응답 종료·히스토리 저장 직후 실행. 정적 분석(어휘 틱·태그 오타) 결과를 `_` 접두사 변수로 저장해 다음 턴 [STATE]에 노출하거나, `fireAi: { prompt, model?, effort?, useSessionContext? }`로 백그라운드 정성 평가를 발사. OOC/슬래시에서는 미실행. 동기 함수라 무거운 분석은 fire-ai로 위임.
+AI 응답 종료·히스토리 저장 직후 실행. 정적 분석(어휘 틱·태그 오타) 결과를 `_` 접두사 변수로 저장해 다음 턴 [STATE]에 노출하거나, `fireAi: { prompt, model?, effort?, useSessionContext?, notify?, onExit? }`로 백그라운드 정성 평가를 발사. `onExit.broadcast: { event, data }`로 종료 시점에 caller 세션 클라이언트에만 WS 송신(패널 fade-in·지연 reveal·스피너 토글 등 AI 턴 비개입 UI 갱신), `onExit.script: "hooks/xxx.js"`로 `sessionDir` 내 JS 모듈을 `require` 콜백(`{ pid, exitCode, sessionDir, logTail }` 받고 `{ broadcast?, queueEvent? }` 반환)도 가능. OOC/슬래시에서는 미실행. 동기 함수라 무거운 분석은 fire-ai로 위임.
 
 ### `hooks/on-compaction-resume.js` — 컴팩션 복귀 (선택, Claude 전용)
 

@@ -24,7 +24,7 @@
 | MCP 도구 인터페이스 변경 | `session-shared.md` + `src/mcp/claude-play-mcp-server.mjs` + `docs/architecture.md` (MCP Tools) |
 | 세션 AI 시스템 프롬프트 변경 | `session-primer.yaml` (+ `-codex` / `-gemini` 변형) |
 | 새 provider 추가 (Claude/Codex/Gemini/Kimi 외) | `ai-provider.ts` (`AIProvider`, `providerFromModel`) + 신규 `*-process.ts` + `session-manager.ts` runtime configs + `session-list.ts` (resume) + `docs/architecture.md` + `docs/session-lifecycle.md` |
-| fire-ai 백그라운드 세션 동작 변경 | `background-session.ts` + MCP `fire_ai` 핸들러 + `docs/architecture.md` |
+| fire-ai 백그라운드 세션 동작 변경 | `background-session.ts` + `/api/sessions/[id]/fire-ai` 라우트 + MCP `fire_ai` 핸들러 + `session-instance.ts`의 `runAssistantHooks()` fireAi 분기 + **AI가 직접 보는 문서**: `session-shared.md` (Background Session 절), `builder-prompt.md` (`on-assistant.js` 절), `data/skills/panel-design/references/engine-and-data.md` (on-assistant 한 줄) + `docs/architecture.md` + `docs/session-lifecycle.md` |
 | 파이프라인 스케줄러 동작 변경 | `pipeline-scheduler.ts` + `bridge_scheduler_*` MCP 도구 + `docs/architecture.md` |
 | 재시작 후 복구 흐름 변경 | `restart-notification.ts` + `service/restart` 라우트 + `docs/session-lifecycle.md` |
 | 페르소나 lifecycle hook 추가/시그니처 변경 (`hooks/on-*.js`) | `session-instance.ts` (run*Hooks 메서드) + `docs/session-lifecycle.md` (Hooks 단계) + `docs/data-model.md` (`hooks/` 디렉토리 예시) |

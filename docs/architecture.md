@@ -123,7 +123,7 @@ Python FastAPI child process (port 3342 by default) for serial GPU task queueing
 | `policy_review` | Local content-policy review (allow / deny / uncertain) with decision logging |
 | `policy_context` | Read roleplay policy context (extreme traits, reviewed scenarios, intimacy policy) |
 | `run_tool` | Execute custom session tools — single or chained, with state snapshot |
-| `fire_ai` | Spawn a detached background AI run (long-form generation, side jobs) |
+| `fire_ai` | Spawn a detached background AI run (long-form generation, side jobs). Exit-time hooks: `notify` (silent system event), `onExit.broadcast` (WS to caller session's clients — UI updates without AI turn), `onExit.script` (JS module inside session dir for dynamic broadcast/queueEvent). |
 
 ### MCP Features
 
@@ -132,4 +132,4 @@ Python FastAPI child process (port 3342 by default) for serial GPU task queueing
 - Tool chaining with sequential execution and early exit on failure
 - Image deduplication within single turn (30s window) via `deduplicateImageFilename()`
 - ComfyUI config reading (session-level → global fallback)
-- Background `fire_ai` jobs run independently of the main turn, broadcasting completion notifications
+- Background `fire_ai` jobs run independently of the main turn, broadcasting completion notifications. Per-call `onExit` lets the caller pick UI-only (`broadcast`), dynamic-callback (`script`), and/or AI-resuming (`notify`) behaviour — independent flags

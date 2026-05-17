@@ -611,16 +611,29 @@ return {
     prompt: "최근 8개 응답을 받아 문체 표류를 평가하고 보고서를 Write 도구로 파일에 저장하라...",
     model: "opus",        // 생략 시 기본
     effort: "xhigh",      // 생략 시 기본
-    notify: false,        // true면 완료 시 토스트
+    notify: false,        // true면 완료 시 silent system event → AI가 다음 턴에 그 이벤트에 응답
     useSessionContext: false,  // true면 페르소나 전체 컨텍스트, false면 최소 시스템 프롬프트
+    onExit: {
+      // (선택) 종료 즉시 WebSocket으로 클라이언트에 알림 — AI 턴엔 영향 없음
+      broadcast: { event: "ui:style-check-done", data: { kind: "drift" } },
+      // (선택) 세션 디렉토리 내 JS 모듈 콜백 — exitCode/logTail 보고 동적으로 broadcast/queueEvent 결정
+      script: "hooks/on-style-check-exit.js",
+    },
   },
 };
 ```
+
+**fire-ai onExit — 어느 옵션을 언제:**
+- `notify` — 백그라운드 결과가 **다음 AI 응답에 영향**을 줘야 할 때 (보고서 파일을 읽고 톤 교정). silent system event로 주입돼 AI가 자연스럽게 이어받음
+- `onExit.broadcast` — **UI만 갱신**하면 충분할 때 (스피너 숨김, 새 패널 fade-in, 토스트, 지연 reveal). AI 대화를 건드리지 않으므로 부담 없음. 데이터는 caller 세션의 클라이언트에게만 전달
+- `onExit.script` — exit code/log 꼬리에 따라 **분기**해야 할 때. 모듈은 `({ pid, exitCode, sessionDir, logTail }) => ({ broadcast?, queueEvent? })` 형태. 세션 디렉토리 밖 경로는 거부됨(보안)
+- 셋은 독립적으로 켤 수 있고, 종료 시점에 `broadcast` → `script` → `notify` 순으로 실행됨
 
 **설계 원칙:**
 - **동기 실행** — I/O 최소화. 비동기 불가. 무거운 분석은 fire-ai로 위임
 - 정적 분석 결과는 `_` 접두사 변수로 저장하고 hint-rules에서 `tier_mode` 없이 그대로 노출
 - fire-ai가 작성한 보고서는 다음 턴의 on-message 훅에서 읽어 한 줄 요약 변수로 가공 (예: `style_drift_verdict`)
+- UI 지연 처리(예: "스피너 → 결과 뜨면 페이드인")는 `notify`가 아니라 `onExit.broadcast` — AI 턴 낭비 방지
 
 **언제 만드는가:**
 - 페르소나가 일관된 문체/톤 유지를 강하게 요구할 때
