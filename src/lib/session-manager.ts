@@ -1208,7 +1208,7 @@ export class SessionManager {
     // Check skills — compare persona skills against the provider-specific CLI skill dir
     {
       const provider = meta.model ? providerFromModel(meta.model) : "claude";
-      const cliSkillDir = provider === "codex" ? ".agents" : provider === "gemini" ? ".gemini" : provider === "kimi" ? ".kimi" : ".claude";
+      const cliSkillDir = provider === "codex" ? ".agents" : provider === "gemini" ? ".gemini" : provider === "kimi" ? ".kimi" : provider === "antigravity" ? ".agents" : ".claude";
       const pSkills = path.join(personaDir, "skills");
       const sSkills = path.join(sessionDir, cliSkillDir, "skills");
       result.push({ key: "skills", label: "스킬 (skills/)", hasChanges: this.personaSkillsDiffer(pSkills, sSkills) });
@@ -1297,7 +1297,7 @@ export class SessionManager {
     // Check skills — compare session's CLI skill dir against persona skills
     {
       const provider = meta.model ? providerFromModel(meta.model) : "claude";
-      const cliSkillDir = provider === "codex" ? ".agents" : provider === "gemini" ? ".gemini" : provider === "kimi" ? ".kimi" : ".claude";
+      const cliSkillDir = provider === "codex" ? ".agents" : provider === "gemini" ? ".gemini" : provider === "kimi" ? ".kimi" : provider === "antigravity" ? ".agents" : ".claude";
       const sSkills = path.join(sessionDir, cliSkillDir, "skills");
       const pSkills = path.join(personaDir, "skills");
       result.push({ key: "skills", label: "스킬 (skills/)", hasChanges: this.personaSkillsDiffer(sSkills, pSkills) });
@@ -1460,7 +1460,7 @@ export class SessionManager {
     // Sync skills (session CLI skill dir → persona, persona skills only — exclude global tool skills)
     if (elements.skills) {
       const provider = meta.model ? providerFromModel(meta.model) : "claude";
-      const cliSkillDir = provider === "codex" ? ".agents" : provider === "gemini" ? ".gemini" : provider === "kimi" ? ".kimi" : ".claude";
+      const cliSkillDir = provider === "codex" ? ".agents" : provider === "gemini" ? ".gemini" : provider === "kimi" ? ".kimi" : provider === "antigravity" ? ".agents" : ".claude";
       const sessionSkills = path.join(sessionDir, cliSkillDir, "skills");
       const personaSkills = path.join(personaDir, "skills");
       // Only sync skills that exist in the persona (don't copy global tool skills back)
