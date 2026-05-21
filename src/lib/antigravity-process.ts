@@ -26,6 +26,7 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
   private lsPort: number | null = null;
   private cascadeId: string | null = null;
   private spawnCwd = "";
+  private spawnModelString: string | undefined;
   private modelId: AntigravityModelId = AntigravityModels.GEMINI_FLASH;
   private logStream: fs.WriteStream | null = null;
   private polling = false;
@@ -40,7 +41,8 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
     if (this.agyPid) this.kill();
 
     this.spawnCwd = cwd;
-    this.cascadeId = resumeId || null;
+    if (resumeId !== undefined) this.cascadeId = resumeId || null;
+    this.spawnModelString = model;
     this.modelId = this.resolveModelId(model);
 
     this.ensureAntigravityTrust(cwd);
@@ -277,6 +279,23 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
       }
     }
     return undefined;
+  }
+
+  respawn(): void {
+    const cid = this.cascadeId;
+    this.spawn(this.spawnCwd, cid || undefined, this.spawnModelString);
+  }
+
+  isRunning(): boolean {
+    return this.agyPid !== null;
+  }
+
+  get running(): boolean {
+    return this.agyPid !== null;
+  }
+
+  async waitForReady(_timeoutMs = 10000): Promise<boolean> {
+    return this.isRunning();
   }
 
   kill(): void {

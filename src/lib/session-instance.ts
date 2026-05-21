@@ -4,6 +4,7 @@ import { ClaudeProcess } from "./claude-process";
 import { CodexProcess } from "./codex-process";
 import { GeminiProcess } from "./gemini-process";
 import { KimiProcess } from "./kimi-process";
+import { AntigravityProcess } from "./antigravity-process";
 import { SessionManager } from "./session-manager";
 import { PanelEngine } from "./panel-engine";
 import { AIProvider } from "./ai-provider";
@@ -127,7 +128,7 @@ export interface HistoryMessage {
   ooc?: boolean;
 }
 
-export type AIProcess = ClaudeProcess | CodexProcess | GeminiProcess | KimiProcess;
+export type AIProcess = ClaudeProcess | CodexProcess | GeminiProcess | KimiProcess | AntigravityProcess;
 
 export type BroadcastFn = (
   event: string,
@@ -139,6 +140,7 @@ function createProcess(provider: AIProvider): AIProcess {
   if (provider === "codex") return new CodexProcess();
   if (provider === "gemini") return new GeminiProcess();
   if (provider === "kimi") return new KimiProcess();
+  if (provider === "antigravity") return new AntigravityProcess();
   return new ClaudeProcess();
 }
 
@@ -1424,6 +1426,8 @@ export class SessionInstance {
             this.sessions.saveGeminiSessionId(this.id, sessionId);
           } else if (this._provider === "kimi") {
             this.sessions.saveKimiSessionId(this.id, sessionId);
+          } else if (this._provider === "antigravity") {
+            this.sessions.saveAntigravityCascadeId(this.id, sessionId);
           } else {
             this.sessions.saveClaudeSessionId(this.id, sessionId);
           }
