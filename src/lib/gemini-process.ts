@@ -14,6 +14,11 @@ export interface GeminiProcessEvents {
 }
 
 /**
+ * @deprecated Google이 2026-06-18부터 Gemini CLI 무료/Pro/Ultra 요청 처리를
+ * 중단하므로 이 클래스는 그 시점에 작동을 멈춘다. 새 통합은 AntigravityProcess
+ * (src/lib/antigravity-process.ts)를 사용한다. NEXT_PUBLIC_DISABLE_GEMINI=true로
+ * UI/라우팅에서 즉시 차단 가능 (164bd87).
+ *
  * GeminiProcess wraps the `gemini` CLI for per-turn spawning.
  *
  * Unlike Claude (persistent stdin) and Codex (JSON-RPC app-server), Gemini CLI

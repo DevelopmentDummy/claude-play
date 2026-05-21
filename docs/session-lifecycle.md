@@ -9,16 +9,17 @@
 7. **Sync** (수동): `POST /api/sessions/[id]/sync` — 양방향. Forward(페르소나→세션)는 OOC 알림 전송, Reverse(세션→페르소나)는 페르소나 템플릿에 역기록
 8. **Leave/Disconnect**: 마지막 클라이언트 연결 해제 후 5초 유예 → AI 프로세스 종료, PanelEngine 중지, 파이프라인 스케줄러 정지
 
-## Quad Runtime (Claude / Codex / Gemini / Kimi)
+## Penta Runtime (Claude / Codex / Gemini / Kimi / Antigravity)
 
 - Provider determined by model at session creation (`providerFromModel()`), locked for session lifetime
 - **Claude**: `claude -p` persistent process, NDJSON stream-json I/O
 - **Codex**: `codex app-server` persistent JSON-RPC 2.0 over stdin/stdout. `external/...` 모델은 `model_provider="external"`을 per-process로 주입 (외부 게이트웨이 사용 시)
-- **Gemini**: `gemini` per-turn spawning with `--resume` for session continuity
+- **Gemini**: `gemini` per-turn spawning with `--resume` for session continuity. **⚠️ 2026-06-18부터 Google이 무료/Pro/Ultra 요청 처리 중단** — `NEXT_PUBLIC_DISABLE_GEMINI=true`로 즉시 차단 가능, Antigravity로 마이그레이션 권장
 - **Kimi**: `kimi --wire` JSON-RPC persistent process, `:thinking` suffix는 `--thinking` 플래그로 전달
+- **Antigravity** (agy 1.0.0): PowerShell `Start-Process -WindowStyle Hidden`으로 agy 백그라운드 spawn, 자체 in-process Language Server(HTTPS+gRPC, random port)에 ConnectRPC 직접 호출(`/exa.language_server_pb.LanguageServerService/*`). Service: `StartCascade` → `SendUserCascadeMessage` → `GetCascadeTrajectory` 500ms 폴링. agy CLI in-process LS는 unauth (CSRF 토큰 불필요). `~/.gemini/antigravity-cli/settings.json` trustedWorkspaces 자동 등록. Windows-only 현재
 - 모두 동일한 EventEmitter interface (`message/status/error/sessionId`)
-- Instruction files: `CLAUDE.md` (Claude/Kimi) + `AGENTS.md` (Codex) + `GEMINI.md` (Gemini) — 세션 생성 시 동일 컨텐츠로 병렬 생성
-- MCP config: `.mcp.json` (Claude) + `.codex/config.toml` (Codex) + `.gemini/` (Gemini) + `.kimi/` (Kimi)
+- Instruction files: `CLAUDE.md` (Claude/Kimi) + `AGENTS.md` (Codex) + `GEMINI.md` (Gemini/Antigravity) — 세션 생성 시 동일 컨텐츠로 병렬 생성
+- MCP config: `.mcp.json` (Claude) + `.codex/config.toml` (Codex) + `.gemini/` (Gemini) + `.kimi/` (Kimi) + `.agents/mcp_config.json` (Antigravity)
 - Builder mode supports service switching — provider 전환 시 빌더 채팅 히스토리 리셋
 
 ## Background AI (`fire_ai`)
