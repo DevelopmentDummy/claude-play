@@ -188,20 +188,32 @@ async function main(): Promise<void> {
 
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
   const https = await import("https");
-  const probe = (urlPath: string) =>
-    new Promise<{ status: number; body: string }>((resolve, reject) => {
-      const req = https.request(
+  const http = await import("http");
+
+  type ProbeRes = { status: number; body: string; err?: string };
+  const probe = (
+    proto: "http" | "https",
+    port: number,
+    urlPath: string,
+    csrf: string,
+    body: string,
+  ): Promise<ProbeRes> =>
+    new Promise((resolve) => {
+      const mod = proto === "https" ? https : http;
+      const headers: Record<string, string | number> = {
+        "Content-Type": "application/json",
+        "Content-Length": Buffer.byteLength(body),
+      };
+      if (csrf) headers["x-codeium-csrf-token"] = csrf;
+      const req = mod.request(
         {
           hostname: "127.0.0.1",
-          port: ls!.port,
+          port,
           path: urlPath,
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-CSRF-Token": ls!.csrfToken,
-            "Content-Length": "0",
-          },
+          headers,
           timeout: 5000,
+          ...(proto === "https" ? { rejectUnauthorized: false } : {}),
         },
         (res) => {
           const chunks: Buffer[] = [];
@@ -214,39 +226,44 @@ async function main(): Promise<void> {
           );
         },
       );
-      req.on("error", reject);
+      req.on("error", (e) => resolve({ status: 0, body: "", err: String(e) }));
       req.on("timeout", () => {
         req.destroy(new Error("timeout"));
+        resolve({ status: 0, body: "", err: "timeout" });
       });
+      req.write(body);
       req.end();
     });
 
-  const endpoints = [
-    "/",
-    "/healthz",
-    "/v1/health",
-    "/google.antigravity.v1.LanguageServerService/GetVersion",
-    "/google.antigravity.v1.AgentService/Hello",
-  ];
-  let reached = false;
-  for (const ep of endpoints) {
-    try {
-      const r = await probe(ep);
-      log("probe", { ep, status: r.status, bodyPreview: r.body });
-      if (r.status >= 200 && r.status < 500) {
-        log("handshake-reached", { ep, status: r.status });
-        reached = true;
-        break;
+  // Service path verified from Kanezal/antigravity-sdk@v1.3.0 ls-bridge.ts:686
+  const SVC = "/exa.language_server_pb.LanguageServerService";
+  const methods = ["GetUserStatus", "GetUnleashData", "GetVersion", "ListCascades"];
+  const ports = selfPorts.length ? selfPorts : [ls.port];
+  const protocols: ("http" | "https")[] = ["https", "http"];
+  let bestHit: { proto: string; port: number; method: string; status: number; body: string } | null = null;
+
+  for (const port of ports) {
+    for (const proto of protocols) {
+      for (const m of methods) {
+        const r = await probe(proto, port, `${SVC}/${m}`, ls.csrfToken, "{}");
+        log("rpc", { proto, port, method: m, status: r.status, body: r.body.slice(0, 160), err: r.err });
+        if (r.status === 200) {
+          if (!bestHit || bestHit.status !== 200) bestHit = { proto, port, method: m, status: r.status, body: r.body };
+        } else if (r.status === 401 && !bestHit) {
+          bestHit = { proto, port, method: m, status: r.status, body: r.body };
+        }
       }
-    } catch (e) {
-      log("probe-error", { ep, err: String(e) });
     }
   }
 
-  if (!reached) {
-    log("verdict", "FAIL — no probe reached the LS with usable status");
+  if (bestHit && bestHit.status === 200) {
+    log("verdict", "FULL SUCCESS — LS RPC reachable without CSRF token (agy in-process LS = unauth in-CLI mode)");
+    log("best-hit", bestHit);
+  } else if (bestHit && bestHit.status === 401) {
+    log("verdict", "PARTIAL — Service path correct, but 401 (CSRF required). Need token discovery.");
+    log("best-hit", bestHit);
   } else {
-    log("verdict", "SUCCESS — LS reachable via ConnectRPC");
+    log("verdict", "FAIL — no RPC method reached the LS with usable status");
   }
 
   log("cleanup", "killing agy");
