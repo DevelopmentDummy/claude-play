@@ -1,4 +1,4 @@
-export type AIProvider = "claude" | "codex" | "gemini" | "kimi";
+export type AIProvider = "claude" | "codex" | "gemini" | "kimi" | "antigravity";
 
 const GEMINI_DISABLED = process.env.NEXT_PUBLIC_DISABLE_GEMINI === "true";
 
@@ -11,6 +11,8 @@ const GEMINI_MODEL_EXACT = new Set(["gemini-pro", "gemini-flash"]);
 
 const KIMI_MODEL_PREFIXES = ["kimi-", "moonshot-ai/kimi-"];
 const KIMI_MODEL_EXACT = new Set(["kimi-auto"]);
+
+const ANTIGRAVITY_MODEL_PREFIXES = ["antigravity-"];
 
 export function providerFromModel(model: string): AIProvider {
   if (!model) return "claude";
@@ -32,6 +34,9 @@ export function providerFromModel(model: string): AIProvider {
   if (KIMI_MODEL_EXACT.has(base)) return "kimi";
   for (const prefix of KIMI_MODEL_PREFIXES) {
     if (base.startsWith(prefix)) return "kimi";
+  }
+  for (const prefix of ANTIGRAVITY_MODEL_PREFIXES) {
+    if (base.startsWith(prefix)) return "antigravity";
   }
   return "claude";
 }
@@ -75,6 +80,7 @@ const DEFAULT_MODELS: Record<AIProvider, string> = {
   codex: "gpt-5.4",
   gemini: "gemini-3.1-pro-preview",
   kimi: "kimi-auto",
+  antigravity: "antigravity-flash",
 };
 
 /** Default effort per provider (used when no effort is specified) */
@@ -83,6 +89,7 @@ const DEFAULT_EFFORTS: Record<AIProvider, string | undefined> = {
   codex: "medium",
   gemini: undefined,
   kimi: undefined,
+  antigravity: undefined,
 };
 
 /**
@@ -151,6 +158,15 @@ function buildModelGroups(): ModelGroup[] {
       ],
     });
   }
+  groups.push({
+    label: "Antigravity",
+    provider: "antigravity" as AIProvider,
+    options: [
+      { value: "antigravity-flash", label: "Gemini 3.5 Flash" },
+      { value: "antigravity-pro", label: "Gemini 3.5 Pro (High)" },
+      { value: "antigravity-pro-low", label: "Gemini 3.5 Pro (Low)" },
+    ],
+  });
   groups.push({
     label: "Kimi",
     provider: "kimi",

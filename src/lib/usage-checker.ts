@@ -12,7 +12,7 @@ export interface UsageWindow {
 }
 
 export interface UsageResponse {
-  provider: "claude" | "codex" | "gemini";
+  provider: "claude" | "codex" | "gemini" | "antigravity";
   windows: UsageWindow[];
   extraUsage?: {
     isEnabled: boolean;

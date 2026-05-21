@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 interface ConversationListItem {
   conversationId: string;
-  provider: "claude" | "codex" | "gemini" | "kimi";
+  provider: "claude" | "codex" | "gemini" | "kimi" | "antigravity";
   filePath: string;
   sizeBytes: number;
   mtime: number;
@@ -13,7 +13,7 @@ interface ConversationListItem {
 }
 
 interface ConversationsResponse {
-  provider: "claude" | "codex" | "gemini" | "kimi";
+  provider: "claude" | "codex" | "gemini" | "kimi" | "antigravity";
   currentId: string | null;
   items: ConversationListItem[];
 }
@@ -35,6 +35,7 @@ const PROVIDER_BADGE: Record<ConversationListItem["provider"], string> = {
   codex: "bg-[#2a5a3a]/60 text-[#4dff91]/80 border-[#4dff91]/15",
   gemini: "bg-[#1a3a5c]/60 text-[#64b5f6]/80 border-[#64b5f6]/15",
   kimi: "bg-[#173735]/70 text-[#74f5dc]/90 border-[#74f5dc]/20",
+  antigravity: "bg-[#2a1f3e]/60 text-[#b39ddb]/80 border-[#b39ddb]/15",
 };
 
 const PROVIDER_LABEL: Record<ConversationListItem["provider"], string> = {
@@ -42,6 +43,7 @@ const PROVIDER_LABEL: Record<ConversationListItem["provider"], string> = {
   codex: "Codex",
   gemini: "Gemini",
   kimi: "Kimi",
+  antigravity: "Antigravity",
 };
 
 function relativeTime(ms: number): string {

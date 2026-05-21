@@ -116,7 +116,7 @@ const PROVIDER_LABELS: Record<string, string> = {
 
 interface UsageModalProps {
   onClose: () => void;
-  provider?: "claude" | "codex" | "gemini";
+  provider?: "claude" | "codex" | "gemini" | "antigravity";
   sessionId?: string;
 }
 

@@ -72,7 +72,7 @@ const REFRESH_COOLDOWN_MS = 300_000; // 5분 쿨다운
 const globalCache = new Map<string, { data: UsageData; fetchedAt: number }>();
 
 interface UsageIndicatorProps {
-  provider: "claude" | "codex" | "gemini";
+  provider: "claude" | "codex" | "gemini" | "antigravity";
   sessionId?: string;
   /** 변경될 때마다 갱신 트리거 (예: 대화 종료 시 카운터 증가) */
   refreshTrigger?: number;

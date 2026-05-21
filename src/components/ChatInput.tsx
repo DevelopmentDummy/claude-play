@@ -161,7 +161,7 @@ interface ChatInputProps {
   /** Open steering preset editor */
   onSteeringEdit?: () => void;
   /** Usage indicator */
-  usageProvider?: "claude" | "codex" | "gemini";
+  usageProvider?: "claude" | "codex" | "gemini" | "antigravity";
   usageSessionId?: string;
   usageRefreshTrigger?: number;
   onUsageClick?: () => void;
