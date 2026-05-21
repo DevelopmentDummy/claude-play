@@ -91,6 +91,69 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), "utf-8");
   }
 
+  private discoverLsPort(): number | null {
+    if (!this.agyPid) return null;
+    for (let i = 0; i < 15; i++) {
+      try {
+        const out = execSync(
+          `powershell -NoProfile -Command "Get-NetTCPConnection -OwningProcess ${this.agyPid} -State Listen -ErrorAction SilentlyContinue | Select-Object LocalPort | ConvertTo-Json -Compress"`,
+          { encoding: "utf-8" },
+        ).trim();
+        if (out) {
+          const parsed = JSON.parse(out) as { LocalPort: number } | { LocalPort: number }[];
+          const arr = Array.isArray(parsed) ? parsed : [parsed];
+          const ports = arr.map(r => r.LocalPort).sort((a, b) => b - a);
+          if (ports.length >= 1) {
+            this.writeLog(`ls ports discovered: ${ports.join(",")}`);
+            return ports[0];
+          }
+        }
+      } catch { /* */ }
+      execSync(`powershell -NoProfile -Command "Start-Sleep -Milliseconds 700"`, { stdio: "pipe" });
+    }
+    return null;
+  }
+
+  private async rpc<T = unknown>(method: string, payload: Record<string, unknown>): Promise<T> {
+    if (!this.lsPort) throw new Error("LS port not discovered");
+    const https = await import("https");
+    const body = JSON.stringify(payload);
+    return new Promise<T>((resolve, reject) => {
+      const req = https.request(
+        {
+          hostname: "127.0.0.1",
+          port: this.lsPort!,
+          path: `/exa.language_server_pb.LanguageServerService/${method}`,
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Content-Length": Buffer.byteLength(body),
+          },
+          rejectUnauthorized: false,
+          timeout: 30000,
+        },
+        (res) => {
+          const chunks: Buffer[] = [];
+          res.on("data", (c) => chunks.push(c));
+          res.on("end", () => {
+            const text = Buffer.concat(chunks).toString("utf-8");
+            this.writeLog(`rpc ${method} → ${res.statusCode} (${text.length}b)`);
+            if (res.statusCode === 200) {
+              try { resolve(JSON.parse(text) as T); }
+              catch { reject(new Error(`${method}: invalid JSON response`)); }
+            } else {
+              reject(new Error(`${method}: HTTP ${res.statusCode} -- ${text.slice(0, 200)}`));
+            }
+          });
+        },
+      );
+      req.on("error", reject);
+      req.on("timeout", () => { req.destroy(new Error("timeout")); });
+      req.write(body);
+      req.end();
+    });
+  }
+
   private openLogStream(cwd: string): void {
     if (this.logStream) { try { this.logStream.end(); } catch { /* */ } }
     const logPath = path.join(cwd, "antigravity-stream.log");
