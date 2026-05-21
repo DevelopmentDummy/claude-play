@@ -77,7 +77,8 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
     }
 
     if (!this.cascadeId) {
-      const startResp = await this.rpc<{ cascadeId?: string }>("StartCascade", { source: 0 });
+      // source=1 (CORTEX_TRAJECTORY_SOURCE_USER) — agy 1.0.0은 0(UNSPECIFIED) 거부
+      const startResp = await this.rpc<{ cascadeId?: string }>("StartCascade", { source: 1 });
       if (!startResp?.cascadeId) {
         this.emit("error", "StartCascade returned no cascadeId");
         return;
@@ -91,13 +92,14 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
 
     this.emit("status", "streaming");
 
+    // proto3 canonical JSON: oneof는 case/value 래퍼가 아니라 field name 직접 사용
     await this.rpc("SendUserCascadeMessage", {
       cascadeId: this.cascadeId,
-      items: [{ chunk: { case: "text", value: text } }],
+      items: [{ chunk: { text: text } }],
       cascadeConfig: {
         plannerConfig: {
-          plannerTypeConfig: { case: "conversational", value: {} },
-          requestedModel: { choice: { case: "model", value: this.modelId } },
+          plannerTypeConfig: { conversational: {} },
+          requestedModel: { model: this.modelId },
         },
       },
     });
@@ -112,27 +114,48 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
 
   private async pollLoop(): Promise<void> {
     const POLL_INTERVAL_MS = 500;
-    const STABLE_THRESHOLD_TICKS = 6;
+    const MAX_TURN_DURATION_MS = 5 * 60 * 1000;
+    const STABLE_AFTER_RESPONSE_TICKS = 6;
+    const turnStart = Date.now();
     let stableTicks = 0;
+    let sawResponse = false;
 
     while (this.polling && this.cascadeId) {
+      if (Date.now() - turnStart > MAX_TURN_DURATION_MS) {
+        this.writeLog(`poll: turn timeout after ${MAX_TURN_DURATION_MS / 1000}s`);
+        break;
+      }
+
       let conv: Record<string, unknown>;
       try {
-        conv = await this.rpc<Record<string, unknown>>("GetConversation", { cascadeId: this.cascadeId });
+        conv = await this.rpc<Record<string, unknown>>("GetCascadeTrajectory", { cascadeId: this.cascadeId });
       } catch (err) {
         this.writeLog(`poll error: ${err}`);
-        stableTicks++;
-        if (stableTicks >= STABLE_THRESHOLD_TICKS) break;
         await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
         continue;
       }
 
+      const dbgSteps = this.extractItems(conv);
+      this.writeLog(`[poll] step-count=${dbgSteps?.length ?? "null"} types=${dbgSteps?.map(s => s.type).join("|") ?? "n/a"}`);
+      if (dbgSteps) {
+        for (let di = 0; di < dbgSteps.length; di++) {
+          const s = dbgSteps[di];
+          if ((s.type as string)?.includes("PLANNER")) {
+            const pr = s.plannerResponse as Record<string, unknown> | undefined;
+            const r = pr?.response;
+            this.writeLog(`[poll-pr] step[${di}] plannerResponse-keys=${pr ? Object.keys(pr).join(",") : "null"} response-len=${typeof r === "string" ? r.length : "non-string"} role-resolved=${this.extractRole(s)}`);
+          }
+        }
+      }
+
+      const turnComplete = this.detectTurnComplete(conv);
       const advanced = this.emitNewChunks(conv);
       if (advanced) {
+        sawResponse = sawResponse || this.hasAssistantResponse(conv);
         stableTicks = 0;
-      } else {
+      } else if (sawResponse) {
         stableTicks++;
-        if (stableTicks >= STABLE_THRESHOLD_TICKS) break;
+        if (turnComplete || stableTicks >= STABLE_AFTER_RESPONSE_TICKS) break;
       }
       await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
     }
@@ -140,6 +163,31 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
     this.polling = false;
     this.emit("message", { type: "result" });
     this.emit("status", "connected");
+  }
+
+  private detectTurnComplete(conv: Record<string, unknown>): boolean {
+    const steps = this.extractItems(conv);
+    if (!steps) return false;
+    // CHECKPOINT step (turn 끝) 또는 PLANNER_RESPONSE with stopReason
+    for (let i = steps.length - 1; i >= 0; i--) {
+      const s = steps[i];
+      const t = s.type as string | undefined;
+      if (t === "CORTEX_STEP_TYPE_CHECKPOINT") return true;
+      if (t === "CORTEX_STEP_TYPE_PLANNER_RESPONSE") {
+        const pr = s.plannerResponse as Record<string, unknown> | undefined;
+        if (pr?.stopReason) return true;
+      }
+    }
+    return false;
+  }
+
+  private hasAssistantResponse(conv: Record<string, unknown>): boolean {
+    const steps = this.extractItems(conv);
+    if (!steps) return false;
+    return steps.some(s => {
+      const t = s.type as string | undefined;
+      return t === "CORTEX_STEP_TYPE_PLANNER_RESPONSE";
+    });
   }
 
   private emitNewChunks(conv: Record<string, unknown>): boolean {
@@ -185,35 +233,49 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
   }
 
   private extractItems(conv: Record<string, unknown>): Record<string, unknown>[] | null {
-    const candidates: unknown[] = [
-      (conv.conversation as Record<string, unknown> | undefined)?.items,
-      conv.items,
-      conv.messages,
-      (conv.conversation as Record<string, unknown> | undefined)?.messages,
-    ];
-    for (const c of candidates) {
-      if (Array.isArray(c)) return c as Record<string, unknown>[];
-    }
+    // agy 1.0.0 GetCascadeTrajectory 응답: { trajectory: { steps: [...] } }
+    const traj = conv.trajectory as Record<string, unknown> | undefined;
+    if (traj && Array.isArray(traj.steps)) return traj.steps as Record<string, unknown>[];
+    // 다른 LS 버전 fallback
+    if (Array.isArray(conv.items)) return conv.items as Record<string, unknown>[];
+    if (Array.isArray(conv.messages)) return conv.messages as Record<string, unknown>[];
     return null;
   }
 
   private extractRole(item: Record<string, unknown>): string | undefined {
+    // agy 1.0.0 step.type 으로 user/assistant 구분
+    const type = item.type as string | undefined;
+    if (type === "CORTEX_STEP_TYPE_USER_INPUT") return "user";
+    if (type === "CORTEX_STEP_TYPE_PLANNER_RESPONSE" || type === "CORTEX_STEP_TYPE_ASSISTANT_RESPONSE" || type === "CORTEX_STEP_TYPE_MODEL_OUTPUT") return "assistant";
+    if (type === "CORTEX_STEP_TYPE_ERROR_MESSAGE") return "error";
+    // legacy
     const r1 = item.role as string | undefined;
     const r2 = (item.message as Record<string, unknown> | undefined)?.role as string | undefined;
     return r1 || r2;
   }
 
   private extractText(item: Record<string, unknown>): string | undefined {
-    const c1 = item.content;
-    if (typeof c1 === "string") return c1;
-    if (Array.isArray(c1)) {
-      const texts = c1
-        .map(c => (typeof c === "object" && c !== null && "text" in c ? (c as { text: unknown }).text : null))
-        .filter((t): t is string => typeof t === "string");
-      if (texts.length) return texts.join("");
+    // agy 1.0.0 step content 위치 후보들
+    const candidates: unknown[] = [
+      (item.plannerResponse as Record<string, unknown> | undefined)?.response,
+      (item.plannerResponse as Record<string, unknown> | undefined)?.modifiedResponse,
+      (item.assistantResponse as Record<string, unknown> | undefined)?.text,
+      (item.modelOutput as Record<string, unknown> | undefined)?.text,
+      (item.response as Record<string, unknown> | undefined)?.text,
+      (item.errorMessage as Record<string, unknown> | undefined)?.error
+        && ((item.errorMessage as Record<string, unknown>).error as Record<string, unknown>).userErrorMessage,
+      item.content,
+      (item.message as Record<string, unknown> | undefined)?.content,
+    ];
+    for (const c of candidates) {
+      if (typeof c === "string" && c.length > 0) return c;
+      if (Array.isArray(c)) {
+        const texts = c
+          .map(x => (typeof x === "object" && x !== null && "text" in x ? (x as { text: unknown }).text : null))
+          .filter((t): t is string => typeof t === "string");
+        if (texts.length) return texts.join("");
+      }
     }
-    const c2 = (item.message as Record<string, unknown> | undefined)?.content;
-    if (typeof c2 === "string") return c2;
     return undefined;
   }
 
@@ -260,9 +322,10 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
         if (out) {
           const parsed = JSON.parse(out) as { LocalPort: number } | { LocalPort: number }[];
           const arr = Array.isArray(parsed) ? parsed : [parsed];
-          const ports = arr.map(r => r.LocalPort).sort((a, b) => b - a);
+          const ports = arr.map(r => r.LocalPort).sort((a, b) => a - b);
           if (ports.length >= 1) {
-            this.writeLog(`ls ports discovered: ${ports.join(",")}`);
+            // PoC 확정: 두 포트 중 작은 게 HTTPS 메인 (gRPC), 큰 게 extension_server HTTP.
+            this.writeLog(`ls ports discovered: ${ports.join(",")} (using https=${ports[0]})`);
             return ports[0];
           }
         }
@@ -315,8 +378,17 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
   private openLogStream(cwd: string): void {
     if (this.logStream) { try { this.logStream.end(); } catch { /* */ } }
     const logPath = path.join(cwd, "antigravity-stream.log");
-    this.logStream = fs.createWriteStream(logPath, { flags: "a" });
-    this.writeLog(`--- spawn ${new Date().toISOString()} ---`);
+    try {
+      const stream = fs.createWriteStream(logPath, { flags: "a" });
+      stream.on("error", () => {
+        this.logStream = null;
+        try { stream.destroy(); } catch { /* */ }
+      });
+      this.logStream = stream;
+      this.writeLog(`--- spawn ${new Date().toISOString()} ---`);
+    } catch {
+      this.logStream = null;
+    }
   }
 
   private writeLog(s: string): void {
