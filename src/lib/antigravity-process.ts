@@ -134,10 +134,11 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
     const POLL_INTERVAL_MS = 700;
     const MAX_TURN_DURATION_MS = 5 * 60 * 1000;
     const STATUS_CHECK_EVERY = 2;
-    const IDLE_GRACE_TICKS = 5; // 연속 IDLE 5회(~3.5초)는 일시적, 그 이상이어야 진짜 종료
+    const IDLE_GRACE_TICKS = 5;
+    const TRAJECTORY_STABLE_TICKS = 5; // trajectory 변화 없는 polling 횟수
     const turnStart = Date.now();
     let iter = 0;
-    let lastStepHash = "";
+    let lastTrajKey = "";
     let consecutiveStable = 0;
     let consecutiveIdle = 0;
     let everSawRunning = false;
@@ -158,10 +159,15 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
       }
 
       const dbgSteps = this.extractItems(conv);
-      const stepHash = `${dbgSteps?.length ?? 0}:${dbgSteps?.map(s => s.type).join(",") ?? ""}`;
-      if (stepHash !== lastStepHash) {
-        this.writeLog(`[poll #${iter}] ${stepHash}`);
-        lastStepHash = stepHash;
+      // trajectory의 step 카운트 + 마지막 step body size를 같이 추적
+      // — sub-agent chain 마지막 PLANNER_RESPONSE의 response가 batch로 채워질 때
+      // step.length는 안 변해도 마지막 step body가 커지는 패턴을 잡기 위함
+      const lastStep = dbgSteps && dbgSteps.length > 0 ? dbgSteps[dbgSteps.length - 1] : null;
+      const lastStepSize = lastStep ? JSON.stringify(lastStep).length : 0;
+      const trajKey = `${dbgSteps?.length ?? 0}:${dbgSteps?.map(s => s.type).join(",") ?? ""}|tail=${lastStepSize}`;
+      if (trajKey !== lastTrajKey) {
+        this.writeLog(`[poll #${iter}] steps=${dbgSteps?.length ?? 0} tail=${lastStepSize}b lastType=${lastStep?.type ?? "n/a"}`);
+        lastTrajKey = trajKey;
         consecutiveStable = 0;
       } else {
         consecutiveStable++;
@@ -179,10 +185,11 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
             consecutiveIdle = 0;
           } else if (status) {
             consecutiveIdle++;
-            this.writeLog(`[poll #${iter}] status=${status} idle-count=${consecutiveIdle}/${IDLE_GRACE_TICKS}`);
-            // 한 번도 RUNNING 안 봤다면 LS가 아직 처리 시작 안 했을 수 있음 — 더 기다림
-            if (everSawRunning && consecutiveIdle >= IDLE_GRACE_TICKS) {
-              this.writeLog(`[poll #${iter}] cascade idle ${IDLE_GRACE_TICKS} times — turn complete`);
+            this.writeLog(`[poll #${iter}] status=${status} idle=${consecutiveIdle}/${IDLE_GRACE_TICKS} traj-stable=${consecutiveStable}/${TRAJECTORY_STABLE_TICKS}`);
+            // IDLE + trajectory도 안정 두 조건 동시 충족 시에만 진짜 종료.
+            // sub-agent chain 응답 채워지는 동안엔 trajectory size가 변하므로 stable 안 됨.
+            if (everSawRunning && consecutiveIdle >= IDLE_GRACE_TICKS && consecutiveStable >= TRAJECTORY_STABLE_TICKS) {
+              this.writeLog(`[poll #${iter}] cascade idle+stable — turn complete`);
               try {
                 const finalConv = await this.rpc<Record<string, unknown>>("GetCascadeTrajectory", { cascadeId: this.cascadeId });
                 this.emitNewChunks(finalConv);
