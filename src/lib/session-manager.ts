@@ -163,6 +163,7 @@ interface SessionMeta {
   codexThreadId?: string;
   geminiSessionId?: string;
   kimiSessionId?: string;
+  antigravityCascadeId?: string;
   profileSlug?: string;
   model?: string;
 }
@@ -172,6 +173,7 @@ interface BuilderMeta {
   codexThreadId?: string;
   geminiSessionId?: string;
   kimiSessionId?: string;
+  antigravityCascadeId?: string;
   provider?: AIProvider;
   model?: string;
 }
@@ -928,6 +930,29 @@ export class SessionManager {
     try {
       const meta: SessionMeta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
       return meta.kimiSessionId;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** Save Antigravity cascade ID for resume */
+  saveAntigravityCascadeId(id: string, cascadeId: string): void {
+    const metaPath = path.join(this.getSessionDir(id), "session.json");
+    if (!fs.existsSync(metaPath)) return;
+    try {
+      const meta: SessionMeta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
+      meta.antigravityCascadeId = cascadeId;
+      fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), "utf-8");
+    } catch { /* ignore */ }
+  }
+
+  /** Get saved Antigravity cascade ID for resume */
+  getAntigravityCascadeId(id: string): string | undefined {
+    const metaPath = path.join(this.getSessionDir(id), "session.json");
+    if (!fs.existsSync(metaPath)) return undefined;
+    try {
+      const meta: SessionMeta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
+      return meta.antigravityCascadeId;
     } catch {
       return undefined;
     }

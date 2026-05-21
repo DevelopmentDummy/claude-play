@@ -26,6 +26,7 @@ interface SessionMeta {
   codexThreadId?: string;
   geminiSessionId?: string;
   kimiSessionId?: string;
+  antigravityCascadeId?: string;
 }
 
 const TAIL_BYTES = 256 * 1024;
@@ -405,6 +406,7 @@ interface BuilderMeta {
   codexThreadId?: string;
   geminiSessionId?: string;
   kimiSessionId?: string;
+  antigravityCascadeId?: string;
   model?: string;
 }
 
