@@ -132,10 +132,11 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
 
   private async pollLoop(): Promise<void> {
     const POLL_INTERVAL_MS = 700;
-    const MAX_TURN_DURATION_MS = 5 * 60 * 1000;
+    const MAX_TURN_DURATION_MS = 15 * 60 * 1000; // 전체 max 15분 (긴 sub-agent chain 대응)
     const STATUS_CHECK_EVERY = 2;
     const IDLE_GRACE_TICKS = 5;
-    const TRAJECTORY_STABLE_TICKS = 5; // trajectory 변화 없는 polling 횟수
+    const TRAJECTORY_STABLE_TICKS = 5;
+    const STUCK_TIMEOUT_MS = 5 * 60 * 1000; // trajectory 변화 없이 5분 stuck이면 강제 종료
     const turnStart = Date.now();
     let iter = 0;
     let lastTrajKey = "";
@@ -202,9 +203,9 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
         }
       }
 
-      // Safety: 60초간 step 변화 없으면 stuck으로 보고 종료
-      if (consecutiveStable * POLL_INTERVAL_MS > 60_000) {
-        this.writeLog(`[poll #${iter}] no step change for 60s, forcing turn end`);
+      // Safety: trajectory 변화 없이 STUCK_TIMEOUT_MS 경과하면 강제 종료
+      if (consecutiveStable * POLL_INTERVAL_MS > STUCK_TIMEOUT_MS) {
+        this.writeLog(`[poll #${iter}] no trajectory change for ${STUCK_TIMEOUT_MS / 1000}s, forcing turn end`);
         break;
       }
 
