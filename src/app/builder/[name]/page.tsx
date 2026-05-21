@@ -20,7 +20,9 @@ import { AIProvider, providerFromModel } from "@/lib/ai-provider";
 type UsageProvider = Exclude<AIProvider, "kimi">;
 
 function toUsageProvider(provider: AIProvider): UsageProvider | undefined {
-  return provider === "kimi" ? undefined : provider;
+  // antigravity는 아직 /api/usage 백엔드 핸들러 없음 (LS 기반이라 별도 usage 채널)
+  if (provider === "kimi" || provider === "antigravity") return undefined;
+  return provider;
 }
 
 export default function BuilderPage() {

@@ -28,6 +28,8 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
   private spawnCwd = "";
   private spawnModelString: string | undefined;
   private modelId: AntigravityModelId = AntigravityModels.GEMINI_FLASH;
+  private appendSystemPrompt: string | undefined;
+  private systemPromptInjected = false;
   private logStream: fs.WriteStream | null = null;
   private polling = false;
   private lastSeenMessageCount = 0;
@@ -37,6 +39,9 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
     cwd: string,
     resumeId?: string,
     model?: string,
+    appendSystemPrompt?: string,
+    _effort?: string,
+    _skipPermissions?: boolean,
   ): void {
     if (this.agyPid) this.kill();
 
@@ -44,6 +49,9 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
     if (resumeId !== undefined) this.cascadeId = resumeId || null;
     this.spawnModelString = model;
     this.modelId = this.resolveModelId(model);
+    if (appendSystemPrompt !== undefined) this.appendSystemPrompt = appendSystemPrompt;
+    // 새 cascade 시작이면 system prompt 다시 주입해야 함
+    if (!this.cascadeId) this.systemPromptInjected = false;
 
     this.ensureAntigravityTrust(cwd);
     this.openLogStream(cwd);
@@ -94,10 +102,18 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
 
     this.emit("status", "streaming");
 
+    // 첫 send (또는 새 cascade)에 system prompt prepend
+    let effectiveText = text;
+    if (!this.systemPromptInjected && this.appendSystemPrompt) {
+      effectiveText = `[SYSTEM CONTEXT — follow this throughout the conversation]\n${this.appendSystemPrompt}\n\n[USER]\n${text}`;
+      this.systemPromptInjected = true;
+      this.writeLog(`system prompt injected (${this.appendSystemPrompt.length} chars)`);
+    }
+
     // proto3 canonical JSON: oneof는 case/value 래퍼가 아니라 field name 직접 사용
     await this.rpc("SendUserCascadeMessage", {
       cascadeId: this.cascadeId,
-      items: [{ chunk: { text: text } }],
+      items: [{ chunk: { text: effectiveText } }],
       cascadeConfig: {
         plannerConfig: {
           plannerTypeConfig: { conversational: {} },
@@ -115,12 +131,13 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
   }
 
   private async pollLoop(): Promise<void> {
-    const POLL_INTERVAL_MS = 500;
+    const POLL_INTERVAL_MS = 700;
     const MAX_TURN_DURATION_MS = 5 * 60 * 1000;
-    const STABLE_AFTER_RESPONSE_TICKS = 6;
+    const STATUS_CHECK_EVERY = 3;
     const turnStart = Date.now();
-    let stableTicks = 0;
-    let sawResponse = false;
+    let iter = 0;
+    let lastStepHash = "";
+    let consecutiveStable = 0;
 
     while (this.polling && this.cascadeId) {
       if (Date.now() - turnStart > MAX_TURN_DURATION_MS) {
@@ -138,58 +155,50 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
       }
 
       const dbgSteps = this.extractItems(conv);
-      this.writeLog(`[poll] step-count=${dbgSteps?.length ?? "null"} types=${dbgSteps?.map(s => s.type).join("|") ?? "n/a"}`);
-      if (dbgSteps) {
-        for (let di = 0; di < dbgSteps.length; di++) {
-          const s = dbgSteps[di];
-          if ((s.type as string)?.includes("PLANNER")) {
-            const pr = s.plannerResponse as Record<string, unknown> | undefined;
-            const r = pr?.response;
-            this.writeLog(`[poll-pr] step[${di}] plannerResponse-keys=${pr ? Object.keys(pr).join(",") : "null"} response-len=${typeof r === "string" ? r.length : "non-string"} role-resolved=${this.extractRole(s)}`);
+      const stepHash = `${dbgSteps?.length ?? 0}:${dbgSteps?.map(s => s.type).join(",") ?? ""}`;
+      if (stepHash !== lastStepHash) {
+        this.writeLog(`[poll #${iter}] ${stepHash}`);
+        lastStepHash = stepHash;
+        consecutiveStable = 0;
+      } else {
+        consecutiveStable++;
+      }
+
+      this.emitNewChunks(conv);
+
+      // Cascade run status check (덜 자주 — every 3 iterations)
+      iter++;
+      if (iter % STATUS_CHECK_EVERY === 0) {
+        try {
+          const all = await this.rpc<{ trajectorySummaries?: Record<string, { status?: string; stepCount?: number }> }>("GetAllCascadeTrajectories", {});
+          const summary = all.trajectorySummaries?.[this.cascadeId];
+          const status = summary?.status;
+          if (status && status !== "CASCADE_RUN_STATUS_RUNNING") {
+            this.writeLog(`[poll #${iter}] cascade status=${status} stepCount=${summary?.stepCount} — turn complete`);
+            // 마지막 한 번 더 trajectory 가져와서 final chunks emit
+            try {
+              const finalConv = await this.rpc<Record<string, unknown>>("GetCascadeTrajectory", { cascadeId: this.cascadeId });
+              this.emitNewChunks(finalConv);
+            } catch { /* */ }
+            break;
           }
+        } catch (err) {
+          this.writeLog(`status check error: ${err}`);
         }
       }
 
-      const turnComplete = this.detectTurnComplete(conv);
-      const advanced = this.emitNewChunks(conv);
-      if (advanced) {
-        sawResponse = sawResponse || this.hasAssistantResponse(conv);
-        stableTicks = 0;
-      } else if (sawResponse) {
-        stableTicks++;
-        if (turnComplete || stableTicks >= STABLE_AFTER_RESPONSE_TICKS) break;
+      // Safety: 60초간 step 변화 없으면 stuck으로 보고 종료
+      if (consecutiveStable * POLL_INTERVAL_MS > 60_000) {
+        this.writeLog(`[poll #${iter}] no step change for 60s, forcing turn end`);
+        break;
       }
+
       await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
     }
 
     this.polling = false;
     this.emit("message", { type: "result" });
     this.emit("status", "connected");
-  }
-
-  private detectTurnComplete(conv: Record<string, unknown>): boolean {
-    const steps = this.extractItems(conv);
-    if (!steps) return false;
-    // CHECKPOINT step (turn 끝) 또는 PLANNER_RESPONSE with stopReason
-    for (let i = steps.length - 1; i >= 0; i--) {
-      const s = steps[i];
-      const t = s.type as string | undefined;
-      if (t === "CORTEX_STEP_TYPE_CHECKPOINT") return true;
-      if (t === "CORTEX_STEP_TYPE_PLANNER_RESPONSE") {
-        const pr = s.plannerResponse as Record<string, unknown> | undefined;
-        if (pr?.stopReason) return true;
-      }
-    }
-    return false;
-  }
-
-  private hasAssistantResponse(conv: Record<string, unknown>): boolean {
-    const steps = this.extractItems(conv);
-    if (!steps) return false;
-    return steps.some(s => {
-      const t = s.type as string | undefined;
-      return t === "CORTEX_STEP_TYPE_PLANNER_RESPONSE";
-    });
   }
 
   private emitNewChunks(conv: Record<string, unknown>): boolean {
@@ -257,10 +266,24 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
   }
 
   private extractText(item: Record<string, unknown>): string | undefined {
-    // agy 1.0.0 step content 위치 후보들
+    const pr = item.plannerResponse as Record<string, unknown> | undefined;
+    if (pr) {
+      // 1) 정상 텍스트 응답
+      if (typeof pr.response === "string" && pr.response.length > 0) return pr.response;
+      if (typeof pr.modifiedResponse === "string" && pr.modifiedResponse.length > 0) return pr.modifiedResponse;
+      // 2) tool-only turn: thinking + tool summary로 placeholder
+      const parts: string[] = [];
+      if (typeof pr.thinking === "string" && pr.thinking.length > 0) parts.push(pr.thinking);
+      if (Array.isArray(pr.toolCalls) && pr.toolCalls.length > 0) {
+        const names = (pr.toolCalls as Record<string, unknown>[])
+          .map(tc => (tc.name || tc.tool || tc.functionName || tc.toolName) as string | undefined)
+          .filter((n): n is string => !!n);
+        if (names.length) parts.push(`[Tools: ${names.join(", ")}]`);
+      }
+      if (parts.length > 0) return parts.join("\n\n");
+    }
+    // legacy / fallback candidates
     const candidates: unknown[] = [
-      (item.plannerResponse as Record<string, unknown> | undefined)?.response,
-      (item.plannerResponse as Record<string, unknown> | undefined)?.modifiedResponse,
       (item.assistantResponse as Record<string, unknown> | undefined)?.text,
       (item.modelOutput as Record<string, unknown> | undefined)?.text,
       (item.response as Record<string, unknown> | undefined)?.text,
