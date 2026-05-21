@@ -133,11 +133,14 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
   private async pollLoop(): Promise<void> {
     const POLL_INTERVAL_MS = 700;
     const MAX_TURN_DURATION_MS = 5 * 60 * 1000;
-    const STATUS_CHECK_EVERY = 3;
+    const STATUS_CHECK_EVERY = 2;
+    const IDLE_GRACE_TICKS = 5; // 연속 IDLE 5회(~3.5초)는 일시적, 그 이상이어야 진짜 종료
     const turnStart = Date.now();
     let iter = 0;
     let lastStepHash = "";
     let consecutiveStable = 0;
+    let consecutiveIdle = 0;
+    let everSawRunning = false;
 
     while (this.polling && this.cascadeId) {
       if (Date.now() - turnStart > MAX_TURN_DURATION_MS) {
@@ -166,21 +169,26 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
 
       this.emitNewChunks(conv);
 
-      // Cascade run status check (덜 자주 — every 3 iterations)
       iter++;
       if (iter % STATUS_CHECK_EVERY === 0) {
         try {
           const all = await this.rpc<{ trajectorySummaries?: Record<string, { status?: string; stepCount?: number }> }>("GetAllCascadeTrajectories", {});
-          const summary = all.trajectorySummaries?.[this.cascadeId];
-          const status = summary?.status;
-          if (status && status !== "CASCADE_RUN_STATUS_RUNNING") {
-            this.writeLog(`[poll #${iter}] cascade status=${status} stepCount=${summary?.stepCount} — turn complete`);
-            // 마지막 한 번 더 trajectory 가져와서 final chunks emit
-            try {
-              const finalConv = await this.rpc<Record<string, unknown>>("GetCascadeTrajectory", { cascadeId: this.cascadeId });
-              this.emitNewChunks(finalConv);
-            } catch { /* */ }
-            break;
+          const status = all.trajectorySummaries?.[this.cascadeId]?.status;
+          if (status === "CASCADE_RUN_STATUS_RUNNING") {
+            everSawRunning = true;
+            consecutiveIdle = 0;
+          } else if (status) {
+            consecutiveIdle++;
+            this.writeLog(`[poll #${iter}] status=${status} idle-count=${consecutiveIdle}/${IDLE_GRACE_TICKS}`);
+            // 한 번도 RUNNING 안 봤다면 LS가 아직 처리 시작 안 했을 수 있음 — 더 기다림
+            if (everSawRunning && consecutiveIdle >= IDLE_GRACE_TICKS) {
+              this.writeLog(`[poll #${iter}] cascade idle ${IDLE_GRACE_TICKS} times — turn complete`);
+              try {
+                const finalConv = await this.rpc<Record<string, unknown>>("GetCascadeTrajectory", { cascadeId: this.cascadeId });
+                this.emitNewChunks(finalConv);
+              } catch { /* */ }
+              break;
+            }
           }
         } catch (err) {
           this.writeLog(`status check error: ${err}`);
