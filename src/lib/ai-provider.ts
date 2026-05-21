@@ -1,5 +1,7 @@
 export type AIProvider = "claude" | "codex" | "gemini" | "kimi";
 
+const GEMINI_DISABLED = process.env.NEXT_PUBLIC_DISABLE_GEMINI === "true";
+
 const EXTERNAL_CODEX_MODEL_PREFIX = "external/";
 const CODEX_MODEL_PREFIXES = ["gpt-5", "codex-mini"];
 const CODEX_MODEL_EXACT = new Set(["codex-mini-latest", "o3", "o4-mini"]);
@@ -19,9 +21,13 @@ export function providerFromModel(model: string): AIProvider {
   for (const prefix of CODEX_MODEL_PREFIXES) {
     if (base.startsWith(prefix)) return "codex";
   }
-  if (GEMINI_MODEL_EXACT.has(base)) return "gemini";
-  for (const prefix of GEMINI_MODEL_PREFIXES) {
-    if (base.startsWith(prefix)) return "gemini";
+  const isGeminiModel = GEMINI_MODEL_EXACT.has(base) ||
+    GEMINI_MODEL_PREFIXES.some(p => base.startsWith(p));
+  if (isGeminiModel) {
+    if (GEMINI_DISABLED) {
+      throw new Error(`Gemini provider is disabled (NEXT_PUBLIC_DISABLE_GEMINI=true). Model: ${model}`);
+    }
+    return "gemini";
   }
   if (KIMI_MODEL_EXACT.has(base)) return "kimi";
   for (const prefix of KIMI_MODEL_PREFIXES) {
@@ -93,55 +99,59 @@ export function resolveBuilderModel(rawModel?: string, providerOverride?: AIProv
   return { model, effort, provider, combined };
 }
 
-export const MODEL_GROUPS: ModelGroup[] = [
-  {
-    label: "Claude",
-    provider: "claude",
-    options: [
-      { value: "sonnet", label: "Sonnet" },
-      { value: "sonnet:medium", label: "Sonnet Medium" },
-      { value: "sonnet:high", label: "Sonnet High" },
-      { value: "opus", label: "Opus" },
-      { value: "opus:medium", label: "Opus Medium" },
-      { value: "opus:high", label: "Opus High" },
-      { value: "opus:xhigh", label: "Opus XHigh" },
-      { value: "opus[1m]", label: "Opus 1M" },
-      { value: "opus[1m]:medium", label: "Opus 1M Medium" },
-      { value: "opus[1m]:high", label: "Opus 1M High" },
-      { value: "opus[1m]:xhigh", label: "Opus 1M XHigh" },
-    ],
-  },
-  {
-    label: "Codex",
-    provider: "codex",
-    options: [
-      { value: "gpt-5.5:medium", label: "GPT-5.5 Medium" },
-      { value: "gpt-5.5:high", label: "GPT-5.5 High" },
-      { value: "gpt-5.5:xhigh", label: "GPT-5.5 XHigh" },
-      { value: "gpt-5.4:medium", label: "GPT-5.4 Medium" },
-      { value: "gpt-5.4:high", label: "GPT-5.4 High" },
-      { value: "gpt-5.4:xhigh", label: "GPT-5.4 XHigh" },
-    ],
-  },
-  {
-    label: "External Gateway",
-    provider: "codex",
-    options: [
-      { value: "external/deepseek/deepseek-chat", label: "DeepSeek Chat" },
-      { value: "external/qwen/qwen-max", label: "Qwen Max" },
-      { value: "external/zai/glm-4.6", label: "GLM 4.6" },
-    ],
-  },
-  {
-    label: "Gemini",
-    provider: "gemini" as AIProvider,
-    options: [
-      { value: "gemini-auto", label: "Gemini Auto" },
-      { value: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro" },
-      { value: "gemini-3-flash-preview", label: "Gemini 3 Flash" },
-    ],
-  },
-  {
+function buildModelGroups(): ModelGroup[] {
+  const groups: ModelGroup[] = [
+    {
+      label: "Claude",
+      provider: "claude",
+      options: [
+        { value: "sonnet", label: "Sonnet" },
+        { value: "sonnet:medium", label: "Sonnet Medium" },
+        { value: "sonnet:high", label: "Sonnet High" },
+        { value: "opus", label: "Opus" },
+        { value: "opus:medium", label: "Opus Medium" },
+        { value: "opus:high", label: "Opus High" },
+        { value: "opus:xhigh", label: "Opus XHigh" },
+        { value: "opus[1m]", label: "Opus 1M" },
+        { value: "opus[1m]:medium", label: "Opus 1M Medium" },
+        { value: "opus[1m]:high", label: "Opus 1M High" },
+        { value: "opus[1m]:xhigh", label: "Opus 1M XHigh" },
+      ],
+    },
+    {
+      label: "Codex",
+      provider: "codex",
+      options: [
+        { value: "gpt-5.5:medium", label: "GPT-5.5 Medium" },
+        { value: "gpt-5.5:high", label: "GPT-5.5 High" },
+        { value: "gpt-5.5:xhigh", label: "GPT-5.5 XHigh" },
+        { value: "gpt-5.4:medium", label: "GPT-5.4 Medium" },
+        { value: "gpt-5.4:high", label: "GPT-5.4 High" },
+        { value: "gpt-5.4:xhigh", label: "GPT-5.4 XHigh" },
+      ],
+    },
+    {
+      label: "External Gateway",
+      provider: "codex",
+      options: [
+        { value: "external/deepseek/deepseek-chat", label: "DeepSeek Chat" },
+        { value: "external/qwen/qwen-max", label: "Qwen Max" },
+        { value: "external/zai/glm-4.6", label: "GLM 4.6" },
+      ],
+    },
+  ];
+  if (!GEMINI_DISABLED) {
+    groups.push({
+      label: "Gemini",
+      provider: "gemini" as AIProvider,
+      options: [
+        { value: "gemini-auto", label: "Gemini Auto" },
+        { value: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro" },
+        { value: "gemini-3-flash-preview", label: "Gemini 3 Flash" },
+      ],
+    });
+  }
+  groups.push({
     label: "Kimi",
     provider: "kimi",
     options: [
@@ -149,5 +159,8 @@ export const MODEL_GROUPS: ModelGroup[] = [
       { value: "moonshot-ai/kimi-k2.6", label: "Kimi 2.6" },
       { value: "moonshot-ai/kimi-k2.6:thinking", label: "Kimi 2.6 Thinking" },
     ],
-  },
-];
+  });
+  return groups;
+}
+
+export const MODEL_GROUPS: ModelGroup[] = buildModelGroups();
