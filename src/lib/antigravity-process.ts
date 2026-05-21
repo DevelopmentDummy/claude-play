@@ -59,6 +59,164 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
     this.emit("status", "connected");
   }
 
+  send(text: string): void {
+    void this._sendAsync(text).catch(err => {
+      this.emit("error", String(err));
+      this.emit("status", "connected");
+    });
+  }
+
+  private async _sendAsync(text: string): Promise<void> {
+    if (!this.lsPort) {
+      const port = this.discoverLsPort();
+      if (!port) {
+        this.emit("error", "Failed to discover Antigravity LS port within 10s");
+        return;
+      }
+      this.lsPort = port;
+    }
+
+    if (!this.cascadeId) {
+      const startResp = await this.rpc<{ cascadeId?: string }>("StartCascade", { source: 0 });
+      if (!startResp?.cascadeId) {
+        this.emit("error", "StartCascade returned no cascadeId");
+        return;
+      }
+      this.cascadeId = startResp.cascadeId;
+      this.lastSeenMessageCount = 0;
+      this.lastSeenTailLength = 0;
+      this.emit("sessionId", this.cascadeId);
+      this.writeLog(`cascade started: ${this.cascadeId}`);
+    }
+
+    this.emit("status", "streaming");
+
+    await this.rpc("SendUserCascadeMessage", {
+      cascadeId: this.cascadeId,
+      items: [{ chunk: { case: "text", value: text } }],
+      cascadeConfig: {
+        plannerConfig: {
+          plannerTypeConfig: { case: "conversational", value: {} },
+          requestedModel: { choice: { case: "model", value: this.modelId } },
+        },
+      },
+    });
+
+    this.polling = true;
+    this.pollLoop().catch(err => {
+      this.emit("error", `Polling failed: ${err}`);
+      this.polling = false;
+      this.emit("status", "connected");
+    });
+  }
+
+  private async pollLoop(): Promise<void> {
+    const POLL_INTERVAL_MS = 500;
+    const STABLE_THRESHOLD_TICKS = 6;
+    let stableTicks = 0;
+
+    while (this.polling && this.cascadeId) {
+      let conv: Record<string, unknown>;
+      try {
+        conv = await this.rpc<Record<string, unknown>>("GetConversation", { cascadeId: this.cascadeId });
+      } catch (err) {
+        this.writeLog(`poll error: ${err}`);
+        stableTicks++;
+        if (stableTicks >= STABLE_THRESHOLD_TICKS) break;
+        await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
+        continue;
+      }
+
+      const advanced = this.emitNewChunks(conv);
+      if (advanced) {
+        stableTicks = 0;
+      } else {
+        stableTicks++;
+        if (stableTicks >= STABLE_THRESHOLD_TICKS) break;
+      }
+      await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
+    }
+
+    this.polling = false;
+    this.emit("message", { type: "result" });
+    this.emit("status", "connected");
+  }
+
+  private emitNewChunks(conv: Record<string, unknown>): boolean {
+    const items = this.extractItems(conv);
+    if (!items) return false;
+
+    if (items.length > this.lastSeenMessageCount) {
+      for (let i = this.lastSeenMessageCount; i < items.length; i++) {
+        const it = items[i];
+        const role = this.extractRole(it);
+        if (role !== "assistant") continue;
+        const content = this.extractText(it);
+        if (content) {
+          this.emit("message", {
+            type: "assistant",
+            subtype: "text_delta",
+            message: { role: "assistant", content },
+          });
+        }
+      }
+      this.lastSeenMessageCount = items.length;
+      this.lastSeenTailLength = this.extractText(items[items.length - 1])?.length ?? 0;
+      return true;
+    }
+
+    if (items.length > 0 && items.length === this.lastSeenMessageCount) {
+      const last = items[items.length - 1];
+      if (this.extractRole(last) === "assistant") {
+        const fullText = this.extractText(last) ?? "";
+        if (fullText.length > this.lastSeenTailLength) {
+          const delta = fullText.slice(this.lastSeenTailLength);
+          this.emit("message", {
+            type: "assistant",
+            subtype: "text_delta",
+            message: { role: "assistant", content: delta },
+          });
+          this.lastSeenTailLength = fullText.length;
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  private extractItems(conv: Record<string, unknown>): Record<string, unknown>[] | null {
+    const candidates: unknown[] = [
+      (conv.conversation as Record<string, unknown> | undefined)?.items,
+      conv.items,
+      conv.messages,
+      (conv.conversation as Record<string, unknown> | undefined)?.messages,
+    ];
+    for (const c of candidates) {
+      if (Array.isArray(c)) return c as Record<string, unknown>[];
+    }
+    return null;
+  }
+
+  private extractRole(item: Record<string, unknown>): string | undefined {
+    const r1 = item.role as string | undefined;
+    const r2 = (item.message as Record<string, unknown> | undefined)?.role as string | undefined;
+    return r1 || r2;
+  }
+
+  private extractText(item: Record<string, unknown>): string | undefined {
+    const c1 = item.content;
+    if (typeof c1 === "string") return c1;
+    if (Array.isArray(c1)) {
+      const texts = c1
+        .map(c => (typeof c === "object" && c !== null && "text" in c ? (c as { text: unknown }).text : null))
+        .filter((t): t is string => typeof t === "string");
+      if (texts.length) return texts.join("");
+    }
+    const c2 = (item.message as Record<string, unknown> | undefined)?.content;
+    if (typeof c2 === "string") return c2;
+    return undefined;
+  }
+
   kill(): void {
     if (!this.agyPid) return;
     try { execSync(`taskkill /T /F /PID ${this.agyPid}`, { stdio: "pipe" }); } catch { /* */ }
