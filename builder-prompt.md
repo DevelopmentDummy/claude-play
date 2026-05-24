@@ -336,9 +336,14 @@ Gemini나 ComfyUI로 미리 생성한 이미지를 `images/` 디렉토리에 저
 - 숫자는 표시 순서를 결정한다 (예: `01-상태.html`, `02-프로필.html`)
 - 사용자에게 표시될 때 숫자 prefix는 자동 제거된다
 
-#### 디자인 품질
+#### 디자인 품질 — 스킬 2종 모두 활용 필수
 
-패널 HTML을 작성할 때는 반드시 `/frontend-design` 스킬을 사용하라. 이 스킬은 프로덕션 수준의 고품질 UI를 생성하도록 특화되어 있다.
+패널 HTML을 작성할 때는 다음 두 스킬을 **모두** 사용하라:
+
+1. **`panel-design` 스킬** (필수, 패널 시스템 기술 명세) — 패널 배치 타입별 체크리스트, **모달 CSS 안티패턴**, Shadow DOM 환경, 패널 액션 시스템, 박스 모델 규칙 등 시스템 레벨 룰. 모달/풀스크린/독 패널 만들 때 특히 중요. 이 스킬 안 읽고 모달 만들면 **이중 스크롤·가로 스크롤·필수 모달 갇힘** 같은 흔한 버그를 반복하게 된다.
+2. **`/frontend-design` 스킬** (디자인 품질) — 프로덕션 수준의 고품질 UI 디자인 가이드.
+
+`panel-design`이 "무엇을 안 하면 안 되는지(시스템 룰)"를 알려주고, `frontend-design`이 "어떻게 예쁘게 만드는지(미감)"를 알려준다. 둘 다 필요하다.
 
 #### 핵심 규칙 요약
 
@@ -477,12 +482,26 @@ module.exports = async function(context, args) {
 - `result`: AI에게 전달되는 자유 형식 결과. 서사 힌트, 변경 내역, 이벤트 등을 포함
 - 실행 타임아웃: 10초
 
-**세션 AI의 호출 방식:**
-세션 AI는 `mcp__claude_play__run_tool` MCP 도구로 호출한다 (curl 불필요):
+**세션 AI의 호출 방식 — 두 가지 경로:**
+
+엔진 자체(`pickArgs`)는 flat과 wrapped를 모두 받지만, **호출 경로에 따라 디스패처가 다르게 동작**하므로 각 경로에 맞는 형식을 사용해야 한다.
+
+**경로 1 — MCP `run_tool` (AI가 자기 턴에 직접 호출):** flat/wrapped 모두 정상 동작. flat 권장.
 ```
-mcp__claude_play__run_tool({ tool: "engine", args: { action: "milking" } })
+mcp__claude_play__run_tool({ tool: "engine", args: { action: "milking", cow: "에르나" } })
 ```
-엔진은 flat 방식(`{ action, key: val }`)과 wrapped 방식(`{ action, params: { key: val } }`) 모두 지원한다. flat 방식을 권장한다.
+
+**경로 2 — Choice action (프론트엔드 선택지 클릭):** **반드시 `params` 키로 래핑**. flat 필드는 디스패처(`ChatInput.tsx`)에서 통째로 버려져 엔진이 빈 인자를 받는다.
+```
+<choice>
+[
+  { "text": "젖을 짠다", "score": 0, "actions": [
+    { "tool": "engine", "action": "milking", "params": { "cow": "에르나" } }
+  ]}
+]
+</choice>
+```
+잘못된 형식 (작동 안 함): `{ "tool": "engine", "action": "milking", "cow": "에르나" }` — `cow` 필드가 무시되어 엔진은 `{ action: "milking", params: {} }`만 받는다. 이 차이로 인한 버그가 흔하니 opening.md / 응답 선택지에서 특히 주의하라.
 
 **설계 원칙:**
 - result에 `changes` (변경 전/후), `hints` (서사 힌트), `warnings` (경고)를 포함하면 AI가 서사에 반영하기 쉽다

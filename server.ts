@@ -10,6 +10,7 @@ import { handleTtsRequest } from "./src/lib/tts-handler";
 import { isAuthEnabled, verifyAuthToken, parseCookieToken } from "./src/lib/auth";
 import { shouldRedirectToSetup } from "./src/lib/setup-guard";
 import { destroyAllBackgroundProcesses } from "./src/lib/background-session";
+import { destroyAllInstances } from "./src/lib/session-registry";
 
 loadEnvConfig(process.cwd());
 
@@ -359,6 +360,30 @@ function cleanupManagedProcesses(): void {
   killPid(g.__gpuManagerPid);
   killPid(g.__comfyuiPid);
   destroyAllBackgroundProcesses();
+  // Tree-kill all active session AI processes (Antigravity/Claude/Codex/Gemini/Kimi)
+  try { destroyAllInstances(); } catch (err) { console.warn("[cleanup] destroyAllInstances failed:", err); }
+}
+
+/** Kill any stale agy.exe processes left behind from prior runs (Windows only).
+ *  AntigravityProcess spawns agy with `--prompt-interactive spike-init` via
+ *  `Start-Process -WindowStyle Hidden`, which detaches the child from Node's
+ *  process tree. If Node crashes or hot-reloads while a turn is in flight, the
+ *  agy LS host survives with no parent to clean it up. We match by the marker
+ *  arg so non-bridge agy invocations (e.g. user running `agy` manually) are
+ *  untouched. */
+function killStaleAntigravityProcesses(): void {
+  if (process.platform !== "win32") return;
+  try {
+    const out = execSync(
+      `powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \\"Name='agy.exe'\\" | Where-Object { $_.CommandLine -like '*spike-init*' } | Select-Object -ExpandProperty ProcessId"`,
+      { encoding: "utf8", stdio: ["pipe", "pipe", "ignore"] },
+    );
+    const pids = out.split(/\r?\n/).map(s => parseInt(s.trim(), 10)).filter(n => n > 0);
+    for (const pid of pids) {
+      try { execSync(`taskkill /T /F /PID ${pid}`, { stdio: "ignore" }); } catch { /* already dead */ }
+    }
+    if (pids.length > 0) console.log(`[cleanup] killed ${pids.length} stale agy process(es): ${pids.join(", ")}`);
+  } catch { /* powershell or wmi unavailable — silent */ }
 }
 
 // Kill previous child processes from prior hot-reload cycle
@@ -367,6 +392,8 @@ killPid(g.__gpuManagerPid);
 killPid(g.__comfyuiPid);
 // Also kill anything still on GPU Manager port (fallback)
 killProcessOnPort(GPU_MANAGER_PORT);
+// Sweep orphan Antigravity agy.exe processes from prior crashes/hot-reloads
+killStaleAntigravityProcesses();
 
 const ttsProcess = spawnTtsServer();
 let gpuManagerProcess = spawnGpuManager();

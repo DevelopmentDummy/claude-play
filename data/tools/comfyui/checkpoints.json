@@ -41,9 +41,15 @@
       "loader": "checkpoint_simple",
       "family": "illustrious"
     },
-    "prefectIllustriousXL_v70.safetensors": {
+    "prefectIllustriousXL_v8.safetensors": {
       "loader": "checkpoint_simple",
-      "family": "illustrious"
+      "family": "illustrious",
+      "notes": "Prefect Illustrious XL v8 (~6.5GB). 2026-05-24 v7.0에서 업그레이드 (v70 디스크 삭제). 추천 세팅: DPM++ 2M, steps 20, cfg 5. boleromix v900와 톤 거의 유사 검증 (seed 20260524 A/B)"
+    },
+    "trueanime_v2.safetensors": {
+      "loader": "checkpoint_simple",
+      "family": "illustrious",
+      "notes": "TrueAnime V2 (~6.4GB, 2958422). 2026-05-24 도입. 베이스 Illustrious + 일부 WAI 머지. 작가 권장(Euler a/30/cfg5) vs 우리 기본(35/6) A/B 비교 → 차이 거의 없음 → **우리 기본으로 통일 사용** (샘플러는 어차피 euler_ancestral + karras 동일)"
     },
     "fantasyAnime_v16.safetensors": {
       "loader": "checkpoint_simple",

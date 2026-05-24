@@ -55,6 +55,8 @@ export async function POST(
       ? sm.getGeminiSessionId(id)
       : provider === "kimi"
       ? sm.getKimiSessionId(id)
+      : provider === "antigravity"
+      ? sm.getAntigravityCascadeId(id)
       : sm.getClaudeSessionId(id);
 
     const profile = info.profileSlug ? sm.getProfile(info.profileSlug) : undefined;
@@ -65,6 +67,8 @@ export async function POST(
       sm.writeGeminiInstructions(sessionDir, runtimeSystemPrompt);
     } else if (provider === "kimi") {
       sm.writeKimiInstructions(sessionDir, runtimeSystemPrompt);
+    } else if (provider === "antigravity") {
+      sm.writeAntigravityInstructions(sessionDir);
     }
     const skipPerms = resolvedOptions.skipPermissions !== false;
     instance.claude.spawn(sessionDir, resumeId, model || undefined, runtimeSystemPrompt, effort, skipPerms);

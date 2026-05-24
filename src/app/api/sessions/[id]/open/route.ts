@@ -66,6 +66,8 @@ export async function POST(
     ? svc.sessions.getGeminiSessionId(id)
     : provider === "kimi"
     ? svc.sessions.getKimiSessionId(id)
+    : provider === "antigravity"
+    ? svc.sessions.getAntigravityCascadeId(id)
     : svc.sessions.getClaudeSessionId(id);
   if (provider === "kimi" && !resumeId) {
     try {
@@ -113,6 +115,10 @@ export async function POST(
       svc.sessions.writeGeminiInstructions(sessionDir, runtimeSystemPrompt);
     } else if (provider === "kimi") {
       svc.sessions.writeKimiInstructions(sessionDir, runtimeSystemPrompt);
+    } else if (provider === "antigravity") {
+      // Antigravity: persona context into GEMINI.md (agy auto-loads). Primer
+      // goes through --prompt-interactive separately (in AntigravityProcess.spawn).
+      svc.sessions.writeAntigravityInstructions(sessionDir);
     }
     const skipPerms = resolvedOptions.skipPermissions !== false;
     instance.claude.spawn(sessionDir, resumeId, effectiveModel || undefined, runtimeSystemPrompt, finalEffort, skipPerms);

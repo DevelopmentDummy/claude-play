@@ -84,6 +84,56 @@ allowed-tools: Read, Write, Edit, Bash
 
 **`<script type="application/json">`은 실행되지 않는다** — Handlebars 데이터를 JS에 전달하는 용도.
 
+**🚫 onclick 속성에서 패널 내 `<script>` 함수 호출 금지:**
+
+`<script>`는 `new Function("shadow", code)`로 격리 실행되므로 함수 선언이 **document.window에 노출되지 않는다.** 따라서 onclick 속성에서 그 함수를 호출하면 `ReferenceError: X is not defined`로 깨진다.
+
+```html
+<!-- ❌ 잘못된 패턴 — pickTrait가 onclick 스코프에서 안 보임 -->
+<script>
+  async function pickTrait(id) { await runTool('engine', {action: 'awaken', params: {id}}); }
+</script>
+<button onclick="pickTrait('foo')">선택</button>   <!-- ReferenceError -->
+
+<!-- ✅ 패턴 A — onclick에 인라인 (간단한 경우 권장) -->
+<button onclick="runTool('engine', {action: 'awaken', params: {id: 'foo'}}).then(function(){ window.__panelBridge && window.__panelBridge.sendMessage('—'); })">선택</button>
+
+<!-- ✅ 패턴 B — addEventListener로 바인딩 (복잡한 로직) -->
+<script>
+  shadow.querySelectorAll('.pick-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.id;
+      await runTool('engine', {action: 'awaken', params: {id}});
+      window.__panelBridge?.sendMessage('—');
+    });
+  });
+</script>
+<button class="pick-btn" data-id="foo">선택</button>
+```
+
+**전역 노출 가능한 것**: `window.__panelBridge` 객체와 `window.__panelModalsState` 등은 시스템이 명시적으로 window에 expose. **사용자 정의 함수는 인라인 또는 addEventListener 사용**.
+
+**🚫 `runTool`은 bare global이 아니다 — 반드시 `window.__panelBridge.runTool`:**
+
+```html
+<!-- ❌ 잘못된 패턴 — ReferenceError: runTool is not defined -->
+<button onclick="runTool('engine', {action: 'foo'})">실행</button>
+
+<!-- ✅ 올바른 패턴 -->
+<button onclick="window.__panelBridge.runTool('engine', {action: 'foo'})">실행</button>
+
+<!-- ✅ <script> 안에서는 alias로 줄여 쓰는 것이 일반적 -->
+<script>
+  const B = window.__panelBridge;
+  shadow.querySelector('.btn').addEventListener('click', async () => {
+    const res = await B.runTool('engine', { action: 'foo' });
+    // ...
+  });
+</script>
+```
+
+`window.__panelBridge`가 제공하는 메서드 전체: `sendMessage`, `fillInput`, `updateVariables`, `updateData`, `updateLayout`, `queueEvent`, **`runTool`**, `openModal`, `closeModal`, `closeAllModals`. 모두 `window.__panelBridge.` 프리픽스 필수.
+
 ---
 
 ## 패널 타입별 체크리스트
@@ -127,6 +177,32 @@ allowed-tools: Read, Write, Edit, Bash
 - 시스템은 자기 chrome(바깥 inset, 본문 padding)을 감안해 최종 외곽 폭을 계산한다
 - 패널은 항상 부모 폭 안으로 들어가야 하며, 일반 모달에서 가로 스크롤은 버그로 본다
 - 세로 스크롤은 공용 wrapper 또는 패널 내부 중 한 곳만 책임지게 설계한다
+
+**🚫 모달 CSS 안티패턴 — 절대 하지 마라:**
+
+```css
+/* ❌ 잘못된 모달 CSS — 시스템 wrapper와 충돌하여 내부 스크롤이 중복 생성됨 */
+.modal {
+  max-width: 720px;      /* ← layout.json의 modalSize / <panel-meta>로 처리할 것 */
+  max-height: 80vh;      /* ← 시스템 wrapper가 viewport 기준으로 처리함 */
+  overflow-y: auto;      /* ← 공용 wrapper가 이미 스크롤 제공함 */
+}
+```
+
+```css
+/* ✅ 올바른 모달 CSS — 시스템에 맡기고 스타일만 작성 */
+.modal {
+  background: ...;
+  color: ...;
+  padding: 24px;
+  border-radius: 14px;
+  border: 1px solid ...;
+  font-family: ...;
+  /* max-width/max-height/overflow는 건드리지 않는다 */
+}
+```
+
+크기 제어가 필요하면 `<panel-meta>`로 선언하고, 스크롤은 항상 시스템 wrapper에 맡겨라. 패널 내부에 `overflow-y: auto`나 `max-height`를 박으면 **이중 스크롤바**가 생겨 UX가 깨진다 — 매우 흔한 신참 실수다.
 
 모달 크기와 root 규칙의 상세 기준은 반드시 루트 `panel-spec.md`의 "모달 박스 모델 규칙" 섹션을 먼저 읽고 따른다.
 

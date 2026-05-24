@@ -21,6 +21,10 @@ export interface AntigravityProcessEvents {
   sessionId: [id: string];
 }
 
+// Windows CreateProcess command-line limit is 32767 chars. We leave headroom
+// for the agy.exe path + other args + arg-quoting overhead.
+const MAX_PRIMER_CHARS = 28000;
+
 export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
   private agyPid: number | null = null;
   private lsPort: number | null = null;
@@ -28,12 +32,11 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
   private spawnCwd = "";
   private spawnModelString: string | undefined;
   private modelId: AntigravityModelId = AntigravityModels.GEMINI_FLASH;
-  private appendSystemPrompt: string | undefined;
-  private systemPromptInjected = false;
   private logStream: fs.WriteStream | null = null;
   private polling = false;
   private lastSeenMessageCount = 0;
   private lastSeenTailLength = 0;
+  private initPromise: Promise<void> | null = null;
 
   spawn(
     cwd: string,
@@ -46,74 +49,190 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
     if (this.agyPid) this.kill();
 
     this.spawnCwd = cwd;
-    if (resumeId !== undefined) this.cascadeId = resumeId || null;
+    this.cascadeId = resumeId || null;
     this.spawnModelString = model;
     this.modelId = this.resolveModelId(model);
-    if (appendSystemPrompt !== undefined) this.appendSystemPrompt = appendSystemPrompt;
-    // 새 cascade 시작이면 system prompt 다시 주입해야 함
-    if (!this.cascadeId) this.systemPromptInjected = false;
+    this.lastSeenMessageCount = 0;
+    this.lastSeenTailLength = 0;
 
     this.ensureAntigravityTrust(cwd);
     this.openLogStream(cwd);
 
-    const argList = "'--prompt-interactive','spike-init','--dangerously-skip-permissions'";
-    const cmd = `powershell -NoProfile -Command "$p = Start-Process -FilePath '${AGY_PATH}' -ArgumentList ${argList} -WorkingDirectory '${cwd.replace(/'/g, "''")}' -WindowStyle Hidden -PassThru; $p.Id"`;
-    const out = execSync(cmd, { encoding: "utf-8" }).trim();
-    const pid = Number(out);
-    if (!pid || Number.isNaN(pid)) {
-      this.emit("error", `Failed to spawn agy: parse pid failed (out=${out})`);
+    const escapePS = (s: string) => s.replace(/'/g, "''");
+    const tempDir = path.join(os.tmpdir(), "agy-bridge");
+    if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
+    let tempPrimerPath: string | null = null;
+    let psScript: string;
+
+    if (resumeId) {
+      // Resume: load existing cascade by ID — no primer needed (cascade already
+      // has the primer in its first USER_INPUT step from initial spawn).
+      psScript = [
+        `$ErrorActionPreference = 'Stop'`,
+        `$p = Start-Process -FilePath '${escapePS(AGY_PATH)}' -ArgumentList @('--conversation', '${escapePS(resumeId)}', '--dangerously-skip-permissions') -WorkingDirectory '${escapePS(cwd)}' -WindowStyle Hidden -PassThru`,
+        `Write-Output $p.Id`,
+      ].join("\n");
+      this.writeLog(`spawn(resume): cascadeId=${resumeId}`);
+    } else {
+      // New session: primer (runtimeSystemPrompt = primer YAML + session-shared
+      // + panel actions) goes via --prompt-interactive. agy creates an auto-
+      // cascade with this text as the first USER_INPUT step, which the LLM
+      // treats as initial system context.
+      //
+      // The primer is written to a temp file (UTF-8) and read by PowerShell,
+      // then escaped for CommandLineToArgvW (\" for inner quotes, with
+      // backslash-pairs handled correctly) and wrapped in "..." so that
+      // newlines/spaces/Korean/special chars all survive the round-trip.
+      let primer = appendSystemPrompt && appendSystemPrompt.length > 0 ? appendSystemPrompt : "_BRIDGE_INIT_";
+      if (primer.length > MAX_PRIMER_CHARS) {
+        this.writeLog(`WARN: primer truncated ${primer.length} → ${MAX_PRIMER_CHARS}`);
+        primer = primer.slice(0, MAX_PRIMER_CHARS);
+      }
+      tempPrimerPath = path.join(tempDir, `primer-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.txt`);
+      fs.writeFileSync(tempPrimerPath, primer, "utf-8");
+      psScript = [
+        `$ErrorActionPreference = 'Stop'`,
+        `$primer = [System.IO.File]::ReadAllText('${escapePS(tempPrimerPath)}', [System.Text.Encoding]::UTF8)`,
+        // Escape per MSDN CommandLineToArgvW: 2n backslashes before " produce n
+        // backslashes + delimiter, 2n+1 produce n backslashes + literal ". So
+        // we double any backslash run preceding a " and then prefix the " with \.
+        `$primerEscaped = $primer -replace '(\\\\*)"', '$1$1\\"'`,
+        `$primerArg = '"' + $primerEscaped + '"'`,
+        `$argsString = '--prompt-interactive ' + $primerArg + ' --dangerously-skip-permissions'`,
+        `$p = Start-Process -FilePath '${escapePS(AGY_PATH)}' -ArgumentList $argsString -WorkingDirectory '${escapePS(cwd)}' -WindowStyle Hidden -PassThru`,
+        `Write-Output $p.Id`,
+      ].join("\n");
+      this.writeLog(`spawn(new): primer=${primer.length}b temp=${tempPrimerPath}`);
+    }
+
+    const tempScriptPath = path.join(tempDir, `spawn-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.ps1`);
+    fs.writeFileSync(tempScriptPath, psScript, "utf-8");
+
+    try {
+      const out = execSync(`powershell -NoProfile -ExecutionPolicy Bypass -File "${tempScriptPath}"`, { encoding: "utf-8" }).trim();
+      const pid = Number(out);
+      if (!pid || Number.isNaN(pid)) {
+        this.emit("error", `Failed to spawn agy: parse pid failed (out=${out})`);
+        return;
+      }
+      this.agyPid = pid;
+      this.writeLog(`spawn pid=${pid} cwd=${cwd} model=${this.modelId}`);
+    } finally {
+      try { fs.unlinkSync(tempScriptPath); } catch { /* */ }
+      if (tempPrimerPath) { try { fs.unlinkSync(tempPrimerPath); } catch { /* */ } }
+    }
+
+    this.emit("status", "connected");
+    // Eager init in background — discover port + reuse auto-cascade + wait for
+    // primer-response to reach IDLE. First send() awaits this.
+    this.initPromise = this.initialize(resumeId).catch(err => {
+      this.writeLog(`init failed: ${err}`);
+      this.emit("error", `Antigravity init failed: ${err}`);
+    });
+  }
+
+  private async initialize(resumeId?: string): Promise<void> {
+    const port = this.discoverLsPort();
+    if (!port) throw new Error("LS port discovery timeout");
+    this.lsPort = port;
+
+    if (resumeId) {
+      this.cascadeId = resumeId;
+      // Snapshot existing stepCount as baseline so we don't re-emit history
+      try {
+        const traj = await this.rpc<Record<string, unknown>>("GetCascadeTrajectory", { cascadeId: resumeId });
+        const steps = this.extractItems(traj) || [];
+        this.lastSeenMessageCount = steps.length;
+        this.writeLog(`init(resume): baseline stepCount=${steps.length}`);
+      } catch (err) { this.writeLog(`init(resume): baseline snapshot failed: ${err}`); }
+      this.emit("sessionId", resumeId);
       return;
     }
-    this.agyPid = pid;
-    this.writeLog(`spawn pid=${pid} cwd=${cwd} model=${this.modelId}`);
-    this.emit("status", "connected");
+
+    // New session: poll until agy creates the auto-cascade from --prompt-interactive
+    let foundId: string | null = null;
+    for (let i = 0; i < 30; i++) {
+      try {
+        const all = await this.rpc<{ trajectorySummaries?: Record<string, { createdTime?: string }> }>("GetAllCascadeTrajectories", {});
+        const summaries = all?.trajectorySummaries || {};
+        const ids = Object.keys(summaries);
+        if (ids.length > 0) {
+          // Pick most recently created
+          ids.sort((a, b) => (summaries[b].createdTime || "").localeCompare(summaries[a].createdTime || ""));
+          foundId = ids[0];
+          break;
+        }
+      } catch { /* retry */ }
+      await new Promise(r => setTimeout(r, 500));
+    }
+    if (!foundId) throw new Error("agy did not auto-create cascade within 15s");
+    this.cascadeId = foundId;
+    this.emit("sessionId", foundId);
+    this.writeLog(`init(new): reusing auto-cascade ${foundId}`);
+
+    // Wait for LLM's primer-response to finish, then snapshot stepCount as
+    // baseline so the user only sees responses to their own messages.
+    await this.waitForIdle(foundId);
+    try {
+      const traj = await this.rpc<Record<string, unknown>>("GetCascadeTrajectory", { cascadeId: foundId });
+      const steps = this.extractItems(traj) || [];
+      this.lastSeenMessageCount = steps.length;
+      this.lastSeenTailLength = 0;
+      this.writeLog(`init(new): baseline after primer-response stepCount=${steps.length}`);
+    } catch (err) { this.writeLog(`init(new): baseline snapshot failed: ${err}`); }
+  }
+
+  private async waitForIdle(cascadeId: string, timeoutMs = 5 * 60 * 1000): Promise<void> {
+    const startedAt = Date.now();
+    const deadline = startedAt + timeoutMs;
+    let consecutiveIdle = 0;
+    let everSawRunning = false;
+    while (Date.now() < deadline) {
+      try {
+        const all = await this.rpc<{ trajectorySummaries?: Record<string, { status?: string }> }>("GetAllCascadeTrajectories", {});
+        const status = all?.trajectorySummaries?.[cascadeId]?.status;
+        if (status === "CASCADE_RUN_STATUS_RUNNING") {
+          everSawRunning = true;
+          consecutiveIdle = 0;
+        } else if (status) {
+          consecutiveIdle++;
+          // Require 3 consecutive non-RUNNING polls AND have seen RUNNING at
+          // least once (to avoid bailing out before primer-response starts).
+          if (everSawRunning && consecutiveIdle >= 3) {
+            this.writeLog(`waitForIdle: cascade IDLE after ${((Date.now() - startedAt) / 1000).toFixed(1)}s status=${status}`);
+            return;
+          }
+        }
+      } catch { /* retry */ }
+      await new Promise(r => setTimeout(r, 1000));
+    }
+    this.writeLog(`waitForIdle: timeout after ${timeoutMs / 1000}s, proceeding anyway`);
   }
 
   send(text: string): void {
-    void this._sendAsync(text).catch(err => {
+    void (async () => {
+      if (this.initPromise) await this.initPromise;
+      return this._sendAsync(text);
+    })().catch(err => {
       this.emit("error", String(err));
       this.emit("status", "connected");
     });
   }
 
   private async _sendAsync(text: string): Promise<void> {
-    if (!this.lsPort) {
-      const port = this.discoverLsPort();
-      if (!port) {
-        this.emit("error", "Failed to discover Antigravity LS port within 10s");
-        return;
-      }
-      this.lsPort = port;
-    }
-
-    if (!this.cascadeId) {
-      // source=1 (CORTEX_TRAJECTORY_SOURCE_USER) — agy 1.0.0은 0(UNSPECIFIED) 거부
-      const startResp = await this.rpc<{ cascadeId?: string }>("StartCascade", { source: 1 });
-      if (!startResp?.cascadeId) {
-        this.emit("error", "StartCascade returned no cascadeId");
-        return;
-      }
-      this.cascadeId = startResp.cascadeId;
-      this.lastSeenMessageCount = 0;
-      this.lastSeenTailLength = 0;
-      this.emit("sessionId", this.cascadeId);
-      this.writeLog(`cascade started: ${this.cascadeId}`);
+    if (!this.lsPort || !this.cascadeId) {
+      this.emit("error", "AntigravityProcess not initialized — call spawn() first and wait for init");
+      return;
     }
 
     this.emit("status", "streaming");
 
-    // 첫 send (또는 새 cascade)에 system prompt prepend
-    let effectiveText = text;
-    if (!this.systemPromptInjected && this.appendSystemPrompt) {
-      effectiveText = `[SYSTEM CONTEXT — follow this throughout the conversation]\n${this.appendSystemPrompt}\n\n[USER]\n${text}`;
-      this.systemPromptInjected = true;
-      this.writeLog(`system prompt injected (${this.appendSystemPrompt.length} chars)`);
-    }
-
+    // No prepend — primer is already the first USER_INPUT step of the cascade
+    // via --prompt-interactive at spawn time. User messages are sent as-is.
     // proto3 canonical JSON: oneof는 case/value 래퍼가 아니라 field name 직접 사용
     await this.rpc("SendUserCascadeMessage", {
       cascadeId: this.cascadeId,
-      items: [{ chunk: { text: effectiveText } }],
+      items: [{ chunk: { text } }],
       cascadeConfig: {
         plannerConfig: {
           plannerTypeConfig: { conversational: {} },
@@ -181,6 +300,11 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
         try {
           const all = await this.rpc<{ trajectorySummaries?: Record<string, { status?: string; stepCount?: number }> }>("GetAllCascadeTrajectories", {});
           const status = all.trajectorySummaries?.[this.cascadeId]?.status;
+          const isFinishedStatus =
+            status === "CASCADE_RUN_STATUS_SUCCESS" ||
+            status === "CASCADE_RUN_STATUS_FAILED" ||
+            status === "CASCADE_RUN_STATUS_CANCELLED";
+
           if (status === "CASCADE_RUN_STATUS_RUNNING") {
             everSawRunning = true;
             consecutiveIdle = 0;
@@ -189,7 +313,7 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
             this.writeLog(`[poll #${iter}] status=${status} idle=${consecutiveIdle}/${IDLE_GRACE_TICKS} traj-stable=${consecutiveStable}/${TRAJECTORY_STABLE_TICKS}`);
             // IDLE + trajectory도 안정 두 조건 동시 충족 시에만 진짜 종료.
             // sub-agent chain 응답 채워지는 동안엔 trajectory size가 변하므로 stable 안 됨.
-            if (everSawRunning && consecutiveIdle >= IDLE_GRACE_TICKS && consecutiveStable >= TRAJECTORY_STABLE_TICKS) {
+            if ((everSawRunning || isFinishedStatus) && consecutiveIdle >= IDLE_GRACE_TICKS && consecutiveStable >= TRAJECTORY_STABLE_TICKS) {
               this.writeLog(`[poll #${iter}] cascade idle+stable — turn complete`);
               try {
                 const finalConv = await this.rpc<Record<string, unknown>>("GetCascadeTrajectory", { cascadeId: this.cascadeId });
@@ -333,8 +457,17 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
     return this.agyPid !== null;
   }
 
-  async waitForReady(_timeoutMs = 10000): Promise<boolean> {
-    return this.isRunning();
+  async waitForReady(timeoutMs = 60000): Promise<boolean> {
+    if (!this.initPromise) return this.isRunning();
+    try {
+      await Promise.race([
+        this.initPromise,
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("waitForReady timeout")), timeoutMs)),
+      ]);
+      return this.isRunning() && !!this.cascadeId;
+    } catch {
+      return false;
+    }
   }
 
   kill(): void {
@@ -344,6 +477,7 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
     this.agyPid = null;
     this.lsPort = null;
     this.polling = false;
+    this.initPromise = null;
     this.emit("status", "disconnected");
     if (this.logStream) { try { this.logStream.end(); } catch { /* */ } this.logStream = null; }
   }

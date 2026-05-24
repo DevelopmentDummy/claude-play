@@ -14,7 +14,7 @@
         { "name": "QAQv5p2_IL-40.safetensors", "strength": 0.4 }
       ],
       "nsfwLoras": [
-        { "name": "BuAnime_NSFW_Style_v5.safetensors", "strength": 0.8 }
+        { "name": "BuAnime_NSFW_Style_V6.safetensors", "strength": 0.8 }
       ]
     },
     "anima": {

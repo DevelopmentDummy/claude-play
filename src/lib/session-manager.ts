@@ -2166,6 +2166,29 @@ export class SessionManager {
   }
 
   /**
+   * For Antigravity, the session primer is injected via `--prompt-interactive`
+   * (first USER_INPUT step of the auto-cascade), and persona context goes into
+   * GEMINI.md which agy auto-loads from the working directory.
+   *
+   * This writes ONLY the session instructions (persona/world/style/opening,
+   * authoritatively from CLAUDE.md) — primer is NOT appended, since primer
+   * arrives via the spawn arg path instead.
+   */
+  writeAntigravityInstructions(projectDir: string): void {
+    let sessionInstructions = "";
+    const claudeMdPath = path.join(projectDir, "CLAUDE.md");
+    try {
+      if (fs.existsSync(claudeMdPath)) {
+        sessionInstructions = fs.readFileSync(claudeMdPath, "utf-8").trim();
+      }
+    } catch { /* ignore */ }
+
+    const geminiMdPath = path.join(projectDir, "GEMINI.md");
+    fs.writeFileSync(geminiMdPath, sessionInstructions, "utf-8");
+    console.log(`[antigravity] Wrote GEMINI.md: ${projectDir} (${sessionInstructions.length} chars, persona-only)`);
+  }
+
+  /**
    * Write AGENTS.md with session instructions + runtime system prompt combined.
    * Kimi Code CLI loads AGENTS.md from the working directory.
    */
@@ -2228,6 +2251,8 @@ export class SessionManager {
       ? SERVICE_SESSION_GUIDE_FILES_GEMINI
       : provider === "kimi"
       ? SERVICE_SESSION_GUIDE_FILES_CODEX
+      : provider === "antigravity"
+      ? SERVICE_SESSION_GUIDE_FILES_GEMINI
       : SERVICE_SESSION_GUIDE_FILES_CLAUDE;
     return this.buildPromptFromGuideFiles(files, personaName, options, userName);
   }
