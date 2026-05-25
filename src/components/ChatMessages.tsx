@@ -3,6 +3,7 @@
 import { useEffect, useRef, useCallback, useState } from "react";
 import type { ChatMessage } from "@/hooks/useChat";
 import ToolBlock from "./ToolBlock";
+import InteractiveQuestionCard from "./InteractiveQuestionCard";
 import ThinkingIndicator from "./ThinkingIndicator";
 import InlineImage from "./InlineImage";
 import InlinePanel from "./InlinePanel";
@@ -89,6 +90,12 @@ export function extractChoices(raw: string): Choice[] {
 /** Strip <choice> tags from content for display */
 function stripChoiceTags(text: string): string {
   return text.replace(/<choice>[\s\S]*?<\/choice>/g, "").trim();
+}
+
+function isAskUserQuestion(tool: { name: string; input: unknown }): boolean {
+  if (tool.name !== "AskUserQuestion") return false;
+  const input = tool.input as { questions?: unknown } | null;
+  return !!(input && Array.isArray(input.questions) && input.questions.length > 0);
 }
 
 // <interaction girl_id="...">...</interaction> blocks are sidechanneled to per-character
@@ -687,10 +694,18 @@ export default function ChatMessages({
             {renderMarkdown(displayContent, sessionId, panels, handleMediaReady, personaName)}
             {isLastAssistant && <StreamingDots />}
             {!hideTools && msg.tools && msg.tools.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mt-2">
-                {msg.tools.map((tool, i) => (
-                  <ToolBlock key={i} name={tool.name} input={tool.input} />
-                ))}
+              <div className="flex flex-col gap-1.5 mt-2">
+                {msg.tools.map((tool, i) =>
+                  isAskUserQuestion(tool)
+                    ? <InteractiveQuestionCard
+                        key={tool.id ?? `tool-${i}`}
+                        toolUseId={tool.id}
+                        input={tool.input as { questions: Array<{ question: string; header: string; multiSelect: boolean; options: Array<{ label: string; description?: string }> }> }}
+                        answer={tool.answer}
+                        sessionId={sessionId ?? ""}
+                      />
+                    : <ToolBlock key={i} name={tool.name} input={tool.input} />
+                )}
               </div>
             )}
           </div>
