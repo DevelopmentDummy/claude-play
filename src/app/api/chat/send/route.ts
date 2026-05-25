@@ -10,7 +10,15 @@ export async function POST(req: Request) {
   if (!instance) {
     return NextResponse.json({ error: "Session not found" }, { status: 404 });
   }
+
   const isOOC = text.startsWith("OOC:");
+
+  // Pending AskUserQuestion fallback — 평문을 자유 답변으로 흡수. (OOC는 일반 turn으로 보냄)
+  if (instance.pendingToolUseId && !isOOC) {
+    const answer = { answers: {}, notes: { _freeform: text } };
+    await instance.submitToolAnswer(instance.pendingToolUseId, answer);
+    return NextResponse.json({ ok: true, absorbedAsToolAnswer: true });
+  }
   instance.isOOC = isOOC;
   instance.addUserToHistory(text, isOOC);
 
