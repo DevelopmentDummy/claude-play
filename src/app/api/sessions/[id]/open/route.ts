@@ -59,6 +59,15 @@ export async function POST(
   // Ensure runtime configs exist (but don't auto-sync persona files — user can manually sync)
   svc.sessions.ensureClaudeRuntimeConfig(sessionDir, info.persona, "session");
 
+  // Additive mirror: pick up files added to the persona template after the session
+  // was created (opt-in hooks, new rules.md, etc.). Never overwrites existing
+  // session files — RP state stays intact. Use case: user adds style-check.json +
+  // hooks/on-style-check.js to the persona, reopens an existing session to enable.
+  const personaDirForMirror = svc.sessions.getPersonaDir(info.persona);
+  if (fs.existsSync(personaDirForMirror)) {
+    svc.sessions.mirrorNewPersonaFiles(personaDirForMirror, sessionDir);
+  }
+
   // Resume previous session based on provider
   let resumeId = provider === "codex"
     ? svc.sessions.getCodexThreadId(id)

@@ -1924,6 +1924,79 @@ export class SessionManager {
     }
   }
 
+  /**
+   * Mirror files added to the persona template *after* the session was created —
+   * additive only, never overwrites existing session files. Called on session Open.
+   *
+   * Use case: user adds opt-in `hooks/on-style-check.js` + `style-check-rules.md`
+   * to the persona, but existing live sessions don't see them. Reopening the
+   * session picks them up automatically.
+   *
+   * Safety: uses the same SKIP_FILES set as session creation (assembled instruction
+   * files, runtime configs, chat history, images — all managed by the open route
+   * directly), plus runtime log files. Recurses into existing subdirs so newly
+   * added files inside `hooks/`, `panels/`, `tools/` etc. get mirrored too, but
+   * each file is only copied if it doesn't already exist in the session.
+   */
+  mirrorNewPersonaFiles(personaDir: string, sessionDir: string): void {
+    if (!fs.existsSync(personaDir) || !fs.existsSync(sessionDir)) return;
+
+    const SKIP_FILES = new Set<string>([
+      "builder-session.json",
+      "panel-spec.md",
+      "skills",
+      ".claude",
+      ".agents",
+      ".codex",
+      ".gemini",
+      ".kimi",
+      ".mcp.json",
+      "CLAUDE.md",
+      "AGENTS.md",
+      "GEMINI.md",
+      "session-instructions.md",
+      "chat-history.json",
+      "gallery.json",
+      "images",
+      ".sessionignore",
+      "claude-stream.log",
+      "background-session.log",
+    ]);
+
+    const sessionIgnorePath = path.join(personaDir, ".sessionignore");
+    if (fs.existsSync(sessionIgnorePath)) {
+      try {
+        const content = fs.readFileSync(sessionIgnorePath, "utf-8");
+        for (const rawLine of content.split(/\r?\n/)) {
+          const line = rawLine.trim();
+          if (!line || line.startsWith("#")) continue;
+          SKIP_FILES.add(line);
+        }
+      } catch { /* malformed .sessionignore must not break mirror */ }
+    }
+
+    this.mirrorAdditive(personaDir, sessionDir, SKIP_FILES);
+  }
+
+  /** Like copyDirRecursive but never overwrites existing files in dest.
+   *  Recurses into subdirs so files newly added inside existing dirs are caught. */
+  private mirrorAdditive(src: string, dest: string, skip?: Set<string>): void {
+    if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
+    for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+      if (skip && skip.has(entry.name)) continue;
+      const srcPath = path.join(src, entry.name);
+      const destPath = path.join(dest, entry.name);
+      if (entry.isDirectory()) {
+        // Recurse even if destPath exists — catch new files inside existing subdirs.
+        // Top-level skip set doesn't propagate to subdirs (intentional — e.g.
+        // `images` skipped at top level but persona may add panels/img/*.png).
+        this.mirrorAdditive(srcPath, destPath);
+      } else if (!fs.existsSync(destPath)) {
+        fs.copyFileSync(srcPath, destPath);
+      }
+    }
+  }
+
   refreshToolSkills(sessionDir: string): void {
     const claudeSkillsDest = path.join(sessionDir, ".claude", "skills");
     const agentsSkillsDest = path.join(sessionDir, ".agents", "skills");
