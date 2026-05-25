@@ -694,7 +694,7 @@ export default function ChatMessages({
             {renderMarkdown(displayContent, sessionId, panels, handleMediaReady, personaName)}
             {isLastAssistant && <StreamingDots />}
             {!hideTools && msg.tools && msg.tools.length > 0 && (
-              <div className="flex flex-col gap-1.5 mt-2">
+              <div className="flex flex-wrap items-start gap-1.5 mt-2">
                 {msg.tools.map((tool, i) =>
                   isAskUserQuestion(tool)
                     ? <InteractiveQuestionCard

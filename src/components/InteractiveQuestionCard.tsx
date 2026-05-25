@@ -30,7 +30,7 @@ function StackedSummary({
 }) {
   return (
     <div
-      className="mt-2 rounded-xl overflow-hidden"
+      className="mt-2 rounded-xl overflow-hidden w-full"
       style={{
         background: "rgba(22, 33, 62, 0.55)",
         border: "1px solid rgba(42, 58, 94, 0.5)",
@@ -388,7 +388,7 @@ export default function InteractiveQuestionCard({
 
   return (
     <div
-      className="mt-2 rounded-xl overflow-hidden"
+      className="mt-2 rounded-xl overflow-hidden w-full"
       style={{
         background: "rgba(22, 33, 62, 0.55)",
         border: "1px solid rgba(42, 58, 94, 0.5)",
