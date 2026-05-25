@@ -651,13 +651,15 @@ return {
 **설계 원칙:**
 - **동기 실행** — I/O 최소화. 비동기 불가. 무거운 분석은 fire-ai로 위임
 - 정적 분석 결과는 `_` 접두사 변수로 저장하고 hint-rules에서 `tier_mode` 없이 그대로 노출
-- fire-ai가 작성한 보고서는 다음 턴의 on-message 훅에서 읽어 한 줄 요약 변수로 가공 (예: `style_drift_verdict`)
+- fire-ai가 작성한 보고서가 다음 턴에 영향을 줘야 한다면 — 검토 LLM이 직접 `update_variables` MCP로 갱신하거나, 보고서 파일을 on-message 훅에서 읽어 한 줄 요약 변수로 가공
 - UI 지연 처리(예: "스피너 → 결과 뜨면 페이드인")는 `notify`가 아니라 `onExit.broadcast` — AI 턴 낭비 방지
 
 **언제 만드는가:**
-- 페르소나가 일관된 문체/톤 유지를 강하게 요구할 때
-- 응답마다 누적 카운터·진척도가 필요할 때 (예: `_consecutive_no_image` 같은 streak)
+- 응답마다 누적 카운터·진척도가 필요할 때 (예: `_consecutive_no_image` 같은 streak, 어휘 틱 정규식 카운트)
+- 응답 직후 즉시 정정해야 할 정적 패턴(태그 오타, 금지 표현)을 검출할 때
 - 단순 정적 hint만으로 충분하면 불필요
+
+**📌 문체 자가검토는 별도 lifecycle로 분리됨** — N턴마다 LLM이 정성 평가를 돌리는 문체 표류 감지는 `hooks/on-style-check.js` + `style-check.json` 옵트인 시스템에서 다룬다 (아래 별도 섹션 참조). on-assistant.js에 카운터+fireAi 패턴을 직접 박지 말고 lifecycle hook을 사용할 것.
 
 ### `hooks/on-compaction-resume.js` — 컴팩션 복귀 훅 (선택, Claude 전용)
 
@@ -698,6 +700,98 @@ module.exports = function({ variables, data, sessionDir }) {
 - 페르소나가 **누적된 상태(진행 중인 의뢰·관계·진척도)**에 강하게 의존하고, 컴팩션으로 그 상태가 잊히면 응답 톤이 무너지는 경우
 - 정적 [STATE] 라인만으로 부족하고, 상황별로 강조해야 할 핵심이 다를 때
 - Codex/Gemini/Kimi 전용 페르소나에는 불필요 (이 훅은 Claude 컴팩션 이벤트에만 반응)
+
+### `hooks/on-style-check.js` — 문체 자가검토 lifecycle (선택, 옵트인)
+
+페르소나 무관 공용 문체 자가검토 시스템의 페르소나-측 훅. **N턴마다 한 번** 코어가 발사하며, 직전 N개 assistant 응답을 받아 백그라운드 LLM 검토 세션을 띄울 `fireAi` payload를 반환한다. 검토 LLM은 `update_variables` MCP로 `style_drift_verdict` / `style_warning` 변수를 직접 갱신해 다음 턴의 `[STATE]` 헤더에 자연 노출된다.
+
+**옵트인 2-gate — 둘 다 있어야 동작:**
+1. `style-check.json` (세션 루트에 위치) — opt-in 설정
+2. `hooks/on-style-check.js` (세션의 hooks 디렉토리) — 페르소나 hook
+
+기본은 off — 둘 중 하나라도 없으면 시스템 전체가 비활성. 카운터(`__style_check_counter`)는 코어가 `variables.json`에 persistent 증분, `intervalTurns` 도달 시에만 hook 호출되므로 비활성 페르소나는 비용 0.
+
+**`style-check.json` 형식:**
+```json
+{
+  "enabled": true,
+  "intervalTurns": 10,
+  "rulesPath": "style-check-rules.md",
+  "model": "opus",
+  "effort": "xhigh"
+}
+```
+- `intervalTurns`: 몇 턴마다 검토 발사할지. 기본 10 권장. 너무 낮으면 토큰 비용 누적
+- `rulesPath`: 페르소나 룰 markdown 경로 (세션 루트 기준 상대). 없으면 공용 defaults만 사용
+- `model` / `effort`: 검토 LLM 설정. hook 반환값이 우선이고 이건 fallback
+
+**공용 룰셋 + 페르소나 오버라이드:**
+- 공용: `data/style-check/defaults.md` (코어가 자동 로드) — 추상명사 후렴, 기울임 파편, 대시 남발 등 페르소나 무관 진단 항목
+- 페르소나: `{sessionDir}/style-check-rules.md` (선택) — 페르소나 고유 룰. 공용 defaults 뒤에 머지되어 hook의 `rules` 인자로 전달
+- 머지 결과는 그대로 검토 LLM 프롬프트에 박힘 — 페르소나는 룰만 markdown으로 적으면 됨
+
+**페르소나 룰 작성 예시 (`style-check-rules.md`):**
+```markdown
+## {페르소나명} 추가 룰
+
+**1. 페르소나 후렴어 블랙리스트** — 다음 표현이 응답 안에서 2회 이상 반복되면 위반:
+   "한 자락", "한 박자", "한 호흡" (캐릭터 고유의 후렴 단어를 나열)
+
+**2. 메타·게임 수치 누수** — 캐릭터 대사에 게임 스탯/퍼센트 직접 언급 금지
+   - 나쁨: "충족 61%, 납기 12일"
+   - 좋음: "갈 길은 몸이랑 타락이에요"
+
+**3. 캐릭터 톤 분리** — (페르소나별 캐릭터 분담이 있다면) 각 캐릭터의
+   톤 구별 기준 적기
+```
+
+**hook 인터페이스:**
+```javascript
+// hooks/on-style-check.js
+module.exports = function({
+  variables, data, sessionDir,    // 표준 hook 인자
+  recentTurns,                    // [{role:"assistant", content:"..."}, ...] 직전 8개
+  defaults,                       // data/style-check/defaults.md 원본
+  rules,                          // defaults + 페르소나 rules 머지본
+  reviewPromptTemplate,           // data/style-check/review-prompt.md (Handlebars 토큰)
+  config,                         // style-check.json 파싱본
+}) {
+  if (!Array.isArray(recentTurns) || recentTurns.length === 0) return {};
+
+  // 응답을 두 묶음(이전/최근)으로 분리해 추세 비교
+  const half = Math.floor(recentTurns.length / 2);
+  const olderBlock = recentTurns.slice(0, half)
+    .map((m, i) => `--- 이전 ${i + 1} ---\n${m.content}`).join("\n\n") || "(없음)";
+  const newerBlock = recentTurns.slice(half)
+    .map((m, i) => `--- 최근 ${i + 1} ---\n${m.content}`).join("\n\n") || "(없음)";
+
+  // 템플릿 치환 ({{rules}} / {{olderBlock}} / {{newerBlock}} / {{priorReport}})
+  const prompt = (reviewPromptTemplate || "")
+    .replace("{{rules}}", rules || "")
+    .replace("{{priorReport}}", "(첫 평가 — 직전 보고서 없음)")
+    .replace("{{olderBlock}}", olderBlock)
+    .replace("{{newerBlock}}", newerBlock);
+
+  return {
+    fireAi: {
+      prompt,
+      model: "opus",
+      effort: "xhigh",
+      notify: false,
+    },
+  };
+};
+```
+
+**검토 LLM의 변수 갱신:**
+- `data/style-check/defaults.md`의 "출력 형식" 섹션이 이미 검토 LLM에게 `update_variables` MCP 호출을 지시함 — 페르소나가 별도 지시 작성 불요
+- 검토 LLM이 갱신하는 변수: `style_drift_verdict` (한 줄 verdict, 60자 이내) / `style_warning` (위반 시 정정 지시, 위반 없으면 빈 문자열)
+- 이 두 변수가 `hint-rules.json`에 등록돼 있거나 `[STATE]` 헤더에 직접 노출되도록 페르소나 측에서 신경 써야 함
+
+**언제 만드는가:**
+- 페르소나가 **일관된 문체·톤 유지를 강하게 요구**할 때 (특히 시적 우회·후렴어 같은 어휘 단조에 취약한 페르소나)
+- 정적 분석(`hooks/on-assistant.js`의 정규식 카운트)만으로 부족할 때 — 정성 평가가 필요한 표현
+- 비용 통제: `intervalTurns` 10 이상 권장. `effort: "low"`도 무난 (문체 점검은 깊은 추론 불요. `xhigh`는 슬레이브 트레이너처럼 매우 정교한 톤 차이 감지 필요할 때만)
 
 ### `hint-rules.json` — 상시 상태 스냅샷 규칙 (선택)
 
@@ -1159,6 +1253,10 @@ research-dump.json
 - [ ] 문체(Writing Style)를 설정했는가? (`style.json`에 선택한 문체 이름이 저장되어 있는가, 또는 의도적으로 생략했는가?)
 - [ ] 선택한 문체가 `data/styles/`에 실제 존재하는가?
 - [ ] `session-instructions.md`에 문체 관련 지시를 중복 작성하지 않았는가?
+- [ ] 문체 자가검토(N턴마다 LLM 정성 평가)가 필요한 페르소나라면 — `style-check.json` + `hooks/on-style-check.js` 두 파일이 모두 작성되어 있는가? (둘 다 있어야 동작)
+- [ ] `style-check.json`의 `enabled: true`, `intervalTurns` (10 이상 권장), `model`/`effort`가 적절히 설정되어 있는가?
+- [ ] 페르소나 고유 후렴어/금기 표현이 있다면 `style-check-rules.md`에 정리되어 있고 `style-check.json`의 `rulesPath`가 가리키고 있는가?
+- [ ] `style_drift_verdict` / `style_warning` 변수가 `hint-rules.json` 또는 `[STATE]` 헤더에 노출되어 다음 턴 AI가 자각할 수 있는가?
 - [ ] `comfyui-config.json`에 `active_preset`과 프리셋이 설정되어 있는가? (ComfyUI 연결 시)
 - [ ] `comfyui-config.json`의 각 프리셋에 checkpoint, quality_tags, style_tags, negative가 있는가?
 - [ ] `session-instructions.md`에 이미지 생성 시 `comfyui-config.json`을 참조하라는 지시가 있는가?
