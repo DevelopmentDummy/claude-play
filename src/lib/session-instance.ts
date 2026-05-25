@@ -806,6 +806,151 @@ export class SessionInstance {
     }
   }
 
+  /**
+   * Run session hooks/on-style-check.js if enabled via style-check.json.
+   * Called after each non-OOC assistant turn (after runAssistantHooks).
+   *
+   * Opt-in:
+   *  - `{sessionDir}/style-check.json` must exist with `{enabled:true, intervalTurns:N}`
+   *  - `{sessionDir}/hooks/on-style-check.js` must exist
+   *
+   * Core handles the counter (persisted in variables.json `__style_check_counter`).
+   * On threshold hit, loads defaults + persona rules, slices recent assistant turns,
+   * invokes hook with { variables, data, sessionDir, recentTurns, defaults, rules,
+   * reviewPromptTemplate, config }. Hook returns { fireAi?, contextBlock? } — same
+   * shape as on-assistant.js.
+   */
+  runStyleCheckHook(): void {
+    const dir = this.getDir();
+    if (!dir) return;
+
+    // Config gate — opt-in only.
+    const configPath = path.join(dir, "style-check.json");
+    if (!fs.existsSync(configPath)) return;
+
+    let config: { enabled?: boolean; intervalTurns?: number; rulesPath?: string; model?: string; effort?: string };
+    try {
+      config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+    } catch {
+      return;
+    }
+    if (!config.enabled) return;
+
+    const hookPath = path.join(dir, "hooks", "on-style-check.js");
+    if (!fs.existsSync(hookPath)) return;
+
+    const interval = Math.max(1, Number(config.intervalTurns) || 10);
+
+    try {
+      const varsPath = path.join(dir, "variables.json");
+      let variables: Record<string, unknown> = {};
+      try { variables = JSON.parse(fs.readFileSync(varsPath, "utf-8")); } catch {}
+
+      // Counter increment + threshold check (persisted in variables.json).
+      const counter = (Number(variables.__style_check_counter) || 0) + 1;
+      variables.__style_check_counter = counter;
+      try { fs.writeFileSync(varsPath, JSON.stringify(variables, null, 2), "utf-8"); } catch {}
+
+      if (counter % interval !== 0) return;
+
+      // Load shared defaults + persona rules.
+      const projectRoot = process.cwd();
+      const defaultsPath = path.join(projectRoot, "data", "style-check", "defaults.md");
+      const promptTemplatePath = path.join(projectRoot, "data", "style-check", "review-prompt.md");
+      let defaults = "";
+      let reviewPromptTemplate = "";
+      try { defaults = fs.readFileSync(defaultsPath, "utf-8"); } catch {}
+      try { reviewPromptTemplate = fs.readFileSync(promptTemplatePath, "utf-8"); } catch {}
+
+      const rulesFile = config.rulesPath || "style-check-rules.md";
+      const rulesPath = path.join(dir, rulesFile);
+      let personaRules = "";
+      try { if (fs.existsSync(rulesPath)) personaRules = fs.readFileSync(rulesPath, "utf-8"); } catch {}
+
+      const mergedRules = personaRules
+        ? `${defaults}\n\n## 페르소나 추가 룰\n\n${personaRules}`
+        : defaults;
+
+      // Slice recent assistant turns.
+      const histPath = path.join(dir, "chat-history.json");
+      let recentTurns: Array<{ role: string; content: string }> = [];
+      try {
+        const hist = JSON.parse(fs.readFileSync(histPath, "utf-8"));
+        const msgs = Array.isArray(hist)
+          ? hist
+          : ((hist as { messages?: unknown }).messages || (hist as { history?: unknown }).history || []);
+        if (Array.isArray(msgs)) {
+          recentTurns = (msgs as Array<{ role?: string; content?: string }>)
+            .filter(m => m && m.role === "assistant" && typeof m.content === "string")
+            .slice(-8)
+            .map(m => ({ role: "assistant", content: m.content as string }));
+        }
+      } catch {}
+
+      const SYSTEM_JSON = new Set([
+        "variables.json", "session.json", "builder-session.json", "layout.json",
+        "chat-history.json", "pending-events.json", "pending-actions.json",
+        "package.json", "tsconfig.json", "voice.json", "chat-options.json",
+        "style-check.json",
+      ]);
+      const data: Record<string, unknown> = {};
+      try {
+        for (const f of fs.readdirSync(dir)) {
+          if (f.endsWith(".json") && !SYSTEM_JSON.has(f)) {
+            try { data[f.replace(".json", "")] = JSON.parse(fs.readFileSync(path.join(dir, f), "utf-8")); } catch {}
+          }
+        }
+      } catch {}
+
+      // eslint-disable-next-line no-eval
+      const nativeRequire = eval("require") as NodeRequire;
+      delete nativeRequire.cache[hookPath];
+      const mod = nativeRequire(hookPath);
+      const fn = typeof mod === "function" ? mod : mod.default;
+      if (typeof fn !== "function") return;
+
+      const result = fn({
+        variables: { ...variables },
+        data,
+        sessionDir: dir,
+        recentTurns,
+        defaults,
+        rules: mergedRules,
+        reviewPromptTemplate,
+        config,
+      });
+      if (!result || typeof result !== "object") return;
+
+      if (result.fireAi && typeof result.fireAi === "object") {
+        try {
+          const fa = result.fireAi as {
+            prompt?: string;
+            model?: string;
+            effort?: string;
+            notify?: boolean;
+            useSessionContext?: boolean;
+          };
+          if (typeof fa.prompt === "string" && fa.prompt.trim()) {
+            console.log(`[hooks/on-style-check fireAi] spawning bg claude for ${this.id} (counter=${counter}, model=${fa.model || config.model || "default"})`);
+            spawnBackgroundClaude({
+              sessionDir: dir,
+              prompt: fa.prompt,
+              model: fa.model || config.model,
+              effort: fa.effort || config.effort,
+              notify: fa.notify ?? false,
+              callerSessionId: this.id,
+              useSessionContext: fa.useSessionContext ?? false,
+            });
+          }
+        } catch (err) {
+          console.error("[hooks/on-style-check fireAi] spawn error:", err);
+        }
+      }
+    } catch (err) {
+      console.error("[hooks/on-style-check] error:", err);
+    }
+  }
+
   /** Clear __popups from variables.json (called on new user message) */
   clearPopups(): void {
     const dir = this.getDir();
@@ -1301,6 +1446,7 @@ export class SessionInstance {
         const lastAsst = [...this.chatHistory].reverse().find(m => m.role === "assistant");
         if (lastAsst && typeof lastAsst.content === "string" && lastAsst.content) {
           this.runAssistantHooks(lastAsst.content);
+          this.runStyleCheckHook();
         }
       }
     }
