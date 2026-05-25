@@ -1147,7 +1147,7 @@ export default function ChatPage() {
               onAutoplayToggle={handleAutoplayToggle}
               steeringPresetName={steeringPreset?.name}
               onSteeringEdit={() => setSteeringModalOpen(true)}
-              usageProvider={currentProvider === "kimi" || currentProvider === "antigravity" ? undefined : currentProvider}
+              usageProvider={currentProvider === "kimi" ? undefined : currentProvider}
               usageSessionId={sessionId}
               usageRefreshTrigger={usageTrigger}
               onUsageClick={() => setShowUsage(true)}

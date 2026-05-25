@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getClaudeUsage, getCodexUsage, getGeminiUsage } from "@/lib/usage-checker";
+import { getAntigravityUsage, getClaudeUsage, getCodexUsage, getGeminiUsage } from "@/lib/usage-checker";
 import { getSessionInstance } from "@/lib/session-registry";
 import { CodexProcess } from "@/lib/codex-process";
 
@@ -30,6 +30,10 @@ export async function GET(req: Request) {
 
   if (provider === "gemini") {
     return NextResponse.json(await getGeminiUsage());
+  }
+
+  if (provider === "antigravity") {
+    return NextResponse.json(await getAntigravityUsage());
   }
 
   return NextResponse.json(

@@ -1,6 +1,8 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
+import { execFile } from "child_process";
+import { promisify } from "util";
 import { CodexProcess } from "./codex-process";
 
 // ── 공통 인터페이스 (서비스 불문) ──────────────────────────
@@ -26,6 +28,7 @@ export interface UsageResponse {
 // ── 캐시 ──────────────────────────────────────────────────
 const CACHE_TTL_MS = 30_000;
 const cache: Record<string, { result: UsageResponse; at: number }> = {};
+const execFileAsync = promisify(execFile);
 
 // ── Anthropic raw 응답 타입 ────────────────────────────────
 interface RawWindow {
@@ -333,4 +336,238 @@ export async function getGeminiUsage(): Promise<UsageResponse> {
       error: `Gemini 조회 실패: ${err instanceof Error ? err.message : String(err)}`,
     };
   }
+}
+
+// ── Antigravity ───────────────────────────────────────────
+
+interface AntigravityCredentialBlob {
+  token?: {
+    access_token?: string;
+  };
+}
+
+interface AntigravityLoadCodeAssistResponse {
+  cloudaicompanionProject?: unknown;
+}
+
+interface AntigravityModelQuotaInfo {
+  remainingFraction?: number;
+  resetTime?: string;
+}
+
+interface AntigravityModelInfo {
+  displayName?: string;
+  isInternal?: boolean;
+  quotaInfo?: AntigravityModelQuotaInfo;
+}
+
+interface AntigravityModelsResponse {
+  models?: Record<string, AntigravityModelInfo>;
+}
+
+type AntigravityFamily = "flash" | "pro" | "claude" | "gpt";
+
+const ANTIGRAVITY_FAMILY_META: Record<AntigravityFamily, { label: string; durationMs: number; order: number }> = {
+  flash: { label: "Flash", durationMs: 5 * 60 * 60 * 1000, order: 0 },
+  pro: { label: "Pro", durationMs: 5 * 60 * 60 * 1000, order: 1 },
+  claude: { label: "Claude", durationMs: 24 * 60 * 60 * 1000, order: 2 },
+  gpt: { label: "GPT-OSS", durationMs: 24 * 60 * 60 * 1000, order: 3 },
+};
+
+function antigravityFamily(modelId: string): AntigravityFamily | null {
+  if (modelId.includes("flash")) return "flash";
+  if (modelId.includes("pro")) return "pro";
+  if (modelId.startsWith("claude-")) return "claude";
+  if (modelId.startsWith("gpt-")) return "gpt";
+  return null;
+}
+
+function pickProjectId(value: unknown): string | null {
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    if (typeof record.id === "string") return record.id;
+    if (typeof record.name === "string") return record.name;
+  }
+  return null;
+}
+
+async function readAntigravityAccessToken(): Promise<string | null> {
+  if (process.platform !== "win32") return null;
+
+  const script = `
+$code = @'
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+
+public static class CredReader {
+  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+  private struct CREDENTIAL {
+    public UInt32 Flags;
+    public UInt32 Type;
+    public string TargetName;
+    public string Comment;
+    public long LastWritten;
+    public UInt32 CredentialBlobSize;
+    public IntPtr CredentialBlob;
+    public UInt32 Persist;
+    public UInt32 AttributeCount;
+    public IntPtr Attributes;
+    public string TargetAlias;
+    public string UserName;
+  }
+
+  [DllImport("Advapi32.dll", EntryPoint = "CredReadW", CharSet = CharSet.Unicode, SetLastError = true)]
+  private static extern bool CredRead(string target, int type, int reservedFlag, out IntPtr credentialPtr);
+
+  [DllImport("Advapi32.dll", SetLastError = true)]
+  private static extern void CredFree(IntPtr buffer);
+
+  public static string Read(string target) {
+    IntPtr credentialPtr;
+    if (!CredRead(target, 1, 0, out credentialPtr)) return null;
+    try {
+      CREDENTIAL credential = (CREDENTIAL)Marshal.PtrToStructure(credentialPtr, typeof(CREDENTIAL));
+      if (credential.CredentialBlob == IntPtr.Zero || credential.CredentialBlobSize == 0) return null;
+      byte[] bytes = new byte[credential.CredentialBlobSize];
+      Marshal.Copy(credential.CredentialBlob, bytes, 0, bytes.Length);
+      return Encoding.UTF8.GetString(bytes).TrimEnd('\\0');
+    } finally {
+      CredFree(credentialPtr);
+    }
+  }
+}
+'@
+Add-Type -TypeDefinition $code
+$blob = [CredReader]::Read('gemini:antigravity')
+if ($null -ne $blob) { [Console]::Out.Write($blob) }
+`;
+
+  try {
+    const { stdout } = await execFileAsync("powershell.exe", [
+      "-NoProfile",
+      "-NonInteractive",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-Command",
+      script,
+    ], { timeout: 10_000, windowsHide: true });
+    const raw = stdout.trim();
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as AntigravityCredentialBlob;
+    return parsed.token?.access_token ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchAntigravityUsage(token: string): Promise<UsageResponse> {
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+    "User-Agent": "antigravity",
+  };
+
+  const loadRes = await fetch("https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      metadata: {
+        ideType: "ANTIGRAVITY",
+        platform: "PLATFORM_UNSPECIFIED",
+        pluginType: "GEMINI",
+      },
+    }),
+  });
+
+  if (!loadRes.ok) {
+    const msg = loadRes.status === 401
+      ? "Antigravity 토큰 만료 (agy를 한 번 실행해 갱신 필요)"
+      : loadRes.status === 403
+        ? "Antigravity 권한 부족 (agy 본인 토큰 필요)"
+        : `Antigravity API 오류 (${loadRes.status})`;
+    return { provider: "antigravity", windows: [], error: msg };
+  }
+
+  const loadRaw = await loadRes.json() as AntigravityLoadCodeAssistResponse;
+  const project = pickProjectId(loadRaw.cloudaicompanionProject);
+  if (!project) {
+    return { provider: "antigravity", windows: [], error: "Antigravity 프로젝트를 찾을 수 없습니다" };
+  }
+
+  const modelsRes = await fetch("https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ project }),
+  });
+
+  if (!modelsRes.ok) {
+    const msg = modelsRes.status === 401
+      ? "Antigravity 토큰 만료 (agy를 한 번 실행해 갱신 필요)"
+      : modelsRes.status === 403
+        ? "Antigravity 권한 부족 (agy 본인 토큰 필요)"
+        : `Antigravity 모델 API 오류 (${modelsRes.status})`;
+    return { provider: "antigravity", windows: [], error: msg };
+  }
+
+  const raw = await modelsRes.json() as AntigravityModelsResponse;
+  const familyMap = new Map<AntigravityFamily, { remainingFraction: number; resetTime: string }>();
+
+  for (const [modelId, model] of Object.entries(raw.models ?? {})) {
+    if (model.isInternal || !model.displayName) continue;
+    const remainingFraction = model.quotaInfo?.remainingFraction;
+    if (typeof remainingFraction !== "number") continue;
+    const family = antigravityFamily(modelId);
+    if (!family) continue;
+
+    const resetTime = model.quotaInfo?.resetTime || new Date().toISOString();
+    const existing = familyMap.get(family);
+    if (!existing || remainingFraction < existing.remainingFraction) {
+      familyMap.set(family, { remainingFraction, resetTime });
+    }
+  }
+
+  const windows = [...familyMap.entries()]
+    .sort((a, b) => ANTIGRAVITY_FAMILY_META[a[0]].order - ANTIGRAVITY_FAMILY_META[b[0]].order)
+    .map(([family, quota]) => {
+      const meta = ANTIGRAVITY_FAMILY_META[family];
+      return {
+        name: meta.label,
+        utilization: Math.round((1 - quota.remainingFraction) * 100),
+        resetsAt: quota.resetTime,
+        timeProgress: computeTimeProgress(quota.resetTime, meta.durationMs),
+      };
+    });
+
+  if (!windows.length) {
+    return { provider: "antigravity", windows: [], error: "Antigravity 사용량 데이터 없음" };
+  }
+
+  return { provider: "antigravity", windows };
+}
+
+export async function getAntigravityUsage(): Promise<UsageResponse> {
+  const cached = getCached("antigravity");
+  if (cached) return cached;
+
+  const token = await readAntigravityAccessToken();
+  if (token) {
+    try {
+      return setCache("antigravity", await fetchAntigravityUsage(token));
+    } catch (err) {
+      return {
+        provider: "antigravity",
+        windows: [],
+        error: `Antigravity 조회 실패: ${err instanceof Error ? err.message : String(err)}`,
+      };
+    }
+  }
+
+  const legacy = await getGeminiUsage();
+  return setCache("antigravity", {
+    ...legacy,
+    provider: "antigravity",
+    error: legacy.error ? `Antigravity 토큰 없음, Gemini fallback 실패: ${legacy.error}` : undefined,
+  });
 }

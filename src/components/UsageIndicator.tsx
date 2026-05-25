@@ -52,10 +52,12 @@ function MiniGauge({ utilization, timeProgress }: { utilization: number; timePro
 
 /** 윈도우 이름을 짧은 라벨로 변환 */
 function shortLabel(name: string, provider: string): string {
-  if (provider === "gemini") {
+  if (provider === "gemini" || provider === "antigravity") {
     if (name === "Flash Lite") return "FL";
     if (name === "Flash") return "F";
     if (name === "Pro") return "P";
+    if (name === "Claude") return "C";
+    if (name === "GPT-OSS") return "G";
     return name.slice(0, 2).toUpperCase();
   }
   // Claude / Codex: "5시간" → "5h", "7일 (Sonnet)" → "7d(s)", "7일" → "7d"

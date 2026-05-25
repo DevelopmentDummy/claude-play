@@ -106,12 +106,14 @@ const PROVIDER_COLORS: Record<string, string> = {
   claude: "#ff9f43",
   codex: "#4dff91",
   gemini: "#64b5f6",
+  antigravity: "#b39ddb",
 };
 
 const PROVIDER_LABELS: Record<string, string> = {
   claude: "Claude",
   codex: "Codex",
   gemini: "Gemini",
+  antigravity: "Antigravity",
 };
 
 interface UsageModalProps {
