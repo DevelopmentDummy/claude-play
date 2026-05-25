@@ -331,6 +331,10 @@ export class CodexProcess extends EventEmitter<CodexProcessEvents> {
     }
   }
 
+  sendToolResult(_toolUseId: string, _content: string): void {
+    console.warn(`[${this.constructor.name}] sendToolResult not implemented — AskUserQuestion is Claude-only for now`);
+  }
+
   /**
    * Create or resume a thread.
    */

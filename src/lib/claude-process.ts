@@ -339,6 +339,28 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
     this.emit("status", "streaming");
   }
 
+  /** Send a tool_result block back to Claude — completes a pending tool_use turn.
+   *  Used for AskUserQuestion (and any future bridge-side interactive tools). */
+  sendToolResult(toolUseId: string, content: string): void {
+    if (!this.proc?.stdin?.writable) {
+      this.emit("error", "Claude process not running");
+      return;
+    }
+
+    const msg = JSON.stringify({
+      type: "user",
+      message: {
+        role: "user",
+        content: [
+          { type: "tool_result", tool_use_id: toolUseId, content },
+        ],
+      },
+    });
+
+    this.proc.stdin.write(msg + "\n");
+    this.emit("status", "streaming");
+  }
+
   kill(): void {
     if (this.proc) {
       // Remove all listeners from the old process streams to prevent stale events

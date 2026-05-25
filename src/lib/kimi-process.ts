@@ -224,6 +224,10 @@ export class KimiProcess extends EventEmitter<KimiProcessEvents> {
     this.sendRequestNoWait("prompt", { user_input: text });
   }
 
+  sendToolResult(_toolUseId: string, _content: string): void {
+    console.warn(`[${this.constructor.name}] sendToolResult not implemented — AskUserQuestion is Claude-only for now`);
+  }
+
   isRunning(): boolean {
     return !!this.proc && this.initialized;
   }

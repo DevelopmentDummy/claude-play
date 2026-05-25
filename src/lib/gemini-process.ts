@@ -156,6 +156,10 @@ export class GeminiProcess extends EventEmitter<GeminiProcessEvents> {
     this.emit("status", "streaming");
   }
 
+  sendToolResult(_toolUseId: string, _content: string): void {
+    console.warn(`[${this.constructor.name}] sendToolResult not implemented — AskUserQuestion is Claude-only for now`);
+  }
+
   /**
    * Spawn the gemini CLI process for one turn.
    */

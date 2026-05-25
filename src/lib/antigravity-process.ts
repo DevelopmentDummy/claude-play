@@ -219,6 +219,10 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
     });
   }
 
+  sendToolResult(_toolUseId: string, _content: string): void {
+    this.writeLog("sendToolResult not implemented — AskUserQuestion is Claude-only for now");
+  }
+
   private async _sendAsync(text: string): Promise<void> {
     if (!this.lsPort || !this.cascadeId) {
       this.emit("error", "AntigravityProcess not initialized — call spawn() first and wait for init");
