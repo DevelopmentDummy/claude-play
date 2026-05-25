@@ -48,6 +48,7 @@ export default function ChatPage() {
     setError,
     prepareSend,
     handleClaudeMessage,
+    handleToolAnswered,
     handleCancelled,
     assignMessageId,
     addUserMessage,
@@ -353,6 +354,7 @@ export default function ChatPage() {
         addUserMessage(text, isOOC);
       },
       "claude:message": handleClaudeMessage,
+      "tool:answered": (d) => handleToolAnswered(d as Parameters<typeof handleToolAnswered>[0]),
       "chat:cancelled": () => handleCancelled(),
       "claude:messageId": (d) => {
         const { messageId } = d as { messageId: string };

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef } from "react";
+import type { ToolAnswer } from "@/lib/session-instance";
 
 export interface ChatMessage {
   id: string;
@@ -8,13 +9,14 @@ export interface ChatMessage {
   renderKey: string;
   role: "user" | "assistant";
   content: string;
-  tools?: Array<{ name: string; input: unknown }>;
+  tools?: Array<{ id?: string; name: string; input: unknown; answer?: ToolAnswer }>;
   ooc?: boolean;
   /** True while this message is still being streamed (set at creation, cleared on finish) */
   live?: boolean;
 }
 
-function toolUseKey(name: string, input: unknown): string {
+function toolUseKey(name: string, input: unknown, id?: string): string {
+  if (id) return `id:${id}`;
   try {
     return `${name}:${JSON.stringify(input)}`;
   } catch {
@@ -96,7 +98,7 @@ export function useChat(rawSessionId?: string) {
   const displayAssistantTextRef = useRef("");
   const carryAssistantTextRef = useRef("");
   const assistantFullTextRef = useRef<string | null>(null);
-  const toolsRef = useRef<Array<{ name: string; input: unknown }>>([]);
+  const toolsRef = useRef<Array<{ id?: string; name: string; input: unknown; answer?: ToolAnswer }>>([]);
 
   const seenToolKeysRef = useRef<Set<string>>(new Set());
   const sawTextDeltaRef = useRef(false);
@@ -151,11 +153,11 @@ export function useChat(rawSessionId?: string) {
   }, [upsertAssistantMessage]);
 
   const addToolUse = useCallback(
-    (name: string, input: unknown) => {
-      const key = toolUseKey(name, input);
+    (name: string, input: unknown, id?: string) => {
+      const key = toolUseKey(name, input, id);
       if (seenToolKeysRef.current.has(key)) return;
       seenToolKeysRef.current.add(key);
-      toolsRef.current.push({ name, input });
+      toolsRef.current.push({ id, name, input });
 
       // Trigger re-render with updated tools
       upsertAssistantMessage(displayAssistantTextRef.current);
@@ -234,7 +236,7 @@ export function useChat(rawSessionId?: string) {
           const block = event.content_block as Record<string, unknown> | undefined;
           currentBlockTypeRef.current = (block?.type as string) || "text";
           if (block?.type === "tool_use") {
-            addToolUse(block.name as string, block.input);
+            addToolUse(block.name as string, block.input, block.id as string | undefined);
           }
         }
 
@@ -282,7 +284,7 @@ export function useChat(rawSessionId?: string) {
               fullParts.push(b.text);
               appendTextOnce(b.text);
             }
-            else if (b.type === "tool_use") addToolUse(b.name as string, b.input);
+            else if (b.type === "tool_use") addToolUse(b.name as string, b.input, b.id as string | undefined);
           }
         }
         if (fullParts.length > 0) {
@@ -459,6 +461,26 @@ export function useChat(rawSessionId?: string) {
     return 0;
   }, [sessionId]);
 
+  /** Handle tool:answered — fill tools[].answer for the matching toolUseId */
+  const handleToolAnswered = useCallback(
+    (data: { toolUseId: string; answer: ToolAnswer }) => {
+      setMessages((prev) => {
+        let mutated = false;
+        const next = prev.map((m) => {
+          if (m.role !== "assistant" || !m.tools) return m;
+          const idx = m.tools.findIndex((t) => t.id === data.toolUseId);
+          if (idx < 0) return m;
+          mutated = true;
+          const newTools = [...m.tools];
+          newTools[idx] = { ...newTools[idx], answer: data.answer };
+          return { ...m, tools: newTools };
+        });
+        return mutated ? next : prev;
+      });
+    },
+    []
+  );
+
   const toggleMessageOOC = useCallback(async (id: string, ooc: boolean) => {
     const res = await fetch("/api/chat/history", {
       method: "PATCH",
@@ -484,6 +506,7 @@ export function useChat(rawSessionId?: string) {
     prepareSend,
     sendMessage,
     handleClaudeMessage,
+    handleToolAnswered,
     handleCancelled,
     assignMessageId,
     addUserMessage,
