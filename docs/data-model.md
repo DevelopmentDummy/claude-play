@@ -12,6 +12,9 @@ data/
 │   ├── skills/                      # Tool-specific skills auto-copied to all sessions
 │   └── comfyui-config.json          # (tools/comfyui only) Default ComfyUI config copied to new personas/sessions
 ├── styles/                          # Writing style presets
+├── style-check/                     # Shared self-review ruleset (read by runStyleCheckHook)
+│   ├── defaults.md                  # Persona-agnostic style diagnostic rules
+│   └── review-prompt.md             # Handlebars template ({{rules}}/{{olderBlock}}/{{newerBlock}}/{{priorReport}})
 ├── profiles/{slug}.json             # User profiles (name, description, isPrimary)
 ├── deleted_personas/                # Soft-deleted personas (DELETE moves here)
 ├── deleted_sessions/                # Soft-deleted sessions (DELETE moves here)
@@ -29,7 +32,9 @@ data/
 │   ├── skills/                      # Persona-specific skills copied to sessions
 │   ├── images/                      # icon.png, profile.png, generated images
 │   ├── tools/                       # Server-side custom tool scripts (*.js / *.mjs)
-│   ├── hooks/                       # Lifecycle hooks (on-message.js, on-assistant.js, on-compaction-resume.js)
+│   ├── hooks/                       # Lifecycle hooks (on-message.js, on-assistant.js, on-compaction-resume.js, on-style-check.js)
+│   ├── style-check.json             # (optional) Opt-in self-review config {enabled, intervalTurns, rulesPath, model, effort}
+│   ├── style-check-rules.md         # (optional) Persona-specific style rules (merged after defaults.md)
 │   ├── voice.json                   # TTS voice configuration
 │   ├── voice-ref.*                  # TTS reference audio file
 │   ├── hint-rules.json              # Snapshot formatting rules for MCP run_tool responses
@@ -80,3 +85,4 @@ data/
 - **Soft delete**: `DELETE /api/personas/[name]` and `DELETE /api/sessions/[id]` move directories into `data/deleted_personas/` and `data/deleted_sessions/` respectively (not hard-deleted).
 - **Builder workdir = persona dir**: builder sessions run with the persona directory itself as the AI workdir. `CLAUDE.md`/`AGENTS.md`/`GEMINI.md` inside the persona dir are the *builder* meta-prompt and are overwritten on every `/api/builder/start` and `/api/builder/edit`. Session runs use a separate `sessions/{...}` directory with its own assembled instruction files.
 - **Skill propagation**: shared skills under `data/skills/*` and tool-bound skills under `data/tools/*/skills/*` are copied into `.claude/skills/`, `.agents/skills/`, `.gemini/skills/`, and `.kimi/skills/` on every session Open. `{{PORT}}` placeholders inside `SKILL.md` and `*.sh` files are substituted with the current server port at copy time.
+- **Style check**: opt-in self-review of writing style. Per-session counter `__style_check_counter` is stored in `variables.json` and incremented after each non-OOC assistant turn. When `count % intervalTurns === 0`, the core invokes `hooks/on-style-check.js` with `{recentTurns, defaults, rules, reviewPromptTemplate, config}`. The hook returns `{fireAi}` to spawn a background reviewer that updates `style_drift_verdict` / `style_warning` via the `update_variables` MCP tool. Disabled by default — requires both `style-check.json` (with `enabled:true`) and `hooks/on-style-check.js` to exist in the session dir.
