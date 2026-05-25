@@ -62,7 +62,8 @@ function extractSpecialTokens(raw: string): string[] {
 }
 
 
-function toolUseKey(name: string, input: unknown): string {
+function toolUseKey(name: string, input: unknown, id?: string): string {
+  if (id) return `id:${id}`;
   try {
     return `${name}:${JSON.stringify(input)}`;
   } catch {
@@ -124,11 +125,16 @@ export interface HistoryMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
-  tools?: Array<{ name: string; input: unknown }>;
+  tools?: Array<{ id?: string; name: string; input: unknown; answer?: ToolAnswer }>;
   ooc?: boolean;
 }
 
 export type AIProcess = ClaudeProcess | CodexProcess | GeminiProcess | KimiProcess | AntigravityProcess;
+
+export type ToolAnswer = {
+  answers: Record<string, string | string[]>;
+  notes?: Record<string, string>;
+};
 
 export type BroadcastFn = (
   event: string,
@@ -208,7 +214,12 @@ export class SessionInstance {
   // Accumulator for assistant turn
   private segments: string[] = [];
   private assistantFullText: string | null = null; // full text from assistant message (for UTF-8 healing)
-  private tools: Array<{ name: string; input: unknown }> = [];
+  private tools: Array<{
+    id?: string;
+    name: string;
+    input: unknown;
+    answer?: ToolAnswer;
+  }> = [];
 
   private seenToolKeys = new Set<string>();
   private sawTextDelta = false;
@@ -234,6 +245,10 @@ export class SessionInstance {
   private ttsRunning = false;
   /** Client-side TTS toggle — when false, skip TTS generation even if voice.json is configured */
   ttsAutoPlay = true;
+
+  /** 마지막 turn에서 미응답 상태로 남은 AskUserQuestion tool_use_id.
+   *  사용자 다음 평문 메시지를 이 도구의 자유 답변으로 흡수한다. */
+  public pendingToolUseId: string | null = null;
 
   constructor(
     id: string,
@@ -403,6 +418,49 @@ export class SessionInstance {
     const parts = [eventHeaders, jsonLint, hintSnapshot, actionHistory, text].filter(Boolean);
     this._pendingTurn = true;
     this.claude.send(parts.join("\n"));
+  }
+
+  /** 사용자가 카드에 응답했거나 평문 fallback이 트리거됐을 때 호출.
+   *  1) chatHistory의 해당 tool에 answer를 in-place로 채움
+   *  2) WS broadcast로 frontend 동기화
+   *  3) provider에 tool_result 전송 — 실패해도 chatHistory에는 답 남음 (graceful degrade) */
+  async submitToolAnswer(toolUseId: string, answer: ToolAnswer): Promise<void> {
+    // 1) chatHistory의 마지막 assistant 메시지에서 해당 tool 찾아 answer 채움
+    let mutated = false;
+    for (let i = this.chatHistory.length - 1; i >= 0; i--) {
+      const m = this.chatHistory[i];
+      if (m.role !== "assistant" || !m.tools) continue;
+      const t = m.tools.find(x => x.id === toolUseId);
+      if (t) {
+        t.answer = answer;
+        mutated = true;
+        break;
+      }
+    }
+    if (!mutated) {
+      console.warn(`[session:${this.id}] submitToolAnswer: tool ${toolUseId} not found in chatHistory`);
+    } else {
+      this.saveHistory();
+    }
+
+    // 2) WS broadcast — 다른 탭/devices 동기화
+    this.broadcast("tool:answered", { toolUseId, answer });
+
+    // 3) Clear pending + send tool_result to provider
+    if (this.pendingToolUseId === toolUseId) {
+      this.pendingToolUseId = null;
+    }
+
+    if (this.claude.isRunning()) {
+      try {
+        this.claude.sendToolResult(toolUseId, JSON.stringify(answer));
+        this._pendingTurn = true;
+      } catch (err) {
+        console.warn(`[session:${this.id}] sendToolResult threw:`, err);
+      }
+    } else {
+      console.warn(`[session:${this.id}] sendToolResult skipped — process not running (orphan)`);
+    }
   }
 
   /** Send raw text to the AI process, marking turn as pending. */
@@ -833,6 +891,9 @@ export class SessionInstance {
     // NOTE: don't re-bind events — EventEmitter listeners survive kill/respawn
     this._process.respawn();
 
+    // Clear pending tool answer — cancelled turn makes any outstanding tool_use_id invalid
+    this.pendingToolUseId = null;
+
     // Broadcast cancellation to frontend
     this.broadcast("chat:cancelled", { partial: !!partial });
 
@@ -859,17 +920,31 @@ export class SessionInstance {
 
   loadHistory(): void {
     const dir = this.getDir();
-    if (!dir) { this.chatHistory = []; return; }
+    if (!dir) { this.chatHistory = []; this.pendingToolUseId = null; return; }
     const fp = path.join(dir, HISTORY_FILE);
     try {
       if (fs.existsSync(fp)) {
         this.chatHistory = JSON.parse(fs.readFileSync(fp, "utf-8"));
         this.historyId = this.chatHistory.length;
+        // Restart-recovery: chatHistory의 마지막 assistant 메시지에서 미답 AskUserQuestion이
+        // 있으면 pendingToolUseId를 복원. Claude cascade가 새로 시작된 경우 tool_use_id는
+        // 무효일 수 있으므로, submitToolAnswer 시 sendToolResult가 실패해도 graceful degrade.
+        const lastAsst = [...this.chatHistory].reverse().find(m => m.role === "assistant");
+        if (lastAsst?.tools) {
+          const orphan = [...lastAsst.tools].reverse().find(
+            t => t.name === "AskUserQuestion" && t.id && !t.answer
+          );
+          this.pendingToolUseId = orphan?.id ?? null;
+        } else {
+          this.pendingToolUseId = null;
+        }
       } else {
         this.chatHistory = [];
+        this.pendingToolUseId = null;
       }
     } catch {
       this.chatHistory = [];
+      this.pendingToolUseId = null;
     }
   }
 
@@ -891,6 +966,16 @@ export class SessionInstance {
     if (newProvider === this._provider) return;
     this._process.kill();
     this._process.removeAllListeners();
+    if (this.pendingToolUseId) {
+      // Orphan 처리: 카드 자체는 chatHistory에 남아있지만, 답을 받을 process가 사라짐.
+      // 카드에 placeholder answer를 채워서 read-only highlighted로 변환.
+      const orphanId = this.pendingToolUseId;
+      this.pendingToolUseId = null;
+      this.submitToolAnswer(orphanId, {
+        answers: {},
+        notes: { _orphan: "provider switched" },
+      }).catch(err => console.warn(`[session:${this.id}] orphan submit failed:`, err));
+    }
     this._provider = newProvider;
     this._process = createProcess(newProvider);
     this.bindProcessEvents(this._process);
@@ -898,12 +983,12 @@ export class SessionInstance {
 
   // --- Accumulator helpers ---
 
-  private addToolUse(toolName: string, input: unknown): void {
-    const key = toolUseKey(toolName, input);
+  private addToolUse(toolName: string, input: unknown, id?: string): void {
+    const key = toolUseKey(toolName, input, id);
     if (this.seenToolKeys.has(key)) return;
     this.seenToolKeys.add(key);
 
-    this.tools.push({ name: toolName, input });
+    this.tools.push({ id, name: toolName, input });
   }
 
   // --- TTS ---
@@ -1224,6 +1309,15 @@ export class SessionInstance {
     this.isSlashCommand = false;
     this.segments = [];
     this.assistantFullText = null;
+
+    // Detect pending AskUserQuestion: 마지막 tool_use이고 answer 없으면 pending으로 잡음.
+    // (한 turn에 여러 AskUserQuestion이 있으면 마지막 것만 pending — 앞선 것은 turn이 이미
+    //  진행돼버린 상태라 회신 불가능하므로 무시. spec edge-case 참고.)
+    const lastAsk = [...this.tools].reverse().find(
+      t => t.name === "AskUserQuestion" && t.id && !t.answer
+    );
+    this.pendingToolUseId = lastAsk?.id ?? null;
+
     this.tools = [];
 
     this.seenToolKeys.clear();
@@ -1328,7 +1422,7 @@ export class SessionInstance {
           const block = event.content_block as Record<string, unknown> | undefined;
           this.currentBlockType = (block?.type as string) || "text";
           if (block?.type === "tool_use") {
-            this.addToolUse(block.name as string, block.input);
+            this.addToolUse(block.name as string, block.input, block.id as string | undefined);
           }
         }
         if (event.type === "content_block_delta") {
@@ -1373,7 +1467,7 @@ export class SessionInstance {
               fullTextParts.push(b.text);
               pushTextOnce(b.text);
             } else if (b.type === "tool_use") {
-              this.addToolUse(b.name as string, b.input);
+              this.addToolUse(b.name as string, b.input, b.id as string | undefined);
             }
           }
         }
