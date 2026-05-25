@@ -461,6 +461,40 @@ await __panelBridge.executeAction('confirm_schedule', {
 >
 > 그 버튼은 패널 초기 렌더에서 **즉시 보여야** 한다 (조건 분기 깊은 곳에서야 등장하면 안 됨). 비동기 액션이 실패해도 재시도/닫기 경로가 살아 있어야 한다.
 
+**🎯 모달 열기/닫기 — 패널 측에선 전용 API 우선, 엔진 측에선 함정 주의:**
+
+모달 상태 변경은 두 경로가 있다:
+
+| 경로 | 사용처 | API |
+|---|---|---|
+| **전용 도구 (권장)** | 패널 JS, onclick | `__panelBridge.openModal(name, mode)` / `__panelBridge.closeModal(name)` |
+| **엔진 변수 패치** | engine.js에서 액션 후 자동 열기/닫기 | `v.__modals = { ...v.__modals, name: true|"dismissible"|false }` |
+
+**책임 분리 권장 패턴**:
+- 엔진은 **상태 데이터**만 관리 (`_pending_awaken` 등 modal 내용)
+- 엔진은 mark/rank_up 같은 액션 직후 `__modals.X = true`로 모달을 **열어주기만** 함 (사용자가 패널 버튼으로 따로 여는 게 불가능한 상황)
+- 모달 **닫기는 패널이 onclick에서 `__panelBridge.closeModal()` 호출**로 처리. 엔진은 closeAction에서도 데이터만 정리하고 `__modals` 안 건드림
+
+**🚫 엔진에서 모달 닫을 때 — `delete` 금지, 명시적 `false` 필수:**
+
+만약 엔진에서 닫아야 한다면, 서버 route(`/api/sessions/[id]/tools/[name]`)는 엔진이 반환한 `result.variables.__modals`의 **entries만 순회**하여 변경을 적용한다. 키를 `delete`로 제거하면 entry가 없어서 변경이 감지되지 않고 기존 `true` 상태가 그대로 남는다.
+
+```js
+// ❌ 잘못된 패턴 — 모달이 안 닫힘
+function closeMyModal(v) {
+  const m = { ...v.__modals };
+  delete m["my-modal"];   // ← entries에 없으므로 서버가 무시
+  v.__modals = m;
+}
+
+// ✅ 올바른 패턴 — 명시적 false 전송
+function closeMyModal(v) {
+  v.__modals = { ...(v.__modals || {}), "my-modal": false };
+}
+```
+
+서버의 처리 로직: `value && value !== false && value !== null` → 열기, 그 외 → `modals[name] = false` (닫기). 따라서 `false`, `null`, `undefined` 어느 거든 닫기로 처리되지만, **그 키가 entries에 존재해야** 트리거됨.
+
 **모달 그룹** — 상호 배타적 UI 흐름:
 ```json
 "modalGroups": {
