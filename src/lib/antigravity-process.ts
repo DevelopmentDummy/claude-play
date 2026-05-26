@@ -259,6 +259,7 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
     const STATUS_CHECK_EVERY = 2;
     const IDLE_GRACE_TICKS = 5;
     const TRAJECTORY_STABLE_TICKS = 5;
+    const ERROR_EXIT_STABLE_TICKS = 3; // ERROR로 끝나면 더 빨리 종료
     const STUCK_TIMEOUT_MS = 5 * 60 * 1000; // trajectory 변화 없이 5분 stuck이면 강제 종료
     const turnStart = Date.now();
     let iter = 0;
@@ -266,6 +267,7 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
     let consecutiveStable = 0;
     let consecutiveIdle = 0;
     let everSawRunning = false;
+    let lastEndedOnError = false;
 
     while (this.polling && this.cascadeId) {
       if (Date.now() - turnStart > MAX_TURN_DURATION_MS) {
@@ -288,6 +290,7 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
       // step.length는 안 변해도 마지막 step body가 커지는 패턴을 잡기 위함
       const lastStep = dbgSteps && dbgSteps.length > 0 ? dbgSteps[dbgSteps.length - 1] : null;
       const lastStepSize = lastStep ? JSON.stringify(lastStep).length : 0;
+      lastEndedOnError = lastStep?.type === "CORTEX_STEP_TYPE_ERROR_MESSAGE";
       const trajKey = `${dbgSteps?.length ?? 0}:${dbgSteps?.map(s => s.type).join(",") ?? ""}|tail=${lastStepSize}`;
       if (trajKey !== lastTrajKey) {
         this.writeLog(`[poll #${iter}] steps=${dbgSteps?.length ?? 0} tail=${lastStepSize}b lastType=${lastStep?.type ?? "n/a"}`);
@@ -314,11 +317,21 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
             consecutiveIdle = 0;
           } else if (status) {
             consecutiveIdle++;
-            this.writeLog(`[poll #${iter}] status=${status} idle=${consecutiveIdle}/${IDLE_GRACE_TICKS} traj-stable=${consecutiveStable}/${TRAJECTORY_STABLE_TICKS}`);
-            // IDLE + trajectory도 안정 두 조건 동시 충족 시에만 진짜 종료.
-            // sub-agent chain 응답 채워지는 동안엔 trajectory size가 변하므로 stable 안 됨.
-            if ((everSawRunning || isFinishedStatus) && consecutiveIdle >= IDLE_GRACE_TICKS && consecutiveStable >= TRAJECTORY_STABLE_TICKS) {
-              this.writeLog(`[poll #${iter}] cascade idle+stable — turn complete`);
+            this.writeLog(`[poll #${iter}] status=${status} idle=${consecutiveIdle}/${IDLE_GRACE_TICKS} traj-stable=${consecutiveStable}/${TRAJECTORY_STABLE_TICKS} lastErr=${lastEndedOnError}`);
+            // 정상 흐름: RUNNING 거친 적 있거나 명시적 종료 상태일 때 idle+stable 충족
+            const normalExit =
+              (everSawRunning || isFinishedStatus) &&
+              consecutiveIdle >= IDLE_GRACE_TICKS &&
+              consecutiveStable >= TRAJECTORY_STABLE_TICKS;
+            // 에러 종료: cascade가 RUNNING 없이 ERROR_MESSAGE로 즉사한 케이스
+            // (Pro Low가 도구 호출 invalid_args로 죽거나 모델이 초기 reject한 경우)
+            // → 5분 STUCK_TIMEOUT 대기하지 않고 빠르게 종료
+            const errorExit =
+              lastEndedOnError &&
+              consecutiveIdle >= IDLE_GRACE_TICKS &&
+              consecutiveStable >= ERROR_EXIT_STABLE_TICKS;
+            if (normalExit || errorExit) {
+              this.writeLog(`[poll #${iter}] cascade ${errorExit ? "error-exit" : "idle+stable"} — turn complete`);
               try {
                 const finalConv = await this.rpc<Record<string, unknown>>("GetCascadeTrajectory", { cascadeId: this.cascadeId });
                 this.emitNewChunks(finalConv);
@@ -353,25 +366,40 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
       for (let i = this.lastSeenMessageCount; i < items.length; i++) {
         const it = items[i];
         const role = this.extractRole(it);
-        if (role !== "assistant") continue;
-        const content = this.extractText(it);
-        if (content) {
-          this.emit("message", {
-            type: "assistant",
-            subtype: "text_delta",
-            message: { role: "assistant", content },
-          });
+        if (role === "assistant") {
+          const raw = this.extractText(it);
+          const content = raw ? this.stripSystemMessageEcho(raw) : undefined;
+          if (content) {
+            this.emit("message", {
+              type: "assistant",
+              subtype: "text_delta",
+              message: { role: "assistant", content },
+            });
+          }
+        } else if (role === "error") {
+          // Pro Low 등 모델이 도구 호출 invalid_args로 cascade를 죽인 경우,
+          // 침묵 대신 에러 본문을 사용자에게 노출한다 (디버깅·모델 전환 판단용).
+          const errText = this.extractText(it);
+          if (errText) {
+            this.emit("message", {
+              type: "assistant",
+              subtype: "text_delta",
+              message: { role: "assistant", content: `\n\n[Antigravity 모델 에러]\n${errText}\n` },
+            });
+          }
         }
       }
       this.lastSeenMessageCount = items.length;
-      this.lastSeenTailLength = this.extractText(items[items.length - 1])?.length ?? 0;
+      const lastRaw = this.extractText(items[items.length - 1]) ?? "";
+      this.lastSeenTailLength = this.stripSystemMessageEcho(lastRaw).length;
       return true;
     }
 
     if (items.length > 0 && items.length === this.lastSeenMessageCount) {
       const last = items[items.length - 1];
       if (this.extractRole(last) === "assistant") {
-        const fullText = this.extractText(last) ?? "";
+        const fullRaw = this.extractText(last) ?? "";
+        const fullText = this.stripSystemMessageEcho(fullRaw);
         if (fullText.length > this.lastSeenTailLength) {
           const delta = fullText.slice(this.lastSeenTailLength);
           this.emit("message", {
@@ -385,6 +413,26 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
       }
     }
     return false;
+  }
+
+  /** Flash 등이 SYSTEM_MESSAGE 본문(`An event has occurred. See the following message: ...`)을
+   *  자기 응답 본문에 그대로 echo한 경우, 그 prefix를 strip해서 사용자에게는 안 보이게 한다.
+   *  뒤에 붙은 실제 narrative(`<dialog_response>...`)는 그대로 살린다. */
+  private stripSystemMessageEcho(content: string): string {
+    if (!content) return content;
+    // Pattern: agy의 task 완료 SYSTEM_MESSAGE 본문이 응답 안에 그대로 등장하는 형태.
+    // "An event has occurred." 문장으로 시작해서 task log 경로까지 이어지는 블록 전체 제거.
+    // 뒤에 <dialog_response> 또는 <choice>가 오기 전까지의 연속된 메타 본문을 strip.
+    const ECHO_PATTERN = /An event has occurred\. See the following message:[\s\S]*?(?=<dialog_response>|<choice>|$)/g;
+    // SYSTEM_MESSAGE 태그 블록도 같은 패턴으로 emit 가능.
+    const TAG_PATTERN = /<SYSTEM_MESSAGE>[\s\S]*?<\/SYSTEM_MESSAGE>/g;
+    // Sub-agent 메타 인사말 (real narrative 뒤에 trailing으로 붙는 경우)
+    const TRAILING_META = /\s*(Oceania,?\s*)?I am (now\s+)?ready to present[\s\S]*?(Let'?s submit it\.?)?\s*$/i;
+    return content
+      .replace(ECHO_PATTERN, "")
+      .replace(TAG_PATTERN, "")
+      .replace(TRAILING_META, "")
+      .trim();
   }
 
   private extractItems(conv: Record<string, unknown>): Record<string, unknown>[] | null {
@@ -412,25 +460,22 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
   private extractText(item: Record<string, unknown>): string | undefined {
     const pr = item.plannerResponse as Record<string, unknown> | undefined;
     if (pr) {
-      // 1) 정상 텍스트 응답
+      // PLANNER_RESPONSE는 final assistant text(response/modifiedResponse)만 사용자에게 emit한다.
+      // Flash 등 일부 모델은 thinking 필드에 영어 ReAct 사고 trace를 길게 출력하는데,
+      // 이걸 placeholder로 emit하면 사용자 채팅에 thinking + 도구 호출 마커가 누적되어
+      // (a) <dialog_response> 형식이 깨지고 (b) 인증 토큰 등 민감 정보가 노출된다.
+      // 다른 provider(Claude/Codex/Gemini/Kimi)와 동일하게 final 텍스트만 노출한다.
       if (typeof pr.response === "string" && pr.response.length > 0) return pr.response;
       if (typeof pr.modifiedResponse === "string" && pr.modifiedResponse.length > 0) return pr.modifiedResponse;
-      // 2) tool-only turn: thinking + tool summary로 placeholder
-      const parts: string[] = [];
-      if (typeof pr.thinking === "string" && pr.thinking.length > 0) parts.push(pr.thinking);
-      if (Array.isArray(pr.toolCalls) && pr.toolCalls.length > 0) {
-        const names = (pr.toolCalls as Record<string, unknown>[])
-          .map(tc => (tc.name || tc.tool || tc.functionName || tc.toolName) as string | undefined)
-          .filter((n): n is string => !!n);
-        if (names.length) parts.push(`[Tools: ${names.join(", ")}]`);
-      }
-      if (parts.length > 0) return parts.join("\n\n");
+      return undefined;
     }
     // legacy / fallback candidates
     const candidates: unknown[] = [
       (item.assistantResponse as Record<string, unknown> | undefined)?.text,
       (item.modelOutput as Record<string, unknown> | undefined)?.text,
       (item.response as Record<string, unknown> | undefined)?.text,
+      // agy 1.0.x ERROR_MESSAGE step: step.error (string) — 모델이 cascade를 죽인 직접 사유
+      typeof item.error === "string" ? item.error : undefined,
       (item.errorMessage as Record<string, unknown> | undefined)?.error
         && ((item.errorMessage as Record<string, unknown>).error as Record<string, unknown>).userErrorMessage,
       item.content,

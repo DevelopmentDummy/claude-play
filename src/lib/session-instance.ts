@@ -240,6 +240,10 @@ export class SessionInstance {
   private _pendingTurn = false;
   private idleResolvers: Array<() => void> = [];
 
+  // Antigravity silent retry: 모델이 segments/tools 둘 다 비운 채로 turn 종료한 경우
+  // 한 번만 silent system prompt로 재시도. 새 user turn마다 false로 리셋.
+  private silentRetryDone = false;
+
   // TTS queue — serialize requests to avoid ENOBUFS
   private ttsQueue: Array<() => Promise<void>> = [];
   private ttsRunning = false;
@@ -390,10 +394,14 @@ export class SessionInstance {
 
   /** Send a message to AI from server-side, triggering a new turn.
    *  If AI is mid-turn, waits for completion first (up to 60s timeout). */
-  async sendMessage(text: string): Promise<void> {
+  async sendMessage(text: string, opts?: { _silentRetry?: boolean }): Promise<void> {
     if (!this.claude.isRunning()) {
       console.warn(`[session:${this.id}] sendMessage skipped — AI process not running`);
       return;
+    }
+    // 새로운 user turn 시작 시 silent retry flag 리셋. silent retry 자기 자신은 리셋 안 함.
+    if (!opts?._silentRetry) {
+      this.silentRetryDone = false;
     }
     // Wait for idle with timeout
     const timeout = new Promise<void>((resolve) => {
@@ -415,7 +423,13 @@ export class SessionInstance {
     const hintSnapshot = this.buildHintSnapshot();
     const actionHistory = this.flushActions();
     const jsonLint = this.buildJsonLint();
-    const parts = [eventHeaders, jsonLint, hintSnapshot, actionHistory, text].filter(Boolean);
+    // Antigravity Flash 등이 sub-agent orchestration을 hallucinate해서 응답을
+    // 가상의 supervisor에게 제출하는 메타 인사말로 끝내는 패턴 방지.
+    // 매 user turn마다 role을 명시적으로 reanchor.
+    const orchestratorReminder = this._provider === "antigravity"
+      ? "[ROLE] 당신이 오케스트레이터입니다. 유저에게 나갈 응답을 직접 작성해야 합니다. 다른 에이전트/슈퍼바이저/시스템에 제출·위임하지 마세요. 백그라운드 task 결과나 SYSTEM_MESSAGE를 받았으면 그 정보는 당신이 직접 처리한 것이며, 본문에 echo하지 말고 narrative에 자연스럽게 녹여 즉시 <dialog_response>로 응답을 마무리하세요."
+      : "";
+    const parts = [orchestratorReminder, eventHeaders, jsonLint, hintSnapshot, actionHistory, text].filter(Boolean);
     this._pendingTurn = true;
     this.claude.send(parts.join("\n"));
   }
@@ -1399,6 +1413,26 @@ export class SessionInstance {
     const isSlash = this.isSlashCommand;
     const isOOC = this.isOOC;
 
+    // 빈 응답 감지: Antigravity가 segments/tools 둘 다 비운 채 turn을 끝낸 경우
+    // chat-history에 아무 entry도 추가되지 않으므로 사용자는 침묵을 받음.
+    // state 리셋 전에 capture, retry는 모든 정리가 끝난 마지막에 schedule.
+    const isAntigravityEmpty = !isSlash && !isOOC
+      && this._provider === "antigravity"
+      && !this.silentRetryDone
+      && this.segments.length === 0
+      && this.tools.length === 0;
+
+    // Antigravity 메타 응답 감지: 모델이 sub-agent orchestration을 hallucinate해서
+    // <dialog_response> 본문 없이 "I am ready to present...", "Let's submit it",
+    // "stand by", SYSTEM_MESSAGE echo만 emit한 케이스. segments는 차 있지만
+    // 사용자에게 실질 본문이 안 가므로 동일하게 silent retry 발동.
+    const isAntigravityMetaOnly = !isSlash && !isOOC
+      && this._provider === "antigravity"
+      && !this.silentRetryDone
+      && this.segments.length > 0
+      && this.tools.length === 0
+      && this.detectAntigravityMetaResponse(this.segments.join(""));
+
     if (isSlash) {
       const result = msg.result as Record<string, unknown> | string | undefined;
       const text =
@@ -1407,7 +1441,9 @@ export class SessionInstance {
         : this.segments.join("") || null;
       this.broadcast("command:result", { text: text || "" });
     } else {
-      if (this.segments.length > 0 || this.tools.length > 0) {
+      // Antigravity \uba54\ud0c0 \uc751\ub2f5\uc740 chat-history\uc5d0 push\ud558\uc9c0 \uc54a\ub294\ub2e4 \u2014 silent retry\ub85c \ub300\uccb4 \uc751\ub2f5\uc744 \ubc1b\uc74c.
+      // streaming\uc73c\ub85c frontend\uc5d0\ub294 \uc774\ubbf8 \ub178\ucd9c\ub410\uc744 \uc218 \uc788\uc73c\ub098, \uc601\uad6c \uae30\ub85d\uc740 \ucc28\ub2e8 (\ub2e4\uc74c reload\u00b7\ub2e4\uc74c turn \ucee8\ud14d\uc2a4\ud2b8\uc5d0 \uc548 \ub0a8\uc74c).
+      if ((this.segments.length > 0 || this.tools.length > 0) && !isAntigravityMetaOnly) {
         let rawContent = this.segments.join("");
         if (this.assistantFullText && this.sawTextDelta) {
           if (rawContent.includes("\ufffd") || this.assistantFullText.includes("\ufffd")) {
@@ -1486,19 +1522,70 @@ export class SessionInstance {
 
     // Include messageId in the result broadcast so frontend can finish streaming
     // and assign the backend ID in a single state update (avoids flicker).
+    // Antigravity 메타 응답이면 push 차단되어 lastSaved는 이전 turn 메시지를 가리킨다 —
+    // 그걸로 streaming buffer를 finalize하면 직전 메시지가 메타 텍스트로 덮어쓰일 위험이 있다.
+    // messageId를 명시적으로 비우고 `antigravityMetaSkipped` 플래그로 frontend에 discard 신호.
     const lastSaved = this.chatHistory[this.chatHistory.length - 1];
-    const resultPayload = lastSaved
-      ? { ...(d as Record<string, unknown>), messageId: lastSaved.id }
-      : d;
+    const resultPayload = isAntigravityMetaOnly
+      ? { ...(d as Record<string, unknown>), messageId: null, antigravityMetaSkipped: true }
+      : lastSaved
+        ? { ...(d as Record<string, unknown>), messageId: lastSaved.id }
+        : d;
     this.broadcast("claude:message", resultPayload);
 
     // Keep separate messageId broadcast for backwards compat (e.g. reconnected clients)
-    if (lastSaved) {
+    if (lastSaved && !isAntigravityMetaOnly) {
       this.broadcast("claude:messageId", { messageId: lastSaved.id });
     }
 
     // Flush idle waiters (scheduler sendMessage)
     this.flushIdleWaiters();
+
+    // Antigravity 모델이 응답 없이 turn을 끝냈으면 silent system prompt로 한 번만 재시도
+    if (isAntigravityEmpty || isAntigravityMetaOnly) {
+      this.silentRetryDone = true;
+      this.scheduleSilentRetry();
+    }
+  }
+
+  /** Antigravity 모델이 sub-agent orchestration 패턴을 hallucinate한 결과인지 판정.
+   *  RP 본문(`<dialog_response>`)이 없고 메타 cue(영어 placeholder, supervisor 호명,
+   *  SYSTEM_MESSAGE echo)만 있으면 true. 한국어 RP 페르소나에선 false positive 거의 없음. */
+  private detectAntigravityMetaResponse(content: string): boolean {
+    if (!content) return false;
+    // dialog_response 태그가 본문이 있는 형태로 닫혀 있으면 정상 응답으로 간주
+    const dialogMatch = content.match(/<dialog_response>([\s\S]*?)<\/dialog_response>/);
+    if (dialogMatch && dialogMatch[1].trim().length > 0) return false;
+    // 명백한 메타 cue. 한국어 RP 본문에서는 거의 발생하지 않는 영어 표현 위주.
+    const metaCues = [
+      /I am (now )?ready to present/i,
+      /Let'?s submit it/i,
+      /Please stand by/i,
+      /I am processing .* in the background/i,
+      /while the image is being (rendered|generated)/i,
+      /\bOceania\b/,
+      /<SYSTEM_MESSAGE>/,
+      /An event has occurred\. See the following message:/,
+      /\[Message\] timestamp=.*sender=.*priority=MESSAGE_PRIORITY/,
+    ];
+    return metaCues.some(re => re.test(content));
+  }
+
+  /** Antigravity 빈 응답 감지 시 다음 tick에 silent system prompt를 한 번만 보낸다.
+   *  새 user turn 시작(sendMessage 진입)에서 silentRetryDone이 false로 리셋되므로
+   *  매 사용자 입력마다 최대 1회 재시도. */
+  private scheduleSilentRetry(): void {
+    if (this.destroyed) return;
+    setImmediate(() => {
+      if (this.destroyed || !this.claude.isRunning()) return;
+      console.warn(`[session:${this.id}] empty Antigravity turn — issuing silent retry`);
+      this.sendMessage(
+        "[system] 직전 응답이 누락되었습니다. 직전 사용자 요청에 대한 응답을 생성해 주세요.",
+        { _silentRetry: true },
+      ).catch(err => {
+        console.warn(`[session:${this.id}] silent retry failed:`, err);
+      });
+    });
   }
 
   // --- Process event binding ---

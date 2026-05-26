@@ -19,6 +19,16 @@ export async function POST(req: Request) {
     await instance.submitToolAnswer(instance.pendingToolUseId, answer);
     return NextResponse.json({ ok: true, absorbedAsToolAnswer: true });
   }
+  // AI 프로세스가 spawn 직후 init(LS port discovery, cascade resume 등) 중일 때
+  // send를 호출하면 cascade에 메시지가 도달하지 않은 채 끝날 수 있다. 명시적으로 ready 보장.
+  if (!instance.claude.isRunning()) {
+    return NextResponse.json({ error: "AI process not running" }, { status: 503 });
+  }
+  const ready = await instance.claude.waitForReady(15_000);
+  if (!ready) {
+    return NextResponse.json({ error: "AI process not ready after 15s" }, { status: 503 });
+  }
+
   instance.isOOC = isOOC;
   instance.addUserToHistory(text, isOOC);
 
