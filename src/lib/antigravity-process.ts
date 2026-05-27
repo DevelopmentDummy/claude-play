@@ -38,6 +38,16 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
   private lastSeenTailLength = 0;
   private initPromise: Promise<void> | null = null;
 
+  constructor() {
+    super();
+    // Default no-op "error" listener. EventEmitter는 'error' event에 listener 없으면
+    // throw하여 process를 죽인다. session-instance가 bindProcessEvents에서 broadcast
+    // listener를 부착하지만 destroy()에서 removeAllListeners()로 제거 — destroy 후
+    // initialize().catch가 emit("error") 호출하는 race가 있어 dev server를 crash시킴.
+    // 항상 1개 default listener 보장 (실제 처리는 antigravity-stream.log에서 추적).
+    this.on("error", () => { /* swallowed — antigravity-stream.log 참조 */ });
+  }
+
   spawn(
     cwd: string,
     resumeId?: string,
@@ -58,6 +68,17 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
     this.ensureAntigravityTrust(cwd);
     this.openLogStream(cwd);
 
+    // agy.exe는 bubbletea TUI 라이브러리 기반 — CONIN$/CONOUT$ console handle 필수.
+    // Node child_process.spawn은 detached/windowsHide 어떤 조합으로도 Windows console
+    // 할당이 안 되어 agy가 즉시 "bubbletea: could not open TTY: open CONIN$" 에러로
+    // exit code 0. PowerShell Start-Process -WindowStyle Hidden은 hidden console이지만
+    // CONIN$/CONOUT$이 실제로 allocated되어 정상 동작. 다른 provider(Claude/Codex 등)는
+    // stdin/stdout pipe로만 통신하는 CLI라 console 불필요했지만 agy만 다름.
+    //
+    // 한글 cwd 처리:
+    //   - ps1 파일에 UTF-8 BOM prepend (`﻿`) → PS 5.1이 시스템 ANSI(CP949) 대신
+    //     UTF-8로 정확히 디코드
+    //   - -WorkingDirectory 대신 Set-Location -LiteralPath 사용 → wildcard 해석 우회
     const escapePS = (s: string) => s.replace(/'/g, "''");
     const tempDir = path.join(os.tmpdir(), "agy-bridge");
     if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
@@ -65,24 +86,17 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
     let psScript: string;
 
     if (resumeId) {
-      // Resume: load existing cascade by ID — no primer needed (cascade already
-      // has the primer in its first USER_INPUT step from initial spawn).
       psScript = [
         `$ErrorActionPreference = 'Stop'`,
-        `$p = Start-Process -FilePath '${escapePS(AGY_PATH)}' -ArgumentList @('--conversation', '${escapePS(resumeId)}', '--dangerously-skip-permissions') -WorkingDirectory '${escapePS(cwd)}' -WindowStyle Hidden -PassThru`,
+        `Set-Location -LiteralPath '${escapePS(cwd)}'`,
+        `$p = Start-Process -FilePath '${escapePS(AGY_PATH)}' -ArgumentList @('--conversation', '${escapePS(resumeId)}', '--dangerously-skip-permissions') -WindowStyle Hidden -PassThru`,
         `Write-Output $p.Id`,
       ].join("\n");
       this.writeLog(`spawn(resume): cascadeId=${resumeId}`);
     } else {
-      // New session: primer (runtimeSystemPrompt = primer YAML + session-shared
-      // + panel actions) goes via --prompt-interactive. agy creates an auto-
-      // cascade with this text as the first USER_INPUT step, which the LLM
-      // treats as initial system context.
-      //
-      // The primer is written to a temp file (UTF-8) and read by PowerShell,
-      // then escaped for CommandLineToArgvW (\" for inner quotes, with
-      // backslash-pairs handled correctly) and wrapped in "..." so that
-      // newlines/spaces/Korean/special chars all survive the round-trip.
+      // primer는 큰 텍스트(수만자)라 임시 파일로 저장 후 PowerShell에서 읽어 escape.
+      // CommandLineToArgvW spec: 2n backslashes before " → n backslashes + delimiter;
+      // 2n+1 → n backslashes + literal ". 따라서 " 앞의 backslash run을 doubling.
       let primer = appendSystemPrompt && appendSystemPrompt.length > 0 ? appendSystemPrompt : "_BRIDGE_INIT_";
       if (primer.length > MAX_PRIMER_CHARS) {
         this.writeLog(`WARN: primer truncated ${primer.length} → ${MAX_PRIMER_CHARS}`);
@@ -92,31 +106,43 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
       fs.writeFileSync(tempPrimerPath, primer, "utf-8");
       psScript = [
         `$ErrorActionPreference = 'Stop'`,
+        `Set-Location -LiteralPath '${escapePS(cwd)}'`,
         `$primer = [System.IO.File]::ReadAllText('${escapePS(tempPrimerPath)}', [System.Text.Encoding]::UTF8)`,
-        // Escape per MSDN CommandLineToArgvW: 2n backslashes before " produce n
-        // backslashes + delimiter, 2n+1 produce n backslashes + literal ". So
-        // we double any backslash run preceding a " and then prefix the " with \.
         `$primerEscaped = $primer -replace '(\\\\*)"', '$1$1\\"'`,
         `$primerArg = '"' + $primerEscaped + '"'`,
         `$argsString = '--prompt-interactive ' + $primerArg + ' --dangerously-skip-permissions'`,
-        `$p = Start-Process -FilePath '${escapePS(AGY_PATH)}' -ArgumentList $argsString -WorkingDirectory '${escapePS(cwd)}' -WindowStyle Hidden -PassThru`,
+        `$p = Start-Process -FilePath '${escapePS(AGY_PATH)}' -ArgumentList $argsString -WindowStyle Hidden -PassThru`,
         `Write-Output $p.Id`,
       ].join("\n");
-      this.writeLog(`spawn(new): primer=${primer.length}b temp=${tempPrimerPath}`);
+      this.writeLog(`spawn(new): primer=${primer.length}b cwd=${cwd}`);
     }
 
     const tempScriptPath = path.join(tempDir, `spawn-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.ps1`);
-    fs.writeFileSync(tempScriptPath, psScript, "utf-8");
+    // UTF-8 BOM prepend — Windows PowerShell 5.1은 BOM 없으면 시스템 ANSI(CP949)로
+    // 해석하여 한글 cwd가 mojibake되고 Start-Process가 wildcard 해석 fail함.
+    fs.writeFileSync(tempScriptPath, "﻿" + psScript, "utf-8");
 
     try {
-      const out = execSync(`powershell -NoProfile -ExecutionPolicy Bypass -File "${tempScriptPath}"`, { encoding: "utf-8" }).trim();
+      let out: string;
+      try {
+        out = execSync(`powershell -NoProfile -ExecutionPolicy Bypass -File "${tempScriptPath}"`, {
+          encoding: "utf-8",
+        }).trim();
+      } catch (err) {
+        const e = err as { stderr?: Buffer | string; stdout?: Buffer | string };
+        const stderr = (typeof e.stderr === "string" ? e.stderr : e.stderr?.toString("utf-8")) ?? "";
+        const stdout = (typeof e.stdout === "string" ? e.stdout : e.stdout?.toString("utf-8")) ?? "";
+        this.writeLog(`spawn powershell failed: stdout="${stdout.slice(0, 300)}" stderr="${stderr.slice(0, 300)}"`);
+        this.emit("error", `Failed to spawn agy: powershell exit. stderr=${stderr.slice(0, 200)}`);
+        return;
+      }
       const pid = Number(out);
       if (!pid || Number.isNaN(pid)) {
-        this.emit("error", `Failed to spawn agy: parse pid failed (out=${out})`);
+        this.emit("error", `Failed to spawn agy: parse pid failed (out="${out}")`);
         return;
       }
       this.agyPid = pid;
-      this.writeLog(`spawn pid=${pid} cwd=${cwd} model=${this.modelId}`);
+      this.writeLog(`spawn pid=${pid} model=${this.modelId}`);
     } finally {
       try { fs.unlinkSync(tempScriptPath); } catch { /* */ }
       if (tempPrimerPath) { try { fs.unlinkSync(tempPrimerPath); } catch { /* */ } }
@@ -132,7 +158,7 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
   }
 
   private async initialize(resumeId?: string): Promise<void> {
-    const port = this.discoverLsPort();
+    const port = await this.discoverLsPort();
     if (!port) throw new Error("LS port discovery timeout");
     this.lsPort = port;
 
@@ -552,9 +578,15 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), "utf-8");
   }
 
-  private discoverLsPort(): number | null {
+  private async discoverLsPort(): Promise<number | null> {
     if (!this.agyPid) return null;
     for (let i = 0; i < 15; i++) {
+      // 매 iter마다 재체크 — agy.exe가 즉시 exit하거나 외부에서 kill되면 agyPid가
+      // null로 바뀐 상태에서 Get-NetTCPConnection -OwningProcess null 호출되어 PS 에러.
+      if (!this.agyPid) {
+        this.writeLog(`discoverLsPort: agyPid became null at iter ${i} — aborting`);
+        return null;
+      }
       try {
         const out = execSync(
           `powershell -NoProfile -Command "Get-NetTCPConnection -OwningProcess ${this.agyPid} -State Listen -ErrorAction SilentlyContinue | Select-Object LocalPort | ConvertTo-Json -Compress"`,
@@ -571,7 +603,9 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
           }
         }
       } catch { /* */ }
-      execSync(`powershell -NoProfile -Command "Start-Sleep -Milliseconds 700"`, { stdio: "pipe" });
+      // 비동기 sleep — 이전엔 execSync(Start-Sleep)로 node event loop를 700ms씩
+      // 15회 = 10.5초 동안 통째로 블로킹했음. 다른 세션 요청까지 모두 hang.
+      await new Promise(r => setTimeout(r, 700));
     }
     return null;
   }
