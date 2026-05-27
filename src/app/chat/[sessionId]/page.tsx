@@ -1125,7 +1125,10 @@ export default function ChatPage() {
           <div
             style={{
               overflow: "hidden",
-              maxHeight: hasRequiredModal && !forceInput ? 0 : 200,
+              // modal hide animation용 max-height — 정상 상태는 choices + textarea +
+              // 버튼들이 합쳐 200px 훌쩍 넘는다. viewport 60%로 cap (ChatInput 내부의
+              // choices max-h-30vh, pendingEvents max-h-100px이 자체 스크롤).
+              maxHeight: hasRequiredModal && !forceInput ? 0 : "60vh",
               opacity: hasRequiredModal && !forceInput ? 0 : 1,
               transition: "max-height 0.25s ease, opacity 0.2s ease",
             }}

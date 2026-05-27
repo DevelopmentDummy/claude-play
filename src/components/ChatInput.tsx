@@ -674,7 +674,7 @@ function ChatInput({ disabled, isStreaming, onSend, onCancel, sessionId, choices
       {choices && choices.length > 0 && !disabled && (() => {
         const visible = choices.filter(c => !(c.dry && consumedDryTexts.has(c.text)));
         return visible.length > 0 ? (
-          <div className="flex flex-wrap gap-2 px-4 pt-3 pb-1">
+          <div className="flex flex-wrap gap-2 px-4 pt-3 pb-1 max-h-[30vh] overflow-y-auto">
             {visible.map((c, i) => (
               <ChoiceButton key={i} choice={c} busy={choiceBusy} onChoice={handleChoice} sessionId={sessionId} />
             ))}

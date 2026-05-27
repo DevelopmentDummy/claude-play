@@ -1549,8 +1549,9 @@ export class SessionInstance {
   }
 
   /** Antigravity 모델이 sub-agent orchestration 패턴을 hallucinate한 결과인지 판정.
-   *  RP 본문(`<dialog_response>`)이 없고 메타 cue(영어 placeholder, supervisor 호명,
-   *  SYSTEM_MESSAGE echo)만 있으면 true. 한국어 RP 페르소나에선 false positive 거의 없음. */
+   *  RP 본문(`<dialog_response>`)이 없고 메타 cue(영어 placeholder, 작업 보고,
+   *  supervisor 호명, SYSTEM_MESSAGE echo)만 있으면 true.
+   *  한국어 RP 페르소나에선 false positive 거의 없음. */
   private detectAntigravityMetaResponse(content: string): boolean {
     if (!content) return false;
     // dialog_response 태그가 본문이 있는 형태로 닫혀 있으면 정상 응답으로 간주
@@ -1558,12 +1559,20 @@ export class SessionInstance {
     if (dialogMatch && dialogMatch[1].trim().length > 0) return false;
     // 명백한 메타 cue. 한국어 RP 본문에서는 거의 발생하지 않는 영어 표현 위주.
     const metaCues = [
+      // 다른 에이전트에게 제출/시연 인사말
       /I am (now )?ready to present/i,
       /Let'?s submit it/i,
-      /Please stand by/i,
-      /I am processing .* in the background/i,
-      /while the image is being (rendered|generated)/i,
       /\bOceania\b/,
+      // 처리 중 placeholder
+      /Please stand by/i,
+      /I am (currently |now )?(processing|waiting|generating)/i,
+      /I will (resume|continue|present|provide) (the|my|a|its)/i,
+      /while the (image|task|generation|process) (is|are) (being|currently)/i,
+      /once the (image|task|generation|process) (is|are) (ready|rendered|generated|complete|done|finished)/i,
+      // 자기 작업 보고 ("I have triggered/initiated/started/completed/successfully ...")
+      /I have (triggered|initiated|started|completed|successfully|just)/i,
+      /I'?ve (triggered|initiated|started|completed|successfully|just)/i,
+      // SYSTEM_MESSAGE / task notification echo
       /<SYSTEM_MESSAGE>/,
       /An event has occurred\. See the following message:/,
       /\[Message\] timestamp=.*sender=.*priority=MESSAGE_PRIORITY/,
