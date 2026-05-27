@@ -259,10 +259,15 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
 
     // No prepend — primer is already the first USER_INPUT step of the cascade
     // via --prompt-interactive at spawn time. User messages are sent as-is.
-    // proto3 canonical JSON: oneof는 case/value 래퍼가 아니라 field name 직접 사용
+    // Chunk.text는 nested Text message — `{ content: string }`로 wrap해야 한다.
+    // 이전엔 raw string으로 보냈는데 agy가 schema mismatch로 deserialize 실패 →
+    // 모델 context에 user text가 안 들어가서 모델이 user 의도 모른 채 자율 진행 →
+    // RP 페르소나는 자연스러워 보이지만 일반 페르소나는 환각 응답. binary strings의
+    // `Chunk_Text` 패턴(protoc-gen-go nested type naming)이 단서. agy CLI native input과
+    // 비교 검증 완료 (2026-05-27).
     await this.rpc("SendUserCascadeMessage", {
       cascadeId: this.cascadeId,
-      items: [{ chunk: { text } }],
+      items: [{ chunk: { text: { content: text } } }],
       cascadeConfig: {
         plannerConfig: {
           plannerTypeConfig: { conversational: {} },
