@@ -5,7 +5,7 @@ import * as os from "os";
 import * as path from "path";
 import {
   applyPatch, SYSTEM_JSON, LINT_SKIP_JSON,
-  mutateSessionJsonSync, resolveSessionFilePath, readSessionJson, loadSessionData,
+  mutateSessionJsonSync, mutateSessionJson, resolveSessionFilePath, readSessionJson, loadSessionData,
 } from "./session-state";
 
 function tmpDir(): string {
@@ -117,4 +117,19 @@ test("loadSessionData: 비시스템 *.json만 data로, variables 분리", () => 
   const { variables, data } = loadSessionData(dir);
   assert.deepEqual(variables, { hp: 5 });
   assert.deepEqual(data, { inventory: { gold: 10 } });
+});
+
+test("applyPatch: deep merge에서 null은 객체를 교체한다", () => {
+  assert.deepEqual(applyPatch({ o: { a: 1 } }, { $merge: "deep", o: null }), { o: null });
+});
+
+test("applyPatch: $unset 없는 키/비객체 경로는 무해", () => {
+  assert.deepEqual(applyPatch({ a: 1 }, { $unset: ["nope", "a.b.c"] }), { a: 1 });
+});
+
+test("mutateSessionJson(async): 라운드트립 성공", async () => {
+  const fp = path.join(tmpDir(), "v.json");
+  const r = await mutateSessionJson(fp, (cur) => applyPatch(cur, { a: 1 }));
+  assert.equal(r.ok, true);
+  assert.deepEqual(JSON.parse(fs.readFileSync(fp, "utf-8")), { a: 1 });
 });
