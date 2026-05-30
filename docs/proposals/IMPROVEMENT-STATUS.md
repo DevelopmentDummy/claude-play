@@ -26,6 +26,10 @@
 
 > **comfyui-client.ts 분해 완료**: 2034 → **1213줄(−40%)**. 추출 모듈: comfyui-graph.ts(604, 순수 그래프수술), comfyui-checkpoint.ts(164), comfyui-history.ts(74). 남은 1213줄은 정당한 IO/네트워크/오케스트레이션(buildPrompt) 코어 — 추가 추출 비권장.
 
+| 12 | **거대 클래스 분해 — session-manager.ts** — understand 워크플로(95메서드)로 6 안전 클러스터 식별 후 추출. 코어 CRUD는 보존, public은 위임 래퍼로 API 보존, appRoot 주입. **2414→1940줄(−20%)** | ✅ merged `main` | `73ad7b0`→`9709bdf` (6/6 적대적 토큰단위 SHIP, 빌드 green) |
+
+> **session-manager.ts 분해 완료**: 2414 → **1940줄(−20%)**. 추출 6모듈: session-sync-diff.ts(104, persona↔session diff 술어), runtime-instructions.ts(88), session-config-io.ts(73, layout/voice/options I/O), runtime-config.ts(205, .claude/.mcp/.codex/.gemini config emit), prompt-assembly.ts(107, 시스템 프롬프트 조립), fs-mirror.ts(38, 재귀복사). public 메서드는 얇은 위임 래퍼로 외부 API(17+파일 60호출) 무변경. **수동 스모크 권장(미실시)**: create-session + open-session(헤드리스 후 사용자) — tsc는 동작 drift는 못 잡음.
+
 ## 보류 항목 (재개 시 필요한 것)
 
 - **웨이브2 (Antigravity 룰셋)**: 적대적 리뷰가 agy brain transcript(`~/.gemini/antigravity-cli/brain/{cascadeId}/.system_generated/logs/transcript.jsonl`)를 직접 분석 → **agy가 GEMINI.md 본문을 컨텍스트에 auto-load하지 않음**(LIST_DIRECTORY 파일명으로만 등장). 지시문은 primer(USER_INPUT step0)로 전달되고 cascade history에 남아 resume에도 유지됨. 즉 감사 #1 전제("resume마다 룰셋 유실")가 부정확하고, GEMINI.md 수정은 resume에 대해 no-op 공산. **실제 결함은 new세션 28000자 primer truncation + 컴팩션**. 재개 시: ① codeword 런타임 검증(GEMINI.md 룰셋부에만 심은 지시를 resume 후 모델이 따르는지) ② 안 따르면 primer truncation을 직접 겨냥해 재설계. 브랜치 `feat/antigravity-ruleset-persistence`는 무해하니 검증 후 살리거나 폐기.
@@ -34,9 +38,9 @@
 
 ## 다음 웨이브 후보 (랭킹·성격)
 
-- **⑥ 거대 클래스 분해** (large effort, navigability-only, **테스트 프레임워크 없음 → 회귀 위험**): **comfyui-client.ts 완료(웨이브6~11, 2034→1213줄, −40%)**. 패턴: understand 워크플로로 순수/주입가능 메서드 분류 → verbatim move + 파라미터 주입 → build(TS strict 하드게이트) + 전역 grep + 적대적 토큰대조. 남은 거대 클래스:
-  - **session-manager.ts(2424줄, 7서브시스템)** — 다음 타깃. 파일기반 세션/페르소나 CRUD = 앱 백본이라 **comfyui보다 고위험**(순수함수 적고 stateful). understand 워크플로로 안전 추출 가능 부분만 식별 후 진행 권장.
-  - session-instance.ts 내부 TTS 엔진(~280줄).
+- **⑥ 거대 클래스 분해** (large effort, navigability-only, **테스트 프레임워크 없음 → 회귀 위험**): **comfyui-client.ts(2034→1213) + session-manager.ts(2414→1940) 완료(웨이브6~12)**. 패턴: understand 워크플로로 순수/주입가능 메서드 분류 → verbatim move/파라미터 주입/public 위임 래퍼 → build(TS strict 하드게이트) + 전역 grep + 적대적 토큰대조. 남은 후보:
+  - **session-instance.ts 내부 TTS 엔진(~280줄)** — 마지막 분해 후보. session-instance.ts(AI 런타임 인스턴스, 코어)에서 TTS 로직 분리.
+  - **수동 런타임 스모크(미실시)**: 분해는 전부 tsc+적대적 토큰대조로 검증됐으나 동작 drift는 미검증. 사용자가 create-session/open-session/이미지생성/TTS 한 번씩 태워보면 확실.
   - 그 다음 거대 클래스: **session-manager.ts(2424줄, 7서브시스템)**, session-instance.ts 내부 TTS 엔진(~280줄).
   - 각 슬라이스: verbatim move + `npm run build`(TS strict 하드게이트) + 전역 grep + 적대적 토큰대조. in-place 변형/반환 보존 불변식 준수.
 - ~~후속 small: 모달 그룹 병합 중복 + clearPopups 원자화~~ → **웨이브5로 완료**. (variables route의 `__modals`는 단순 shallow merge라 의미가 달라 의도적으로 통합 제외 — 동작 보존.)
