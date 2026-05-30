@@ -739,23 +739,7 @@ export class SessionInstance {
     if (!fs.existsSync(hookPath)) return;
 
     try {
-      const varsPath = path.join(dir, "variables.json");
-      let variables: Record<string, unknown> = {};
-      try { variables = JSON.parse(fs.readFileSync(varsPath, "utf-8")); } catch {}
-
-      const SYSTEM_JSON = new Set([
-        "variables.json", "session.json", "builder-session.json", "layout.json",
-        "chat-history.json", "pending-events.json", "pending-actions.json",
-        "package.json", "tsconfig.json", "voice.json", "chat-options.json",
-      ]);
-      const data: Record<string, unknown> = {};
-      try {
-        for (const f of fs.readdirSync(dir)) {
-          if (f.endsWith(".json") && !SYSTEM_JSON.has(f)) {
-            try { data[f.replace(".json", "")] = JSON.parse(fs.readFileSync(path.join(dir, f), "utf-8")); } catch {}
-          }
-        }
-      } catch {}
+      const { variables, data } = loadSessionData(dir);
 
       // eslint-disable-next-line no-eval
       const nativeRequire = eval("require") as NodeRequire;
