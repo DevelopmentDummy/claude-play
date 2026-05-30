@@ -7,8 +7,9 @@ import * as fs from "fs";
 import { getServices, getSessionManager } from "./services";
 import { generateEdgeTts } from "./edge-tts-client";
 import { wsBroadcast } from "./ws-server";
+import { getGpuManagerUrl } from "./endpoints";
 
-const GPU_MANAGER_URL = `http://127.0.0.1:${process.env.GPU_MANAGER_PORT || "3342"}`;
+const GPU_MANAGER_URL = getGpuManagerUrl();
 
 async function gpuManagerAvailable(): Promise<boolean> {
   try {

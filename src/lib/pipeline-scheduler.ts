@@ -1,6 +1,7 @@
 import { getInternalToken } from "./auth";
 import { getSessionInstance } from "./session-registry";
 import { wsBroadcast } from "./ws-server";
+import { getApiBase } from "./endpoints";
 
 type SchedulerPhase = "idle" | "source" | "teacher" | "stopping" | "error";
 
@@ -38,7 +39,7 @@ function getRegistry(): SchedulerRegistry {
 }
 
 function apiBase(): string {
-  return (process.env.CLAUDE_PLAY_API_BASE || `http://127.0.0.1:${process.env.PORT || "3340"}`).replace(/\/+$/, "");
+  return getApiBase();
 }
 
 async function requestJson(method: string, route: string, payload?: unknown) {

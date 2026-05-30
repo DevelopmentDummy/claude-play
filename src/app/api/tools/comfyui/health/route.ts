@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { ComfyUIClient } from "@/lib/comfyui-client";
+import { getGpuManagerPort } from "@/lib/endpoints";
 
 export async function GET() {
   const host = process.env.COMFYUI_HOST || "127.0.0.1";
   const port = parseInt(process.env.COMFYUI_PORT || "8188", 10);
-  const gpuManagerPort = process.env.GPU_MANAGER_PORT || "3342";
+  const gpuManagerPort = String(getGpuManagerPort());
   const client = new ComfyUIClient({ host, port }, "");
 
   const result: Record<string, unknown> = {

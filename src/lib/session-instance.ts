@@ -9,6 +9,7 @@ import { SessionManager } from "./session-manager";
 import { PanelEngine } from "./panel-engine";
 import { AIProvider } from "./ai-provider";
 import { generateEdgeTts } from "./edge-tts-client";
+import { getGpuManagerUrl } from "./endpoints";
 import { buildHintSnapshotLine } from "./hint-snapshot";
 import { spawnBackgroundClaude } from "./background-session";
 import {
@@ -1154,7 +1155,7 @@ export class SessionInstance {
         if (!voiceFile || !fs.existsSync(voiceFile)) return;
 
         const modelSize = voiceConfig.modelSize || "2B";
-        const gpuManagerUrl = `http://127.0.0.1:${process.env.GPU_MANAGER_PORT || "3342"}`;
+        const gpuManagerUrl = getGpuManagerUrl();
         const audioDir = path.join(dir, "audio");
         if (!fs.existsSync(audioDir)) fs.mkdirSync(audioDir, { recursive: true });
 
@@ -1244,7 +1245,7 @@ export class SessionInstance {
 
         const lang = voiceConfig.language || "ko";
         const modelSize = voiceConfig.modelSize || "1.7B";
-        const gpuManagerUrl = `http://127.0.0.1:${process.env.GPU_MANAGER_PORT || "3342"}`;
+        const gpuManagerUrl = getGpuManagerUrl();
 
         broadcastRef("audio:status", { status: "queued", messageId, totalChunks });
 

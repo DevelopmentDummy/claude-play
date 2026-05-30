@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
+import { getGpuManagerPort } from "@/lib/endpoints";
 
 export async function GET() {
-  const gpuManagerPort = parseInt(process.env.GPU_MANAGER_PORT || String((parseInt(process.env.PORT || "3340", 10)) + 2), 10);
+  const gpuManagerPort = getGpuManagerPort();
   try {
     const res = await fetch(`http://127.0.0.1:${gpuManagerPort}/health`, {
       signal: AbortSignal.timeout(3000),

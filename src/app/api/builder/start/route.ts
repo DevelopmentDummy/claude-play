@@ -4,6 +4,7 @@ import * as path from "path";
 import { getServices, openSessionInstance, closeSessionInstance } from "@/lib/services";
 import { getAppRoot } from "@/lib/data-dir";
 import { resolveBuilderModel } from "@/lib/ai-provider";
+import { getGpuManagerPort } from "@/lib/endpoints";
 
 export async function POST(req: Request) {
   const body = (await req.json()) as { name: string; model?: string };
@@ -25,7 +26,7 @@ export async function POST(req: Request) {
   svc.sessions.ensureClaudeRuntimeConfig(personaDir, name, "builder");
 
   // Check Local TTS availability for conditional builder prompt
-  const gpuManagerPort = parseInt(process.env.GPU_MANAGER_PORT || String((parseInt(process.env.PORT || "3340", 10)) + 2), 10);
+  const gpuManagerPort = getGpuManagerPort();
   let localTtsAvailable = false;
   try {
     const healthRes = await fetch(`http://127.0.0.1:${gpuManagerPort}/health`, { signal: AbortSignal.timeout(2000) });

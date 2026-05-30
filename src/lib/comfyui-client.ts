@@ -8,6 +8,7 @@ import {
   type WorkflowFeatures,
   type DetailerChainConfig,
 } from "./workflow-resolver";
+import { getGpuManagerUrl } from "./endpoints";
 
 /** Sanitize a relative file path: preserve subdirectories but prevent traversal */
 function safePath(filePath: string): string {
@@ -1459,8 +1460,7 @@ export class ComfyUIClient {
   }
 
   private get gpuManagerUrl(): string {
-    const port = process.env.GPU_MANAGER_PORT || "3342";
-    return `http://127.0.0.1:${port}`;
+    return getGpuManagerUrl();
   }
 
   /** Cache GPU Manager availability for 30s to avoid repeated health checks

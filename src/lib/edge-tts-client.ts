@@ -1,5 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
+import { getTtsPort, getTtsServerUrl } from "./endpoints";
 
 export interface EdgeTtsOptions {
   voice: string;
@@ -27,7 +28,7 @@ export const EDGE_TTS_VOICES: EdgeTtsVoice[] = [
   { id: "zh-CN-YunjianNeural", label: "云健 (男)", lang: "zh", gender: "M" },
 ];
 
-const TTS_SERVER_URL = `http://127.0.0.1:${process.env.TTS_PORT || "3341"}`;
+const TTS_SERVER_URL = getTtsServerUrl();
 
 /**
  * Generate TTS audio via the standalone TTS server.
@@ -76,7 +77,7 @@ export async function generateEdgeTts(
     console.error(`[edge-tts] Error after ${elapsed}ms:`, message);
 
     if (message.includes("ECONNREFUSED")) {
-      return { success: false, error: "TTS server not running (port " + (process.env.TTS_PORT || "3341") + ")" };
+      return { success: false, error: "TTS server not running (port " + String(getTtsPort()) + ")" };
     }
     return { success: false, error: message };
   }

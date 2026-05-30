@@ -4,6 +4,7 @@ import Handlebars from "handlebars";
 import { getDataDir } from "./data-dir";
 import { ensureHandlebarsHelpers } from "./panel-engine";
 import { getInternalToken } from "./auth";
+import { getApiBase, getPort } from "./endpoints";
 import { AIProvider, providerFromModel } from "./ai-provider";
 import { SYSTEM_JSON } from "./session-state";
 
@@ -2007,7 +2008,7 @@ export class SessionManager {
   /** Copy global shared skills (data/skills/) and tool-specific skills (data/tools/X/skills/) into the session skills dir */
   private copyToolSkills(skillsDest: string): void {
     const dataDir = getDataDir();
-    const port = process.env.PORT || "3340";
+    const port = String(getPort());
 
     // Collect all skill source directories: shared skills + tool-specific skills
     const skillSources: string[] = [];
@@ -2084,8 +2085,7 @@ export class SessionManager {
     mode: "builder" | "session" = "session"
   ): void {
     const serverScript = path.join(this.appRoot, "src", "mcp", "claude-play-mcp-server.mjs");
-    const apiBase = (process.env.CLAUDE_PLAY_API_BASE || `http://127.0.0.1:${process.env.PORT || "3340"}`)
-      .replace(/\/+$/, "");
+    const apiBase = getApiBase();
 
     const mcpConfig = {
       mcpServers: {
@@ -2121,8 +2121,7 @@ export class SessionManager {
     fs.mkdirSync(codexDir, { recursive: true });
 
     const serverScript = path.join(this.appRoot, "src", "mcp", "claude-play-mcp-server.mjs");
-    const apiBase = (process.env.CLAUDE_PLAY_API_BASE || `http://127.0.0.1:${process.env.PORT || "3340"}`)
-      .replace(/\/+$/, "");
+    const apiBase = getApiBase();
 
     // model_instructions_file: absolute path to instructions file
     const instructionsPath = path.join(codexDir, "model-instructions.md");
@@ -2175,8 +2174,7 @@ export class SessionManager {
     fs.mkdirSync(geminiDir, { recursive: true });
 
     const serverScript = path.join(this.appRoot, "src", "mcp", "claude-play-mcp-server.mjs");
-    const apiBase = (process.env.CLAUDE_PLAY_API_BASE || `http://127.0.0.1:${process.env.PORT || "3340"}`)
-      .replace(/\/+$/, "");
+    const apiBase = getApiBase();
 
     const settings = {
       mcpServers: {
