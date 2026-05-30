@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { getServices, getSessionInstance } from "@/lib/services";
 import { spawnBackgroundClaude } from "@/lib/background-session";
 import { mutateSessionJson, applyPatch, loadSessionData, resolveSessionFilePath } from "@/lib/session-state";
+import { readModalGroups, applyModalChange } from "@/lib/modal-merge";
 
 const PROTECTED_FILES = new Set([
   "session.json", "builder-session.json", "layout.json",
@@ -101,28 +102,10 @@ export async function POST(
       const vr = await mutateSessionJson(varsPath, (current) => {
         const merged = applyPatch(current, restVars);
         if (modalChanges && typeof modalChanges === "object" && !Array.isArray(modalChanges)) {
-          const modals: Record<string, unknown> = { ...((current.__modals as Record<string, unknown>) || {}) };
-          let modalGroups: Record<string, string[]> = {};
-          const layoutPath = path.join(sessionDir, "layout.json");
-          try {
-            if (fs.existsSync(layoutPath)) {
-              let layoutRaw = fs.readFileSync(layoutPath, "utf-8");
-              if (layoutRaw.charCodeAt(0) === 0xfeff) layoutRaw = layoutRaw.slice(1);
-              modalGroups = JSON.parse(layoutRaw)?.panels?.modalGroups || {};
-            }
-          } catch {}
+          let modals: Record<string, unknown> = { ...((current.__modals as Record<string, unknown>) || {}) };
+          const modalGroups = readModalGroups(sessionDir);
           for (const [mName, value] of Object.entries(modalChanges)) {
-            if (value && value !== false && value !== null) {
-              for (const members of Object.values(modalGroups)) {
-                if (members.includes(mName)) {
-                  for (const member of members) if (member !== mName) modals[member] = false;
-                  break;
-                }
-              }
-              modals[mName] = value;
-            } else {
-              modals[mName] = false;
-            }
+            modals = applyModalChange(modals, modalGroups, mName, value);
           }
           merged.__modals = modals;
         }
