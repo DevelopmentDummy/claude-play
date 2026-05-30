@@ -1,5 +1,7 @@
 "use client";
 
+import { useState, useRef, useEffect } from "react";
+
 interface ProfileCardProps {
   name: string;
   isPrimary?: boolean;
@@ -8,6 +10,22 @@ interface ProfileCardProps {
 }
 
 export default function ProfileCard({ name, isPrimary, onEdit, onDelete }: ProfileCardProps) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+  }, []);
+
+  const handleDelete = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    // Profile delete is a HARD (non-recoverable) delete — require a confirming
+    // second click within the timeout window, mirroring SessionCard.
+    if (confirmDelete) { onDelete(); return; }
+    setConfirmDelete(true);
+    timerRef.current = setTimeout(() => setConfirmDelete(false), 2500);
+  };
+
   return (
     <div
       className={`group relative inline-flex items-center gap-2 px-3 py-1.5 rounded-full cursor-pointer
@@ -24,12 +42,14 @@ export default function ProfileCard({ name, isPrimary, onEdit, onDelete }: Profi
       <span className="text-[11px] font-medium">{name}</span>
       <button
         type="button"
-        className="text-xs text-text-dim/40 cursor-pointer ml-0.5
-          opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-fast
-          hover:text-error"
-        onClick={(e) => { e.stopPropagation(); onDelete(); }}
+        className={`cursor-pointer ml-0.5 transition-all duration-fast
+          ${confirmDelete
+            ? "text-[10px] text-error font-medium opacity-100"
+            : "text-xs text-text-dim/40 opacity-100 md:opacity-0 md:group-hover:opacity-100 hover:text-error"
+          }`}
+        onClick={handleDelete}
       >
-        &times;
+        {confirmDelete ? "삭제?" : <>&times;</>}
       </button>
     </div>
   );

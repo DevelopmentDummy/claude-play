@@ -11,6 +11,7 @@ import PersonaStartModal from "@/components/PersonaStartModal";
 import ImportPersonaModal from "@/components/ImportPersonaModal";
 import PublishPersonaModal from "@/components/PublishPersonaModal";
 import ClonePersonaDialog from "@/components/ClonePersonaDialog";
+import ToastEffect, { showToast } from "@/components/ToastEffect";
 
 const PERSONA_ACCENTS = [
   "#b87db8",
@@ -110,17 +111,21 @@ export default function LobbyPage() {
     });
   };
 
-  const startSession = async (personaName: string, profileSlug?: string, model?: string) => {
+  const startSession = async (
+    personaName: string,
+    profileSlug?: string,
+    model?: string
+  ): Promise<boolean> => {
     const res = await fetch("/api/sessions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ personaName, profileSlug }),
     });
-    if (res.ok) {
-      const session = await res.json();
-      const q = model ? `?model=${encodeURIComponent(model)}` : "";
-      router.push(`/chat/${encodeURIComponent(session.id)}${q}`);
-    }
+    if (!res.ok) return false;
+    const session = await res.json();
+    const q = model ? `?model=${encodeURIComponent(model)}` : "";
+    router.push(`/chat/${encodeURIComponent(session.id)}${q}`);
+    return true;
   };
 
   const createProfile = async (
@@ -133,6 +138,10 @@ export default function LobbyPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name, description, isPrimary }),
     });
+    if (!res.ok) {
+      const err = await res.json().catch(() => null);
+      throw new Error(err?.error || "프로필 생성에 실패했습니다.");
+    }
     const data = await res.json();
     if (isPrimary) {
       // Update local state to clear other primaries
@@ -160,11 +169,12 @@ export default function LobbyPage() {
 
   const saveProfile = async (name: string, description: string, isPrimary?: boolean) => {
     if (editingProfile) {
-      await fetch(`/api/profiles/${encodeURIComponent(editingProfile.slug)}`, {
+      const res = await fetch(`/api/profiles/${encodeURIComponent(editingProfile.slug)}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, description, isPrimary }),
       });
+      if (!res.ok) throw new Error("프로필 저장에 실패했습니다.");
       setEditingProfile(null);
       loadLobby();
     } else {
@@ -173,17 +183,27 @@ export default function LobbyPage() {
   };
 
   const deleteProfile = async (slug: string) => {
-    await fetch(`/api/profiles/${encodeURIComponent(slug)}`, {
+    const res = await fetch(`/api/profiles/${encodeURIComponent(slug)}`, {
       method: "DELETE",
     });
-    setProfiles((prev) => prev.filter((p) => p.slug !== slug));
+    if (res.ok) {
+      setProfiles((prev) => prev.filter((p) => p.slug !== slug));
+      showToast("프로필을 삭제했습니다");
+    } else {
+      showToast("프로필 삭제에 실패했습니다");
+    }
   };
 
   const deleteSession = async (id: string) => {
-    await fetch(`/api/sessions/${encodeURIComponent(id)}`, {
+    const res = await fetch(`/api/sessions/${encodeURIComponent(id)}`, {
       method: "DELETE",
     });
-    loadLobby();
+    if (res.ok) {
+      loadLobby();
+      showToast("세션을 삭제했습니다");
+    } else {
+      showToast("세션 삭제에 실패했습니다");
+    }
   };
 
   const startBuilder = (name: string, model?: string) => {
@@ -204,8 +224,9 @@ export default function LobbyPage() {
         fetch(`/api/sessions/${encodeURIComponent(s.id)}`, { method: "DELETE" })
       )
     );
-    await fetch(`/api/personas/${encodeURIComponent(name)}`, { method: "DELETE" });
+    const res = await fetch(`/api/personas/${encodeURIComponent(name)}`, { method: "DELETE" });
     loadLobby();
+    showToast(res.ok ? "페르소나를 삭제했습니다" : "페르소나 삭제에 실패했습니다");
   };
 
   const handleImported = useCallback((_name: string) => {
@@ -464,10 +485,13 @@ export default function LobbyPage() {
         onClose={() =>
           setStartModal({ open: false, personaName: "", personaDisplayName: "", accentColor: "" })
         }
-        onStart={(profileSlug, model) => {
+        onStart={async (profileSlug, model) => {
           const pName = startModal.personaName;
-          setStartModal({ open: false, personaName: "", personaDisplayName: "", accentColor: "" });
-          startSession(pName, profileSlug, model);
+          const ok = await startSession(pName, profileSlug, model);
+          if (ok) {
+            setStartModal({ open: false, personaName: "", personaDisplayName: "", accentColor: "" });
+          }
+          return ok;
         }}
         onPublish={() => {
           const pName = startModal.personaName;
@@ -496,6 +520,8 @@ export default function LobbyPage() {
         onClose={() => setCloneTarget(null)}
         onCloned={() => loadLobby()}
       />
+
+      <ToastEffect />
     </div>
   );
 }

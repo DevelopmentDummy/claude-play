@@ -28,7 +28,7 @@ interface PersonaStartModalProps {
   accentColor: string;
   profiles: ProfileOption[];
   onClose: () => void;
-  onStart: (profileSlug?: string, model?: string) => void;
+  onStart: (profileSlug?: string, model?: string) => Promise<boolean> | void;
   onPublish?: () => void;
   isImported?: boolean;
   isPublished?: boolean;
@@ -57,13 +57,38 @@ export default function PersonaStartModal({
   const [openingContent, setOpeningContent] = useState<string | null>(null);
   const [hasProfileImage, setHasProfileImage] = useState(false);
   const [selectedModel, setSelectedModel] = useState<string>("opus[1m]:medium");
+  const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
 
   useEffect(() => {
     if (open) {
       const primary = profiles.find((p) => p.isPrimary);
       setSelectedProfile(primary ? primary.slug : "__none__");
+      setStarting(false);
+      setStartError(null);
     }
   }, [open, profiles]);
+
+  const handleStart = useCallback(async () => {
+    setStarting(true);
+    setStartError(null);
+    try {
+      // "__none__" is a UI sentinel for "no profile" — the backend treats a
+      // falsy slug as profile-less, so normalize it to undefined (never send the
+      // literal sentinel as a slug).
+      const profileArg = selectedProfile === "__none__" ? undefined : selectedProfile;
+      const ok = await onStart(profileArg, selectedModel || undefined);
+      if (ok === false) {
+        setStartError("세션 시작에 실패했습니다. 다시 시도해 주세요.");
+        setStarting(false);
+      }
+      // On success the parent navigates away / closes this modal — keep `starting`
+      // true so the button doesn't flash enabled during the route transition.
+    } catch (e) {
+      setStartError(e instanceof Error ? e.message : "세션 시작에 실패했습니다.");
+      setStarting(false);
+    }
+  }, [onStart, selectedProfile, selectedModel]);
 
   useEffect(() => {
     if (!open || !personaName) return;
@@ -252,6 +277,9 @@ export default function PersonaStartModal({
 
         {/* ── Footer: profile + model select + start (sticky) ── */}
         <div className="relative px-7 py-5 border-t border-border/40 shrink-0 bg-surface/80 backdrop-blur-sm">
+          {startError && (
+            <div className="mb-3 text-[12px] text-error">{startError}</div>
+          )}
           <div className="flex items-center gap-3">
             <div className="flex-1 relative">
               <label className="block text-[11px] text-text-dim/50 uppercase tracking-wider font-medium mb-1.5">
@@ -327,20 +355,20 @@ export default function PersonaStartModal({
                 </button>
               )}
               <button
-                disabled={selectedProfile === "__none__"}
-                onClick={() => onStart(selectedProfile, selectedModel || undefined)}
+                disabled={starting}
+                onClick={handleStart}
                 className="px-6 py-2.5 rounded-xl text-sm font-medium
                   border transition-all duration-fast
-                  disabled:opacity-35 disabled:cursor-not-allowed disabled:translate-y-0
+                  disabled:opacity-50 disabled:cursor-not-allowed disabled:translate-y-0
                   enabled:cursor-pointer enabled:hover:-translate-y-px enabled:active:translate-y-0"
                 style={{
-                  background: selectedProfile === "__none__" ? undefined : accentColor,
-                  borderColor: selectedProfile === "__none__" ? "var(--border)" : accentColor,
-                  color: selectedProfile === "__none__" ? "var(--text-dim)" : "#fff",
-                  boxShadow: selectedProfile === "__none__" ? "none" : `0 4px 20px ${accentColor}40`,
+                  background: accentColor,
+                  borderColor: accentColor,
+                  color: "#fff",
+                  boxShadow: `0 4px 20px ${accentColor}40`,
                 }}
               >
-                Start
+                {starting ? "Starting…" : "Start"}
               </button>
             </div>
           </div>

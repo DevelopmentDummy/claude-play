@@ -5,7 +5,7 @@ import { useRef, useCallback, useEffect, useState } from "react";
 interface NewProfileDialogProps {
   open: boolean;
   onClose: () => void;
-  onSave: (name: string, description: string, isPrimary?: boolean) => void;
+  onSave: (name: string, description: string, isPrimary?: boolean) => Promise<void> | void;
   editData?: { name: string; description: string; isPrimary?: boolean } | null;
   /** When true, Cancel and ESC are disabled (first-time profile creation) */
   required?: boolean;
@@ -21,8 +21,14 @@ export default function NewProfileDialog({
   const nameRef = useRef<HTMLInputElement>(null);
   const descRef = useRef<HTMLTextAreaElement>(null);
   const [isPrimary, setIsPrimary] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (open) {
+      setSaving(false);
+      setSaveError(null);
+    }
     if (open && editData) {
       if (nameRef.current) nameRef.current.value = editData.name;
       if (descRef.current) descRef.current.value = editData.description;
@@ -34,12 +40,21 @@ export default function NewProfileDialog({
     }
   }, [open, editData]);
 
-  const handleOk = useCallback(() => {
+  const handleOk = useCallback(async () => {
     const name = nameRef.current?.value.trim();
     const description = descRef.current?.value.trim() || "";
     if (!name) return;
-    onSave(name, description, isPrimary || undefined);
-    onClose();
+    setSaving(true);
+    setSaveError(null);
+    try {
+      // Only close once the save actually succeeds — a failed POST must NOT
+      // dismiss the (possibly required) dialog or inject a phantom profile.
+      await onSave(name, description, isPrimary || undefined);
+      onClose();
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : "저장에 실패했습니다.");
+      setSaving(false);
+    }
   }, [onSave, onClose, isPrimary]);
 
   const handleKeyDown = useCallback(
@@ -106,6 +121,10 @@ export default function NewProfileDialog({
           </div>
         </label>
 
+        {saveError && (
+          <div className="text-[12px] text-error -mt-2">{saveError}</div>
+        )}
+
         <div className="flex justify-end gap-2.5 mt-1">
           {!required && (
             <button
@@ -117,9 +136,10 @@ export default function NewProfileDialog({
           )}
           <button
             onClick={handleOk}
-            className="px-4 py-2 border border-accent rounded-lg bg-accent text-white cursor-pointer text-sm font-medium shadow-[0_2px_12px_var(--accent-glow)] hover:bg-accent-hover hover:-translate-y-px transition-all duration-fast"
+            disabled={saving}
+            className="px-4 py-2 border border-accent rounded-lg bg-accent text-white cursor-pointer text-sm font-medium shadow-[0_2px_12px_var(--accent-glow)] hover:bg-accent-hover hover:-translate-y-px transition-all duration-fast disabled:opacity-50 disabled:cursor-not-allowed disabled:translate-y-0"
           >
-            {isEdit ? "Save" : "Create"}
+            {saving ? "저장 중…" : isEdit ? "Save" : "Create"}
           </button>
         </div>
       </div>
