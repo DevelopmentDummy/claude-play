@@ -16,6 +16,7 @@
 | 2 | **Antigravity 룰셋 영속화** — GEMINI.md에 런타임 룰셋 기록 | ⏸ **보류** | branch `feat/antigravity-ruleset-persistence` (`fd25a50`, 미머지) |
 | 3 | **로비/온보딩 실패처리 UX** — startSession 침묵실패·phantom 프로필 게이트·무가드 HARD 삭제·ToastEffect 마운트 | ✅ merged `main` | `fa921e8`, `56d1a9e` |
 | 4 | **설정 SSOT** — `src/lib/endpoints.ts` (포트/URL 단일출처, 비기본 PORT divergence 제거) | ✅ merged `main` | `e8003a6` |
+| 5 | **쓰기경로 통합** — `src/lib/modal-merge.ts` (모달 그룹 병합 2중복 → 1, behavior-preserving) + `clearPopups` 원자화(raw write → `mutateSessionJsonSync`) | ✅ merged `main` | `c574da5`→`a35f473` (12 unit tests, 적대적 SHIP) |
 
 ## 보류 항목 (재개 시 필요한 것)
 
@@ -25,8 +26,8 @@
 
 ## 다음 웨이브 후보 (랭킹·성격)
 
-- **⑤ 거대 클래스 분해** (large effort, navigability-only, **테스트 프레임워크 없음 → 회귀 위험**): session-manager.ts(2424줄, 7서브시스템), session-instance.ts 내부 TTS 엔진(~280줄), comfyui-client.ts 그래프 수술 로직(~700줄, 가장 안전한 순수 추출). 가장 안전한 한 조각(comfyui-graph.ts 추출)부터 수동 스모크 동반 권장.
-- **후속 small**: 모달 그룹/layout.json 병합 로직 3중복(tools/variables/modals route) → 공유 헬퍼; `clearPopups` variables.json 쓰기 원자화(웨이브1 인벤토리 밖).
+- **⑥ 거대 클래스 분해** (large effort, navigability-only, **테스트 프레임워크 없음 → 회귀 위험**): session-manager.ts(2424줄, 7서브시스템), session-instance.ts 내부 TTS 엔진(~280줄), comfyui-client.ts 그래프 수술 로직(~700줄, 가장 안전한 순수 추출). 가장 안전한 한 조각(comfyui-graph.ts 추출)부터 수동 스모크 동반 권장.
+- ~~후속 small: 모달 그룹 병합 중복 + clearPopups 원자화~~ → **웨이브5로 완료**. (variables route의 `__modals`는 단순 shallow merge라 의미가 달라 의도적으로 통합 제외 — 동작 보존.)
 
 ## 작업 규약 (이 작업에서 지킨 것)
 
