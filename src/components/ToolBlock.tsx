@@ -12,9 +12,12 @@ export default function ToolBlock({ name, input }: ToolBlockProps) {
 
   return (
     <div className="inline-flex flex-col">
-      <div
-        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-surface-light border border-border/50 cursor-pointer text-[11px] text-text-dim select-none hover:bg-[rgba(31,47,80,0.9)] transition-colors duration-fast"
+      <button
+        type="button"
+        className="appearance-none text-left inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-surface-light border border-border/50 cursor-pointer text-[11px] text-text-dim select-none hover:bg-[rgba(31,47,80,0.9)] transition-colors duration-fast"
         onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        aria-label="도구 입력 보기 토글"
       >
         <span
           className="text-[9px] transition-transform duration-200"
@@ -23,7 +26,7 @@ export default function ToolBlock({ name, input }: ToolBlockProps) {
           &#9654;
         </span>
         <span className="truncate max-w-[200px]">{name}</span>
-      </div>
+      </button>
       {open && (
         <div className="mt-1 text-xs w-full min-w-[300px]">
           {input != null && (

@@ -186,8 +186,10 @@ export default function InlineImage({ sessionId, personaName, path: imgPath, onR
 
   if (state === "error") {
     return (
-      <div
-        className="inline-flex items-center gap-2 bg-[#2a1a1a] rounded-lg px-3 py-2 my-1 cursor-pointer hover:bg-[#3a2a2a] transition-colors"
+      <button
+        type="button"
+        className="appearance-none border-0 text-left inline-flex items-center gap-2 bg-[#2a1a1a] rounded-lg px-3 py-2 my-1 cursor-pointer hover:bg-[#3a2a2a] transition-colors"
+        aria-label="이미지 로드 실패 — 탭하여 재생성 요청"
         onClick={async () => {
           setState("loading");
           // Try to ask the AI to regenerate this missing image. If we have sessionId,
@@ -210,7 +212,7 @@ export default function InlineImage({ sessionId, personaName, path: imgPath, onR
         }}
       >
         <span className="text-[#a08888] text-sm">이미지 로드 실패 — 탭하여 재생성 요청</span>
-      </div>
+      </button>
     );
   }
 
@@ -238,7 +240,12 @@ export default function InlineImage({ sessionId, personaName, path: imgPath, onR
 
   return (
     <>
-      <div className="block my-2 cursor-zoom-in" onClick={() => setShowModal(true)}>
+      <button
+        type="button"
+        className="appearance-none border-0 bg-transparent p-0 block my-2 cursor-zoom-in"
+        aria-label="이미지 확대"
+        onClick={() => setShowModal(true)}
+      >
         <img
           src={src}
           alt={imgPath}
@@ -246,7 +253,7 @@ export default function InlineImage({ sessionId, personaName, path: imgPath, onR
           onLoad={handleImageLoad}
           onError={handleImageError}
         />
-      </div>
+      </button>
       {showModal && <ImageModal src={src} onClose={() => setShowModal(false)} />}
     </>
   );

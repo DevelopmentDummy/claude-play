@@ -21,8 +21,8 @@ export default function PanelResizeHandle({
   const dragRef = useRef<{ startX: number; startSize: number } | null>(null);
   const currentSize = useRef(0);
 
-  const handleMouseDown = useCallback(
-    (e: React.MouseEvent) => {
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent) => {
       e.preventDefault();
       // Parent wrapper div has the panel width set via inline style
       const handle = e.currentTarget as HTMLElement;
@@ -31,6 +31,8 @@ export default function PanelResizeHandle({
 
       dragRef.current = { startX: e.clientX, startSize: panelWidth };
       currentSize.current = panelWidth;
+      // Keep move/up events firing even if the pointer leaves the 6px strip
+      e.currentTarget.setPointerCapture(e.pointerId);
       setDragging(true);
     },
     [side]
@@ -39,7 +41,7 @@ export default function PanelResizeHandle({
   useEffect(() => {
     if (!dragging) return;
 
-    const handleMouseMove = (e: MouseEvent) => {
+    const handlePointerMove = (e: PointerEvent) => {
       if (!dragRef.current) return;
       const dx = e.clientX - dragRef.current.startX;
       // Left panel: drag right = bigger; Right panel: drag left = bigger
@@ -52,30 +54,34 @@ export default function PanelResizeHandle({
       onResize(clamped);
     };
 
-    const handleMouseUp = () => {
+    const handlePointerUp = () => {
       setDragging(false);
       onResizeEnd(currentSize.current);
       dragRef.current = null;
     };
 
-    document.addEventListener("mousemove", handleMouseMove);
-    document.addEventListener("mouseup", handleMouseUp);
+    document.addEventListener("pointermove", handlePointerMove);
+    document.addEventListener("pointerup", handlePointerUp);
+    document.addEventListener("pointercancel", handlePointerUp);
     // Prevent text selection during drag
     document.body.style.userSelect = "none";
     document.body.style.cursor = "col-resize";
+    document.body.style.touchAction = "none";
 
     return () => {
-      document.removeEventListener("mousemove", handleMouseMove);
-      document.removeEventListener("mouseup", handleMouseUp);
+      document.removeEventListener("pointermove", handlePointerMove);
+      document.removeEventListener("pointerup", handlePointerUp);
+      document.removeEventListener("pointercancel", handlePointerUp);
       document.body.style.userSelect = "";
       document.body.style.cursor = "";
+      document.body.style.touchAction = "";
     };
   }, [dragging, side, minSize, maxSize, onResize, onResizeEnd]);
 
   return (
     <div
-      onMouseDown={handleMouseDown}
-      className={`absolute top-0 bottom-0 z-20 w-[6px] cursor-col-resize group
+      onPointerDown={handlePointerDown}
+      className={`absolute top-0 bottom-0 z-20 w-[6px] cursor-col-resize group touch-none
         ${side === "left" ? "left-full" : "right-full"}
       `}
       style={{ transform: "translateX(-50%)" }}
