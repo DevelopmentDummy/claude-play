@@ -19,6 +19,7 @@ import {
   applyDynamicLoRAs,
   injectCoupleBranchLoras,
 } from "./comfyui-graph";
+import { extractAudioFilenames, extractOutputFilenames, extractTextOutputs } from "./comfyui-history";
 
 /** Sanitize a relative file path: preserve subdirectories but prevent traversal */
 function safePath(filePath: string): string {
@@ -973,60 +974,6 @@ export class ComfyUIClient {
     return null;
   }
 
-  /** Extract audio output filenames from history entry */
-  private extractAudioFilenames(
-    historyEntry: Record<string, unknown>
-  ): Array<{ filename: string; prefix: string }> {
-    const outputs = historyEntry.outputs as
-      | Record<string, Record<string, unknown>>
-      | undefined;
-    if (!outputs) return [];
-
-    const results: Array<{ filename: string; prefix: string }> = [];
-    for (const nodeOutput of Object.values(outputs)) {
-      const audios = nodeOutput.audio as
-        | Array<{ filename: string; subfolder?: string; type?: string }>
-        | undefined;
-      if (audios && audios.length > 0) {
-        for (const a of audios) {
-          const prefix = a.filename.replace(/_\d+_?\.\w+$/, "");
-          results.push({ filename: a.filename, prefix });
-        }
-      }
-    }
-    return results;
-  }
-
-  /** Extract all output filenames grouped by their prefix */
-  private extractOutputFilenames(
-    historyEntry: Record<string, unknown>
-  ): Array<{ filename: string; prefix: string; subfolder?: string; type?: string }> {
-    const outputs = historyEntry.outputs as
-      | Record<string, Record<string, unknown>>
-      | undefined;
-    if (!outputs) return [];
-
-    const results: Array<{ filename: string; prefix: string; subfolder?: string; type?: string }> = [];
-    for (const nodeOutput of Object.values(outputs)) {
-      const images = nodeOutput.images as
-        | Array<{ filename: string; subfolder?: string; type?: string }>
-        | undefined;
-      if (images && images.length > 0) {
-        for (const img of images) {
-          // ComfyUI filenames are like "profile_00001_.png" — extract prefix before first underscore+digits
-          const prefix = img.filename.replace(/_\d+_?\.\w+$/, "");
-          results.push({
-            filename: img.filename,
-            prefix,
-            subfolder: img.subfolder,
-            type: img.type,
-          });
-        }
-      }
-    }
-    return results;
-  }
-
   private copyOutputFileToSession(
     outputFile: { filename: string; subfolder?: string; type?: string },
     destPath: string
@@ -1148,7 +1095,7 @@ export class ComfyUIClient {
     sessionDir: string,
     extraFiles?: Record<string, string>
   ): Promise<GenerateResult> {
-    const outputFiles = this.extractOutputFilenames(history);
+    const outputFiles = extractOutputFilenames(history);
     if (outputFiles.length === 0) {
       return { success: false, error: "No output image in ComfyUI result" };
     }
@@ -1466,7 +1413,7 @@ export class ComfyUIClient {
         await this.cancelPrompt(prompt_id);
         return { success: false, error: "Timeout waiting for TTS generation" };
       }
-      const audioFiles = this.extractAudioFilenames(history);
+      const audioFiles = extractAudioFilenames(history);
       if (audioFiles.length === 0) {
         return { success: false, error: "No audio output in ComfyUI result" };
       }
@@ -1531,25 +1478,6 @@ export class ComfyUIClient {
     }
   }
 
-  /** Extract text outputs from ComfyUI history entry */
-  private extractTextOutputs(historyEntry: Record<string, unknown>): string[] {
-    const outputs = historyEntry.outputs as Record<string, Record<string, unknown>> | undefined;
-    if (!outputs) return [];
-    const texts: string[] = [];
-    for (const nodeOutput of Object.values(outputs)) {
-      // ShowTextForGPT stores text in { text: [...] }
-      const textArr = nodeOutput.text as string[] | undefined;
-      if (textArr && Array.isArray(textArr)) {
-        texts.push(...textArr);
-      }
-      // Some nodes use string directly
-      if (typeof nodeOutput.string === "string") {
-        texts.push(nodeOutput.string);
-      }
-    }
-    return texts;
-  }
-
   /** Transcribe audio using ComfyUI Whisper STT node */
   async transcribeAudio(
     audioPath: string,
@@ -1608,7 +1536,7 @@ export class ComfyUIClient {
         return { success: false, error: "Timeout waiting for STT" };
       }
 
-      const texts = this.extractTextOutputs(history);
+      const texts = extractTextOutputs(history);
       const text = texts.join(" ").trim();
       console.log(`[comfyui-stt] Done in ${Date.now() - t0}ms: "${text.substring(0, 80)}..."`);
 
