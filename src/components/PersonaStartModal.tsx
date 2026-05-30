@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { MODEL_GROUPS } from "@/lib/ai-provider";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 
 interface ProfileOption {
   slug: string;
@@ -50,6 +51,7 @@ export default function PersonaStartModal({
   isImported,
   isPublished,
 }: PersonaStartModalProps) {
+  const panelRef = useFocusTrap<HTMLDivElement>({ active: open });
   const [overview, setOverview] = useState<PersonaOverview | null>(null);
   const [loading, setLoading] = useState(false);
   const [selectedProfile, setSelectedProfile] = useState<string>("__none__");
@@ -155,6 +157,11 @@ export default function PersonaStartModal({
       }}
     >
       <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        tabIndex={-1}
+        aria-label={personaDisplayName}
         className="relative bg-surface border border-border/70 rounded-2xl w-[520px] max-h-[85vh] flex flex-col shadow-2xl animate-[slideUp_0.25s_ease-out] overflow-hidden"
         onKeyDown={handleKeyDown}
         style={{
@@ -177,6 +184,7 @@ export default function PersonaStartModal({
         {/* Close button */}
         <button
           onClick={onClose}
+          aria-label="닫기"
           className="absolute top-3 right-3 z-10 w-8 h-8 flex items-center justify-center rounded-lg cursor-pointer
             text-text-dim/50 hover:text-text hover:bg-surface-light/80 transition-all duration-fast text-lg"
         >
@@ -344,6 +352,7 @@ export default function PersonaStartModal({
               {onPublish && !isImported && !isPublished && (
                 <button
                   onClick={(e) => { e.stopPropagation(); onPublish(); }}
+                  aria-label="GitHub에 퍼블리시"
                   className="p-2.5 rounded-xl border border-border/60 text-text-dim
                     hover:text-accent hover:border-accent/40 hover:bg-accent/5
                     transition-all duration-fast cursor-pointer"

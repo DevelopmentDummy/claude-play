@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useCallback, useEffect, useState } from "react";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 
 interface NewProfileDialogProps {
   open: boolean;
@@ -18,6 +19,7 @@ export default function NewProfileDialog({
   editData,
   required,
 }: NewProfileDialogProps) {
+  const panelRef = useFocusTrap<HTMLDivElement>({ active: open, initialFocus: false });
   const nameRef = useRef<HTMLInputElement>(null);
   const descRef = useRef<HTMLTextAreaElement>(null);
   const [isPrimary, setIsPrimary] = useState(false);
@@ -71,6 +73,11 @@ export default function NewProfileDialog({
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-[8px] flex items-center justify-center z-[100]">
       <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        tabIndex={-1}
+        aria-label={isEdit ? "Edit Profile" : "New Profile"}
         className="bg-surface backdrop-blur-[16px] border border-border rounded-2xl p-6 px-7 w-[440px] flex flex-col gap-4 shadow-lg animate-[slideUp_0.25s_ease-out]"
         onKeyDown={handleKeyDown}
       >

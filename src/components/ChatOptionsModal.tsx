@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useMemo } from "react";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 
 interface OptionSchema {
   key: string;
@@ -27,6 +28,7 @@ interface ChatOptionsModalProps {
 }
 
 export default function ChatOptionsModal({ schema, values, onApply, onClose }: ChatOptionsModalProps) {
+  const panelRef = useFocusTrap<HTMLDivElement>({});
   const [draft, setDraft] = useState<Record<string, unknown>>({ ...values });
 
   const groups = useMemo(() => {
@@ -64,12 +66,20 @@ export default function ChatOptionsModal({ schema, values, onApply, onClose }: C
       className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-surface border border-border rounded-xl w-full max-w-md max-h-[80vh] flex flex-col shadow-lg">
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        tabIndex={-1}
+        aria-labelledby="chat-options-title"
+        className="bg-surface border border-border rounded-xl w-full max-w-md max-h-[80vh] flex flex-col shadow-lg"
+      >
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-border">
-          <h2 className="text-sm font-semibold text-text">채팅 옵션</h2>
+          <h2 id="chat-options-title" className="text-sm font-semibold text-text">채팅 옵션</h2>
           <button
             onClick={onClose}
+            aria-label="닫기"
             className="text-text-dim hover:text-text text-lg leading-none cursor-pointer"
           >
             &times;

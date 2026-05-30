@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 
 interface ConversationListItem {
   conversationId: string;
@@ -72,6 +73,7 @@ function shortId(id: string): string {
 }
 
 export default function SessionListModal({ open, onClose, apiBase }: SessionListModalProps) {
+  const panelRef = useFocusTrap<HTMLDivElement>({});
   const [data, setData] = useState<ConversationsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [relinking, setRelinking] = useState<string | null>(null);
@@ -132,11 +134,17 @@ export default function SessionListModal({ open, onClose, apiBase }: SessionList
       className="fixed inset-0 bg-black/60 backdrop-blur-[8px] flex items-center justify-center z-[110]"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="relative w-[min(640px,92vw)] max-h-[80vh] bg-[#14141a] border border-white/[0.08]
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        tabIndex={-1}
+        aria-labelledby="session-list-title"
+        className="relative w-[min(640px,92vw)] max-h-[80vh] bg-[#14141a] border border-white/[0.08]
         rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] flex flex-col">
         <header className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06]">
           <div>
-            <h2 className="text-sm font-medium text-text">이전 세션 불러오기</h2>
+            <h2 id="session-list-title" className="text-sm font-medium text-text">이전 세션 불러오기</h2>
             <p className="text-[10px] text-text-mute mt-0.5">
               이 채팅 폴더에서 시작된 모든 대화입니다. 항목을 누르면 해당 대화로 다시 연결됩니다.
             </p>

@@ -2,6 +2,7 @@
 
 import { useRef, useState, useCallback } from "react";
 import { MODEL_GROUPS } from "@/lib/ai-provider";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 
 interface NewPersonaDialogProps {
   open: boolean;
@@ -14,6 +15,7 @@ export default function NewPersonaDialog({
   onClose,
   onCreate,
 }: NewPersonaDialogProps) {
+  const panelRef = useFocusTrap<HTMLDivElement>({ active: open, initialFocus: false });
   const inputRef = useRef<HTMLInputElement>(null);
   const [selectedModel, setSelectedModel] = useState("opus[1m]:medium");
 
@@ -39,7 +41,13 @@ export default function NewPersonaDialog({
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-[8px] flex items-center justify-center z-[100]">
-      <div className="bg-surface backdrop-blur-[16px] border border-border rounded-2xl p-6 px-7 w-[380px] flex flex-col gap-3.5 shadow-lg animate-[slideUp_0.25s_ease-out]">
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        tabIndex={-1}
+        aria-label="New Persona"
+        className="bg-surface backdrop-blur-[16px] border border-border rounded-2xl p-6 px-7 w-[380px] flex flex-col gap-3.5 shadow-lg animate-[slideUp_0.25s_ease-out]">
         <h3 className="text-base font-semibold">New Persona</h3>
         <input
           ref={inputRef}
