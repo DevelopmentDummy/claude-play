@@ -13,7 +13,7 @@
   --surface: rgba(22, 33, 62, 0.7);
   --surface-light: rgba(31, 47, 80, 0.7);
   --text: #e8e8f0;
-  --text-dim: #8888a0;
+  --text-dim: #a8a8c0;
   --accent: #7c6fff;
   --accent-hover: #9589ff;
   --accent-glow: rgba(124, 111, 255, 0.35);
@@ -40,7 +40,7 @@
   --plum-soft: rgba(184, 125, 184, 0.08);
   --plum-hairline: rgba(184, 125, 184, 0.3);
   --plum-glow: rgba(184, 125, 184, 0.5);
-  --text-mute: rgba(250, 250, 250, 0.4);
+  --text-mute: rgba(250, 250, 250, 0.55);
 }
 
 html, body {
@@ -99,4 +99,14 @@ html {
 @keyframes stt-countdown {
   from { stroke-dashoffset: 0; }
   to { stroke-dashoffset: 94.25; /* π * 30 */ }
+}
+
+/* ── Reduced Motion (a11y) ──────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
