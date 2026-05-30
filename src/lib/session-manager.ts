@@ -7,6 +7,7 @@ import { getInternalToken } from "./auth";
 import { getApiBase, getPort } from "./endpoints";
 import { AIProvider, providerFromModel } from "./ai-provider";
 import { SYSTEM_JSON } from "./session-state";
+import { fileDiffers, personaSkillsDiffer, dirDiffers, toolsDiffer, variablesDiffer, stripAssembledSections, liveInstructionsDiffer, getCustomDataFiles } from "./session-sync-diff";
 
 /** Read the selected writing style content for a persona, if any */
 function readPersonaStyleContent(personaDir: string): string | null {
@@ -965,7 +966,7 @@ export class SessionManager {
     try {
       const meta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
       const personaDir = this.getPersonaDir(meta.persona);
-      for (const f of this.getCustomDataFiles(personaDir)) {
+      for (const f of getCustomDataFiles(personaDir)) {
         elements[`data:${f}`] = true;
       }
     } catch { /* ignore */ }
@@ -1164,12 +1165,12 @@ export class SessionManager {
     // Check panels
     const pPanels = path.join(personaDir, "panels");
     const sPanels = path.join(sessionDir, "panels");
-    result.push({ key: "panels", label: "패널 (panels/)", hasChanges: this.dirDiffers(pPanels, sPanels) });
+    result.push({ key: "panels", label: "패널 (panels/)", hasChanges: dirDiffers(pPanels, sPanels) });
 
     // Check popups
     const pPopups = path.join(personaDir, "popups");
     const sPopups = path.join(sessionDir, "popups");
-    result.push({ key: "popups", label: "팝업 (popups/)", hasChanges: this.dirDiffers(pPopups, sPopups) });
+    result.push({ key: "popups", label: "팝업 (popups/)", hasChanges: dirDiffers(pPopups, sPopups) });
 
     // Check individual files
     const files: Array<{ key: string; label: string; file: string }> = [
@@ -1184,19 +1185,19 @@ export class SessionManager {
       const dst = path.join(sessionDir, file);
       if (key === "variables") {
         // For variables, check if persona has keys not in session
-        result.push({ key, label, hasChanges: this.variablesDiffer(src, dst) });
+        result.push({ key, label, hasChanges: variablesDiffer(src, dst) });
       } else if (key === "voice") {
         // For voice, also compare voice/ directory (contains .pt files)
-        const fileDiff = this.fileDiffers(src, dst);
-        const dirDiff = this.dirDiffers(path.join(personaDir, "voice"), path.join(sessionDir, "voice"));
+        const fileDiff = fileDiffers(src, dst);
+        const dirDiff = dirDiffers(path.join(personaDir, "voice"), path.join(sessionDir, "voice"));
         result.push({ key, label: "음성 설정 (voice.json + voice/)", hasChanges: fileDiff || dirDiff });
       } else {
-        result.push({ key, label, hasChanges: this.fileDiffers(src, dst) });
+        result.push({ key, label, hasChanges: fileDiffers(src, dst) });
       }
     }
 
     // Check tools (custom panel tools — *.js files only)
-    result.push({ key: "tools", label: "툴 (tools/)", hasChanges: this.toolsDiffer(path.join(personaDir, "tools"), path.join(sessionDir, "tools")) });
+    result.push({ key: "tools", label: "툴 (tools/)", hasChanges: toolsDiffer(path.join(personaDir, "tools"), path.join(sessionDir, "tools")) });
 
     // Check skills — compare persona skills against the provider-specific CLI skill dir
     {
@@ -1204,7 +1205,7 @@ export class SessionManager {
       const cliSkillDir = provider === "codex" ? ".agents" : provider === "gemini" ? ".gemini" : provider === "kimi" ? ".kimi" : provider === "antigravity" ? ".agents" : ".claude";
       const pSkills = path.join(personaDir, "skills");
       const sSkills = path.join(sessionDir, cliSkillDir, "skills");
-      result.push({ key: "skills", label: "스킬 (skills/)", hasChanges: this.personaSkillsDiffer(pSkills, sSkills) });
+      result.push({ key: "skills", label: "스킬 (skills/)", hasChanges: personaSkillsDiffer(pSkills, sSkills) });
     }
 
     // Check instructions — compare persona's raw file vs session's live CLAUDE.md/AGENTS.md (stripped)
@@ -1214,25 +1215,25 @@ export class SessionManager {
       const liveInstrPath = path.join(sessionDir, liveFile);
       const instrSrc = path.join(personaDir, "session-instructions.md");
       // Reverse args: compare live (session) against raw (persona)
-      result.push({ key: "instructions", label: `인스트럭션 (session-instructions.md → ${liveFile})`, hasChanges: this.liveInstructionsDiffer(liveInstrPath, instrSrc) });
+      result.push({ key: "instructions", label: `인스트럭션 (session-instructions.md → ${liveFile})`, hasChanges: liveInstructionsDiffer(liveInstrPath, instrSrc) });
     }
 
     // Check character-tags.json
     const pCharTags = path.join(personaDir, "character-tags.json");
     const sCharTags = path.join(sessionDir, "character-tags.json");
-    result.push({ key: "characterTags", label: "캐릭터 태그 (character-tags.json)", hasChanges: this.fileDiffers(pCharTags, sCharTags) });
+    result.push({ key: "characterTags", label: "캐릭터 태그 (character-tags.json)", hasChanges: fileDiffers(pCharTags, sCharTags) });
 
     // Check chat options
-    result.push({ key: "chatOptions", label: "채팅 옵션 (chat-options.json)", hasChanges: this.fileDiffers(path.join(personaDir, "chat-options.json"), path.join(sessionDir, "chat-options.json")) });
+    result.push({ key: "chatOptions", label: "채팅 옵션 (chat-options.json)", hasChanges: fileDiffers(path.join(personaDir, "chat-options.json"), path.join(sessionDir, "chat-options.json")) });
 
     // Check custom data files individually (*.json excluding system files)
     const allDataFiles = new Set([
-      ...this.getCustomDataFiles(personaDir),
-      ...this.getCustomDataFiles(sessionDir),
+      ...getCustomDataFiles(personaDir),
+      ...getCustomDataFiles(sessionDir),
     ]);
     for (const f of [...allDataFiles].sort()) {
       const key = `data:${f}`;
-      result.push({ key, label: f, hasChanges: this.fileDiffers(path.join(personaDir, f), path.join(sessionDir, f)) });
+      result.push({ key, label: f, hasChanges: fileDiffers(path.join(personaDir, f), path.join(sessionDir, f)) });
     }
 
     return result;
@@ -1257,12 +1258,12 @@ export class SessionManager {
     // Check panels (session → persona direction)
     const sPanels = path.join(sessionDir, "panels");
     const pPanels = path.join(personaDir, "panels");
-    result.push({ key: "panels", label: "패널 (panels/)", hasChanges: this.dirDiffers(sPanels, pPanels) });
+    result.push({ key: "panels", label: "패널 (panels/)", hasChanges: dirDiffers(sPanels, pPanels) });
 
     // Check popups (session → persona direction)
     const sPopups = path.join(sessionDir, "popups");
     const pPopups = path.join(personaDir, "popups");
-    result.push({ key: "popups", label: "팝업 (popups/)", hasChanges: this.dirDiffers(sPopups, pPopups) });
+    result.push({ key: "popups", label: "팝업 (popups/)", hasChanges: dirDiffers(sPopups, pPopups) });
 
     // Check individual files
     const files: Array<{ key: string; label: string; file: string }> = [
@@ -1276,16 +1277,16 @@ export class SessionManager {
       const src = path.join(sessionDir, file);
       const dst = path.join(personaDir, file);
       if (key === "voice") {
-        const fileDiff = this.fileDiffers(src, dst);
-        const dirDiff = this.dirDiffers(path.join(sessionDir, "voice"), path.join(personaDir, "voice"));
+        const fileDiff = fileDiffers(src, dst);
+        const dirDiff = dirDiffers(path.join(sessionDir, "voice"), path.join(personaDir, "voice"));
         result.push({ key, label: "음성 설정 (voice.json + voice/)", hasChanges: fileDiff || dirDiff });
       } else {
-        result.push({ key, label, hasChanges: this.fileDiffers(src, dst) });
+        result.push({ key, label, hasChanges: fileDiffers(src, dst) });
       }
     }
 
     // Check tools (reverse direction)
-    result.push({ key: "tools", label: "툴 (tools/)", hasChanges: this.toolsDiffer(path.join(sessionDir, "tools"), path.join(personaDir, "tools")) });
+    result.push({ key: "tools", label: "툴 (tools/)", hasChanges: toolsDiffer(path.join(sessionDir, "tools"), path.join(personaDir, "tools")) });
 
     // Check skills — compare session's CLI skill dir against persona skills
     {
@@ -1293,7 +1294,7 @@ export class SessionManager {
       const cliSkillDir = provider === "codex" ? ".agents" : provider === "gemini" ? ".gemini" : provider === "kimi" ? ".kimi" : provider === "antigravity" ? ".agents" : ".claude";
       const sSkills = path.join(sessionDir, cliSkillDir, "skills");
       const pSkills = path.join(personaDir, "skills");
-      result.push({ key: "skills", label: "스킬 (skills/)", hasChanges: this.personaSkillsDiffer(sSkills, pSkills) });
+      result.push({ key: "skills", label: "스킬 (skills/)", hasChanges: personaSkillsDiffer(sSkills, pSkills) });
     }
 
     // Check instructions — compare live CLAUDE.md/AGENTS.md (stripped of assembled sections) vs persona's raw file
@@ -1301,25 +1302,25 @@ export class SessionManager {
     const provider = meta.model ? providerFromModel(meta.model) : "claude";
     const liveFile = provider === "codex" ? "AGENTS.md" : provider === "gemini" ? "GEMINI.md" : "CLAUDE.md";
     const liveInstrPath = path.join(sessionDir, liveFile);
-    const instrChanged = this.liveInstructionsDiffer(liveInstrPath, instrDst);
+    const instrChanged = liveInstructionsDiffer(liveInstrPath, instrDst);
     result.push({ key: "instructions", label: `인스트럭션 (${liveFile} → session-instructions.md)`, hasChanges: instrChanged });
 
     // Check character-tags.json
     const sCharTags = path.join(sessionDir, "character-tags.json");
     const pCharTags = path.join(personaDir, "character-tags.json");
-    result.push({ key: "characterTags", label: "캐릭터 태그 (character-tags.json)", hasChanges: this.fileDiffers(sCharTags, pCharTags) });
+    result.push({ key: "characterTags", label: "캐릭터 태그 (character-tags.json)", hasChanges: fileDiffers(sCharTags, pCharTags) });
 
     // Check chat options
-    result.push({ key: "chatOptions", label: "채팅 옵션 (chat-options.json)", hasChanges: this.fileDiffers(path.join(sessionDir, "chat-options.json"), path.join(personaDir, "chat-options.json")) });
+    result.push({ key: "chatOptions", label: "채팅 옵션 (chat-options.json)", hasChanges: fileDiffers(path.join(sessionDir, "chat-options.json"), path.join(personaDir, "chat-options.json")) });
 
     // Check custom data files individually
     const allDataFiles = new Set([
-      ...this.getCustomDataFiles(personaDir),
-      ...this.getCustomDataFiles(sessionDir),
+      ...getCustomDataFiles(personaDir),
+      ...getCustomDataFiles(sessionDir),
     ]);
     for (const f of [...allDataFiles].sort()) {
       const key = `data:${f}`;
-      result.push({ key, label: f, hasChanges: this.fileDiffers(path.join(sessionDir, f), path.join(personaDir, f)) });
+      result.push({ key, label: f, hasChanges: fileDiffers(path.join(sessionDir, f), path.join(personaDir, f)) });
     }
 
     return result;
@@ -1477,7 +1478,7 @@ export class SessionManager {
       const src = path.join(sessionDir, liveFile);
       const dst = path.join(personaDir, "session-instructions.md");
       if (fs.existsSync(src)) {
-        const content = this.stripAssembledSections(fs.readFileSync(src, "utf-8"));
+        const content = stripAssembledSections(fs.readFileSync(src, "utf-8"));
         fs.writeFileSync(dst, content, "utf-8");
       }
     }
@@ -1500,106 +1501,6 @@ export class SessionManager {
         fs.copyFileSync(src, path.join(personaDir, f));
       }
     }
-  }
-
-  private fileDiffers(src: string, dst: string): boolean {
-    if (!fs.existsSync(src)) return false;
-    if (!fs.existsSync(dst)) return true;
-    try {
-      const a = fs.readFileSync(src);
-      const b = fs.readFileSync(dst);
-      return !a.equals(b);
-    } catch { return true; }
-  }
-
-  /** Compare only persona skill subdirs against their counterparts in a CLI skill dir (ignoring global tool skills) */
-  private personaSkillsDiffer(src: string, dst: string): boolean {
-    if (!fs.existsSync(src)) return false;
-    if (!fs.existsSync(dst)) return true;
-    try {
-      const srcEntries = fs.readdirSync(src, { withFileTypes: true }).filter(e => e.isDirectory());
-      for (const entry of srcEntries) {
-        const srcSkill = path.join(src, entry.name);
-        const dstSkill = path.join(dst, entry.name);
-        if (!fs.existsSync(dstSkill)) return true;
-        if (this.dirDiffers(srcSkill, dstSkill)) return true;
-      }
-      return false;
-    } catch { return true; }
-  }
-
-  private dirDiffers(src: string, dst: string): boolean {
-    if (!fs.existsSync(src)) return false;
-    if (!fs.existsSync(dst)) return true;
-    try {
-      const srcFiles = fs.readdirSync(src).filter(f => {
-        try { return fs.statSync(path.join(src, f)).isFile(); } catch { return false; }
-      });
-      for (const file of srcFiles) {
-        if (this.fileDiffers(path.join(src, file), path.join(dst, file))) return true;
-      }
-      return false;
-    } catch { return true; }
-  }
-
-  /** Compare tools/ directories (*.js files only) */
-  private toolsDiffer(dir1: string, dir2: string): boolean {
-    if (!fs.existsSync(dir1) && !fs.existsSync(dir2)) return false;
-    if (!fs.existsSync(dir1) || !fs.existsSync(dir2)) return true;
-    const jsFiles1 = fs.readdirSync(dir1).filter(f => f.endsWith(".js")).sort();
-    const jsFiles2 = fs.readdirSync(dir2).filter(f => f.endsWith(".js")).sort();
-    if (jsFiles1.length !== jsFiles2.length) return true;
-    for (let i = 0; i < jsFiles1.length; i++) {
-      if (jsFiles1[i] !== jsFiles2[i]) return true;
-      if (this.fileDiffers(path.join(dir1, jsFiles1[i]), path.join(dir2, jsFiles2[i]))) return true;
-    }
-    return false;
-  }
-
-  private variablesDiffer(src: string, dst: string): boolean {
-    if (!fs.existsSync(src)) return false;
-    try {
-      const personaVars = JSON.parse(fs.readFileSync(src, "utf-8"));
-      const sessionVars = fs.existsSync(dst) ? JSON.parse(fs.readFileSync(dst, "utf-8")) : {};
-      for (const key of Object.keys(personaVars)) {
-        if (!(key in sessionVars)) return true;
-      }
-      return false;
-    } catch { return false; }
-  }
-
-  /** Strip assembled sections (user info, opening, writing style) that are injected at session creation */
-  private stripAssembledSections(text: string): string {
-    let s = text;
-    // Remove all occurrences of assembled sections (may be duplicated from bad syncs)
-    s = s.replace(/\n\n## __문체 \(Writing Style\)__\n[\s\S]*?(?=\n\n## __|\s*$)/g, "");
-    s = s.replace(/\n\n## __사용자 정보__\n[\s\S]*?(?=\n\n## __|\s*$)/g, "");
-    s = s.replace(/\n\n## __오프닝 메시지__\n[\s\S]*?(?=\n\n## __|\s*$)/g, "");
-    // Final pass: if __오프닝 메시지__ is the last section, the above won't catch it
-    s = s.replace(/\n\n## __오프닝 메시지__\n[\s\S]*$/g, "");
-    return s.trimEnd() + "\n";
-  }
-
-  /** Compare live instruction file (with assembled sections stripped) against raw persona file */
-  private liveInstructionsDiffer(livePath: string, rawPath: string): boolean {
-    if (!fs.existsSync(livePath)) return false;
-    if (!fs.existsSync(rawPath)) return true;
-    try {
-      const live = this.stripAssembledSections(fs.readFileSync(livePath, "utf-8"));
-      const raw = this.stripAssembledSections(fs.readFileSync(rawPath, "utf-8"));
-      return live !== raw;
-    } catch { return true; }
-  }
-
-  /** List custom data file names (*.json excluding system files) in a directory */
-  private getCustomDataFiles(dir: string): string[] {
-    if (!fs.existsSync(dir)) return [];
-    try {
-      return fs.readdirSync(dir).filter(f => {
-        if (!f.endsWith(".json") || SYSTEM_JSON.has(f)) return false;
-        try { return fs.statSync(path.join(dir, f)).isFile(); } catch { return false; }
-      });
-    } catch { return []; }
   }
 
   /** Soft-delete a session by moving it to deleted_sessions/ */
