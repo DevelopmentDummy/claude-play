@@ -19,6 +19,7 @@
 | 5 | **쓰기경로 통합** — `src/lib/modal-merge.ts` (모달 그룹 병합 2중복 → 1, behavior-preserving) + `clearPopups` 원자화(raw write → `mutateSessionJsonSync`) | ✅ merged `main` | `c574da5`→`a35f473` (12 unit tests, 적대적 SHIP) |
 | 6 | **거대 클래스 분해 Slice 1** — `src/lib/comfyui-graph.ts` 추출(리프 순수 그래프수술 4함수+2인터페이스, comfyui-client.ts **2034→1833줄**, verbatim move) | ✅ merged `main` | `76ebe30`→`145dcd5` (적대적 토큰단위 SHIP, 빌드 green) |
 | 7 | **거대 클래스 분해 Slice 1b+2** — LoRA 클러스터 완성(`injectTriggerTags`/`injectBaseLoRAs`/`applyDynamicLoRAs` → comfyui-graph.ts, comfyui-client.ts **1833→1690줄**, verbatim move) | ✅ merged `main` | `b2f50b0`→`f788b25` (적대적 토큰단위 SHIP, 빌드 green) |
+| 8 | **거대 클래스 분해 Slice 3** — `injectCoupleBranchLoras` → comfyui-graph.ts (param injection: `this.loadLoraTriggers()` → triggerTable 인자, 로드 타이밍 보존, comfyui-client.ts **1690→1621줄**) | ✅ merged `main` | `407b751`→`0a3e409` (적대적 토큰단위 SHIP, 빌드 green) |
 
 ## 보류 항목 (재개 시 필요한 것)
 
@@ -29,7 +30,7 @@
 ## 다음 웨이브 후보 (랭킹·성격)
 
 - **⑥ 거대 클래스 분해** (large effort, navigability-only, **테스트 프레임워크 없음 → 회귀 위험**): **Slice 1·1b·2 완료(웨이브6·7, comfyui-graph.ts, comfyui-client.ts 2034→1690줄)**. 남은 슬라이스(comfyui-client.ts 기준, understand 워크플로 분류 근거):
-  - **Slice 3**: `injectCoupleBranchLoras`(`this.loadLoraTriggers` 의존 → triggerTable을 파라미터로 주입해야 pure). buildPrompt가 loadLoraTriggers를 이미 호출하므로 호출부에서 triggerTable 전달 가능.
+  - ~~Slice 3: `injectCoupleBranchLoras`~~ → **웨이브8로 완료**(triggerTable 파라미터 주입, 호출부서 `this.loadLoraTriggers()` 인라인 전달로 로드 타이밍 보존).
   - **Slice 4**: checkpoint 계열(`resolveCheckpoint`/`validateCheckpointCompatibility`/`findCompatiblePackages` — `this.config`/`this.workflowsDir`+fs 의존 → config-reader+workflowsDir 주입), `processDetailerChain`(detailer-modules map 주입).
   - **별도 모듈 후보**: 히스토리 파서 3개(`extractAudioFilenames`/`extractOutputFilenames`/`extractTextOutputs` → `comfyui-history.ts`, pure지만 prompt-그래프가 아닌 history 도메인).
   - 그 다음 거대 클래스: **session-manager.ts(2424줄, 7서브시스템)**, session-instance.ts 내부 TTS 엔진(~280줄).
