@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { NextResponse } from "next/server";
 import { getServices } from "@/lib/services";
+import { mutateSessionJson } from "@/lib/session-state";
 
 interface ModalAction {
   action: "open" | "close" | "closeAll";
@@ -47,74 +48,47 @@ export async function POST(
   }
 
   try {
-    // Read current variables
-    let raw = fs.readFileSync(varsPath, "utf-8");
-    if (raw.charCodeAt(0) === 0xfeff) raw = raw.slice(1);
-    const vars = JSON.parse(raw);
-    const modals: Record<string, unknown> = vars.__modals || {};
-
-    // Read modal groups from layout.json
+    // modal groups (layout.json) — variables와 독립이라 transform 밖에서 읽음
     const layoutPath = path.join(sessionDir, "layout.json");
     let modalGroups: Record<string, string[]> = {};
     if (fs.existsSync(layoutPath)) {
       try {
         let layoutRaw = fs.readFileSync(layoutPath, "utf-8");
         if (layoutRaw.charCodeAt(0) === 0xfeff) layoutRaw = layoutRaw.slice(1);
-        const layout = JSON.parse(layoutRaw);
-        modalGroups = layout?.panels?.modalGroups || {};
-      } catch {
-        // layout parse error — proceed without groups
-      }
+        modalGroups = JSON.parse(layoutRaw)?.panels?.modalGroups || {};
+      } catch { /* groups 없이 진행 */ }
     }
-
-    // Find group for a given modal name
-    function findGroup(modalName: string): string | null {
-      for (const [groupName, members] of Object.entries(modalGroups)) {
-        if (members.includes(modalName)) return groupName;
-      }
+    const findGroup = (m: string): string | null => {
+      for (const [g, members] of Object.entries(modalGroups)) if (members.includes(m)) return g;
       return null;
-    }
+    };
 
-    // Get all members of a group
-    function getGroupMembers(groupName: string): string[] {
-      return modalGroups[groupName] || [];
-    }
-
-    switch (action) {
-      case "open": {
-        // Close other modals in the same group
-        const group = findGroup(name!);
-        if (group) {
-          for (const member of getGroupMembers(group)) {
-            if (member !== name) {
-              modals[member] = false;
-            }
-          }
+    let resultModals: Record<string, unknown> = {};
+    const r = await mutateSessionJson(varsPath, (current) => {
+      const modals: Record<string, unknown> = { ...((current.__modals as Record<string, unknown>) || {}) };
+      switch (action) {
+        case "open": {
+          const group = findGroup(name!);
+          if (group) for (const member of modalGroups[group] || []) if (member !== name) modals[member] = false;
+          modals[name!] = mode ?? "dismissible";
+          break;
         }
-        modals[name!] = mode ?? "dismissible";
-        break;
-      }
-      case "close": {
-        modals[name!] = false;
-        break;
-      }
-      case "closeAll": {
-        const exceptSet = new Set(except || []);
-        for (const key of Object.keys(modals)) {
-          if (!exceptSet.has(key)) {
-            modals[key] = false;
-          }
+        case "close":
+          modals[name!] = false;
+          break;
+        case "closeAll": {
+          const exceptSet = new Set(except || []);
+          for (const key of Object.keys(modals)) if (!exceptSet.has(key)) modals[key] = false;
+          break;
         }
-        break;
       }
+      resultModals = modals;
+      return { ...current, __modals: modals };
+    });
+    if (!r.ok) {
+      return NextResponse.json({ error: "Failed to update modals" }, { status: 500 });
     }
-
-    // Write back atomically
-    vars.__modals = modals;
-    fs.writeFileSync(varsPath, JSON.stringify(vars, null, 2), "utf-8");
-
-
-    return NextResponse.json({ ok: true, __modals: modals });
+    return NextResponse.json({ ok: true, __modals: resultModals });
   } catch (err) {
     console.error("[modals] error:", err);
     return NextResponse.json({ error: "Failed to update modals" }, { status: 500 });

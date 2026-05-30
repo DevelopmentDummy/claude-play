@@ -3,6 +3,7 @@ import * as path from "path";
 import { NextResponse } from "next/server";
 import { getServices } from "@/lib/services";
 import { getSessionInstance } from "@/lib/session-registry";
+import { mutateSessionJson, applyPatch } from "@/lib/session-state";
 
 // System JSON files that cannot be patched via this endpoint
 const PROTECTED_FILES = new Set([
@@ -54,40 +55,29 @@ export async function PATCH(
   const refreshPanels = patch.__refreshPanels as string[] | undefined;
   delete patch.__refreshPanels;
 
-  try {
-    let raw = fs.readFileSync(filePath, "utf-8");
-    if (raw.charCodeAt(0) === 0xfeff) raw = raw.slice(1);
-    const current = JSON.parse(raw);
-    // Deep-merge __modals to prevent race conditions between concurrent panel updates.
-    // Without this, two panels reading __modals, spreading, and PATCHing can overwrite
-    // each other's changes (last-write-wins on the full __modals object).
-    const merged = { ...current, ...patch };
+  const r = await mutateSessionJson(filePath, (current) => {
+    const merged = applyPatch(current, patch);
     if (
-      patch.__modals &&
-      typeof patch.__modals === "object" &&
-      !Array.isArray(patch.__modals) &&
-      typeof current.__modals === "object" &&
-      !Array.isArray(current.__modals) &&
-      current.__modals !== null
+      patch.__modals && typeof patch.__modals === "object" && !Array.isArray(patch.__modals) &&
+      typeof current.__modals === "object" && !Array.isArray(current.__modals) && current.__modals !== null
     ) {
-      merged.__modals = { ...current.__modals, ...patch.__modals };
+      merged.__modals = {
+        ...(current.__modals as Record<string, unknown>),
+        ...(patch.__modals as Record<string, unknown>),
+      };
     }
-    // Strip __refreshPanels from merged output (should not persist)
-    delete merged.__refreshPanels;
-    fs.writeFileSync(filePath, JSON.stringify(merged, null, 2), "utf-8");
-
-    // Invalidate autoRefresh cache for requested panels (before fs.watch triggers render)
-    if (Array.isArray(refreshPanels) && refreshPanels.length > 0) {
-      const instance = getSessionInstance(id);
-      if (instance) {
-        for (const name of refreshPanels) {
-          instance.panels.invalidatePanel(name);
-        }
-      }
-    }
-
-    return NextResponse.json(merged);
-  } catch {
+    return merged;
+  });
+  if (!r.ok) {
     return NextResponse.json({ error: `Failed to update ${fileName}` }, { status: 500 });
   }
+
+  if (Array.isArray(refreshPanels) && refreshPanels.length > 0) {
+    const instance = getSessionInstance(id);
+    if (instance) {
+      for (const name of refreshPanels) instance.panels.invalidatePanel(name);
+    }
+  }
+
+  return NextResponse.json(r.value);
 }
