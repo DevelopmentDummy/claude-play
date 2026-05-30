@@ -119,7 +119,7 @@ cat > /tmp/gemini-sprite.json << 'REQEOF'
   "persona": "<페르소나 이름>"
 }
 REQEOF
-curl -s -X POST "http://localhost:3340/api/tools/gemini/generate" \
+curl -s -X POST "http://localhost:{{PORT}}/api/tools/gemini/generate" \
   -H "Content-Type: application/json" \
   -d @/tmp/gemini-sprite.json
 ```

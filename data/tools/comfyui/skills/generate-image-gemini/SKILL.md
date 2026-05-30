@@ -50,14 +50,14 @@ cat > /tmp/gemini-req.json << 'REQEOF'
   "persona": "캐릭터이름"
 }
 REQEOF
-curl -s -X POST "http://localhost:3340/api/tools/gemini/generate" \
+curl -s -X POST "http://localhost:{{PORT}}/api/tools/gemini/generate" \
   -H "Content-Type: application/json" \
   -d @/tmp/gemini-req.json
 ```
 
 **대화 세션** (활성 세션에 자동 저장):
 ```bash
-curl -s -X POST "http://localhost:3340/api/tools/gemini/generate" \
+curl -s -X POST "http://localhost:{{PORT}}/api/tools/gemini/generate" \
   -H "Content-Type: application/json" \
   -d '{"prompt":"A moonlit forest path with fireflies, ethereal atmosphere","filename":"forest-night.png"}'
 ```

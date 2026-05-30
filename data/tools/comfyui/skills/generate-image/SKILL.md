@@ -249,7 +249,7 @@ mcp__claude_play__update_profile({ sourceImage: "images/mira-walk-flustered-202.
 
 ### API 직접 호출
 ```bash
-curl -s -X POST http://localhost:3340/api/tools/comfyui/update-profile \
+curl -s -X POST http://localhost:{{PORT}}/api/tools/comfyui/update-profile \
   -H "Content-Type: application/json" \
   -d '{"sourceImage": "images/mira-walk-flustered-202.png"}'
 ```
@@ -943,7 +943,7 @@ cat > /tmp/comfy-req.json << 'REQEOF'
   "persona": "다이앤"
 }
 REQEOF
-curl -s -X POST "http://localhost:3340/api/tools/comfyui/generate" \
+curl -s -X POST "http://localhost:{{PORT}}/api/tools/comfyui/generate" \
   -H "Content-Type: application/json" \
   -d @/tmp/comfy-req.json
 ```
