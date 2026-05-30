@@ -28,6 +28,7 @@
 
 | 12 | **거대 클래스 분해 — session-manager.ts** — understand 워크플로(95메서드)로 6 안전 클러스터 식별 후 추출. 코어 CRUD는 보존, public은 위임 래퍼로 API 보존, appRoot 주입. **2414→1940줄(−20%)** | ✅ merged `main` | `73ad7b0`→`9709bdf` (6/6 적대적 토큰단위 SHIP, 빌드 green) |
 | 13 | **접근성 클러스터** — #11 aria-label(27 icon버튼+textarea), #12 색상-only 토글 ARIA(voice 토글 등), #22 prefers-reduced-motion(globals.css), #24 div→button(ToolBlock/InlineImage), #25 WCAG 대비(토큰+컨트롤 nudge), #31 useFocusTrap 훅+5모달 dialog 시맨틱, #32 PanelResizeHandle 포인터이벤트(터치/펜). additive, 23파일 | ✅ merged `main` | `e47f592`→`fa8eab0` (스코프 워크플로 7+구현 11 에이전트, 빌드 green) |
+| 14 | **코드건전성 #9·#7** — #9 스킬 `localhost:3340`→`{{PORT}}`(6곳/4 SKILL.md, 비기본포트 깨짐 수정) + #7 session.json accessor 13개 → `patchSessionMeta`/`readSessionMeta` 헬퍼 DRY(session-manager **1940→1848줄**, public API·동작 보존) | ✅ merged `main` | `02d3f2d`, `8adf300` (빌드 green, diff 검증) |
 
 > **session-manager.ts 분해 완료**: 2414 → **1940줄(−20%)**. 추출 6모듈: session-sync-diff.ts(104, persona↔session diff 술어), runtime-instructions.ts(88), session-config-io.ts(73, layout/voice/options I/O), runtime-config.ts(205, .claude/.mcp/.codex/.gemini config emit), prompt-assembly.ts(107, 시스템 프롬프트 조립), fs-mirror.ts(38, 재귀복사). public 메서드는 얇은 위임 래퍼로 외부 API(17+파일 60호출) 무변경. **수동 스모크 권장(미실시)**: create-session + open-session(헤드리스 후 사용자) — tsc는 동작 drift는 못 잡음.
 
@@ -35,7 +36,14 @@
 
 - **웨이브2 (Antigravity 룰셋)**: 적대적 리뷰가 agy brain transcript(`~/.gemini/antigravity-cli/brain/{cascadeId}/.system_generated/logs/transcript.jsonl`)를 직접 분석 → **agy가 GEMINI.md 본문을 컨텍스트에 auto-load하지 않음**(LIST_DIRECTORY 파일명으로만 등장). 지시문은 primer(USER_INPUT step0)로 전달되고 cascade history에 남아 resume에도 유지됨. 즉 감사 #1 전제("resume마다 룰셋 유실")가 부정확하고, GEMINI.md 수정은 resume에 대해 no-op 공산. **실제 결함은 new세션 28000자 primer truncation + 컴팩션**. 재개 시: ① codeword 런타임 검증(GEMINI.md 룰셋부에만 심은 지시를 resume 후 모델이 따르는지) ② 안 따르면 primer truncation을 직접 겨냥해 재설계. 브랜치 `feat/antigravity-ruleset-persistence`는 무해하니 검증 후 살리거나 폐기.
 - **#21 셋업 마법사 재시작**: save 라우트 `process.exit` ↔ `/api/service/restart` 오케스트레이터 이중재시작 레이스 + 포트변경 폴링. 런타임 재시작 테스트 필요로 헤드리스 완결 불가.
-- **#9 스킬 {{PORT}}**: 대상 SKILL.md 일부가 미커밋 작업중이라 보류(충돌 회피).
+- ~~#9 스킬 {{PORT}}~~ → **웨이브14로 완료**(SKILL.md 커밋되며 차단 해소, `localhost:3340`→`{{PORT}}`).
+- **런타임 검증 필요로 보류(2026-05-31 트리아지)** — 헤드리스로 안전 완결 불가:
+  - **#2 turn-state 이중경로**: 턴 헤더가 두 갈래 코드로 조립돼 drift. 통합은 턴 조립 동작 변경이라 런타임 RP 검증 필요.
+  - **#5 style-check raw 입력**: 리뷰어 LLM에 choice JSON/이미지토큰/thinking 날것 전달 → 사전 sanitize 필요. style-check 런(런타임)으로만 검증 가능.
+  - **#26 ImageModal z-index**: 컴포넌트 8개가 z-9999 공유 + 풀스크린 패널 → 일관 스태킹 전략 필요. naive 변경은 다른 충돌 유발, 런타임 시각 검증 필수.
+  - **#28 stale panelData / #29 sendMessage 래퍼 누적 / #30 DockPanel 탭 누수**: 전부 런타임 패널 생명주기 동작.
+  - **#10 중복 gemini 스킬**(comfyui/ 아래 stale): 콘텐츠 인프라 삭제라 사용자 확인 후 진행(자율 삭제 안 함).
+- **#34/#35 (훅 컨텍스트 로더/패치 중복)** → **웨이브1로 실질 해소**. 4개 훅 러너가 전부 `loadSessionData` + `session-state` 패치 헬퍼 공유. 잔여 scaffolding 통합은 저가치·고위험이라 미진행.
 
 ## 다음 웨이브 후보 (랭킹·성격)
 
