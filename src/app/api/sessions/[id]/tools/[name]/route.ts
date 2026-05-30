@@ -3,18 +3,11 @@ import * as path from "path";
 import { NextResponse } from "next/server";
 import { getServices, getSessionInstance } from "@/lib/services";
 import { spawnBackgroundClaude } from "@/lib/background-session";
+import { mutateSessionJson, applyPatch, loadSessionData, resolveSessionFilePath } from "@/lib/session-state";
 
 const PROTECTED_FILES = new Set([
   "session.json", "builder-session.json", "layout.json",
   "chat-history.json", "package.json", "tsconfig.json",
-]);
-
-const SYSTEM_JSON = new Set([
-  "variables.json", "session.json", "builder-session.json",
-  "comfyui-config.json", "layout.json", "chat-history.json",
-  "package.json", "tsconfig.json", "character-tags.json",
-  "voice.json", "chat-options.json", "policy-context.json",
-  "pending-events.json", "pending-actions.json",
 ]);
 
 export async function POST(
@@ -57,24 +50,7 @@ export async function POST(
 
   // Build context
   const varsPath = path.join(sessionDir, "variables.json");
-  let variables: Record<string, unknown> = {};
-  try {
-    variables = JSON.parse(fs.readFileSync(varsPath, "utf-8"));
-  } catch {}
-
-  // Load custom data files
-  const data: Record<string, unknown> = {};
-  try {
-    for (const f of fs.readdirSync(sessionDir)) {
-      if (f.endsWith(".json") && !SYSTEM_JSON.has(f)) {
-        try {
-          data[f.replace(".json", "")] = JSON.parse(
-            fs.readFileSync(path.join(sessionDir, f), "utf-8")
-          );
-        } catch {}
-      }
-    }
-  } catch {}
+  const { variables, data } = loadSessionData(sessionDir);
 
   // Resolve parent persona — lets engine actions read/write persona-scoped files
   // (e.g. shared gallery, persona-level images) without leaving the session sandbox API.
@@ -115,22 +91,17 @@ export async function POST(
       _available_actions?: Array<{ action: string; label: string; args_hint: string | null }>;
     } | undefined;
 
-    // Apply variables patch
+    const failed: string[] = [];
+
+    // Apply variables patch (중앙화 + __modals 그룹 로직 보존)
     if (result?.variables && typeof result.variables === "object") {
-      try {
-        const current = JSON.parse(fs.readFileSync(varsPath, "utf-8"));
-
-        // Extract __modals from result to handle via group-aware logic
-        const modalChanges = result.variables.__modals as Record<string, unknown> | undefined;
-        delete result.variables.__modals;
-
-        const merged = { ...current, ...result.variables };
-
-        // Apply modal changes with group-aware logic
+      const modalChanges = result.variables.__modals as Record<string, unknown> | undefined;
+      delete result.variables.__modals;
+      const restVars = result.variables as Record<string, unknown>;
+      const vr = await mutateSessionJson(varsPath, (current) => {
+        const merged = applyPatch(current, restVars);
         if (modalChanges && typeof modalChanges === "object" && !Array.isArray(modalChanges)) {
-          const modals: Record<string, unknown> = { ...(current.__modals || {}) };
-
-          // Read modal groups from layout.json
+          const modals: Record<string, unknown> = { ...((current.__modals as Record<string, unknown>) || {}) };
           let modalGroups: Record<string, string[]> = {};
           const layoutPath = path.join(sessionDir, "layout.json");
           try {
@@ -140,45 +111,38 @@ export async function POST(
               modalGroups = JSON.parse(layoutRaw)?.panels?.modalGroups || {};
             }
           } catch {}
-
-          for (const [name, value] of Object.entries(modalChanges)) {
+          for (const [mName, value] of Object.entries(modalChanges)) {
             if (value && value !== false && value !== null) {
-              // Opening — close same-group modals first
               for (const members of Object.values(modalGroups)) {
-                if (members.includes(name)) {
-                  for (const member of members) {
-                    if (member !== name) modals[member] = false;
-                  }
+                if (members.includes(mName)) {
+                  for (const member of members) if (member !== mName) modals[member] = false;
                   break;
                 }
               }
-              modals[name] = value;
+              modals[mName] = value;
             } else {
-              modals[name] = false;
+              modals[mName] = false;
             }
           }
           merged.__modals = modals;
         }
-
-        fs.writeFileSync(varsPath, JSON.stringify(merged, null, 2), "utf-8");
-      } catch {}
+        return merged;
+      });
+      if (!vr.ok) failed.push("variables.json");
     }
 
     // Apply data file patches
     if (result?.data && typeof result.data === "object") {
       for (const [rawKey, patch] of Object.entries(result.data)) {
+        if (!patch || typeof patch !== "object") continue;
         const fileName = rawKey.endsWith(".json") ? rawKey : `${rawKey}.json`;
-        if (fileName.includes("/") || fileName.includes("\\") || fileName.includes("..")) continue;
         if (PROTECTED_FILES.has(fileName)) continue;
-        const filePath = path.join(sessionDir, fileName);
-        try {
-          let current: Record<string, unknown> = {};
-          if (fs.existsSync(filePath)) {
-            current = JSON.parse(fs.readFileSync(filePath, "utf-8"));
-          }
-          const merged = { ...current, ...patch };
-          fs.writeFileSync(filePath, JSON.stringify(merged, null, 2), "utf-8");
-        } catch {}
+        const filePath = resolveSessionFilePath(sessionDir, fileName);
+        if (!filePath) continue;
+        const dr = await mutateSessionJson(filePath, (current) =>
+          applyPatch(current, patch as Record<string, unknown>),
+        );
+        if (!dr.ok) failed.push(fileName);
       }
     }
 
@@ -236,6 +200,7 @@ export async function POST(
       ok: true,
       result: result?.result ?? null,
       _available_actions: result?._available_actions ?? null,
+      ...(failed.length ? { failed } : {}),
     });
   } catch (err) {
     console.error(`[tools/${name}] execution error:`, err);
