@@ -10,7 +10,6 @@ import {
   readOptions as readOptionsImpl,
   writeOptions as writeOptionsImpl,
 } from "./session-config-io";
-import { ensureHandlebarsHelpers } from "./panel-engine";
 import { getPort } from "./endpoints";
 import { ensureClaudeRuntimeConfig as ensureClaudeRuntimeConfigImpl } from "./runtime-config";
 import { AIProvider, providerFromModel } from "./ai-provider";
@@ -22,6 +21,11 @@ import {
   writeKimiInstructions as writeKimiInstructionsImpl,
   writeAntigravityInstructions as writeAntigravityInstructionsImpl,
 } from "./runtime-instructions";
+import {
+  getBuilderPrompt as getBuilderPromptImpl,
+  buildServiceSystemPrompt as buildServiceSystemPromptImpl,
+  buildBuilderSystemPrompt as buildBuilderSystemPromptImpl,
+} from "./prompt-assembly";
 
 /** Read the selected writing style content for a persona, if any */
 function readPersonaStyleContent(personaDir: string): string | null {
@@ -168,11 +172,6 @@ interface BuilderMeta {
   provider?: AIProvider;
   model?: string;
 }
-
-const SERVICE_SESSION_GUIDE_FILES_CLAUDE = ["session-primer.yaml", "session-shared.md"] as const;
-const SERVICE_SESSION_GUIDE_FILES_CODEX = ["session-primer-codex.yaml", "session-shared.md"] as const;
-const SERVICE_SESSION_GUIDE_FILES_GEMINI = ["session-primer-gemini.yaml", "session-shared.md"] as const;
-const BUILDER_GUIDE_FILES = ["builder-primer.yaml"] as const;
 
 export class SessionManager {
   private dataDir: string;
@@ -1596,11 +1595,7 @@ export class SessionManager {
 
   /** Read the builder meta-prompt, compiled with Handlebars for conditional sections */
   getBuilderPrompt(context: { localTtsAvailable?: boolean } = {}): string {
-    ensureHandlebarsHelpers();
-    const promptPath = path.join(this.appRoot, "builder-prompt.md");
-    const source = fs.readFileSync(promptPath, "utf-8");
-    const template = Handlebars.compile(source, { noEscape: true });
-    return template(context);
+    return getBuilderPromptImpl(this.appRoot, context);
   }
 
   /** Save builder session info for resume */
@@ -1952,90 +1947,11 @@ export class SessionManager {
   }
 
   buildServiceSystemPrompt(personaName?: string, provider?: AIProvider, options?: Record<string, unknown>, userName?: string): string {
-    const files = provider === "codex"
-      ? SERVICE_SESSION_GUIDE_FILES_CODEX
-      : provider === "gemini"
-      ? SERVICE_SESSION_GUIDE_FILES_GEMINI
-      : provider === "kimi"
-      ? SERVICE_SESSION_GUIDE_FILES_CODEX
-      : provider === "antigravity"
-      ? SERVICE_SESSION_GUIDE_FILES_GEMINI
-      : SERVICE_SESSION_GUIDE_FILES_CLAUDE;
-    return this.buildPromptFromGuideFiles(files, personaName, options, userName);
+    return buildServiceSystemPromptImpl(this.appRoot, personaName, provider, options, userName);
   }
 
   buildBuilderSystemPrompt(personaName?: string, options?: Record<string, unknown>): string {
-    return this.buildPromptFromGuideFiles(BUILDER_GUIDE_FILES, personaName, options);
-  }
-
-  private buildPromptFromGuideFiles(files: readonly string[], personaName?: string, options?: Record<string, unknown>, userName?: string): string {
-    const sections: string[] = [];
-    for (const filename of files) {
-      const guidePath = path.join(this.appRoot, filename);
-      if (!fs.existsSync(guidePath)) continue;
-      const content = this.readGuideContent(guidePath, personaName, options, userName);
-      if (content) sections.push(content);
-    }
-    return sections.join("\n\n").trim();
-  }
-
-  private readGuideContent(guidePath: string, personaName?: string, options?: Record<string, unknown>, userName?: string): string {
-    const raw = fs.readFileSync(guidePath, "utf-8");
-    const ext = path.extname(guidePath).toLowerCase();
-    let base = ext === ".yaml" || ext === ".yml"
-      ? this.extractActiveSystemPrompt(raw) || raw
-      : raw;
-    const actorName = personaName || "the current persona";
-    base = base.replace(/\{agent_name\}/g, actorName);
-    const resolvedUserName = userName || "the user";
-    base = base.replace(/\{user_name\}/g, resolvedUserName).trim();
-
-    // Compile Handlebars for .md files when options are provided
-    if (options && ext === ".md") {
-      try {
-        const template = Handlebars.compile(base, { noEscape: true });
-        base = template({ options }, { allowProtoPropertiesByDefault: true });
-      } catch { /* fall through with uncompiled content */ }
-    }
-
-    return base;
-  }
-
-  private extractActiveSystemPrompt(yamlText: string): string | null {
-    const lines = yamlText.split(/\r?\n/);
-    const activeLine = lines.find((line) => /^active_system_prompt:\s*/.test(line));
-    if (!activeLine) return null;
-
-    const activeMatch = activeLine.match(
-      /^active_system_prompt:\s*(?:"([^"]+)"|'([^']+)'|([A-Za-z0-9_-]+))\s*$/
-    );
-    const activeKey = activeMatch?.[1] || activeMatch?.[2] || activeMatch?.[3];
-    if (!activeKey) return null;
-
-    const blockHeader = new RegExp(`^${this.escapeRegExp(activeKey)}:\\s*\\|\\s*$`);
-    const startIndex = lines.findIndex((line) => blockHeader.test(line));
-    if (startIndex < 0) return null;
-
-    const blockLines: string[] = [];
-    for (let i = startIndex + 1; i < lines.length; i += 1) {
-      const line = lines[i];
-      if (line.startsWith("  ")) {
-        blockLines.push(line.slice(2));
-        continue;
-      }
-      if (line.trim() === "") {
-        blockLines.push("");
-        continue;
-      }
-      break;
-    }
-
-    const blockText = blockLines.join("\n").trim();
-    return blockText || null;
-  }
-
-  private escapeRegExp(value: string): string {
-    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return buildBuilderSystemPromptImpl(this.appRoot, personaName, options);
   }
 
   // ── Helpers ──────────────────────────────────────────────
