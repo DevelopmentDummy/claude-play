@@ -4,7 +4,6 @@ import {
   loadPackage,
   resolveWorkflow,
   validateParams,
-  type WorkflowPackageMeta,
   type WorkflowFeatures,
 } from "./workflow-resolver";
 import { getGpuManagerUrl } from "./endpoints";
@@ -21,7 +20,7 @@ import {
   type DetailerModuleTemplate,
 } from "./comfyui-graph";
 import { extractAudioFilenames, extractOutputFilenames, extractTextOutputs } from "./comfyui-history";
-import { readDirConfig, loadCheckpointRegistry, findCompatiblePackages, resolveCheckpoint, validateCheckpointCompatibility } from "./comfyui-checkpoint";
+import { readDirConfig, resolveCheckpoint, validateCheckpointCompatibility } from "./comfyui-checkpoint";
 
 /** Sanitize a relative file path: preserve subdirectories but prevent traversal */
 function safePath(filePath: string): string {
