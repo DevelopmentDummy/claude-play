@@ -806,6 +806,7 @@ export class SessionInstance {
         counter = (Number(current.__style_check_counter) || 0) + 1;
         return { ...current, __style_check_counter: counter };
       });
+      // variables.json을 읽지 못하면(손상 등) 카운터 증분이 실패하므로 이번 스타일 검토는 건너뜀(쓰기 무결성: 못 읽은 상태로 분석/덮어쓰기 안 함).
       if (!cr.ok) return;
       const variables = cr.value || {};
 
