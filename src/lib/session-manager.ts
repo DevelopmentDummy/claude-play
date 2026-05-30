@@ -770,154 +770,62 @@ export class SessionManager {
     }
   }
 
-  /** Save the Claude session ID into session.json */
-  saveClaudeSessionId(id: string, claudeSessionId: string): void {
+  /** Read and parse session.json; returns null if missing or unparseable */
+  private readSessionMeta(id: string): SessionMeta | null {
+    const metaPath = path.join(this.getSessionDir(id), "session.json");
+    if (!fs.existsSync(metaPath)) return null;
+    try { return JSON.parse(fs.readFileSync(metaPath, "utf-8")) as SessionMeta; } catch { return null; }
+  }
+
+  /** Read-modify-write session.json; no-op if missing, ignores parse errors */
+  private patchSessionMeta(id: string, mutate: (meta: SessionMeta) => void): void {
     const metaPath = path.join(this.getSessionDir(id), "session.json");
     if (!fs.existsSync(metaPath)) return;
     try {
       const meta: SessionMeta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
-      meta.claudeSessionId = claudeSessionId;
+      mutate(meta);
       fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), "utf-8");
     } catch { /* ignore */ }
   }
+
+  /** Save the Claude session ID into session.json */
+  saveClaudeSessionId(id: string, claudeSessionId: string): void { this.patchSessionMeta(id, (m) => { m.claudeSessionId = claudeSessionId; }); }
 
   /** Save model choice to session */
-  saveSessionModel(id: string, model: string): void {
-    const metaPath = path.join(this.getSessionDir(id), "session.json");
-    if (!fs.existsSync(metaPath)) return;
-    try {
-      const meta: SessionMeta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
-      meta.model = model || undefined;
-      fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), "utf-8");
-    } catch { /* ignore */ }
-  }
+  saveSessionModel(id: string, model: string): void { this.patchSessionMeta(id, (m) => { m.model = model || undefined; }); }
 
   /** Get saved model for session */
-  getSessionModel(id: string): string | undefined {
-    const metaPath = path.join(this.getSessionDir(id), "session.json");
-    if (!fs.existsSync(metaPath)) return undefined;
-    try {
-      const meta: SessionMeta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
-      return meta.model;
-    } catch {
-      return undefined;
-    }
-  }
+  getSessionModel(id: string): string | undefined { return this.readSessionMeta(id)?.model; }
 
   /** Clear saved Claude session ID (e.g. when switching models) */
-  clearClaudeSessionId(id: string): void {
-    const metaPath = path.join(this.getSessionDir(id), "session.json");
-    if (!fs.existsSync(metaPath)) return;
-    try {
-      const meta: SessionMeta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
-      delete meta.claudeSessionId;
-      fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), "utf-8");
-    } catch { /* ignore */ }
-  }
+  clearClaudeSessionId(id: string): void { this.patchSessionMeta(id, (m) => { delete m.claudeSessionId; }); }
 
   /** Get saved Claude session ID for resume */
-  getClaudeSessionId(id: string): string | undefined {
-    const metaPath = path.join(this.getSessionDir(id), "session.json");
-    if (!fs.existsSync(metaPath)) return undefined;
-    try {
-      const meta: SessionMeta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
-      return meta.claudeSessionId;
-    } catch {
-      return undefined;
-    }
-  }
+  getClaudeSessionId(id: string): string | undefined { return this.readSessionMeta(id)?.claudeSessionId; }
 
   /** Save Codex thread ID for resume */
-  saveCodexThreadId(id: string, threadId: string): void {
-    const metaPath = path.join(this.getSessionDir(id), "session.json");
-    if (!fs.existsSync(metaPath)) return;
-    try {
-      const meta: SessionMeta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
-      meta.codexThreadId = threadId;
-      fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), "utf-8");
-    } catch { /* ignore */ }
-  }
+  saveCodexThreadId(id: string, threadId: string): void { this.patchSessionMeta(id, (m) => { m.codexThreadId = threadId; }); }
 
   /** Get saved Codex thread ID for resume */
-  getCodexThreadId(id: string): string | undefined {
-    const metaPath = path.join(this.getSessionDir(id), "session.json");
-    if (!fs.existsSync(metaPath)) return undefined;
-    try {
-      const meta: SessionMeta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
-      return meta.codexThreadId;
-    } catch {
-      return undefined;
-    }
-  }
+  getCodexThreadId(id: string): string | undefined { return this.readSessionMeta(id)?.codexThreadId; }
 
   /** Save Gemini session ID for resume */
-  saveGeminiSessionId(id: string, geminiSessionId: string): void {
-    const metaPath = path.join(this.getSessionDir(id), "session.json");
-    if (!fs.existsSync(metaPath)) return;
-    try {
-      const meta: SessionMeta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
-      meta.geminiSessionId = geminiSessionId;
-      fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), "utf-8");
-    } catch { /* ignore */ }
-  }
+  saveGeminiSessionId(id: string, geminiSessionId: string): void { this.patchSessionMeta(id, (m) => { m.geminiSessionId = geminiSessionId; }); }
 
   /** Get saved Gemini session ID for resume */
-  getGeminiSessionId(id: string): string | undefined {
-    const metaPath = path.join(this.getSessionDir(id), "session.json");
-    if (!fs.existsSync(metaPath)) return undefined;
-    try {
-      const meta: SessionMeta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
-      return meta.geminiSessionId;
-    } catch {
-      return undefined;
-    }
-  }
+  getGeminiSessionId(id: string): string | undefined { return this.readSessionMeta(id)?.geminiSessionId; }
 
   /** Save Kimi session ID for resume */
-  saveKimiSessionId(id: string, kimiSessionId: string): void {
-    const metaPath = path.join(this.getSessionDir(id), "session.json");
-    if (!fs.existsSync(metaPath)) return;
-    try {
-      const meta: SessionMeta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
-      meta.kimiSessionId = kimiSessionId;
-      fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), "utf-8");
-    } catch { /* ignore */ }
-  }
+  saveKimiSessionId(id: string, kimiSessionId: string): void { this.patchSessionMeta(id, (m) => { m.kimiSessionId = kimiSessionId; }); }
 
   /** Get saved Kimi session ID for resume */
-  getKimiSessionId(id: string): string | undefined {
-    const metaPath = path.join(this.getSessionDir(id), "session.json");
-    if (!fs.existsSync(metaPath)) return undefined;
-    try {
-      const meta: SessionMeta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
-      return meta.kimiSessionId;
-    } catch {
-      return undefined;
-    }
-  }
+  getKimiSessionId(id: string): string | undefined { return this.readSessionMeta(id)?.kimiSessionId; }
 
   /** Save Antigravity cascade ID for resume */
-  saveAntigravityCascadeId(id: string, cascadeId: string): void {
-    const metaPath = path.join(this.getSessionDir(id), "session.json");
-    if (!fs.existsSync(metaPath)) return;
-    try {
-      const meta: SessionMeta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
-      meta.antigravityCascadeId = cascadeId;
-      fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), "utf-8");
-    } catch { /* ignore */ }
-  }
+  saveAntigravityCascadeId(id: string, cascadeId: string): void { this.patchSessionMeta(id, (m) => { m.antigravityCascadeId = cascadeId; }); }
 
   /** Get saved Antigravity cascade ID for resume */
-  getAntigravityCascadeId(id: string): string | undefined {
-    const metaPath = path.join(this.getSessionDir(id), "session.json");
-    if (!fs.existsSync(metaPath)) return undefined;
-    try {
-      const meta: SessionMeta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
-      return meta.antigravityCascadeId;
-    } catch {
-      return undefined;
-    }
-  }
+  getAntigravityCascadeId(id: string): string | undefined { return this.readSessionMeta(id)?.antigravityCascadeId; }
 
   /** Sync updated files from persona to session (panels, variables, opening, layout, skills) */
   /** Full sync — syncs all elements from persona to session */
