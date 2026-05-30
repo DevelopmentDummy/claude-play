@@ -27,6 +27,7 @@
 > **comfyui-client.ts 분해 완료**: 2034 → **1213줄(−40%)**. 추출 모듈: comfyui-graph.ts(604, 순수 그래프수술), comfyui-checkpoint.ts(164), comfyui-history.ts(74). 남은 1213줄은 정당한 IO/네트워크/오케스트레이션(buildPrompt) 코어 — 추가 추출 비권장.
 
 | 12 | **거대 클래스 분해 — session-manager.ts** — understand 워크플로(95메서드)로 6 안전 클러스터 식별 후 추출. 코어 CRUD는 보존, public은 위임 래퍼로 API 보존, appRoot 주입. **2414→1940줄(−20%)** | ✅ merged `main` | `73ad7b0`→`9709bdf` (6/6 적대적 토큰단위 SHIP, 빌드 green) |
+| 13 | **접근성 클러스터** — #11 aria-label(27 icon버튼+textarea), #12 색상-only 토글 ARIA(voice 토글 등), #22 prefers-reduced-motion(globals.css), #24 div→button(ToolBlock/InlineImage), #25 WCAG 대비(토큰+컨트롤 nudge), #31 useFocusTrap 훅+5모달 dialog 시맨틱, #32 PanelResizeHandle 포인터이벤트(터치/펜). additive, 23파일 | ✅ merged `main` | `e47f592`→`fa8eab0` (스코프 워크플로 7+구현 11 에이전트, 빌드 green) |
 
 > **session-manager.ts 분해 완료**: 2414 → **1940줄(−20%)**. 추출 6모듈: session-sync-diff.ts(104, persona↔session diff 술어), runtime-instructions.ts(88), session-config-io.ts(73, layout/voice/options I/O), runtime-config.ts(205, .claude/.mcp/.codex/.gemini config emit), prompt-assembly.ts(107, 시스템 프롬프트 조립), fs-mirror.ts(38, 재귀복사). public 메서드는 얇은 위임 래퍼로 외부 API(17+파일 60호출) 무변경. **수동 스모크 권장(미실시)**: create-session + open-session(헤드리스 후 사용자) — tsc는 동작 drift는 못 잡음.
 
