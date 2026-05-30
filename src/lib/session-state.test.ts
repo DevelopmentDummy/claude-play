@@ -1,6 +1,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { applyPatch, SYSTEM_JSON, LINT_SKIP_JSON } from "./session-state";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
+import {
+  applyPatch, SYSTEM_JSON, LINT_SKIP_JSON,
+  mutateSessionJsonSync, resolveSessionFilePath, readSessionJson, loadSessionData,
+} from "./session-state";
+
+function tmpDir(): string {
+  return fs.mkdtempSync(path.join(os.tmpdir(), "ss-test-"));
+}
 
 test("applyPatch: shallow 기본은 top-level 키를 교체한다", () => {
   const cur = { a: 1, nested: { x: 1, y: 2 } };
@@ -47,4 +57,64 @@ test("SSOT: SYSTEM_JSON union(17) + LINT_SKIP_JSON은 variables.json 미포함",
   assert.equal(SYSTEM_JSON.size, 17);
   assert.equal(LINT_SKIP_JSON.has("variables.json"), false);
   assert.equal(LINT_SKIP_JSON.has("voice.json"), false);
+});
+
+test("resolveSessionFilePath: .json 부착", () => {
+  assert.equal(resolveSessionFilePath("/s", "inventory"), path.join("/s", "inventory.json"));
+});
+test("resolveSessionFilePath: traversal 차단 → null", () => {
+  assert.equal(resolveSessionFilePath("/s", "../secret"), null);
+  assert.equal(resolveSessionFilePath("/s", "a/b.json"), null);
+});
+
+test("mutateSessionJsonSync: 신규 파일 2-space, BOM 없음", () => {
+  const fp = path.join(tmpDir(), "variables.json");
+  const r = mutateSessionJsonSync(fp, (cur) => ({ ...cur, a: 1 }));
+  assert.equal(r.ok, true);
+  const raw = fs.readFileSync(fp, "utf-8");
+  assert.notEqual(raw.charCodeAt(0), 0xfeff);
+  assert.equal(raw, '{\n  "a": 1\n}');
+});
+
+test("mutateSessionJsonSync: 기존 갱신 + 읽기 BOM strip", () => {
+  const fp = path.join(tmpDir(), "v.json");
+  fs.writeFileSync(fp, "﻿" + JSON.stringify({ a: 1 }), "utf-8");
+  const r = mutateSessionJsonSync(fp, (cur) => applyPatch(cur, { b: 2 }));
+  assert.equal(r.ok, true);
+  assert.deepEqual(JSON.parse(fs.readFileSync(fp, "utf-8")), { a: 1, b: 2 });
+});
+
+test("mutateSessionJsonSync: 깨진 기존 파일은 abort(미덮어쓰기)", () => {
+  const fp = path.join(tmpDir(), "v.json");
+  fs.writeFileSync(fp, "{ not json", "utf-8");
+  const r = mutateSessionJsonSync(fp, () => ({ a: 1 }));
+  assert.equal(r.ok, false);
+  assert.equal(fs.readFileSync(fp, "utf-8"), "{ not json");
+});
+
+test("mutateSessionJsonSync: transform throw → ok:false, 파일 미생성", () => {
+  const fp = path.join(tmpDir(), "v.json");
+  const r = mutateSessionJsonSync(fp, () => { throw new Error("boom"); });
+  assert.equal(r.ok, false);
+  assert.equal(fs.existsSync(fp), false);
+});
+
+test("mutateSessionJsonSync: 성공 후 .tmp 잔여 없음", () => {
+  const dir = tmpDir();
+  mutateSessionJsonSync(path.join(dir, "v.json"), () => ({ a: 1 }));
+  assert.deepEqual(fs.readdirSync(dir).filter((f) => f.endsWith(".tmp")), []);
+});
+
+test("readSessionJson: 없으면 null", () => {
+  assert.equal(readSessionJson(path.join(tmpDir(), "nope.json")), null);
+});
+
+test("loadSessionData: 비시스템 *.json만 data로, variables 분리", () => {
+  const dir = tmpDir();
+  fs.writeFileSync(path.join(dir, "variables.json"), JSON.stringify({ hp: 5 }), "utf-8");
+  fs.writeFileSync(path.join(dir, "inventory.json"), JSON.stringify({ gold: 10 }), "utf-8");
+  fs.writeFileSync(path.join(dir, "voice.json"), JSON.stringify({ x: 1 }), "utf-8");
+  const { variables, data } = loadSessionData(dir);
+  assert.deepEqual(variables, { hp: 5 });
+  assert.deepEqual(data, { inventory: { gold: 10 } });
 });
