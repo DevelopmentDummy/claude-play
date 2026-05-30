@@ -17,6 +17,7 @@
 | 3 | **로비/온보딩 실패처리 UX** — startSession 침묵실패·phantom 프로필 게이트·무가드 HARD 삭제·ToastEffect 마운트 | ✅ merged `main` | `fa921e8`, `56d1a9e` |
 | 4 | **설정 SSOT** — `src/lib/endpoints.ts` (포트/URL 단일출처, 비기본 PORT divergence 제거) | ✅ merged `main` | `e8003a6` |
 | 5 | **쓰기경로 통합** — `src/lib/modal-merge.ts` (모달 그룹 병합 2중복 → 1, behavior-preserving) + `clearPopups` 원자화(raw write → `mutateSessionJsonSync`) | ✅ merged `main` | `c574da5`→`a35f473` (12 unit tests, 적대적 SHIP) |
+| 6 | **거대 클래스 분해 Slice 1** — `src/lib/comfyui-graph.ts` 추출(리프 순수 그래프수술 4함수+2인터페이스, comfyui-client.ts **2034→1833줄**, verbatim move) | ✅ merged `main` | `76ebe30`→`145dcd5` (적대적 토큰단위 SHIP, 빌드 green) |
 
 ## 보류 항목 (재개 시 필요한 것)
 
@@ -26,7 +27,12 @@
 
 ## 다음 웨이브 후보 (랭킹·성격)
 
-- **⑥ 거대 클래스 분해** (large effort, navigability-only, **테스트 프레임워크 없음 → 회귀 위험**): session-manager.ts(2424줄, 7서브시스템), session-instance.ts 내부 TTS 엔진(~280줄), comfyui-client.ts 그래프 수술 로직(~700줄, 가장 안전한 순수 추출). 가장 안전한 한 조각(comfyui-graph.ts 추출)부터 수동 스모크 동반 권장.
+- **⑥ 거대 클래스 분해** (large effort, navigability-only, **테스트 프레임워크 없음 → 회귀 위험**): **Slice 1 완료(웨이브6, comfyui-graph.ts)**. 후속 슬라이스(comfyui-client.ts 기준, understand 워크플로 분류 근거):
+  - **Slice 1b**(trivial): `injectTriggerTags` 추가 — pure지만 `workflow-resolver`의 `WorkflowPackageMeta` 타입 import를 끌어옴.
+  - **Slice 2**: `injectBaseLoRAs`/`applyDynamicLoRAs`(orchestrator, 추출된 anchor 헬퍼 호출) → graph 모듈로.
+  - **Slice 3+**: `injectCoupleBranchLoras`(`this.loadLoraTriggers` 의존 → triggerTable 파라미터화), `processDetailerChain`(detailer-modules map 주입), checkpoint 계열(`resolveCheckpoint`/`validateCheckpointCompatibility`/`findCompatiblePackages` — config-reader+workflowsDir 주입). **별도 모듈 후보**: 히스토리 파서(`extractAudioFilenames`/`extractOutputFilenames`/`extractTextOutputs` → comfyui-history.ts).
+  - 그 다음 거대 클래스: **session-manager.ts(2424줄, 7서브시스템)**, session-instance.ts 내부 TTS 엔진(~280줄).
+  - 각 슬라이스: verbatim move + `npm run build`(TS strict 하드게이트) + 전역 grep + 적대적 토큰대조. in-place 변형/반환 보존 불변식 준수.
 - ~~후속 small: 모달 그룹 병합 중복 + clearPopups 원자화~~ → **웨이브5로 완료**. (variables route의 `__modals`는 단순 shallow merge라 의미가 달라 의도적으로 통합 제외 — 동작 보존.)
 
 ## 작업 규약 (이 작업에서 지킨 것)
