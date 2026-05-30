@@ -20,6 +20,11 @@
 | 6 | **거대 클래스 분해 Slice 1** — `src/lib/comfyui-graph.ts` 추출(리프 순수 그래프수술 4함수+2인터페이스, comfyui-client.ts **2034→1833줄**, verbatim move) | ✅ merged `main` | `76ebe30`→`145dcd5` (적대적 토큰단위 SHIP, 빌드 green) |
 | 7 | **거대 클래스 분해 Slice 1b+2** — LoRA 클러스터 완성(`injectTriggerTags`/`injectBaseLoRAs`/`applyDynamicLoRAs` → comfyui-graph.ts, comfyui-client.ts **1833→1690줄**, verbatim move) | ✅ merged `main` | `b2f50b0`→`f788b25` (적대적 토큰단위 SHIP, 빌드 green) |
 | 8 | **거대 클래스 분해 Slice 3** — `injectCoupleBranchLoras` → comfyui-graph.ts (param injection: `this.loadLoraTriggers()` → triggerTable 인자, 로드 타이밍 보존, comfyui-client.ts **1690→1621줄**) | ✅ merged `main` | `407b751`→`0a3e409` (적대적 토큰단위 SHIP, 빌드 green) |
+| 9 | **거대 클래스 분해 Slice 4** — 히스토리 파서 3개 → 신설 `comfyui-history.ts` (순수 verbatim, **1621→1549줄**) | ✅ merged `main` | `8e67c27`→`3f82448` (적대적 SHIP) |
+| 10 | **거대 클래스 분해 Slice 5** — `processDetailerChain` → comfyui-graph.ts (modules 주입 + `DetailerModuleTemplate` 이동, **1549→1371줄**) | ✅ merged `main` | `e91c7d5`→`4331902` (적대적 SHIP) |
+| 11 | **거대 클래스 분해 Slice 6** — checkpoint 클러스터 5개 → 신설 `comfyui-checkpoint.ts` (다중 주입: checkpointName/workflowsDir, **1371→1213줄**) | ✅ merged `main` | `a076632`→`8127739` (적대적 토큰단위 SHIP) |
+
+> **comfyui-client.ts 분해 완료**: 2034 → **1213줄(−40%)**. 추출 모듈: comfyui-graph.ts(604, 순수 그래프수술), comfyui-checkpoint.ts(164), comfyui-history.ts(74). 남은 1213줄은 정당한 IO/네트워크/오케스트레이션(buildPrompt) 코어 — 추가 추출 비권장.
 
 ## 보류 항목 (재개 시 필요한 것)
 
@@ -29,10 +34,9 @@
 
 ## 다음 웨이브 후보 (랭킹·성격)
 
-- **⑥ 거대 클래스 분해** (large effort, navigability-only, **테스트 프레임워크 없음 → 회귀 위험**): **Slice 1·1b·2 완료(웨이브6·7, comfyui-graph.ts, comfyui-client.ts 2034→1690줄)**. 남은 슬라이스(comfyui-client.ts 기준, understand 워크플로 분류 근거):
-  - ~~Slice 3: `injectCoupleBranchLoras`~~ → **웨이브8로 완료**(triggerTable 파라미터 주입, 호출부서 `this.loadLoraTriggers()` 인라인 전달로 로드 타이밍 보존).
-  - **Slice 4**: checkpoint 계열(`resolveCheckpoint`/`validateCheckpointCompatibility`/`findCompatiblePackages` — `this.config`/`this.workflowsDir`+fs 의존 → config-reader+workflowsDir 주입), `processDetailerChain`(detailer-modules map 주입).
-  - **별도 모듈 후보**: 히스토리 파서 3개(`extractAudioFilenames`/`extractOutputFilenames`/`extractTextOutputs` → `comfyui-history.ts`, pure지만 prompt-그래프가 아닌 history 도메인).
+- **⑥ 거대 클래스 분해** (large effort, navigability-only, **테스트 프레임워크 없음 → 회귀 위험**): **comfyui-client.ts 완료(웨이브6~11, 2034→1213줄, −40%)**. 패턴: understand 워크플로로 순수/주입가능 메서드 분류 → verbatim move + 파라미터 주입 → build(TS strict 하드게이트) + 전역 grep + 적대적 토큰대조. 남은 거대 클래스:
+  - **session-manager.ts(2424줄, 7서브시스템)** — 다음 타깃. 파일기반 세션/페르소나 CRUD = 앱 백본이라 **comfyui보다 고위험**(순수함수 적고 stateful). understand 워크플로로 안전 추출 가능 부분만 식별 후 진행 권장.
+  - session-instance.ts 내부 TTS 엔진(~280줄).
   - 그 다음 거대 클래스: **session-manager.ts(2424줄, 7서브시스템)**, session-instance.ts 내부 TTS 엔진(~280줄).
   - 각 슬라이스: verbatim move + `npm run build`(TS strict 하드게이트) + 전역 grep + 적대적 토큰대조. in-place 변형/반환 보존 불변식 준수.
 - ~~후속 small: 모달 그룹 병합 중복 + clearPopups 원자화~~ → **웨이브5로 완료**. (variables route의 `__modals`는 단순 shallow merge라 의미가 달라 의도적으로 통합 제외 — 동작 보존.)
