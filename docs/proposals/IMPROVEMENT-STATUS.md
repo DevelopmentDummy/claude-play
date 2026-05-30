@@ -39,8 +39,8 @@
 ## 다음 웨이브 후보 (랭킹·성격)
 
 - **⑥ 거대 클래스 분해** (large effort, navigability-only, **테스트 프레임워크 없음 → 회귀 위험**): **comfyui-client.ts(2034→1213) + session-manager.ts(2414→1940) 완료(웨이브6~12)**. 패턴: understand 워크플로로 순수/주입가능 메서드 분류 → verbatim move/파라미터 주입/public 위임 래퍼 → build(TS strict 하드게이트) + 전역 grep + 적대적 토큰대조. 남은 후보:
-  - **session-instance.ts 내부 TTS 엔진(~280줄)** — 마지막 분해 후보. session-instance.ts(AI 런타임 인스턴스, 코어)에서 TTS 로직 분리.
-  - **수동 런타임 스모크(미실시)**: 분해는 전부 tsc+적대적 토큰대조로 검증됐으나 동작 drift는 미검증. 사용자가 create-session/open-session/이미지생성/TTS 한 번씩 태워보면 확실.
+  - ~~session-instance.ts 내부 TTS 엔진(~280줄)~~ → **평가 후 보류**(2026-05-31). `triggerTts`/`processTtsQueue`는 stateful 서브시스템 — `job` 클로저가 매 await마다 `this.destroyed`(취소)·`this.broadcast`·`this.ttsQueue`/`ttsRunning`를 참조. 깨끗한 추출 = `TtsEngine` 클래스 신설+의존성 주입(broadcast fn, live `isDestroyed()` 콜백 등)의 **설계-레벨 리팩터**라 ① byte-동일 이동 불가(구조 변경 → 적대적 토큰대조 검증 불가) ② 코어 런타임+no-test 회귀 위험 ③ 런타임 스모크(오디오 생성+세션종료 취소) 필수로 **헤드리스 완결 불가**. 재개 시 설계부터 + 런타임 검증 동반 필요. `sanitizeTtsText`/`splitTtsChunks`는 이미 module-level 순수 fn이라 추가 추출 가치 낮음.
+  - **수동 런타임 스모크(미실시)**: 웨이브6~12 분해는 전부 tsc+적대적 토큰대조로 검증됐으나 동작 drift는 미검증. 사용자가 create-session/open-session/이미지생성/TTS 한 번씩 태워보면 확실.
   - 그 다음 거대 클래스: **session-manager.ts(2424줄, 7서브시스템)**, session-instance.ts 내부 TTS 엔진(~280줄).
   - 각 슬라이스: verbatim move + `npm run build`(TS strict 하드게이트) + 전역 grep + 적대적 토큰대조. in-place 변형/반환 보존 불변식 준수.
 - ~~후속 small: 모달 그룹 병합 중복 + clearPopups 원자화~~ → **웨이브5로 완료**. (variables route의 `__modals`는 단순 shallow merge라 의미가 달라 의도적으로 통합 제외 — 동작 보존.)
