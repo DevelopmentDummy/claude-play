@@ -8,6 +8,12 @@ import { getApiBase, getPort } from "./endpoints";
 import { AIProvider, providerFromModel } from "./ai-provider";
 import { SYSTEM_JSON } from "./session-state";
 import { fileDiffers, personaSkillsDiffer, dirDiffers, toolsDiffer, variablesDiffer, stripAssembledSections, liveInstructionsDiffer, getCustomDataFiles } from "./session-sync-diff";
+import {
+  writeCodexInstructions as writeCodexInstructionsImpl,
+  writeGeminiInstructions as writeGeminiInstructionsImpl,
+  writeKimiInstructions as writeKimiInstructionsImpl,
+  writeAntigravityInstructions as writeAntigravityInstructionsImpl,
+} from "./runtime-instructions";
 
 /** Read the selected writing style content for a persona, if any */
 function readPersonaStyleContent(personaDir: string): string | null {
@@ -2059,11 +2065,7 @@ export class SessionManager {
    * Called before spawning Codex to ensure file-based prompt delivery.
    */
   writeCodexInstructions(projectDir: string, content: string): void {
-    const codexDir = path.join(projectDir, ".codex");
-    fs.mkdirSync(codexDir, { recursive: true });
-    const instructionsPath = path.join(codexDir, "model-instructions.md");
-    fs.writeFileSync(instructionsPath, content, "utf-8");
-    console.log(`[codex] Wrote model instructions: ${instructionsPath} (${content.length} chars)`);
+    writeCodexInstructionsImpl(projectDir, content);
   }
 
   private writeGeminiConfig(
@@ -2109,24 +2111,7 @@ export class SessionManager {
    * since Claude never overwrites it with runtime prompts.
    */
   writeGeminiInstructions(projectDir: string, runtimePrompt: string): void {
-    // CLAUDE.md is always authoritative — it contains the original instructions
-    // (session-instructions + style + profile + opening for sessions, or builder-prompt for builder)
-    // and is never overwritten by runtime prompts (Claude uses --system-prompt flag separately).
-    let sessionInstructions = "";
-    const claudeMdPath = path.join(projectDir, "CLAUDE.md");
-    try {
-      if (fs.existsSync(claudeMdPath)) {
-        sessionInstructions = fs.readFileSync(claudeMdPath, "utf-8").trim();
-      }
-    } catch { /* ignore */ }
-
-    const combined = sessionInstructions
-      ? `${sessionInstructions}\n\n---\n\n${runtimePrompt}`
-      : runtimePrompt;
-
-    const geminiMdPath = path.join(projectDir, "GEMINI.md");
-    fs.writeFileSync(geminiMdPath, combined, "utf-8");
-    console.log(`[gemini] Wrote GEMINI.md: ${projectDir} (${combined.length} chars, instructions: ${sessionInstructions.length})`);
+    writeGeminiInstructionsImpl(projectDir, runtimePrompt);
   }
 
   /**
@@ -2139,17 +2124,7 @@ export class SessionManager {
    * arrives via the spawn arg path instead.
    */
   writeAntigravityInstructions(projectDir: string): void {
-    let sessionInstructions = "";
-    const claudeMdPath = path.join(projectDir, "CLAUDE.md");
-    try {
-      if (fs.existsSync(claudeMdPath)) {
-        sessionInstructions = fs.readFileSync(claudeMdPath, "utf-8").trim();
-      }
-    } catch { /* ignore */ }
-
-    const geminiMdPath = path.join(projectDir, "GEMINI.md");
-    fs.writeFileSync(geminiMdPath, sessionInstructions, "utf-8");
-    console.log(`[antigravity] Wrote GEMINI.md: ${projectDir} (${sessionInstructions.length} chars, persona-only)`);
+    writeAntigravityInstructionsImpl(projectDir);
   }
 
   /**
@@ -2157,21 +2132,7 @@ export class SessionManager {
    * Kimi Code CLI loads AGENTS.md from the working directory.
    */
   writeKimiInstructions(projectDir: string, runtimePrompt: string): void {
-    let sessionInstructions = "";
-    const claudeMdPath = path.join(projectDir, "CLAUDE.md");
-    try {
-      if (fs.existsSync(claudeMdPath)) {
-        sessionInstructions = fs.readFileSync(claudeMdPath, "utf-8").trim();
-      }
-    } catch { /* ignore */ }
-
-    const combined = sessionInstructions
-      ? `${sessionInstructions}\n\n---\n\n${runtimePrompt}`
-      : runtimePrompt;
-
-    const agentsMdPath = path.join(projectDir, "AGENTS.md");
-    fs.writeFileSync(agentsMdPath, combined, "utf-8");
-    console.log(`[kimi] Wrote AGENTS.md: ${projectDir} (${combined.length} chars, instructions: ${sessionInstructions.length})`);
+    writeKimiInstructionsImpl(projectDir, runtimePrompt);
   }
 
   private ensurePolicyContext(projectDir: string): void {
