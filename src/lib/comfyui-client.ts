@@ -14,6 +14,9 @@ import {
   collectActiveLoRAs,
   findLoraInjectionAnchors,
   appendLoraChain,
+  injectTriggerTags,
+  injectBaseLoRAs,
+  applyDynamicLoRAs,
 } from "./comfyui-graph";
 
 /** Sanitize a relative file path: preserve subdirectories but prevent traversal */
@@ -464,55 +467,6 @@ export class ComfyUIClient {
     }
   }
 
-  /** Auto-inject trigger tags for active LoRAs into the prompt text, with deduplication.
-   *  Multi-prompt workflows (scene-couple etc.) inject into all prompt_* params. */
-  private injectTriggerTags(
-    prompt: Record<string, unknown>,
-    meta: WorkflowPackageMeta,
-    triggerTable: Record<string, string>,
-    activeLoRAs: string[]
-  ): void {
-    // Collect trigger tags from all active LoRAs (once)
-    const triggerTags: string[] = [];
-    for (const loraName of activeLoRAs) {
-      const triggers = triggerTable[loraName];
-      if (triggers && triggers.trim()) {
-        for (const tag of triggers.split(",")) {
-          const t = tag.trim();
-          if (t) triggerTags.push(t);
-        }
-      }
-    }
-    if (triggerTags.length === 0) return;
-
-    // Discover all positive-prompt-like params: "prompt", "prompt_left", "prompt_right", ...
-    // Negative prompts and non-prompt params are skipped.
-    const promptKeys = Object.keys(meta.params).filter(k => k === "prompt" || /^prompt_/.test(k));
-    if (promptKeys.length === 0) return;
-
-    let injectedCount = 0;
-    for (const key of promptKeys) {
-      const promptDef = meta.params[key];
-      if (!promptDef?.node || !promptDef?.field) continue;
-      const node = prompt[promptDef.node] as Record<string, unknown> | undefined;
-      if (!node) continue;
-      const inputs = node.inputs as Record<string, unknown> | undefined;
-      if (!inputs) continue;
-
-      const currentPrompt = (inputs[promptDef.field] as string) || "";
-      const currentLower = currentPrompt.toLowerCase();
-      const newTags = triggerTags.filter(tag => !currentLower.includes(tag.toLowerCase()));
-      if (newTags.length === 0) continue;
-      inputs[promptDef.field] = currentPrompt + ", " + newTags.join(", ");
-      injectedCount += newTags.length;
-      if (key !== "prompt") {
-        console.log(`[comfyui] Auto-injected trigger tags into ${key}: ${newTags.join(", ")}`);
-      }
-    }
-    if (injectedCount === 0) return;
-    console.log(`[comfyui] Auto-injected ${injectedCount} trigger tags across ${promptKeys.length} prompt(s)`);
-  }
-
   /** Resolve the best available checkpoint name */
   private resolveCheckpoint(availableCheckpoints: string[], sessionDir?: string): string {
     // Priority: 1) comfyui-config.json in session/persona dir, 2) global comfyui-config.json,
@@ -765,11 +719,11 @@ export class ComfyUIClient {
         console.log(`[comfyui] NSFW mode — appended ${nsfwLoras.length} nsfwLoras (${nsfwLoras.map(l => l.name).join(", ")})`);
       }
       if (baseLoras.length > 0) {
-        this.injectBaseLoRAs(prompt, baseLoras);
+        injectBaseLoRAs(prompt, baseLoras);
       }
       pruneUnavailableLoRAs(prompt, models.loras);
       if (loras && loras.length > 0) {
-        this.applyDynamicLoRAs(prompt, loras, models.loras);
+        applyDynamicLoRAs(prompt, loras, models.loras);
       }
     }
 
@@ -782,7 +736,7 @@ export class ComfyUIClient {
     if (features.trigger_tags) {
       const triggerTable = this.loadLoraTriggers();
       const activeLoRAs = collectActiveLoRAs(prompt);
-      this.injectTriggerTags(prompt, pkg.meta, triggerTable, activeLoRAs);
+      injectTriggerTags(prompt, pkg.meta, triggerTable, activeLoRAs);
     }
 
     // 4e: seed_randomize
@@ -1044,103 +998,6 @@ export class ComfyUIClient {
     if (sinkNode) {
       const sinkInputs = sinkNode.inputs as Record<string, unknown>;
       sinkInputs[chainConfig.sink.field] = [lastDetailerId, 0];
-    }
-  }
-
-  /** Inject base LoRAs from comfyui-config into the workflow */
-  private injectBaseLoRAs(
-    prompt: Record<string, unknown>,
-    baseLoras: Array<{ name: string; strength: number }>
-  ): void {
-    const anchors = findLoraInjectionAnchors(prompt);
-    if (!anchors) {
-      console.warn("[comfyui] No checkpoint or split UNET/CLIP loader pair — cannot inject base LoRAs");
-      return;
-    }
-
-    const finalNodeId = appendLoraChain(prompt, baseLoras, anchors, 100, "base-lora");
-    if (finalNodeId) {
-      console.log(`[comfyui] Injected ${baseLoras.length} base LoRAs from config`);
-    }
-  }
-
-  /** Apply dynamic LoRA overrides and injections */
-  private applyDynamicLoRAs(
-    prompt: Record<string, unknown>,
-    loras: Array<{ name: string; strength: number }>,
-    availableLoRAs: string[]
-  ): void {
-    const loraByName = new Map(loras.map(l => [l.name, l]));
-
-    // Phase 1: Override/remove existing base LoRAs
-    const baseLoraNodes: Array<{ id: string; loraName: string }> = [];
-    for (const [id, node] of Object.entries(prompt)) {
-      const n = node as Record<string, unknown>;
-      if (n.class_type === "LoraLoader") {
-        const inputs = n.inputs as Record<string, unknown>;
-        baseLoraNodes.push({ id, loraName: inputs.lora_name as string });
-      }
-    }
-
-    const overridden = new Set<string>();
-    for (const base of baseLoraNodes) {
-      const override = loraByName.get(base.loraName);
-      if (!override) continue;
-      overridden.add(base.loraName);
-
-      if (override.strength === 0) {
-        const node = prompt[base.id] as Record<string, unknown>;
-        const inputs = node.inputs as Record<string, unknown>;
-        const modelSource = inputs.model as [string, number] | undefined;
-        const sourceId = modelSource ? modelSource[0] : null;
-        delete prompt[base.id];
-        if (sourceId) {
-          for (const [, n] of Object.entries(prompt)) {
-            const ni = (n as Record<string, unknown>).inputs as Record<string, unknown> | undefined;
-            if (!ni) continue;
-            for (const [key, value] of Object.entries(ni)) {
-              if (Array.isArray(value) && value.length === 2 && value[0] === base.id) {
-                ni[key] = [sourceId, value[1]];
-              }
-            }
-          }
-        }
-        console.log(`[comfyui] Removed base LoRA: ${base.loraName} (node ${base.id})`);
-      } else {
-        const node = prompt[base.id] as Record<string, unknown>;
-        const inputs = node.inputs as Record<string, unknown>;
-        inputs.strength_model = override.strength;
-        inputs.strength_clip = override.strength;
-        console.log(`[comfyui] Override base LoRA: ${base.loraName} strength → ${override.strength}`);
-      }
-    }
-
-    // Phase 2: Dynamic injection of non-base LoRAs
-    const newLoras = loras.filter(l => !overridden.has(l.name) && l.strength !== 0);
-    const validNewLoras = availableLoRAs.length === 0
-      ? newLoras
-      : newLoras.filter(l => availableLoRAs.includes(l.name));
-
-    if (validNewLoras.length > 0) {
-      const anchors = findLoraInjectionAnchors(prompt);
-      if (anchors) {
-        const finalNodeId = appendLoraChain(prompt, validNewLoras, anchors, 200, "dynamic-lora");
-        if (finalNodeId) {
-          console.log(
-            `[comfyui] Injected ${validNewLoras.length} dynamic LoRAs after model ${anchors.model.nodeId}:${anchors.model.outputIndex} / clip ${anchors.clip.nodeId}:${anchors.clip.outputIndex}`
-          );
-        }
-      } else {
-        console.warn("[comfyui] No LoraLoader, checkpoint, or split UNET/CLIP loader pair ? cannot inject dynamic LoRAs");
-      }
-    }
-
-    const skippedCount = newLoras.length - validNewLoras.length;
-    if (skippedCount > 0) {
-      const skippedNames = newLoras
-        .filter(l => !validNewLoras.some(v => v.name === l.name))
-        .map(l => l.name);
-      console.log(`[comfyui] Skipped ${skippedCount} unavailable dynamic LoRAs: ${skippedNames.join(", ")}`);
     }
   }
 
