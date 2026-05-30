@@ -148,6 +148,7 @@ export default function UsageModal({ onClose, provider = "claude", sessionId }: 
           <h2 className="text-sm font-semibold text-text">사용량</h2>
           <button
             onClick={onClose}
+            aria-label="닫기"
             className="text-text-dim hover:text-text text-lg leading-none transition-colors"
           >
             &times;

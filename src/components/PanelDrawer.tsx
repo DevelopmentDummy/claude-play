@@ -70,6 +70,7 @@ export default function PanelDrawer({
             <span className="text-xs font-semibold text-accent/80 uppercase tracking-wider">Info</span>
             <button
               onClick={onClose}
+              aria-label="닫기"
               className="w-7 h-7 flex items-center justify-center rounded-md text-text-dim hover:text-text hover:bg-surface-light transition-colors duration-150 text-sm"
             >
               ✕

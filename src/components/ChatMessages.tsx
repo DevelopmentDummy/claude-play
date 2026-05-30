@@ -634,7 +634,7 @@ export default function ChatMessages({
                           <button
                             onClick={() => onRequestTts(msg.id, msg.content)}
                             className="px-1.5 py-0.5 rounded text-[9px] cursor-pointer border
-                              border-border/40 text-text-dim/50 bg-surface/80 hover:bg-surface-light hover:text-text-dim/80"
+                              border-border/40 text-text-dim/60 bg-surface/80 hover:bg-surface-light hover:text-text-dim/80"
                             title="Regenerate voice"
                           >
                             &#x1F504;
@@ -643,7 +643,7 @@ export default function ChatMessages({
                         <button
                           onClick={() => onPlayAudio?.(msg.id)}
                           className="px-1.5 py-0.5 rounded text-[9px] cursor-pointer border
-                            border-border/40 text-text-dim/50 bg-surface/80 hover:bg-surface-light hover:text-accent"
+                            border-border/40 text-text-dim/60 bg-surface/80 hover:bg-surface-light hover:text-accent"
                           title="Play voice"
                         >
                           &#x1F50A;
@@ -663,7 +663,7 @@ export default function ChatMessages({
                       <button
                         onClick={() => onRequestTts(msg.id, msg.content)}
                         className="px-1.5 py-0.5 rounded text-[9px] cursor-pointer border
-                          border-border/40 text-text-dim/50 bg-surface/80 hover:bg-surface-light hover:text-text-dim/80"
+                          border-border/40 text-text-dim/60 bg-surface/80 hover:bg-surface-light hover:text-text-dim/80"
                         title="Generate voice"
                       >
                         &#x1F3A4;
@@ -679,7 +679,7 @@ export default function ChatMessages({
                     className={`px-1.5 py-0.5 rounded text-[9px] font-medium cursor-pointer border
                       ${msg.ooc
                         ? "border-yellow-500/50 text-yellow-400/80 bg-yellow-500/10 hover:bg-yellow-500/20"
-                        : "border-border/40 text-text-dim/50 bg-surface/80 hover:bg-surface-light hover:text-text-dim/80"
+                        : "border-border/40 text-text-dim/60 bg-surface/80 hover:bg-surface-light hover:text-text-dim/80"
                       }`}
                     title={msg.ooc ? "OOC 해제" : "OOC로 전환"}
                   >

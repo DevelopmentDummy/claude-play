@@ -104,6 +104,7 @@ export default function KebabMenu({ items, badge, className = "" }: KebabMenuPro
           text-white/80 text-base tracking-widest cursor-pointer
           hover:bg-black/55 hover:text-white transition-all duration-fast"
         title="More"
+        aria-label="더보기"
         aria-haspopup="menu"
         aria-expanded={open}
       >

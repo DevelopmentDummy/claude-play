@@ -49,6 +49,7 @@ export default function MinimizedModals({ items, onRestore }: MinimizedModalsPro
           <button
             key={item.name}
             onClick={() => onRestore(item.name)}
+            aria-label={`${item.name} 복원`}
             className="pointer-events-auto flex items-center gap-2 px-3 py-2 rounded-xl border border-white/[0.1] shadow-lg backdrop-blur-md cursor-pointer select-none"
             style={{
               backgroundColor: "rgba(15, 15, 26, 0.85)",

@@ -108,6 +108,7 @@ function FileViewerModal({
             <span className="text-sm font-semibold text-text">{title}</span>
             <button
               onClick={onClose}
+              aria-label="닫기"
               className="w-7 h-7 flex items-center justify-center rounded-md text-text-dim hover:text-text hover:bg-surface-light transition-colors text-sm cursor-pointer"
             >
               &times;
@@ -407,6 +408,7 @@ export default function BuilderOverview({
                 }}
                 className="shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-text-dim/40 hover:text-text hover:bg-white/5 transition-all text-xs self-center"
                 title="편집"
+                aria-label="문체 편집"
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3 h-3">
                   <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
@@ -430,7 +432,7 @@ export default function BuilderOverview({
               <h2 className="text-base font-semibold text-text">
                 {editingStyleOrigName ? "문체 편집" : "새 문체"}
               </h2>
-              <button onClick={() => setStyleEditorOpen(false)} className="text-text-dim hover:text-text transition-colors text-lg leading-none">&times;</button>
+              <button onClick={() => setStyleEditorOpen(false)} aria-label="닫기" className="text-text-dim hover:text-text transition-colors text-lg leading-none">&times;</button>
             </div>
             <div className="flex-1 overflow-y-auto p-5 space-y-3">
               <input

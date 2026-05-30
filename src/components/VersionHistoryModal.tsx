@@ -111,6 +111,7 @@ export default function VersionHistoryModal({
             </span>
             <button
               onClick={onClose}
+              aria-label="닫기"
               className="w-7 h-7 flex items-center justify-center rounded-md text-text-dim hover:text-text hover:bg-surface-light transition-colors text-sm cursor-pointer"
             >
               &times;

@@ -134,6 +134,7 @@ export default function SessionCard({
 
       <button
         onClick={handleDelete}
+        aria-label="세션 삭제"
         className={`absolute top-1.5 right-1.5 flex items-center justify-center rounded-md cursor-pointer transition-all duration-fast
           ${confirmDelete
             ? "px-2 py-0.5 text-[10px] text-error bg-error/15 border border-error/30 opacity-100"

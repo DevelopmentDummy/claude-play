@@ -155,6 +155,7 @@ export default function SteeringPresetsModal({ open, onClose, onPresetChange }: 
             )}
             <button
               onClick={onClose}
+              aria-label="닫기"
               className="w-7 h-7 flex items-center justify-center text-text-dim hover:text-text hover:bg-white/5 rounded-lg transition-colors text-lg leading-none"
               title="닫기 (Esc)"
             >

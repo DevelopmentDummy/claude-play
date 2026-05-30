@@ -42,6 +42,7 @@ export default function ProfileCard({ name, isPrimary, onEdit, onDelete }: Profi
       <span className="text-[11px] font-medium">{name}</span>
       <button
         type="button"
+        aria-label="프로필 삭제"
         className={`cursor-pointer ml-0.5 transition-all duration-fast
           ${confirmDelete
             ? "text-[10px] text-error font-medium opacity-100"

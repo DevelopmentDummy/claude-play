@@ -139,6 +139,7 @@ export default function StatusBar({
     <header className="flex flex-wrap items-center gap-2 px-4 py-2 bg-surface backdrop-blur-[16px] border-b border-border shrink-0">
       <button
         onClick={onBack}
+        aria-label="뒤로 가기"
         className="px-2.5 py-1 border border-border rounded-md bg-transparent text-text-dim cursor-pointer text-sm hover:bg-surface-light hover:text-text transition-all duration-fast shrink-0"
       >
         &larr;
@@ -147,6 +148,7 @@ export default function StatusBar({
       {showPanelButton && onPanelToggle && (
         <button
           onClick={onPanelToggle}
+          aria-label="패널 토글"
           className="ml-auto px-2.5 py-1 border border-border rounded-md bg-transparent text-text-dim cursor-pointer text-sm hover:bg-surface-light hover:text-text transition-all duration-150"
           title="Toggle panel"
         >
@@ -157,7 +159,10 @@ export default function StatusBar({
         {/* TTS auto-play toggle */}
         {onAutoPlayToggle !== undefined && (
           <button
+            type="button"
             onClick={onAutoPlayToggle}
+            aria-pressed={!!autoPlay}
+            aria-label={autoPlay ? "음성 자동재생 끄기" : "음성 자동재생 켜기"}
             className={`px-2 py-1 rounded-md text-xs border cursor-pointer transition-all duration-fast ${
               autoPlay
                 ? "text-accent border-accent/60 bg-accent/10"
@@ -171,7 +176,10 @@ export default function StatusBar({
         {/* Voice chat toggle */}
         {onVoiceChatToggle !== undefined && (
           <button
+            type="button"
             onClick={onVoiceChatToggle}
+            aria-pressed={!!voiceChat}
+            aria-label={voiceChat ? "음성 대화 모드 끄기" : "음성 대화 모드 켜기"}
             className={`px-2 py-1 rounded-md text-xs border cursor-pointer transition-all duration-fast ${
               voiceChat
                 ? "text-green-400 border-green-500/60 bg-green-500/10"
@@ -187,8 +195,9 @@ export default function StatusBar({
         {onSettings && (
           <button
             onClick={onSettings}
+            aria-label="채팅 옵션"
             className="px-2 py-1 rounded-md text-xs border cursor-pointer transition-all duration-fast
-              border-border/40 text-text-dim/50 bg-transparent hover:border-border/60 hover:text-text-dim/80"
+              border-border/40 text-text-dim/60 bg-transparent hover:border-border/60 hover:text-text-dim/80"
             title="채팅 옵션"
           >
             &#9881;
@@ -201,10 +210,13 @@ export default function StatusBar({
             <button
               ref={debugBtnRef}
               onClick={() => setDebugOpen(!debugOpen)}
+              aria-label="도구 메뉴"
+              aria-haspopup="menu"
+              aria-expanded={debugOpen}
               className={`px-2 py-1 rounded-md text-xs border cursor-pointer transition-all duration-fast
                 ${debugOpen
                   ? "border-accent/40 text-accent/70 bg-accent/5"
-                  : "border-border/40 text-text-dim/50 bg-transparent hover:border-border/60 hover:text-text-dim/80"
+                  : "border-border/40 text-text-dim/60 bg-transparent hover:border-border/60 hover:text-text-dim/80"
                 }`}
               title="도구"
             >

@@ -178,14 +178,16 @@ export default function DockPanel({
           className={`relative flex items-center gap-1.5 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider cursor-pointer transition-colors
             ${i === activeTab
               ? "text-accent"
-              : "text-text-dim/50 hover:text-text-dim/80"
+              : "text-text-dim/70 hover:text-text-dim/80"
             }`}
         >
           {p.name}
           {p.dismissible && (
             <span
+              role="button"
+              aria-label="탭 닫기"
               onClick={(e) => { e.stopPropagation(); onClose(p.name); }}
-              className="ml-1 text-text-dim/30 hover:text-text-dim/70 text-[10px]"
+              className="ml-1 text-text-dim/70 hover:text-text-dim/70 text-[10px]"
             >
               ×
             </span>
@@ -208,6 +210,7 @@ export default function DockPanel({
       </span>
       {current.dismissible && (
         <button
+          aria-label="패널 닫기"
           onClick={() => onClose(current.name)}
           className="text-text-dim/30 hover:text-text-dim/70 transition-colors text-sm cursor-pointer"
         >

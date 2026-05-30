@@ -698,6 +698,8 @@ function ChatInput({ disabled, isStreaming, onSend, onCancel, sessionId, choices
         {/* Left toolbar: OOC toggle + * insert */}
         <div className="flex gap-1 shrink-0 pb-0.5">
           <button
+            type="button"
+            aria-pressed={oocMode}
             onClick={() => {
               const next = !oocMode;
               setOocMode(next);
@@ -708,7 +710,7 @@ function ChatInput({ disabled, isStreaming, onSend, onCancel, sessionId, choices
                 ? "border-yellow-500/60 text-yellow-400 bg-yellow-500/15"
                 : showOOC
                   ? "border-yellow-500/30 text-yellow-400/60 bg-transparent hover:border-yellow-500/50 hover:text-yellow-400/80"
-                  : "border-border/40 text-text-dim/40 bg-transparent hover:border-border/60 hover:text-text-dim/70"
+                  : "border-border/40 text-text-dim/60 bg-transparent hover:border-border/60 hover:text-text-dim/80"
             }`}
             title={oocMode ? "OOC 모드 끄기" : "OOC 모드 켜기"}
           >
@@ -716,13 +718,16 @@ function ChatInput({ disabled, isStreaming, onSend, onCancel, sessionId, choices
           </button>
           <button
             onClick={() => insertAtCursor("*")}
-            className={`${btnBase} border-border/40 text-text-dim/50 bg-transparent hover:border-border/60 hover:text-text-dim/80`}
+            className={`${btnBase} border-border/40 text-text-dim/60 bg-transparent hover:border-border/60 hover:text-text-dim/80`}
             title="* 삽입 (행동 묘사)"
           >
             *
           </button>
           {sttMode !== "none" && (
             <button
+              type="button"
+              aria-pressed={sttActive}
+              aria-label={sttTranscribing ? "변환 중" : sttActive ? "음성 입력 중지" : "음성 입력"}
               onClick={toggleSTT}
               disabled={sttTranscribing}
               className={`${btnBase} relative ${
@@ -730,7 +735,7 @@ function ChatInput({ disabled, isStreaming, onSend, onCancel, sessionId, choices
                   ? "border-blue-500/60 text-blue-400 bg-blue-500/15 animate-pulse"
                   : sttActive
                     ? "border-red-500/60 text-red-400 bg-red-500/15 animate-pulse"
-                    : "border-border/40 text-text-dim/50 bg-transparent hover:border-border/60 hover:text-text-dim/80"
+                    : "border-border/40 text-text-dim/60 bg-transparent hover:border-border/60 hover:text-text-dim/80"
               }`}
               title={sttTranscribing ? "변환 중..." : sttActive ? "음성 입력 중지" : "음성 입력"}
             >
@@ -771,6 +776,7 @@ function ChatInput({ disabled, isStreaming, onSend, onCancel, sessionId, choices
         </div>
         <textarea
           ref={inputRef}
+          aria-label={oocMode ? "OOC 메시지 입력" : "메시지 입력"}
           disabled={disabled}
           placeholder={oocMode ? "OOC 메시지..." : "Type a message..."}
           rows={1}
@@ -803,11 +809,14 @@ function ChatInput({ disabled, isStreaming, onSend, onCancel, sessionId, choices
         )}
         {/* Autoplay toggle */}
         <button
+          type="button"
+          aria-pressed={!!autoplayActive}
+          aria-label={autoplayActive ? "오토플레이 중지" : "오토플레이 시작"}
           onClick={onAutoplayToggle}
           className={`${btnBase} relative ${
             autoplayActive
               ? "border-blue-500/60 text-blue-400 bg-blue-500/15 shadow-[0_0_8px_rgba(59,130,246,0.3)]"
-              : "border-border/40 text-text-dim/50 bg-transparent hover:border-border/60 hover:text-text-dim/80"
+              : "border-border/40 text-text-dim/60 bg-transparent hover:border-border/60 hover:text-text-dim/80"
           }`}
           title={autoplayActive ? "오토플레이 중지" : "오토플레이 시작"}
         >
