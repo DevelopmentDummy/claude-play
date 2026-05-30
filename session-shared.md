@@ -252,6 +252,8 @@ mcp__claude_play__run_tool({
 
 세 도구 모두 결과는 `images/` 디렉토리에 저장되며, `$IMAGE:images/파일명.png$` 토큰으로 응답에 삽입한다. 한번 생성한 이미지는 반드시 재사용한다.
 
+**⚠ `filename` 파라미터에는 `images/` 접두사를 붙이지 마라.** 세 도구 모두 자동으로 `images/` 디렉토리 아래에 저장한다. `filename: "images/foo.png"` 로 호출하면 실제 저장 경로가 `images/images/foo.png` 가 되어 챗 토큰(`$IMAGE:images/foo.png$`)의 경로와 어긋나 404가 난다. 항상 파일명만 — `filename: "foo.png"` → 자동 저장 위치 `images/foo.png` → 챗 토큰 `$IMAGE:images/foo.png$`.
+
 {{#if options.generateChoices}}
 ### 선택지 시스템
 

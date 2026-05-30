@@ -915,6 +915,7 @@ KSampler에서 `["33", 0]`을 model로 사용.
 
 - 매 턴 생성하지 마라. 서사적으로 의미 있는 장면에서만.
 - filename은 영문 kebab-case (예: diane-smile.png)
+- **⚠ `filename` 파라미터에는 `images/` 접두사를 붙이지 마라.** 도구가 자동으로 `images/` 디렉토리 아래에 저장한다. `filename: "images/foo.png"` 로 호출하면 실제 저장 경로가 `images/images/foo.png` 가 되어 챗 토큰(`$IMAGE:images/foo.png$`)의 경로와 어긋나 404가 난다. 항상 파일명만 — `filename: "foo.png"` → 자동 저장 위치 `images/foo.png` → 챗 토큰 `$IMAGE:images/foo.png$`.
 - **한 턴에 여러 이미지 생성 시, 반드시 서로 다른 파일명을 사용하라.** 같은 파일명으로 두 번 생성하면 첫 번째 이미지가 덮어씌워진다.
   - 좋은 예: `birthday-party.png`, `vacation-beach.png` (각각 고유한 이름)
   - 나쁜 예: `slot_2_3_3.png`, `slot_2_3_3.png` (같은 이름 → 충돌)

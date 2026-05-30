@@ -665,7 +665,7 @@ server.registerTool(
       use_defaults: z.boolean().optional(),
       params: z.record(z.string(), z.unknown()).optional(),
       raw: z.record(z.string(), z.unknown()).optional(),
-      filename: z.string().min(1).optional(),
+      filename: z.string().min(1).optional().describe("Filename only — do NOT prefix with 'images/'. The tool auto-saves under the images/ directory. Passing 'images/foo.png' results in 'images/images/foo.png' on disk, mismatching the $IMAGE:images/foo.png$ token (404). Use 'foo.png' instead."),
       extraFiles: z.record(z.string(), z.string()).optional(),
       loras: z.array(z.object({
         name: z.string(),
@@ -823,7 +823,7 @@ server.registerTool(
       prompt_left: z.string().optional(),
       prompt_right: z.string().optional(),
       position: z.enum(["half", "left-heavy", "right-heavy", "left-third", "center-third", "right-third", "half-overlap", "left-heavy-overlap", "right-heavy-overlap", "top-bottom", "top-heavy", "bottom-heavy"]).optional(),
-      filename: z.string().optional(),
+      filename: z.string().optional().describe("Filename only — do NOT prefix with 'images/'. The tool auto-saves under the images/ directory. Passing 'images/foo.png' results in 'images/images/foo.png' on disk, mismatching the $IMAGE:images/foo.png$ token (404). Use 'foo.png' instead."),
       seed: z.number().int().optional(),
       negative_prompt: z.string().optional(),
       use_defaults: z.boolean().optional(),
@@ -989,7 +989,7 @@ server.registerTool(
     description: "High-level Gemini image generation compatible with legacy service behavior.",
     inputSchema: {
       prompt: z.string().min(1),
-      filename: z.string().optional(),
+      filename: z.string().optional().describe("Filename only — do NOT prefix with 'images/'. The tool auto-saves under the images/ directory. Passing 'images/foo.png' results in 'images/images/foo.png' on disk, mismatching the $IMAGE:images/foo.png$ token (404). Use 'foo.png' instead."),
       persona: z.string().optional(),
       reference_image: z.union([z.string(), z.array(z.string())]).optional().describe("Relative path(s) to reference image(s) in the session directory. Single string or array of strings."),
       aspect_ratio: z.string().optional().describe("Aspect ratio: 1:1, 16:9, 4:3, 3:2, 2:3, 9:16"),
@@ -1027,7 +1027,7 @@ server.registerTool(
     description: "Generate an image using OpenAI GPT image model (gpt-image-2). Supports reference image via /v1/images/edits endpoint.",
     inputSchema: {
       prompt: z.string().min(1),
-      filename: z.string().optional(),
+      filename: z.string().optional().describe("Filename only — do NOT prefix with 'images/'. The tool auto-saves under the images/ directory. Passing 'images/foo.png' results in 'images/images/foo.png' on disk, mismatching the $IMAGE:images/foo.png$ token (404). Use 'foo.png' instead."),
       persona: z.string().optional(),
       reference_image: z.string().optional().describe("Relative path to a reference image in the session directory (e.g. images/portrait.png). Uses edits endpoint when provided."),
       size: z.string().optional().describe("Image size: 1024x1024, 1536x1024, 1024x1536, auto (default: auto)"),

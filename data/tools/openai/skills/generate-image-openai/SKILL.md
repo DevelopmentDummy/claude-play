@@ -140,6 +140,7 @@ curl -s -X POST "http://localhost:{{PORT}}/api/tools/openai/generate" \
   - 재사용 가능한 리소스(배경, 아이콘, 캐릭터 변형)는 빌더 단계에서 미리 만들어 두라
 - prompt는 **반드시 영어**로 작성한다. gpt-image-2는 영어 지시 충실도가 가장 높다
 - filename은 영문 kebab-case `.png` (예: `tavern-sign.png`)
+- **⚠ `filename` 파라미터에는 `images/` 접두사를 붙이지 마라.** 도구가 자동으로 `images/` 디렉토리 아래에 저장한다. `filename: "images/foo.png"` 로 호출하면 실제 저장 경로가 `images/images/foo.png` 가 되어 챗 토큰(`$IMAGE:images/foo.png$`)의 경로와 어긋나 404가 난다. 항상 파일명만 — `filename: "foo.png"` → 자동 저장 위치 `images/foo.png` → 챗 토큰 `$IMAGE:images/foo.png$`.
 - persona 이름에 한글이 포함되면 heredoc + `@파일` 방식을 사용하라 (curl 인코딩 이슈 방지)
 - `referenceImage`는 세션/페르소나 디렉토리 기준 **상대 경로**다. 절대 경로나 외부 URL은 거부된다
 - OpenAI는 콘텐츠 정책이 있다. 거부당하면 프롬프트를 순화하거나 다른 백엔드(ComfyUI)로 우회하라
