@@ -2,28 +2,12 @@ import * as fs from "fs";
 import * as path from "path";
 import Handlebars from "handlebars";
 import { getDataDir } from "./data-dir";
+import { SYSTEM_JSON } from "./session-state";
 
 export interface PanelData {
   name: string; // filename without extension
   html: string; // rendered HTML
 }
-
-/** System JSON files that should NOT be loaded as data */
-const SYSTEM_JSON = new Set([
-  "variables.json",
-  "session.json",
-  "builder-session.json",
-  "comfyui-config.json",
-  "layout.json",
-  "chat-history.json",
-  "package.json",
-  "tsconfig.json",
-  "character-tags.json",
-  "voice.json",
-  "chat-options.json",
-  "pending-events.json",
-  "pending-actions.json",
-]);
 
 export interface PanelUpdate {
   panels: PanelData[];

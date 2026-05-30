@@ -5,6 +5,7 @@ import { getDataDir } from "./data-dir";
 import { ensureHandlebarsHelpers } from "./panel-engine";
 import { getInternalToken } from "./auth";
 import { AIProvider, providerFromModel } from "./ai-provider";
+import { SYSTEM_JSON } from "./session-state";
 
 /** Read the selected writing style content for a persona, if any */
 function readPersonaStyleContent(personaDir: string): string | null {
@@ -48,15 +49,6 @@ function resolveOpeningPlaceholders(text: string, sessionDir: string, profile?: 
     return text;
   }
 }
-
-/** System JSON files excluded from custom data file loading */
-const SYSTEM_JSON = new Set([
-  "variables.json", "session.json", "builder-session.json",
-  "comfyui-config.json", "layout.json", "chat-history.json",
-  "package.json", "tsconfig.json", "character-tags.json",
-  "voice.json", ".mcp.json", "chat-options.json",
-  "pending-events.json", "pending-actions.json", "style.json",
-]);
 
 export interface PersonaInfo {
   name: string; // directory name
