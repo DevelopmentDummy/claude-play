@@ -77,8 +77,10 @@ export default function PersonaStartModal({
       // falsy slug as profile-less, so normalize it to undefined (never send the
       // literal sentinel as a slug).
       const profileArg = selectedProfile === "__none__" ? undefined : selectedProfile;
+      // Treat anything other than an explicit `true` (incl. void/undefined) as a
+      // non-success so the button can never get stuck disabled without navigation.
       const ok = await onStart(profileArg, selectedModel || undefined);
-      if (ok === false) {
+      if (ok !== true) {
         setStartError("세션 시작에 실패했습니다. 다시 시도해 주세요.");
         setStarting(false);
       }
