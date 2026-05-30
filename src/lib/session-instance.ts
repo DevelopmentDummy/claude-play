@@ -13,7 +13,7 @@ import { getGpuManagerUrl } from "./endpoints";
 import { buildHintSnapshotLine } from "./hint-snapshot";
 import { spawnBackgroundClaude } from "./background-session";
 import {
-  mutateSessionJsonSync, applyPatch, loadSessionData,
+  mutateSessionJsonSync, readSessionJson, applyPatch, loadSessionData,
   resolveSessionFilePath, SYSTEM_JSON, LINT_SKIP_JSON,
 } from "./session-state";
 
@@ -903,14 +903,16 @@ export class SessionInstance {
     const dir = this.getDir();
     if (!dir) return;
     const varsPath = path.join(dir, "variables.json");
+    let current: Record<string, unknown> | null;
     try {
-      if (!fs.existsSync(varsPath)) return;
-      const vars = JSON.parse(fs.readFileSync(varsPath, "utf-8"));
-      if (!Array.isArray(vars.__popups) || vars.__popups.length === 0) return;
-      vars.__popups = [];
-      fs.writeFileSync(varsPath, JSON.stringify(vars, null, 2), "utf-8");
-      this.panels.scheduleRender();
-    } catch { /* ignore */ }
+      current = readSessionJson(varsPath);
+    } catch {
+      return; // corrupt/parse error → 덮어쓰지 않고 보존
+    }
+    if (!current) return; // 파일 없음 → 생성하지 않음
+    if (!Array.isArray(current.__popups) || current.__popups.length === 0) return; // 비었으면 no-op
+    const r = mutateSessionJsonSync(varsPath, (c) => ({ ...c, __popups: [] }));
+    if (r.ok) this.panels.scheduleRender();
   }
 
   // --- History ---
