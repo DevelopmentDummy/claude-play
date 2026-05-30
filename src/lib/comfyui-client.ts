@@ -17,6 +17,7 @@ import {
   injectTriggerTags,
   injectBaseLoRAs,
   applyDynamicLoRAs,
+  injectCoupleBranchLoras,
 } from "./comfyui-graph";
 
 /** Sanitize a relative file path: preserve subdirectories but prevent traversal */
@@ -397,76 +398,6 @@ export class ComfyUIClient {
     }
   }
 
-  /** Inject per-character CLIP-branch LoRA chains for scene-couple workflow.
-   *  Each region (left=node 50, right=node 51) gets its own LoRA chain
-   *  branching from the common chain's CLIP output. */
-  private injectCoupleBranchLoras(
-    prompt: Record<string, unknown>,
-    availableLoRAs: string[],
-    lorasLeft?: Array<{ name: string; strength: number }>,
-    lorasRight?: Array<{ name: string; strength: number }>
-  ): void {
-    const regionNodes = [
-      { targetId: "50", loras: lorasLeft,  startId: 400, label: "left" },
-      { targetId: "51", loras: lorasRight, startId: 500, label: "right" },
-    ];
-
-    const triggerTable = this.loadLoraTriggers();
-
-    for (const { targetId, loras, startId, label } of regionNodes) {
-      if (!loras || loras.length === 0) continue;
-
-      const validLoras = availableLoRAs.length === 0
-        ? loras.filter(l => l.strength !== 0)
-        : loras.filter(l => l.strength !== 0 && availableLoRAs.includes(l.name));
-
-      if (validLoras.length === 0) continue;
-
-      // Find current clip source for this CLIPTextEncode
-      const targetNode = prompt[targetId] as Record<string, unknown>;
-      if (!targetNode) continue;
-      const targetInputs = targetNode.inputs as Record<string, unknown>;
-      const clipSource = targetInputs.clip as [string, number];
-      const branchAnchorId = clipSource[0];
-
-      // Build LoRA chain: each takes model+clip from previous
-      let prevId = branchAnchorId;
-      for (let i = 0; i < validLoras.length; i++) {
-        const nodeId = String(startId + i);
-        prompt[nodeId] = {
-          class_type: "LoraLoader",
-          inputs: {
-            lora_name: validLoras[i].name,
-            strength_model: validLoras[i].strength,
-            strength_clip: validLoras[i].strength,
-            model: [prevId, 0],
-            clip: [prevId, 1],
-          },
-          _meta: { title: `branch-lora-${label}-${i}` },
-        };
-        prevId = nodeId;
-      }
-
-      // Rewire CLIPTextEncode to use branch chain's clip output
-      targetInputs.clip = [prevId, 1];
-
-      // Inject trigger tags for branch LoRAs into their region's prompt text
-      for (const lora of validLoras) {
-        const triggers = triggerTable[lora.name];
-        if (!triggers?.trim()) continue;
-        const currentText = (targetInputs.text as string) || "";
-        const currentLower = currentText.toLowerCase();
-        const newTags = triggers.split(",").map((t: string) => t.trim()).filter((t: string) => t && !currentLower.includes(t.toLowerCase()));
-        if (newTags.length > 0) {
-          targetInputs.text = currentText + ", " + newTags.join(", ");
-          console.log(`[comfyui] Auto-injected branch trigger tags (${label}): ${newTags.join(", ")}`);
-        }
-      }
-
-      console.log(`[comfyui] Injected ${validLoras.length} branch LoRAs for ${label} region`);
-    }
-  }
-
   /** Resolve the best available checkpoint name */
   private resolveCheckpoint(availableCheckpoints: string[], sessionDir?: string): string {
     // Priority: 1) comfyui-config.json in session/persona dir, 2) global comfyui-config.json,
@@ -729,7 +660,7 @@ export class ComfyUIClient {
 
     // 4c: lora_couple_branches
     if (features.lora_couple_branches && (lorasLeft?.length || lorasRight?.length)) {
-      this.injectCoupleBranchLoras(prompt, models.loras, lorasLeft, lorasRight);
+      injectCoupleBranchLoras(prompt, models.loras, this.loadLoraTriggers(), lorasLeft, lorasRight);
     }
 
     // 4d: trigger_tags
