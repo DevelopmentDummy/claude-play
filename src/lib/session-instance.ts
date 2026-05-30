@@ -11,6 +11,10 @@ import { AIProvider } from "./ai-provider";
 import { generateEdgeTts } from "./edge-tts-client";
 import { buildHintSnapshotLine } from "./hint-snapshot";
 import { spawnBackgroundClaude } from "./background-session";
+import {
+  mutateSessionJsonSync, applyPatch, loadSessionData,
+  resolveSessionFilePath, SYSTEM_JSON, LINT_SKIP_JSON,
+} from "./session-state";
 
 // --- Constants & helpers (extracted from services.ts) ---
 
@@ -574,15 +578,10 @@ export class SessionInstance {
   buildJsonLint(): string {
     const dir = this.getDir();
     if (!dir) return "";
-    const SYSTEM_JSON = new Set([
-      "session.json", "builder-session.json", "layout.json",
-      "chat-history.json", "pending-events.json", "pending-actions.json",
-      "package.json", "tsconfig.json", "chat-options.json",
-    ]);
     const errors: string[] = [];
     try {
       for (const f of fs.readdirSync(dir)) {
-        if (!f.endsWith(".json") || SYSTEM_JSON.has(f)) continue;
+        if (!f.endsWith(".json") || LINT_SKIP_JSON.has(f)) continue;
         const fp = path.join(dir, f);
         try {
           const raw = fs.readFileSync(fp, "utf-8");
@@ -610,24 +609,8 @@ export class SessionInstance {
     if (!fs.existsSync(hookPath)) return;
 
     try {
-      // Build context (same pattern as tools)
       const varsPath = path.join(dir, "variables.json");
-      let variables: Record<string, unknown> = {};
-      try { variables = JSON.parse(fs.readFileSync(varsPath, "utf-8")); } catch {}
-
-      const SYSTEM_JSON = new Set([
-        "variables.json", "session.json", "builder-session.json", "layout.json",
-        "chat-history.json", "pending-events.json", "pending-actions.json",
-        "package.json", "tsconfig.json", "voice.json", "chat-options.json",
-      ]);
-      const data: Record<string, unknown> = {};
-      try {
-        for (const f of fs.readdirSync(dir)) {
-          if (f.endsWith(".json") && !SYSTEM_JSON.has(f)) {
-            try { data[f.replace(".json", "")] = JSON.parse(fs.readFileSync(path.join(dir, f), "utf-8")); } catch {}
-          }
-        }
-      } catch {}
+      const { variables, data } = loadSessionData(dir);
 
       // eslint-disable-next-line no-eval
       const nativeRequire = eval("require") as NodeRequire;
@@ -639,23 +622,18 @@ export class SessionInstance {
       const result = fn({ variables: { ...variables }, data, sessionDir: dir, message: messageText });
       if (!result || typeof result !== "object") return;
 
-      // Apply variable patches
       if (result.variables && typeof result.variables === "object") {
-        const current = JSON.parse(fs.readFileSync(varsPath, "utf-8"));
-        const merged = { ...current, ...result.variables };
-        fs.writeFileSync(varsPath, JSON.stringify(merged, null, 2), "utf-8");
+        mutateSessionJsonSync(varsPath, (current) => applyPatch(current, result.variables as Record<string, unknown>));
       }
 
-      // Apply data file patches
       if (result.data && typeof result.data === "object") {
         for (const [rawKey, patch] of Object.entries(result.data as Record<string, Record<string, unknown>>)) {
           if (!patch || typeof patch !== "object") continue;
           const fileName = rawKey.endsWith(".json") ? rawKey : `${rawKey}.json`;
           if (SYSTEM_JSON.has(fileName)) continue;
-          const filePath = path.join(dir, fileName);
-          let current: Record<string, unknown> = {};
-          try { if (fs.existsSync(filePath)) current = JSON.parse(fs.readFileSync(filePath, "utf-8")); } catch {}
-          fs.writeFileSync(filePath, JSON.stringify({ ...current, ...patch }, null, 2), "utf-8");
+          const fp = resolveSessionFilePath(dir, fileName);
+          if (!fp) continue;
+          mutateSessionJsonSync(fp, (current) => applyPatch(current, patch));
         }
       }
     } catch (err) {
@@ -679,22 +657,7 @@ export class SessionInstance {
 
     try {
       const varsPath = path.join(dir, "variables.json");
-      let variables: Record<string, unknown> = {};
-      try { variables = JSON.parse(fs.readFileSync(varsPath, "utf-8")); } catch {}
-
-      const SYSTEM_JSON = new Set([
-        "variables.json", "session.json", "builder-session.json", "layout.json",
-        "chat-history.json", "pending-events.json", "pending-actions.json",
-        "package.json", "tsconfig.json", "voice.json", "chat-options.json",
-      ]);
-      const data: Record<string, unknown> = {};
-      try {
-        for (const f of fs.readdirSync(dir)) {
-          if (f.endsWith(".json") && !SYSTEM_JSON.has(f)) {
-            try { data[f.replace(".json", "")] = JSON.parse(fs.readFileSync(path.join(dir, f), "utf-8")); } catch {}
-          }
-        }
-      } catch {}
+      const { variables, data } = loadSessionData(dir);
 
       // eslint-disable-next-line no-eval
       const nativeRequire = eval("require") as NodeRequire;
@@ -707,9 +670,7 @@ export class SessionInstance {
       if (!result || typeof result !== "object") return;
 
       if (result.variables && typeof result.variables === "object") {
-        const current = JSON.parse(fs.readFileSync(varsPath, "utf-8"));
-        const merged = { ...current, ...result.variables };
-        fs.writeFileSync(varsPath, JSON.stringify(merged, null, 2), "utf-8");
+        mutateSessionJsonSync(varsPath, (current) => applyPatch(current, result.variables as Record<string, unknown>));
       }
 
       if (result.data && typeof result.data === "object") {
@@ -717,10 +678,9 @@ export class SessionInstance {
           if (!patch || typeof patch !== "object") continue;
           const fileName = rawKey.endsWith(".json") ? rawKey : `${rawKey}.json`;
           if (SYSTEM_JSON.has(fileName)) continue;
-          const filePath = path.join(dir, fileName);
-          let current: Record<string, unknown> = {};
-          try { if (fs.existsSync(filePath)) current = JSON.parse(fs.readFileSync(filePath, "utf-8")); } catch {}
-          fs.writeFileSync(filePath, JSON.stringify({ ...current, ...patch }, null, 2), "utf-8");
+          const fp = resolveSessionFilePath(dir, fileName);
+          if (!fp) continue;
+          mutateSessionJsonSync(fp, (current) => applyPatch(current, patch));
         }
       }
 
@@ -857,13 +817,13 @@ export class SessionInstance {
 
     try {
       const varsPath = path.join(dir, "variables.json");
-      let variables: Record<string, unknown> = {};
-      try { variables = JSON.parse(fs.readFileSync(varsPath, "utf-8")); } catch {}
-
-      // Counter increment + threshold check (persisted in variables.json).
-      const counter = (Number(variables.__style_check_counter) || 0) + 1;
-      variables.__style_check_counter = counter;
-      try { fs.writeFileSync(varsPath, JSON.stringify(variables, null, 2), "utf-8"); } catch {}
+      let counter = 0;
+      const cr = mutateSessionJsonSync(varsPath, (current) => {
+        counter = (Number(current.__style_check_counter) || 0) + 1;
+        return { ...current, __style_check_counter: counter };
+      });
+      if (!cr.ok) return;
+      const variables = cr.value || {};
 
       if (counter % interval !== 0) return;
 
@@ -901,20 +861,7 @@ export class SessionInstance {
         }
       } catch {}
 
-      const SYSTEM_JSON = new Set([
-        "variables.json", "session.json", "builder-session.json", "layout.json",
-        "chat-history.json", "pending-events.json", "pending-actions.json",
-        "package.json", "tsconfig.json", "voice.json", "chat-options.json",
-        "style-check.json",
-      ]);
-      const data: Record<string, unknown> = {};
-      try {
-        for (const f of fs.readdirSync(dir)) {
-          if (f.endsWith(".json") && !SYSTEM_JSON.has(f)) {
-            try { data[f.replace(".json", "")] = JSON.parse(fs.readFileSync(path.join(dir, f), "utf-8")); } catch {}
-          }
-        }
-      } catch {}
+      const { data } = loadSessionData(dir);
 
       // eslint-disable-next-line no-eval
       const nativeRequire = eval("require") as NodeRequire;
