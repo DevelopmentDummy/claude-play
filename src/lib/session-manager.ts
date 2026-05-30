@@ -15,6 +15,7 @@ import { ensureClaudeRuntimeConfig as ensureClaudeRuntimeConfigImpl } from "./ru
 import { AIProvider, providerFromModel } from "./ai-provider";
 import { SYSTEM_JSON } from "./session-state";
 import { fileDiffers, personaSkillsDiffer, dirDiffers, toolsDiffer, variablesDiffer, stripAssembledSections, liveInstructionsDiffer, getCustomDataFiles } from "./session-sync-diff";
+import { copyDirRecursive, mirrorAdditive } from "./fs-mirror";
 import {
   writeCodexInstructions as writeCodexInstructionsImpl,
   writeGeminiInstructions as writeGeminiInstructionsImpl,
@@ -588,7 +589,7 @@ export class SessionManager {
         }
       } catch { /* malformed .sessionignore must not break session creation */ }
     }
-    this.copyDirRecursive(personaDir, sessionDir, SKIP_FILES);
+    copyDirRecursive(personaDir, sessionDir, SKIP_FILES);
 
     // Selectively copy ONLY profile.png and icon.png from persona images.
     // Sessions need these for their card/header UI; gallery images stay in persona dir.
@@ -691,9 +692,9 @@ export class SessionManager {
     fs.mkdirSync(agentsSkillsDest, { recursive: true });
     fs.mkdirSync(kimiSkillsDest, { recursive: true });
     if (fs.existsSync(personaSkillsSrc)) {
-      this.copyDirRecursive(personaSkillsSrc, claudeSkillsDest);
-      this.copyDirRecursive(personaSkillsSrc, agentsSkillsDest);
-      this.copyDirRecursive(personaSkillsSrc, kimiSkillsDest);
+      copyDirRecursive(personaSkillsSrc, claudeSkillsDest);
+      copyDirRecursive(personaSkillsSrc, agentsSkillsDest);
+      copyDirRecursive(personaSkillsSrc, kimiSkillsDest);
     }
 
     // Copy global tool skills (data/tools/*/skills/*) to session
@@ -1092,7 +1093,7 @@ export class SessionManager {
             const src = path.join(personaSkills, entry.name);
             const dst = path.join(targetDir, entry.name);
             if (entry.isDirectory()) {
-              this.copyDirRecursive(src, dst);
+              copyDirRecursive(src, dst);
             } else {
               fs.copyFileSync(src, dst);
             }
@@ -1430,7 +1431,7 @@ export class SessionManager {
           const src = path.join(sessionSkills, entry.name);
           const dst = path.join(personaSkills, entry.name);
           if (fs.existsSync(src)) {
-            this.copyDirRecursive(src, dst);
+            copyDirRecursive(src, dst);
           }
         }
       }
@@ -1809,26 +1810,7 @@ export class SessionManager {
       } catch { /* malformed .sessionignore must not break mirror */ }
     }
 
-    this.mirrorAdditive(personaDir, sessionDir, SKIP_FILES);
-  }
-
-  /** Like copyDirRecursive but never overwrites existing files in dest.
-   *  Recurses into subdirs so files newly added inside existing dirs are caught. */
-  private mirrorAdditive(src: string, dest: string, skip?: Set<string>): void {
-    if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
-    for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
-      if (skip && skip.has(entry.name)) continue;
-      const srcPath = path.join(src, entry.name);
-      const destPath = path.join(dest, entry.name);
-      if (entry.isDirectory()) {
-        // Recurse even if destPath exists — catch new files inside existing subdirs.
-        // Top-level skip set doesn't propagate to subdirs (intentional — e.g.
-        // `images` skipped at top level but persona may add panels/img/*.png).
-        this.mirrorAdditive(srcPath, destPath);
-      } else if (!fs.existsSync(destPath)) {
-        fs.copyFileSync(srcPath, destPath);
-      }
-    }
+    mirrorAdditive(personaDir, sessionDir, SKIP_FILES);
   }
 
   refreshToolSkills(sessionDir: string): void {
@@ -1884,7 +1866,7 @@ export class SessionManager {
       const skillName = path.basename(src);
       const dest = path.join(skillsDest, skillName);
       fs.mkdirSync(dest, { recursive: true });
-      this.copyDirRecursive(src, dest);
+      copyDirRecursive(src, dest);
 
       // Replace {{PORT}} in SKILL.md and shell scripts
       for (const file of fs.readdirSync(dest)) {
@@ -1955,20 +1937,4 @@ export class SessionManager {
   }
 
   // ── Helpers ──────────────────────────────────────────────
-
-  private copyDirRecursive(src: string, dest: string, skip?: Set<string>): void {
-    if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
-    const entries = fs.readdirSync(src, { withFileTypes: true });
-    for (const entry of entries) {
-      if (skip && skip.has(entry.name)) continue;
-      const srcPath = path.join(src, entry.name);
-      const destPath = path.join(dest, entry.name);
-      if (entry.isDirectory()) {
-        fs.mkdirSync(destPath, { recursive: true });
-        this.copyDirRecursive(srcPath, destPath);
-      } else {
-        fs.copyFileSync(srcPath, destPath);
-      }
-    }
-  }
 }
