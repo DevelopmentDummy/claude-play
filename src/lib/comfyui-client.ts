@@ -6,7 +6,6 @@ import {
   validateParams,
   type WorkflowPackageMeta,
   type WorkflowFeatures,
-  type DetailerChainConfig,
 } from "./workflow-resolver";
 import { getGpuManagerUrl } from "./endpoints";
 import {
