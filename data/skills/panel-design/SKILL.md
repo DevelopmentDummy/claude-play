@@ -712,6 +712,123 @@ async function finalize(result) {
 
 ---
 
+## 🚨 차단 패널 + AI 서사 동시 트리거 금지
+
+**핵심 원리: 화면을 가리는 패널(모달 / 풀스크린)이 열린 상태에서 AI 서사 턴을 트리거하지 마라.**
+
+### 왜 문제인가
+
+사용자가 버튼을 누르면 흔히 두 가지가 동시에 발생한다:
+1. `PB.openModal('어떤_패널')` — 차단 패널 즉시 표시
+2. `PB.sendMessage('[이벤트] /narrate-X 스킬로 묘사하라', { silent: true })` — AI 서사 턴 트리거
+
+이 조합은 **항상 나쁜 UX**다:
+- AI 응답은 보통 수 초~수십 초 걸린다 (특히 thinking 모델은 더 김)
+- 그동안 사용자는 차단 패널을 멍하니 응시 — 인터랙션 불가
+- 서사가 끝나도 차단 패널 뒤에 가려져 있어 **읽으려면 패널을 닫아야 함**
+- 즉 "서사 보러 가는데 두 번 더 클릭 필요" — 서사 자체가 묻힘
+
+### 페르소나 톤별 적용 우선순위
+
+- **서사 중심 페르소나** (단일 캐릭터 RP, 채팅이 메인 콘텐츠) — 거의 무관. 차단 패널 자체를 적게 씀
+- **게임형 페르소나** (관리 시뮬레이션, 디펜스, RPG, 카드게임 등 — 서사가 backdrop) — **반드시 지켜야 함**. 사용자는 게임 화면을 보고 싶어 하지 서사를 읽으려 그 화면을 닫고 싶어 하지 않음
+
+### 해결 패턴 — 우선순위
+
+#### Pattern A — 서사만 트리거, 모달 오픈은 사용자에게 양도 (최선)
+```javascript
+// 사이드바 "런 시작" 같은 트리거 버튼
+async function startRun() {
+  await callEngine('start_run');
+  PB.sendMessage('[런 시작] 챕터 1 분위기를 짧게 묘사하라.', { silent: true });
+  // ❌ PB.openModal('nodemap'); — 열지 않음
+  // 사용자는 서사를 다 읽은 뒤 사이드바의 "🗺 노드 맵" 버튼을 직접 누름
+}
+```
+**장점:** 서사를 차분히 읽을 시간 확보 + 사용자의 페이스로 게임 진행. **사이드바 메뉴가 명확하게 보이는 경우에만** 유효.
+
+#### Pattern B — 서사 끝에 인라인 전환 버튼 (사이드바가 약할 때)
+AI 응답의 마지막에 `<choice>` 태그로 인라인 액션 버튼을 포함하게 하라. 사용자가 서사를 읽고 버튼 하나로 다음 패널로 진입.
+```markdown
+<!-- 페르소나 narrate 스킬 가이드 -->
+응답 마지막에 반드시 다음 형식의 choice를 포함:
+<choice>
+[
+  { "text": "🗺 노드 맵 열기", "score": 0, "dry": true, "actions": [{ "tool": "engine", "action": "open_modal", "params": { "modal": "nodemap" } }] }
+]
+</choice>
+```
+**장점:** 인라인 통합.
+
+**⚠ 중요: `dry: true`는 choice 객체 레벨에 둬야 함, action에 두면 무시됨.** 디스패처가 `choice.dry`를 읽지 `action.dry`가 아니다 (`ChatInput.tsx:386`). 잘못된 형태로 안내하면 AI가 그대로 복사해서 인라인 버튼 클릭이 정상 메시지처럼 AI 턴을 소비한다.
+
+```json
+❌ { "text": "...", "actions": [{ "tool": "...", "action": "...", "dry": true }] }
+✅ { "text": "...", "dry": true, "actions": [{ "tool": "...", "action": "..." }] }
+```
+
+#### Pattern C — 모달 자동 닫고 서사 → turnEnd로 다시 열기 (모달이 필수일 때만)
+사용자가 이미 모달 안에서 어떤 액션을 했고, 그 결과 모달을 보존하면서 서사도 필요할 때.
+```javascript
+async function pickNode(nodeId) {
+  await callEngine('enter_node', { node_id: nodeId });
+  // 1) 차단 패널 즉시 닫기
+  if (PB.closeModal) PB.closeModal('nodemap');
+  // 2) 서사 트리거
+  PB.sendMessage(`[노드 진입] /narrate-node 짧게.`, { silent: true });
+  // 3) 턴 종료 후 다음 패널 열기 (원샷 훅)
+  const unsub = PB.on('turnEnd', () => {
+    unsub();
+    PB.openModal('combat');
+  });
+}
+```
+**장점:** 서사 보는 동안 차단 X, 자동 전환. **단점:** 사용자가 서사를 다 읽기 전에 다음 패널이 떠버릴 수 있음 — turnEnd가 LLM 응답 직후라 너무 빠를 수 있다. 가능하면 A나 B를 선호.
+
+### 게임형 페르소나에서 흔한 안티패턴
+
+❌ **"버튼 누르면 모달 열고 서사 동시 발사"**
+```javascript
+async function enterShop() {
+  await callEngine('enter_node', ...);
+  PB.openModal('shop');                            // 차단 패널 즉시 표시
+  PB.sendMessage('[상점 진입] ...', { silent:true }); // 동시에 서사 트리거
+  // → 사용자: 상점 화면 보면서 AI 응답 기다리고, 끝나도 상점 가려져서 안 보임
+}
+```
+
+✅ **올바른 형태 (Pattern A)**
+```javascript
+async function enterShop() {
+  await callEngine('enter_node', ...);
+  PB.sendMessage('[상점 진입] ...', { silent: true });
+  // 모달 안 엶. 사용자가 서사 읽고 사이드바 메뉴 클릭으로 상점 진입
+}
+```
+
+✅ **혹은 (Pattern C — 자동 전환 필요할 때)**
+```javascript
+async function enterShop() {
+  await callEngine('enter_node', ...);
+  PB.closeModal('nodemap');                        // 기존 차단 패널 정리
+  PB.sendMessage('[상점 진입] ...', { silent: true });
+  PB.on('turnEnd', function once() {               // 원샷 훅
+    PB.off?.('turnEnd', once);
+    PB.openModal('shop');
+  });
+}
+```
+
+### 사이드바 패널의 역할
+
+게임형 페르소나에서 **사이드바는 단순 정보 표시가 아니라 "주 메뉴"**다. 차단 패널에 대한 모든 진입점은 사이드바 메뉴 버튼에 노출되어야 사용자가 서사 후 능동 전환 가능. 사이드바 메뉴가 없으면 Pattern A가 작동하지 않으니 Pattern B (인라인 choice 버튼) 필수.
+
+### 서사가 정말 짧으면?
+
+만약 서사가 1줄 정도로 매우 짧을 거라 확신한다면 Pattern C도 무리 없다. 그러나 LLM 응답 시간은 예측 불가하므로 **기본은 A or B**. 차단 패널과 서사의 동시 트리거는 "예외적으로 안전이 보장될 때만" 허용.
+
+---
+
 ## 주의사항 & 안티패턴
 
 1. **Shadow DOM 접근**: `document.querySelector` ❌ → `shadow.querySelector` ✅ (자동 주입)
