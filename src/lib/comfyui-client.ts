@@ -18,6 +18,8 @@ import {
   injectBaseLoRAs,
   applyDynamicLoRAs,
   injectCoupleBranchLoras,
+  processDetailerChain,
+  type DetailerModuleTemplate,
 } from "./comfyui-graph";
 import { extractAudioFilenames, extractOutputFilenames, extractTextOutputs } from "./comfyui-history";
 
@@ -76,17 +78,6 @@ interface RetryOptions {
 interface QueueSnapshot {
   pendingIds: string[];
   runningIds: string[];
-}
-
-interface DetailerModuleTemplate {
-  id_prefix: number;
-  nodes: Record<string, {
-    class_type: string;
-    inputs: Record<string, unknown>;
-    _meta?: { title: string };
-  }>;
-  use_main_prompt: boolean;
-  internal_wiring: Record<string, unknown>;
 }
 
 export class ComfyUIClient {
@@ -687,7 +678,7 @@ export class ComfyUIClient {
 
     // 4f: detailer_chain
     if (features.detailer_chain && pkg.meta.detailer_chain) {
-      this.processDetailerChain(prompt, pkg.meta.detailer_chain, params, pkg.meta.params);
+      processDetailerChain(prompt, pkg.meta.detailer_chain, params, this.loadDetailerModules(), pkg.meta.params);
     }
 
     // 4g: auto-upload session images for LoadImage nodes
@@ -763,174 +754,6 @@ export class ComfyUIClient {
     if (!fs.existsSync(modulesPath)) return {};
     this.detailerModulesCache = JSON.parse(fs.readFileSync(modulesPath, "utf8"));
     return this.detailerModulesCache!;
-  }
-
-  /** Inject enabled detailer modules between source and sink */
-  private processDetailerChain(
-    prompt: Record<string, unknown>,
-    chainConfig: DetailerChainConfig,
-    params: Record<string, unknown>,
-    paramDefs?: Record<string, { default?: unknown }>
-  ): void {
-    // Helper: read param value, falling back to param spec's default (for non-node params
-    // like `detailer_face_denoise` that don't appear in workflow nodes).
-    const getParam = (key: string): unknown => {
-      if (params[key] !== undefined) return params[key];
-      return paramDefs?.[key]?.default;
-    };
-    const modules = this.loadDetailerModules();
-    if (!modules || Object.keys(modules).length === 0) return;
-
-    // Find KSampler and VAEDecode to resolve __sampler__ references
-    const samplerEntry = Object.entries(prompt).find(
-      ([, v]) => (v as Record<string, unknown>).class_type === "KSampler"
-    );
-    const vaeDecodeEntry = Object.entries(prompt).find(
-      ([, v]) => (v as Record<string, unknown>).class_type === "VAEDecode"
-    );
-
-    const samplerInputs = samplerEntry
-      ? ((samplerEntry[1] as Record<string, unknown>).inputs as Record<string, unknown>)
-      : null;
-    const vaeDecodeInputs = vaeDecodeEntry
-      ? ((vaeDecodeEntry[1] as Record<string, unknown>).inputs as Record<string, unknown>)
-      : null;
-
-    // Resolve CLIP for detailer wiring.
-    // Priority: chainConfig.clip_source (explicit override) → KSampler.positive trace → null.
-    // Couple-branch workflows (Attention couple, ConditioningCombine) MUST set clip_source
-    // because the sampler positive doesn't trace back to a CLIPTextEncode.
-    const resolveClip = (): unknown => {
-      if (chainConfig.clip_source) {
-        return [chainConfig.clip_source.node, chainConfig.clip_source.output];
-      }
-      const posRef = samplerInputs?.positive as [string, number] | undefined;
-      if (posRef) {
-        const posNode = prompt[posRef[0]] as Record<string, unknown> | undefined;
-        if (posNode) {
-          return (posNode.inputs as Record<string, unknown>)?.clip;
-        }
-      }
-      return null;
-    };
-    // Resolve model for detailer wiring. Default = sampler model. Override via chainConfig.model_source.
-    const resolveModel = (): unknown => {
-      if (chainConfig.model_source) {
-        return [chainConfig.model_source.node, chainConfig.model_source.output];
-      }
-      return samplerInputs?.model;
-    };
-
-    // Determine which modules are enabled (in fixed order)
-    const moduleOrder = ["face", "hand", "pussy", "anus"];
-    const enabledModules: Array<{ id: string; template: DetailerModuleTemplate }> = [];
-
-    for (const moduleId of moduleOrder) {
-      if (!modules[moduleId]) continue;
-      const paramKey = `detailer_${moduleId}`;
-      if (getParam(paramKey) === false) continue;
-      enabledModules.push({ id: moduleId, template: modules[moduleId] });
-    }
-
-    // If no modules enabled, source→sink is already connected in base workflow
-    if (enabledModules.length === 0) return;
-
-    // Fields on the detailer node that can be overridden per-package via params.
-    // Param key format: `detailer_{moduleId}_{field}` (e.g. detailer_face_denoise = 0.25).
-    // Only applies to the "detailer" role; detector/pos_prompt/neg_prompt are not affected.
-    const OVERRIDABLE_DETAILER_FIELDS = [
-      "denoise", "steps", "cfg", "sampler_name", "scheduler",
-      "guide_size", "max_size", "feather",
-      "bbox_threshold", "bbox_dilation", "bbox_crop_factor",
-    ];
-
-    // Inject each enabled module's nodes into the prompt
-    for (const { id: moduleId, template } of enabledModules) {
-      const prefix = template.id_prefix;
-
-      // Node ID mapping: detector=+0, detailer=+1, pos_prompt=+2, neg_prompt=+3
-      const nodeIdMap: Record<string, string> = {
-        detector: String(prefix),
-        detailer: String(prefix + 1),
-        pos_prompt: String(prefix + 2),
-        neg_prompt: String(prefix + 3),
-      };
-
-      // Create nodes from template
-      for (const [role, nodeDef] of Object.entries(template.nodes)) {
-        const nodeId = nodeIdMap[role];
-        if (!nodeId) continue;
-        const inputs: Record<string, unknown> = { ...nodeDef.inputs };
-        if (role === "detailer") {
-          const appliedOverrides: string[] = [];
-          for (const field of OVERRIDABLE_DETAILER_FIELDS) {
-            const paramKey = `detailer_${moduleId}_${field}`;
-            const override = getParam(paramKey);
-            if (override !== undefined && override !== null) {
-              inputs[field] = override;
-              appliedOverrides.push(`${field}=${override}`);
-            }
-          }
-          if (appliedOverrides.length > 0) {
-            console.log(`[comfyui] Detailer override ${moduleId}: ${appliedOverrides.join(", ")}`);
-          }
-        }
-        prompt[nodeId] = {
-          class_type: nodeDef.class_type,
-          inputs,
-          _meta: nodeDef._meta,
-        };
-      }
-
-      // Wire internal connections
-      for (const [wirePath, ref] of Object.entries(template.internal_wiring)) {
-        const [targetRole, field] = wirePath.split(".");
-        const targetId = nodeIdMap[targetRole];
-        const targetNode = prompt[targetId] as Record<string, unknown> | undefined;
-        if (!targetNode) continue;
-        const targetInputs = targetNode.inputs as Record<string, unknown>;
-
-        if (ref === "__clip__") {
-          targetInputs[field] = resolveClip();
-        } else if (Array.isArray(ref)) {
-          const [refRole, refOutput] = ref as [string, number];
-          targetInputs[field] = [nodeIdMap[refRole], refOutput];
-        }
-      }
-
-      // Wire external connections: model, clip, vae, positive, negative
-      const detailerId = nodeIdMap.detailer;
-      const detailerInputs = (prompt[detailerId] as Record<string, unknown>).inputs as Record<string, unknown>;
-
-      detailerInputs.model = resolveModel();
-      detailerInputs.clip = resolveClip();
-      detailerInputs.vae = vaeDecodeInputs?.vae;
-
-      if (template.use_main_prompt) {
-        detailerInputs.positive = samplerInputs?.positive;
-        detailerInputs.negative = samplerInputs?.negative;
-      }
-      // Non-main-prompt modules already have pos/neg wired via internal_wiring
-    }
-
-    // Chain the enabled modules: source → first → ... → last → sink
-    const firstDetailerId = String(enabledModules[0].template.id_prefix + 1);
-    const firstDetailerInputs = (prompt[firstDetailerId] as Record<string, unknown>).inputs as Record<string, unknown>;
-    firstDetailerInputs.image = [chainConfig.source.node, chainConfig.source.output];
-
-    for (let i = 1; i < enabledModules.length; i++) {
-      const prevId = String(enabledModules[i - 1].template.id_prefix + 1);
-      const currId = String(enabledModules[i].template.id_prefix + 1);
-      const currInputs = (prompt[currId] as Record<string, unknown>).inputs as Record<string, unknown>;
-      currInputs.image = [prevId, 0];
-    }
-
-    const lastDetailerId = String(enabledModules[enabledModules.length - 1].template.id_prefix + 1);
-    const sinkNode = prompt[chainConfig.sink.node] as Record<string, unknown> | undefined;
-    if (sinkNode) {
-      const sinkInputs = sinkNode.inputs as Record<string, unknown>;
-      sinkInputs[chainConfig.sink.field] = [lastDetailerId, 0];
-    }
   }
 
   private async pollHistory(
