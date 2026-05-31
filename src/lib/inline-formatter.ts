@@ -3,61 +3,300 @@
  *
  * Recognized tokens (in addition to plain text):
  * - `**bold**`              → bold
- * - `*italic*`              → italic (action/narration)
- * - `` `code` ``            → inline code
- * - `'thought'` / `‘thought’` → thought/inner monologue
+ * - `*action*`              → action / narration (italic, colored)
+ * - `***both***`            → bold + action
+ * - `` `code` ``            → inline code (literal; contents not re-parsed)
+ * - `'thought'` / `‘thought’` → thought / inner monologue
  * - `$PANEL:name$`          → inline panel placeholder
  * - `$IMAGE:path$`          → inline image placeholder
  *
+ * Emphasis (`*` / `**`) is parsed with a CommonMark-style delimiter-stack
+ * algorithm restricted to the `*` delimiter. Consequences:
+ * - Nesting works in both directions: `*a **b** c*`, `**a *b* c**`.
+ * - Unmatched `*` stay literal text (don't swallow the rest of the line).
+ * - Left/right-flanking rules mean a `*` adjacent to whitespace on its inner
+ *   side can't open/close, so stray / space-padded asterisks are literal.
+ *
+ * Code, thought, panel and image are atomic: they are scanned first and consume
+ * their content (a `*` inside code or a thought stays literal), but emphasis can
+ * still wrap around them. Only bold and action nest, so the nesting state is two
+ * bits and the output is a flat segment list with style flags (see
+ * {@link InlineSegment}) rather than a tree.
+ *
  * Two outputs are supported:
- * - {@link tokenize}: returns a token stream so callers (e.g. React) can
+ * - {@link tokenize}: returns the segment stream so callers (e.g. React) can
  *   decide their own rendering. Used by ChatMessages.
  * - {@link formatInlineHtml}: emits an HTML string with inline styles for
  *   color-bearing tokens. Used by Shadow DOM panels (where Tailwind /
  *   external stylesheets are not available).
  */
 
-export type InlineToken =
-  | { type: "text"; value: string }
-  | { type: "bold"; value: string }
-  | { type: "italic"; value: string }
-  | { type: "code"; value: string }
-  | { type: "thought"; value: string }
-  | { type: "panel"; name: string; raw: string }
-  | { type: "image"; path: string; raw: string };
+export interface StyleFlags {
+  bold?: boolean;
+  action?: boolean;
+}
 
-const INLINE_RE_SOURCE =
-  "(\\$PANEL:[^$]+\\$|\\$IMAGE:[^$]+\\$|\\*\\*[^*]+\\*\\*|\\*[^*]+\\*|`[^`]+`|\\u2018[^\\u2019]+\\u2019|'[^']+['\\u2019])";
+export type InlineSegment =
+  | ({ kind: "text"; value: string } & StyleFlags)
+  | ({ kind: "code"; value: string } & StyleFlags)
+  | ({ kind: "thought"; value: string } & StyleFlags)
+  | { kind: "panel"; name: string }
+  | { kind: "image"; path: string };
 
-export function tokenize(text: string): InlineToken[] {
-  const re = new RegExp(INLINE_RE_SOURCE, "g");
-  const out: InlineToken[] = [];
-  let last = 0;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(text)) !== null) {
-    if (m.index > last) {
-      out.push({ type: "text", value: text.slice(last, m.index) });
+// ----------------------------------------------------------------------------
+// Internal parse model
+// ----------------------------------------------------------------------------
+
+interface Delim {
+  pos: number; // index of this run's item in the items array
+  star: number; // remaining (unconsumed) asterisks
+  orig: number; // original run length (for the rule-of-3)
+  canOpen: boolean;
+  canClose: boolean;
+  prev: Delim | null;
+  next: Delim | null;
+}
+
+type Item =
+  | { kind: "text"; value: string; bold: boolean; action: boolean }
+  | { kind: "code"; value: string; bold: boolean; action: boolean }
+  | { kind: "thought"; value: string; bold: boolean; action: boolean }
+  | { kind: "panel"; name: string }
+  | { kind: "image"; path: string }
+  | { kind: "stars"; delim: Delim; bold?: boolean; action?: boolean };
+
+const isWs = (c: string | undefined): boolean => c === undefined || /\s/u.test(c);
+const isPunct = (c: string | undefined): boolean => c !== undefined && /[\p{P}\p{S}]/u.test(c);
+
+// CommonMark flanking. `before`/`after` are the chars surrounding the run in the
+// source; a string boundary counts as whitespace.
+function leftFlanking(before: string | undefined, after: string | undefined): boolean {
+  if (isWs(after)) return false;
+  if (!isPunct(after)) return true;
+  return isWs(before) || isPunct(before);
+}
+function rightFlanking(before: string | undefined, after: string | undefined): boolean {
+  if (isWs(before)) return false;
+  if (!isPunct(before)) return true;
+  return isWs(after) || isPunct(after);
+}
+
+// Sticky atomic-token matchers (anchored at the scan position).
+const RE_PANEL = /\$PANEL:([^$]+)\$/y;
+const RE_IMAGE = /\$IMAGE:([^$]+)\$/y;
+const RE_CODE = /`([^`]+)`/y;
+const RE_THOUGHT_CURLY = /‘[^’]+’/y;
+const RE_THOUGHT_STRAIGHT = /'[^']+['’]/y;
+
+function matchAt(re: RegExp, text: string, i: number): RegExpExecArray | null {
+  re.lastIndex = i;
+  const m = re.exec(text);
+  return m && m.index === i ? m : null;
+}
+
+function scan(text: string): { items: Item[]; delims: Delim[] } {
+  const items: Item[] = [];
+  const delims: Delim[] = [];
+  let buf = "";
+  const flush = () => {
+    if (buf) {
+      items.push({ kind: "text", value: buf, bold: false, action: false });
+      buf = "";
     }
-    const raw = m[0];
-    if (raw.startsWith("$PANEL:") && raw.endsWith("$")) {
-      out.push({ type: "panel", name: raw.slice(7, -1), raw });
-    } else if (raw.startsWith("$IMAGE:") && raw.endsWith("$")) {
-      out.push({ type: "image", path: raw.slice(7, -1), raw });
-    } else if (raw.startsWith("**") && raw.endsWith("**")) {
-      out.push({ type: "bold", value: raw.slice(2, -2) });
-    } else if (raw.startsWith("`") && raw.endsWith("`")) {
-      out.push({ type: "code", value: raw.slice(1, -1) });
-    } else if (raw.startsWith("‘") || (raw.startsWith("'") && /['’]$/.test(raw))) {
-      out.push({ type: "thought", value: raw });
-    } else {
-      out.push({ type: "italic", value: raw.slice(1, -1) });
+  };
+
+  let i = 0;
+  while (i < text.length) {
+    const c = text[i];
+
+    if (c === "$") {
+      const pm = matchAt(RE_PANEL, text, i);
+      if (pm) { flush(); items.push({ kind: "panel", name: pm[1] }); i = RE_PANEL.lastIndex; continue; }
+      const im = matchAt(RE_IMAGE, text, i);
+      if (im) { flush(); items.push({ kind: "image", path: im[1] }); i = RE_IMAGE.lastIndex; continue; }
+      buf += c; i++; continue;
     }
-    last = m.index + raw.length;
+
+    if (c === "`") {
+      const cm = matchAt(RE_CODE, text, i);
+      if (cm) { flush(); items.push({ kind: "code", value: cm[1], bold: false, action: false }); i = RE_CODE.lastIndex; continue; }
+      buf += c; i++; continue;
+    }
+
+    if (c === "‘") {
+      const qm = matchAt(RE_THOUGHT_CURLY, text, i);
+      if (qm) { flush(); items.push({ kind: "thought", value: qm[0], bold: false, action: false }); i = RE_THOUGHT_CURLY.lastIndex; continue; }
+      buf += c; i++; continue;
+    }
+
+    if (c === "'") {
+      const qm = matchAt(RE_THOUGHT_STRAIGHT, text, i);
+      if (qm) { flush(); items.push({ kind: "thought", value: qm[0], bold: false, action: false }); i = RE_THOUGHT_STRAIGHT.lastIndex; continue; }
+      buf += c; i++; continue;
+    }
+
+    if (c === "*") {
+      let j = i;
+      while (j < text.length && text[j] === "*") j++;
+      const run = j - i;
+      const before = i > 0 ? text[i - 1] : undefined;
+      const after = j < text.length ? text[j] : undefined;
+      flush();
+      const delim: Delim = {
+        pos: items.length,
+        star: run,
+        orig: run,
+        canOpen: leftFlanking(before, after),
+        canClose: rightFlanking(before, after),
+        prev: null,
+        next: null,
+      };
+      items.push({ kind: "stars", delim });
+      delims.push(delim);
+      i = j;
+      continue;
+    }
+
+    buf += c;
+    i++;
   }
-  if (last < text.length) {
-    out.push({ type: "text", value: text.slice(last) });
+
+  flush();
+  return { items, delims };
+}
+
+// CommonMark process_emphasis, single delimiter char (`*`). Matches each
+// can-close run to the nearest preceding can-open run, consuming 2 stars (bold)
+// or 1 (action), honoring the rule-of-3, and tagging the items between them.
+function processEmphasis(items: Item[], delims: Delim[]): void {
+  if (delims.length === 0) return;
+  for (let k = 0; k < delims.length; k++) {
+    delims[k].prev = k > 0 ? delims[k - 1] : null;
+    delims[k].next = k < delims.length - 1 ? delims[k + 1] : null;
+  }
+
+  const unlink = (d: Delim) => {
+    if (d.prev) d.prev.next = d.next;
+    if (d.next) d.next.prev = d.prev;
+    d.prev = null;
+    d.next = null;
+  };
+
+  // openers_bottom keyed by (canClose-run can also open ? 3 : 0) + run%3
+  const openersBottom: (Delim | null)[] = [null, null, null, null, null, null];
+
+  let closer: Delim | null = delims[0];
+  while (closer) {
+    if (!closer.canClose) { closer = closer.next; continue; }
+
+    // Key by the closer's ORIGINAL run length (immutable), per CommonMark — a
+    // multi-star closer that is kept across partial matches must not change its
+    // openers_bottom bucket mid-loop, or valid openers get skipped.
+    const bucket = (closer.canOpen ? 3 : 0) + (closer.orig % 3);
+    let opener: Delim | null = closer.prev;
+    let found = false;
+    while (opener && opener !== openersBottom[bucket]) {
+      const oddMatch =
+        (closer.canOpen || opener.canClose) &&
+        closer.orig % 3 !== 0 &&
+        (opener.orig + closer.orig) % 3 === 0;
+      if (opener.canOpen && opener.star > 0 && !oddMatch) { found = true; break; }
+      opener = opener.prev;
+    }
+
+    const oldCloser = closer;
+    if (found && opener) {
+      const use = opener.star >= 2 && closer.star >= 2 ? 2 : 1;
+      const bold = use === 2;
+      for (let p = opener.pos + 1; p < closer.pos; p++) {
+        const it = items[p];
+        // panel/image carry no style; text/code/thought and leftover literal
+        // stars (e.g. the lone `*` in `**a*b**`) inherit the enclosing style.
+        if (it.kind === "panel" || it.kind === "image") continue;
+        if (bold) it.bold = true;
+        else it.action = true;
+      }
+      opener.star -= use;
+      closer.star -= use;
+      // drop delimiters strictly between the matched pair — they can't match now
+      let between = opener.next;
+      while (between && between !== closer) {
+        const nxt = between.next;
+        unlink(between);
+        between = nxt;
+      }
+      if (opener.star === 0) unlink(opener);
+      if (closer.star === 0) {
+        const nxt = closer.next;
+        unlink(closer);
+        closer = nxt;
+      }
+      // else: keep the same closer; it may still match a further opener
+    } else {
+      openersBottom[bucket] = oldCloser.prev;
+      const nxt = oldCloser.next;
+      if (!oldCloser.canOpen) unlink(oldCloser);
+      closer = nxt;
+    }
+  }
+}
+
+function pushText(out: InlineSegment[], value: string, bold: boolean, action: boolean): void {
+  if (!value) return;
+  const last = out[out.length - 1];
+  if (last && last.kind === "text" && !!last.bold === bold && !!last.action === action) {
+    last.value += value;
+    return;
+  }
+  const seg: InlineSegment = { kind: "text", value };
+  if (bold) seg.bold = true;
+  if (action) seg.action = true;
+  out.push(seg);
+}
+
+function emit(items: Item[]): InlineSegment[] {
+  const out: InlineSegment[] = [];
+  for (const it of items) {
+    switch (it.kind) {
+      case "stars":
+        if (it.delim.star > 0) pushText(out, "*".repeat(it.delim.star), !!it.bold, !!it.action);
+        break;
+      case "text":
+        pushText(out, it.value, it.bold, it.action);
+        break;
+      case "code": {
+        const seg: InlineSegment = { kind: "code", value: it.value };
+        if (it.bold) seg.bold = true;
+        if (it.action) seg.action = true;
+        out.push(seg);
+        break;
+      }
+      case "thought": {
+        const seg: InlineSegment = { kind: "thought", value: it.value };
+        if (it.bold) seg.bold = true;
+        if (it.action) seg.action = true;
+        out.push(seg);
+        break;
+      }
+      case "panel":
+        out.push({ kind: "panel", name: it.name });
+        break;
+      case "image":
+        out.push({ kind: "image", path: it.path });
+        break;
+    }
   }
   return out;
+}
+
+/**
+ * Parse RP markdown-lite into a flat segment stream. Bold and action may nest;
+ * code/thought/panel/image are atomic. Unmatched `*` come back as literal text.
+ */
+export function tokenize(text: string): InlineSegment[] {
+  const { items, delims } = scan(text);
+  processEmphasis(items, delims);
+  return emit(items);
 }
 
 export function escapeHtml(s: string): string {
@@ -76,13 +315,13 @@ export function escapeHtml(s: string): string {
 export interface FormatInlineHtmlOptions {
   /** Color for 'thought' tokens (single quotes / curly quotes). Default: #7eb8e0. */
   thoughtColor?: string;
-  /** Color for 'italic' (action / narration) tokens. Default: #e8a862. */
+  /** Color for 'action' (action / narration) tokens. Default: #e8a862. */
   actionColor?: string;
 }
 
 /**
- * Render tokens as an HTML string with inline styles for color-bearing tokens.
- * `$PANEL` / `$IMAGE` are emitted as placeholder `<span>` elements with
+ * Render segments as an HTML string with inline styles for color-bearing
+ * tokens. `$PANEL` / `$IMAGE` are emitted as placeholder `<span>` elements with
  * `data-inline-panel` / `data-inline-image` attributes — callers can post-process
  * those to mount their own content.
  */
@@ -90,28 +329,34 @@ export function formatInlineHtml(text: string, opts: FormatInlineHtmlOptions = {
   const thoughtColor = opts.thoughtColor ?? "#7eb8e0";
   const actionColor = opts.actionColor ?? "#e8a862";
   const parts: string[] = [];
-  for (const t of tokenize(text)) {
-    switch (t.type) {
-      case "text":
-        parts.push(escapeHtml(t.value));
+  for (const seg of tokenize(text)) {
+    switch (seg.kind) {
+      case "text": {
+        let inner = escapeHtml(seg.value);
+        if (seg.action) inner = `<em style="color:${actionColor};font-style:italic">${inner}</em>`;
+        if (seg.bold) inner = `<strong>${inner}</strong>`;
+        parts.push(inner);
         break;
-      case "bold":
-        parts.push(`<strong>${escapeHtml(t.value)}</strong>`);
+      }
+      case "code": {
+        let inner = `<code>${escapeHtml(seg.value)}</code>`;
+        if (seg.action) inner = `<em style="color:${actionColor};font-style:italic">${inner}</em>`;
+        if (seg.bold) inner = `<strong>${inner}</strong>`;
+        parts.push(inner);
         break;
-      case "italic":
-        parts.push(`<em style="color:${actionColor};font-style:italic">${escapeHtml(t.value)}</em>`);
+      }
+      case "thought": {
+        // thought keeps its own color; only bold may stack on top of it.
+        let inner = `<em style="color:${thoughtColor};font-style:italic">${escapeHtml(seg.value)}</em>`;
+        if (seg.bold) inner = `<strong>${inner}</strong>`;
+        parts.push(inner);
         break;
-      case "code":
-        parts.push(`<code>${escapeHtml(t.value)}</code>`);
-        break;
-      case "thought":
-        parts.push(`<em style="color:${thoughtColor};font-style:italic">${escapeHtml(t.value)}</em>`);
-        break;
+      }
       case "panel":
-        parts.push(`<span data-inline-panel="${escapeHtml(t.name)}"></span>`);
+        parts.push(`<span data-inline-panel="${escapeHtml(seg.name)}"></span>`);
         break;
       case "image":
-        parts.push(`<span data-inline-image="${escapeHtml(t.path)}"></span>`);
+        parts.push(`<span data-inline-image="${escapeHtml(seg.path)}"></span>`);
         break;
     }
   }

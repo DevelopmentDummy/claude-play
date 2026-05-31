@@ -211,40 +211,53 @@ function renderInline(
   const tokens = tokenize(text);
 
   // whitespace-pre-wrap would render blank lines around $IMAGE blocks as
-  // visible gaps. Trim trailing \n+ on the token before an image, and
-  // leading \n+ on the token after \u2014 preserves the previous renderInline
+  // visible gaps. Trim trailing \n+ on the segment before an image, and
+  // leading \n+ on the segment after \u2014 preserves the previous renderInline
   // behavior exactly.
   for (let i = 0; i < tokens.length; i++) {
-    if (tokens[i].type !== "image") continue;
+    if (tokens[i].kind !== "image") continue;
     const prev = tokens[i - 1];
-    if (prev && prev.type === "text") prev.value = prev.value.replace(/\n+$/, "");
+    if (prev && prev.kind === "text") prev.value = prev.value.replace(/\n+$/, "");
     const next = tokens[i + 1];
-    if (next && next.type === "text") next.value = next.value.replace(/^\n+/, "");
+    if (next && next.kind === "text") next.value = next.value.replace(/^\n+/, "");
   }
+
+  // bold/action may stack (e.g. `*a **b** c*`); wrap in <em> (action, inner)
+  // then <strong> (bold, outer) per the segment's flags.
+  const styleWrap = (
+    inner: React.ReactNode,
+    seg: { bold?: boolean; action?: boolean },
+    key: string,
+  ): React.ReactNode => {
+    let el = inner;
+    if (seg.action) el = <em className="italic text-[#e8a862]">{el}</em>;
+    if (seg.bold) el = <strong className="font-semibold">{el}</strong>;
+    return <span key={key}>{el}</span>;
+  };
 
   const nodes: React.ReactNode[] = [];
   tokens.forEach((tok, i) => {
     const key = `${keyPrefix}-${i}`;
-    switch (tok.type) {
+    switch (tok.kind) {
       case "text":
-        if (tok.value) nodes.push(<span key={key}>{tok.value}</span>);
-        break;
-      case "bold":
-        nodes.push(<strong key={key} className="font-semibold">{tok.value}</strong>);
-        break;
-      case "italic":
-        nodes.push(<em key={key} className="italic text-[#e8a862]">{tok.value}</em>);
+        if (tok.value) nodes.push(styleWrap(tok.value, tok, key));
         break;
       case "code":
         nodes.push(
-          <code key={key} className="bg-code-bg px-1 py-0.5 rounded text-[13px] font-mono">
-            {tok.value}
-          </code>
+          styleWrap(
+            <code className="bg-code-bg px-1 py-0.5 rounded text-[13px] font-mono">{tok.value}</code>,
+            tok,
+            key,
+          )
         );
         break;
-      case "thought":
-        nodes.push(<span key={key} className="text-[#7eb8e0] italic">{tok.value}</span>);
+      case "thought": {
+        const base = <span className="text-[#7eb8e0] italic">{tok.value}</span>;
+        nodes.push(
+          tok.bold ? <strong key={key} className="font-semibold">{base}</strong> : <span key={key}>{base}</span>
+        );
         break;
+      }
       case "panel": {
         if (!panels) break;
         const panel = panels.find((p) => p.name === tok.name);
