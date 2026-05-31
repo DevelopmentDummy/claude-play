@@ -10,6 +10,8 @@ import {
 } from "./session-registry";
 import { stopPipelineScheduler } from "./pipeline-scheduler";
 import { isAuthEnabled, verifyAuthToken, parseCookieToken } from "./auth";
+import { consumeRestartMarker } from "./restart-notification";
+import { getServices } from "./services";
 
 interface WSClient {
   ws: WebSocket;
@@ -290,6 +292,22 @@ function handleMessage(
 
       const instance = getSessionInstance(client.sessionId);
       if (!instance) return;
+
+      // Builder sessions: consume any pending restart marker before processing the message.
+      // This delivers the "[시스템] 서비스 재시작 완료" silent notification on the next AI turn,
+      // matching how /api/sessions/[id]/open handles chat sessions on page open.
+      // Without this, the marker would only be consumed when the user reloads the builder page.
+      if (client.isBuilder) {
+        try {
+          const svc = getServices();
+          if (svc.sessions.personaExists(client.sessionId)) {
+            const personaDir = svc.sessions.getPersonaDir(client.sessionId);
+            void consumeRestartMarker(personaDir, instance);
+          }
+        } catch (err) {
+          console.warn("[ws] builder restart-marker consumption failed:", err);
+        }
+      }
 
       const silent = !!msg.silent;
 
