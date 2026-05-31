@@ -126,5 +126,20 @@ Thought `value` keeps its surrounding quotes (current behavior).
 
 ## Out of scope
 
-- thought/code as nesting containers; apostrophe-vs-thought disambiguation;
-  underscore (`_`) emphasis; block markdown (headings, lists, links).
+- thought/code as nesting containers; underscore (`_`) emphasis; block markdown
+  (headings, lists, links).
+
+### Follow-up (same day): apostrophe-vs-thought disambiguation — DONE
+
+Originally out of scope, then addressed. Thought quotes (`'…'` / `‘…’`) now use
+the same flanking idea: a quote OPENS only when the previous char isn't a
+letter/digit and the next isn't whitespace, and CLOSES only when the previous
+char isn't whitespace and the next isn't a letter/digit. So contraction /
+possessive apostrophes (`it's`, `don't`, `James'`) stay literal, while genuine
+thoughts still parse (and a contraction *inside* a thought is kept, since its
+apostrophe can't close). To keep this linear, `scan()` precomputes the next
+close-eligible quote per index (`buildNextClose`) — otherwise unmatched opening
+quotes make tokenization O(n²) (a real multi-second render hang on long input).
+Residuals (same class as the `*` flanking tradeoff, accepted): `rock 'n' roll`
+makes `'n'` a thought; a thought body containing a possessive-then-space closes
+early; word-hugging thoughts with no separator aren't detected.

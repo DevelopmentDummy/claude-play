@@ -67,6 +67,7 @@ type Item =
 
 const isWs = (c: string | undefined): boolean => c === undefined || /\s/u.test(c);
 const isPunct = (c: string | undefined): boolean => c !== undefined && /[\p{P}\p{S}]/u.test(c);
+const isWord = (c: string | undefined): boolean => c !== undefined && /[\p{L}\p{N}]/u.test(c);
 
 // CommonMark flanking. `before`/`after` are the chars surrounding the run in the
 // source; a string boundary counts as whitespace.
@@ -81,12 +82,62 @@ function rightFlanking(before: string | undefined, after: string | undefined): b
   return isWs(after) || isPunct(after);
 }
 
+// Thought quotes ('...' / ‘...’) use flanking too, so apostrophes inside words
+// (it's, don't) and possessives (James') stay literal: a quote may OPEN only when
+// the preceding char isn't a letter/digit and the next isn't whitespace, and may
+// CLOSE only when the preceding char isn't whitespace and the next isn't a
+// letter/digit. Apostrophes inside a thought (e.g. 'he said don't') can't close,
+// so they're naturally skipped.
+function quoteCanOpen(text: string, i: number): boolean {
+  return !isWord(text[i - 1]) && !isWs(text[i + 1]);
+}
+function quoteCanClose(text: string, i: number): boolean {
+  return !isWs(text[i - 1]) && !isWord(text[i + 1]);
+}
+interface NextClose {
+  straight: Int32Array; // next close-eligible ' or ’ at index >= k  (for straight opens)
+  curly: Int32Array; // next close-eligible ’ at index >= k          (for curly opens)
+}
+
+// Precompute, for every index, the next quote eligible to CLOSE a thought, so
+// matchThought is O(1). Without this, every opening quote that never finds a
+// close re-scans to EOF and scan() advances one char, making quote-heavy input
+// (many unmatched opens) O(n²) — a multi-second synchronous render hang.
+function buildNextClose(text: string): NextClose {
+  const n = text.length;
+  const straight = new Int32Array(n + 1);
+  const curly = new Int32Array(n + 1);
+  straight[n] = -1;
+  curly[n] = -1;
+  let nextS = -1;
+  let nextC = -1;
+  for (let k = n - 1; k >= 0; k--) {
+    if (quoteCanClose(text, k)) {
+      const ch = text[k];
+      if (ch === "'" || ch === "’") nextS = k;
+      if (ch === "’") nextC = k;
+    }
+    straight[k] = nextS;
+    curly[k] = nextC;
+  }
+  return { straight, curly };
+}
+
+// If a thought starts at i, return its end index (exclusive); else -1. Content
+// must be non-empty. A straight open closes on ' or ’; a curly open closes on ’.
+function matchThought(text: string, i: number, nextClose: NextClose): number {
+  const open = text[i];
+  if (open !== "'" && open !== "‘") return -1;
+  if (!quoteCanOpen(text, i)) return -1;
+  const k = (open === "‘" ? nextClose.curly : nextClose.straight)[i + 1];
+  if (k <= i + 1) return -1; // -1 (no close) or i+1 (empty '' content) → not a thought
+  return k + 1;
+}
+
 // Sticky atomic-token matchers (anchored at the scan position).
 const RE_PANEL = /\$PANEL:([^$]+)\$/y;
 const RE_IMAGE = /\$IMAGE:([^$]+)\$/y;
 const RE_CODE = /`([^`]+)`/y;
-const RE_THOUGHT_CURLY = /‘[^’]+’/y;
-const RE_THOUGHT_STRAIGHT = /'[^']+['’]/y;
 
 function matchAt(re: RegExp, text: string, i: number): RegExpExecArray | null {
   re.lastIndex = i;
@@ -98,6 +149,7 @@ function scan(text: string): { items: Item[]; delims: Delim[] } {
   const items: Item[] = [];
   const delims: Delim[] = [];
   let buf = "";
+  let nextClose: NextClose | null = null; // built lazily on first quote char
   const flush = () => {
     if (buf) {
       items.push({ kind: "text", value: buf, bold: false, action: false });
@@ -123,15 +175,15 @@ function scan(text: string): { items: Item[]; delims: Delim[] } {
       buf += c; i++; continue;
     }
 
-    if (c === "‘") {
-      const qm = matchAt(RE_THOUGHT_CURLY, text, i);
-      if (qm) { flush(); items.push({ kind: "thought", value: qm[0], bold: false, action: false }); i = RE_THOUGHT_CURLY.lastIndex; continue; }
-      buf += c; i++; continue;
-    }
-
-    if (c === "'") {
-      const qm = matchAt(RE_THOUGHT_STRAIGHT, text, i);
-      if (qm) { flush(); items.push({ kind: "thought", value: qm[0], bold: false, action: false }); i = RE_THOUGHT_STRAIGHT.lastIndex; continue; }
+    if (c === "'" || c === "‘") {
+      if (!nextClose) nextClose = buildNextClose(text);
+      const end = matchThought(text, i, nextClose);
+      if (end !== -1) {
+        flush();
+        items.push({ kind: "thought", value: text.slice(i, end), bold: false, action: false });
+        i = end;
+        continue;
+      }
       buf += c; i++; continue;
     }
 
