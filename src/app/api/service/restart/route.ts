@@ -67,6 +67,7 @@ export async function POST(req: Request) {
     skipBuild?: boolean;
     respawn?: boolean;
     sessionId?: string;
+    builderPersona?: string;
     triggeredBy?: string;
   } = {};
   try {
@@ -111,8 +112,23 @@ export async function POST(req: Request) {
     } catch (err) {
       console.warn(`[restart] failed to write notification marker:`, err);
     }
+  } else if (body.builderPersona) {
+    // Builder sessions live under data/personas/{name}, not data/sessions/{id}, so the
+    // marker is dropped in the persona dir and consumed on the next /api/builder/edit.
+    try {
+      const svc = getServices();
+      if (svc.sessions.personaExists(body.builderPersona)) {
+        const personaDir = svc.sessions.getPersonaDir(body.builderPersona);
+        markRestartTriggered(personaDir, `builder:${body.builderPersona}`, body.triggeredBy || "api");
+        markerWritten = true;
+      } else {
+        console.warn(`[restart] builderPersona=${body.builderPersona} provided but persona not found — marker NOT written`);
+      }
+    } catch (err) {
+      console.warn(`[restart] failed to write builder notification marker:`, err);
+    }
   } else {
-    console.log(`[restart] no sessionId provided — silent notification will not be delivered`);
+    console.log(`[restart] no sessionId/builderPersona provided — silent notification will not be delivered`);
   }
 
   // Spawn orchestrator and return immediately — orchestrator runs build → kill → respawn

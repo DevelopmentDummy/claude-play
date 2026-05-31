@@ -1478,6 +1478,8 @@ export class SessionManager {
       "chat-history.json",
       "memory.md",
       "builder-session.json",
+      ".restart-pending.json",
+      ".restart-pending.processing",
       "CLAUDE.md",
       "AGENTS.md",
       "GEMINI.md",
@@ -1704,6 +1706,8 @@ export class SessionManager {
       ".sessionignore",
       "claude-stream.log",
       "background-session.log",
+      ".restart-pending.json",
+      ".restart-pending.processing",
     ]);
 
     const sessionIgnorePath = path.join(personaDir, ".sessionignore");

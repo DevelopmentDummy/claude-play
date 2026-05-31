@@ -1422,6 +1422,9 @@ server.registerTool(
         ...(mode ? { mode } : {}),
         ...(respawn === false ? { respawn: false } : {}),
         ...(sessionId ? { sessionId, triggeredBy: "mcp:bridge_restart_service" } : {}),
+        // Builder sessions have no sessionId (path.basename only set for "session" mode);
+        // pass the persona name so the restart marker lands in the persona dir instead.
+        ...(mode === "builder" && persona ? { builderPersona: persona, triggeredBy: "mcp:bridge_restart_service" } : {}),
       });
       return ok(data);
     } catch (error) {

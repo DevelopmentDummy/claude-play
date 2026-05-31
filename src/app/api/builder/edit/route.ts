@@ -5,6 +5,7 @@ import { getServices, openSessionInstance, getSessionInstance } from "@/lib/serv
 import { getAppRoot } from "@/lib/data-dir";
 import { AIProvider, providerFromModel, resolveBuilderModel } from "@/lib/ai-provider";
 import { getGpuManagerPort } from "@/lib/endpoints";
+import { consumeRestartMarker } from "@/lib/restart-notification";
 
 export async function POST(req: Request) {
   const body = (await req.json()) as { name: string; model?: string; service?: AIProvider };
@@ -102,6 +103,11 @@ export async function POST(req: Request) {
     }
     instance.claude.spawn(personaDir, resumeId, resolved.model, runtimeSystemPrompt, resolved.effort);
   }
+
+  // If this builder persona triggered a service restart on the previous boot, deliver the
+  // silent "restart completed" notification once the AI is ready. Noop when no marker exists.
+  // Fire-and-forget: don't block the response on the AI handshake (mirrors /api/sessions/[id]/open).
+  void consumeRestartMarker(personaDir, instance);
 
   const displayName = svc.sessions.getPersonaDisplayName(name);
   return NextResponse.json({ name, displayName, dir: personaDir, resumed: !!resumeId, provider: resolved.provider, model: resolved.combined });

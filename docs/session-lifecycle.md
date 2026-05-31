@@ -41,6 +41,9 @@
 
 ## Restart Recovery
 
-- `POST /api/service/restart` 또는 MCP `bridge_restart_service` 호출 시 `restart-notification.ts`가 활성 세션마다 마커를 기록
-- 새 서버 부팅 후 마커를 atomic rename으로 클레임 → 다음 사용자 메시지 직전에 사일런트 시스템 이벤트로 AI에 전달
+- `POST /api/service/restart` 또는 MCP `bridge_restart_service` 호출 시 `restart-notification.ts`가 재시작을 유발한 세션에 마커를 기록
+  - **채팅 세션**: 요청에 `sessionId` 포함 → 마커는 `data/sessions/{id}/.restart-pending.json`. 새 서버에서 `/api/sessions/[id]/open`이 `consumeRestartMarker` 호출
+  - **빌더 세션**: MCP가 builder 모드에선 `sessionId`가 빈 문자열이라 대신 `builderPersona`(persona 이름)를 전달 → 마커는 `data/personas/{name}/.restart-pending.json`. 새 서버에서 **`/api/builder/edit`**(빌더 재진입 경로)가 spawn 직후 `consumeRestartMarker(personaDir, instance)` 호출. `/api/builder/start`(신규 생성, fresh spawn)는 이어받을 컨텍스트가 없어 미적용
+- 새 서버 부팅 후 마커를 atomic rename으로 클레임 → AI가 ready 되면 사일런트 시스템 이벤트로 전달 (TTL 10분 초과 시 폐기)
 - 이를 통해 재시작 직전 상태에서 자연스럽게 이어 받음
+- 마커 파일(`.restart-pending.json`/`.processing`)은 persona publish·clone `.gitignore` 및 세션 미러링 SKIP 목록에 포함 → 누출/오발송 방지

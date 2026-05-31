@@ -13,6 +13,8 @@ const GITIGNORE_ENTRIES = [
   "chat-history.json",
   "memory.md",
   "builder-session.json",
+  ".restart-pending.json",
+  ".restart-pending.processing",
   "CLAUDE.md",
   "AGENTS.md",
   "GEMINI.md",
