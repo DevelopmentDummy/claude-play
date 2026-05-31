@@ -63,6 +63,41 @@ export function parseModelEffort(value: string): { model: string; effort: string
   return { model: parts[0], effort: parts[1] || undefined };
 }
 
+/**
+ * Sentinel effort value for Claude Code's "ultracode" mode.
+ *
+ * "ultracode" is NOT a real value the `claude --effort` flag accepts (the CLI only
+ * takes low|medium|high|xhigh|max). Internally it is the combination of:
+ *   - `xhigh` reasoning effort, plus
+ *   - the multi-agent Workflow tool, which is gated by the CLAUDE_CODE_WORKFLOWS
+ *     env var (verified in the claude binary: `Cp() = mH(process.env.CLAUDE_CODE_WORKFLOWS)`).
+ *
+ * We expose it as a pseudo-effort suffix ("opus:ultracode") in the model picker and
+ * translate it here so selecting it turns the whole thing on. See resolveClaudeEffort().
+ */
+export const ULTRACODE_EFFORT = "ultracode";
+
+/** Standing instruction appended when ultracode is active (mirrors Claude Code's "Ultracode is on" reminder). */
+export const ULTRACODE_SYSTEM_APPEND =
+  "Ultracode mode is on: for substantial multi-step tasks, proactively use the Workflow tool to orchestrate parallel subagents rather than doing everything inline. Token cost is not a constraint here — optimize for the most thorough, correct result.";
+
+/**
+ * Translate a Claude effort value into the actual `--effort` flag, whether the
+ * multi-agent Workflow tool should be enabled (CLAUDE_CODE_WORKFLOWS), and any
+ * standing system-prompt instruction. For every effort other than "ultracode"
+ * this is a pass-through with workflows disabled.
+ */
+export function resolveClaudeEffort(effort?: string): {
+  effortFlag: string | undefined;
+  enableWorkflows: boolean;
+  systemAppend?: string;
+} {
+  if (effort === ULTRACODE_EFFORT) {
+    return { effortFlag: "xhigh", enableWorkflows: true, systemAppend: ULTRACODE_SYSTEM_APPEND };
+  }
+  return { effortFlag: effort, enableWorkflows: false };
+}
+
 export interface ModelOption {
   value: string;
   label: string;
@@ -115,14 +150,12 @@ function buildModelGroups(): ModelGroup[] {
         { value: "sonnet", label: "Sonnet" },
         { value: "sonnet:medium", label: "Sonnet Medium" },
         { value: "sonnet:high", label: "Sonnet High" },
-        { value: "opus", label: "Opus" },
-        { value: "opus:medium", label: "Opus Medium" },
-        { value: "opus:high", label: "Opus High" },
-        { value: "opus:xhigh", label: "Opus XHigh" },
         { value: "opus[1m]", label: "Opus 1M" },
         { value: "opus[1m]:medium", label: "Opus 1M Medium" },
         { value: "opus[1m]:high", label: "Opus 1M High" },
         { value: "opus[1m]:xhigh", label: "Opus 1M XHigh" },
+        { value: "opus[1m]:max", label: "Opus 1M Max" },
+        { value: "opus[1m]:ultracode", label: "Opus 1M Ultracode" },
       ],
     },
     {

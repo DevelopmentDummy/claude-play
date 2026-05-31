@@ -3,6 +3,7 @@ import { EventEmitter } from "events";
 import { StringDecoder } from "string_decoder";
 import * as fs from "fs";
 import * as path from "path";
+import { resolveClaudeEffort } from "./ai-provider";
 
 export interface ClaudeProcessEvents {
   message: [data: unknown];
@@ -181,6 +182,14 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
     env.LC_ALL = env.LC_ALL || "en_US.UTF-8";
     env.PYTHONIOENCODING = "utf-8";
 
+    // "ultracode" is a pseudo-effort: translate to the real --effort (xhigh) and
+    // enable the multi-agent Workflow tool via CLAUDE_CODE_WORKFLOWS (set after the
+    // CLAUDE_CODE* strip loop above so it survives).
+    const { effortFlag, enableWorkflows, systemAppend } = resolveClaudeEffort(effort);
+    if (enableWorkflows) {
+      env.CLAUDE_CODE_WORKFLOWS = "1";
+    }
+
     const args = [
       "-p",
       ...(skipPermissions ? ["--dangerously-skip-permissions"] : ["--permission-mode", "acceptEdits"]),
@@ -195,8 +204,8 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
       args.push("--model", model);
     }
 
-    if (effort) {
-      args.push("--effort", effort);
+    if (effortFlag) {
+      args.push("--effort", effortFlag);
     }
 
     if (resumeId) {
@@ -206,6 +215,10 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
     const runtimeSystemPrompt = (appendSystemPrompt || "").trim();
     if (runtimeSystemPrompt) {
       args.push("--system-prompt", runtimeSystemPrompt);
+    }
+
+    if (systemAppend) {
+      args.push("--append-system-prompt", systemAppend);
     }
 
     const mcpConfigPath = path.join(cwd, ".mcp.json");

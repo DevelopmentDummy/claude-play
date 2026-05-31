@@ -5,6 +5,7 @@ import { StringDecoder } from "string_decoder";
 import { getSessionManager } from "./session-registry";
 import { getSessionInstance } from "./session-registry";
 import { wsBroadcast } from "./ws-server";
+import { resolveClaudeEffort } from "./ai-provider";
 
 // ── Interfaces ──────────────────────────────────────────────
 
@@ -272,12 +273,18 @@ export function spawnBackgroundClaude(opts: FireAIOptions): FireAIResult {
     args.push("--model", model);
   }
 
-  if (effort) {
-    args.push("--effort", effort);
+  // "ultracode" pseudo-effort → real --effort (xhigh) + Workflow tool (env, set below).
+  const { effortFlag, enableWorkflows, systemAppend } = resolveClaudeEffort(effort);
+  if (effortFlag) {
+    args.push("--effort", effortFlag);
   }
 
   if (systemPrompt) {
     args.push("--system-prompt", systemPrompt);
+  }
+
+  if (systemAppend) {
+    args.push("--append-system-prompt", systemAppend);
   }
 
   // MCP config from session directory
@@ -288,6 +295,9 @@ export function spawnBackgroundClaude(opts: FireAIOptions): FireAIResult {
 
   // Build clean env
   const env = buildCleanEnv();
+  if (enableWorkflows) {
+    env.CLAUDE_CODE_WORKFLOWS = "1";
+  }
 
   // Prepare log file
   const logPath = path.join(sessionDir, "background-session.log");
