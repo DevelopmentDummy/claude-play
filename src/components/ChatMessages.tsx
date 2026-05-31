@@ -589,7 +589,7 @@ export default function ChatMessages({
       style={style}
       onScroll={handleScroll}
     >
-      <div ref={contentRef} className="flex flex-col gap-3">
+      <div ref={contentRef} className="flex flex-col gap-3 min-h-full">
         {loadingMore && (
           <div className="flex justify-center py-2">
             <span className="text-xs text-text-dim animate-pulse">Loading older messages...</span>
@@ -731,7 +731,7 @@ export default function ChatMessages({
         {onDockClose && hasDockFloat && (
           <div
             ref={dockWrapperRef}
-            className={`sticky bottom-2 z-10 ${dockSide === "right" ? "self-end" : "self-start"}`}
+            className={`sticky bottom-2 z-10 mt-auto ${dockSide === "right" ? "self-end" : "self-start"}`}
             style={{
               width: typeof dockWidthProp === "number" ? `${dockWidthProp}px` : dockWidthProp || undefined,
               minWidth: dockWidthProp ? undefined : "280px",
@@ -740,7 +740,8 @@ export default function ChatMessages({
                 : dockWidthProp
                   ? `min(${dockWidthProp}, calc(100vw - 2rem))`
                   : "50%",
-              marginTop: dockMeasuredHeight > 0 ? `-${dockMeasuredHeight}px` : undefined,
+              // No negative margin — this wrapper is only used for dock-right / dock-left.
+              // mt-auto + sticky bottom-2 keep it anchored to the bottom of the chat area.
               pointerEvents: hasDockFloat ? "auto" : "none",
             }}
           >
