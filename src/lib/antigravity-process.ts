@@ -659,19 +659,56 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
   }
 
   private ensureAntigravitySettings(dir: string): void {
-    // 글로벌 `~/.gemini/antigravity-cli/settings.json`에 trustedWorkspaces만 보장.
-    // 격리 / permissions deny 시도(2026-06-03)는 cascade 호환성 깨고 모델 자율 탐색
-    // 폭주 유발로 revert됨 — `cleanupLegacyGlobalSettings`가 그 잔재를 청소함.
+    // 글로벌 `~/.gemini/antigravity-cli/settings.json` ensure:
+    //  1) trustedWorkspaces — spawn cwd가 신뢰 목록에 있어야 untrusted workspace 경고 없이 시작
+    //  2) memory subsystem off — cascade마다 implicit/*.pb 누적 + UpdateCascadeMemory 자율
+    //     호출로 cross-session 기억 간섭 발생. agy proto의 `MemoryConfig`+`MemoryToolConfig`+
+    //     UserSettings 3개 카테고리를 다 disable해서 새 cascade가 옛 RP 흔적을 안 끌어옴.
+    // 격리/permissions deny 시도(2026-06-03)는 cascade 호환성 깨서 revert됨 —
+    // `cleanupLegacyGlobalSettings`가 그 잔재를 청소함.
     const settingsPath = path.join(os.homedir(), ".gemini", "antigravity-cli", "settings.json");
     if (!fs.existsSync(settingsPath)) return;
     let settings: Record<string, unknown> = {};
     try { settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8")); } catch { return; }
+
+    let dirty = false;
+
+    // 1) trustedWorkspaces
     const trusted = (settings.trustedWorkspaces as string[] | undefined) ?? [];
     const normalized = dir.replace(/\//g, "\\");
-    if (trusted.some(t => t.replace(/\//g, "\\") === normalized)) return;
-    trusted.push(normalized);
-    settings.trustedWorkspaces = trusted;
-    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), "utf-8");
+    if (!trusted.some(t => t.replace(/\//g, "\\") === normalized)) {
+      trusted.push(normalized);
+      settings.trustedWorkspaces = trusted;
+      dirty = true;
+    }
+
+    // 2) memory disable — 3-layer
+    const ensureField = <T>(obj: Record<string, unknown>, key: string, value: T): boolean => {
+      if (obj[key] === value) return false;
+      obj[key] = value;
+      return true;
+    };
+    const memoryConfig = (settings.memoryConfig as Record<string, unknown> | undefined) ?? {};
+    if (ensureField(memoryConfig, "enabled", false)) dirty = true;
+    if (ensureField(memoryConfig, "addUserMemoriesToSystemPrompt", false)) dirty = true;
+    if (ensureField(memoryConfig, "maxGlobalCascadeMemories", 0)) dirty = true;
+    if (settings.memoryConfig !== memoryConfig) { settings.memoryConfig = memoryConfig; dirty = true; }
+
+    const memoryToolConfig = (settings.memoryToolConfig as Record<string, unknown> | undefined) ?? {};
+    if (ensureField(memoryToolConfig, "disableAutoGenerateMemories", true)) dirty = true;
+    if (ensureField(memoryToolConfig, "forceDisable", true)) dirty = true;
+    if (settings.memoryToolConfig !== memoryToolConfig) { settings.memoryToolConfig = memoryToolConfig; dirty = true; }
+
+    if (ensureField(settings, "disableAutoGenerateMemories", true)) dirty = true;
+
+    if (dirty) {
+      try {
+        fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), "utf-8");
+        this.writeLog(`ensureSettings: patched (memory off + trust=${normalized})`);
+      } catch (err) {
+        this.writeLog(`ensureSettings: write failed: ${err}`);
+      }
+    }
   }
 
   /** Remove the permissions entries we previously wrote to the GLOBAL settings.json
