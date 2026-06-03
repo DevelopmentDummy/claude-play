@@ -6,6 +6,7 @@ import * as os from "os";
 
 const AGY_PATH = path.join(os.homedir(), "AppData", "Local", "agy", "bin", "agy.exe");
 
+
 export const AntigravityModels = {
   GEMINI_FLASH: 1018,
   GEMINI_PRO_LOW: 1164,
@@ -65,7 +66,8 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
     this.lastSeenMessageCount = 0;
     this.lastSeenTailLength = 0;
 
-    this.ensureAntigravityTrust(cwd);
+    this.cleanupLegacyGlobalSettings();
+    this.ensureAntigravitySettings(cwd);
     this.openLogStream(cwd);
 
     // agy.exe는 bubbletea TUI 라이브러리 기반 — CONIN$/CONOUT$ console handle 필수.
@@ -209,11 +211,29 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
   }
 
   private async waitForIdle(cascadeId: string, timeoutMs = 5 * 60 * 1000): Promise<void> {
+    // Primary: agy의 명시적 `WaitForConversationFullyIdle`. Fallback: 휴리스틱.
+    // pollLoop와 같은 race 모델 (parent 메서드 주석 참조).
     const startedAt = Date.now();
+    let fullyIdleSettled = false;
+    let fullyIdleResolved = false;
+    this.rpc<unknown>(
+      "WaitForConversationFullyIdle",
+      { conversationId: cascadeId },
+      timeoutMs,
+    ).then(() => {
+      fullyIdleSettled = true;
+      fullyIdleResolved = true;
+      this.writeLog(`waitForIdle(primer): FullyIdle resolved after ${((Date.now() - startedAt) / 1000).toFixed(1)}s`);
+    }).catch((err) => {
+      fullyIdleSettled = true;
+      this.writeLog(`waitForIdle(primer): FullyIdle failed (heuristic fallback): ${err}`);
+    });
+
     const deadline = startedAt + timeoutMs;
     let consecutiveIdle = 0;
     let everSawRunning = false;
     while (Date.now() < deadline) {
+      if (fullyIdleResolved) return;
       try {
         const all = await this.rpc<{ trajectorySummaries?: Record<string, { status?: string }> }>("GetAllCascadeTrajectories", {});
         const status = all?.trajectorySummaries?.[cascadeId]?.status;
@@ -222,17 +242,15 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
           consecutiveIdle = 0;
         } else if (status) {
           consecutiveIdle++;
-          // Require 3 consecutive non-RUNNING polls AND have seen RUNNING at
-          // least once (to avoid bailing out before primer-response starts).
-          if (everSawRunning && consecutiveIdle >= 3) {
-            this.writeLog(`waitForIdle: cascade IDLE after ${((Date.now() - startedAt) / 1000).toFixed(1)}s status=${status}`);
+          if (fullyIdleSettled && everSawRunning && consecutiveIdle >= 3) {
+            this.writeLog(`waitForIdle(primer): cascade IDLE (heuristic fallback) after ${((Date.now() - startedAt) / 1000).toFixed(1)}s status=${status}`);
             return;
           }
         }
       } catch { /* retry */ }
       await new Promise(r => setTimeout(r, 1000));
     }
-    this.writeLog(`waitForIdle: timeout after ${timeoutMs / 1000}s, proceeding anyway`);
+    this.writeLog(`waitForIdle(primer): timeout after ${timeoutMs / 1000}s, proceeding anyway`);
   }
 
   send(text: string): void {
@@ -256,6 +274,24 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
     }
 
     this.emit("status", "streaming");
+
+    // Wake-up turn skip: 이전 turn 종료 후 idle 중에 agy 내부가 async 도구 task 완료
+    // (예: comfyui_generate async 이미지 생성 완료) event를 cascade에 자동 inject하면,
+    // 빈 USER_INPUT step으로 모델이 깨어나 자동 PLANNER_RESPONSE를 만든다(`[이미지 생성
+    // 완료] ...` 같은 메타 acknowledge). 그 step들은 사용자가 의도한 turn이 아니므로
+    // 노출하지 않는다. send 직전 trajectory snapshot → 그 사이 추가된 step 개수만큼
+    // baseline을 끌어올려 emitNewChunks가 skip하도록 한다.
+    try {
+      const traj = await this.rpc<Record<string, unknown>>("GetCascadeTrajectory", { cascadeId: this.cascadeId });
+      const steps = this.extractItems(traj) || [];
+      if (steps.length > this.lastSeenMessageCount) {
+        this.writeLog(`pre-send: dropping ${steps.length - this.lastSeenMessageCount} wake-up step(s) from baseline (was ${this.lastSeenMessageCount}, now ${steps.length})`);
+        this.lastSeenMessageCount = steps.length;
+        this.lastSeenTailLength = 0;
+      }
+    } catch (err) {
+      this.writeLog(`pre-send snapshot failed: ${err}`);
+    }
 
     // No prepend — primer is already the first USER_INPUT step of the cascade
     // via --prompt-interactive at spawn time. User messages are sent as-is.
@@ -300,9 +336,41 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
     let everSawRunning = false;
     let lastEndedOnError = false;
 
+    // Primary turn-complete signal: agy의 명시적 `WaitForConversationFullyIdle` RPC.
+    // 휴리스틱(idle+stable)은 background task pending 시점(예: comfyui_generate async
+    // 호출 후 cascade가 잠깐 IDLE 갔다가 task 완료 후 PLANNER_RESPONSE 추가 출력하는
+    // 패턴)에 turn complete로 오판해서 delayed RP 응답을 놓쳤음. FullyIdle은 agy 내부
+    // 로직이 sub-agent/background까지 다 끝났는지 판단해 응답 → 휴리스틱보다 정확.
+    // FullyIdle이 fail하거나 schema 안 맞으면 휴리스틱이 fallback (둘 다 turn 종료 트리거).
+    // ConversationKey는 binary proto schema. cascadeId 단일 string이 아니라 메시지 wrap.
+    let fullyIdleSettled = false;
+    let fullyIdleResolved = false;
+    this.rpc<unknown>(
+      "WaitForConversationFullyIdle",
+      { conversationId: this.cascadeId },
+      MAX_TURN_DURATION_MS,
+    ).then(() => {
+      fullyIdleSettled = true;
+      fullyIdleResolved = true;
+      this.writeLog(`WaitForConversationFullyIdle: resolved`);
+    }).catch((err) => {
+      fullyIdleSettled = true;
+      this.writeLog(`WaitForConversationFullyIdle: failed (falling back to heuristic): ${err}`);
+    });
+
     while (this.polling && this.cascadeId) {
       if (Date.now() - turnStart > MAX_TURN_DURATION_MS) {
         this.writeLog(`poll: turn timeout after ${MAX_TURN_DURATION_MS / 1000}s`);
+        break;
+      }
+
+      // Explicit fully-idle 신호가 먼저 도착하면 즉시 종료 (휴리스틱 race 무시).
+      if (fullyIdleResolved) {
+        this.writeLog(`[poll #${iter}] turn complete via WaitForConversationFullyIdle`);
+        try {
+          const finalConv = await this.rpc<Record<string, unknown>>("GetCascadeTrajectory", { cascadeId: this.cascadeId });
+          this.emitNewChunks(finalConv);
+        } catch { /* */ }
         break;
       }
 
@@ -361,8 +429,11 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
               lastEndedOnError &&
               consecutiveIdle >= IDLE_GRACE_TICKS &&
               consecutiveStable >= ERROR_EXIT_STABLE_TICKS;
-            if (normalExit || errorExit) {
-              this.writeLog(`[poll #${iter}] cascade ${errorExit ? "error-exit" : "idle+stable"} — turn complete`);
+            // 휴리스틱은 fully-idle RPC가 fail로 settle된 후에만 활성화. fully-idle이
+            // 아직 pending이면(= 정상 동작 중) 휴리스틱 무시하고 polling 계속 — 그래야
+            // background task로 잠깐 IDLE 갔다가 PLANNER_RESPONSE 추가하는 패턴을 안 놓침.
+            if (fullyIdleSettled && (normalExit || errorExit)) {
+              this.writeLog(`[poll #${iter}] cascade ${errorExit ? "error-exit" : "idle+stable"} (heuristic fallback) — turn complete`);
               try {
                 const finalConv = await this.rpc<Record<string, unknown>>("GetCascadeTrajectory", { cascadeId: this.cascadeId });
                 this.emitNewChunks(finalConv);
@@ -459,9 +530,26 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
     const TAG_PATTERN = /<SYSTEM_MESSAGE>[\s\S]*?<\/SYSTEM_MESSAGE>/g;
     // Sub-agent 메타 인사말 (real narrative 뒤에 trailing으로 붙는 경우)
     const TRAILING_META = /\s*(Oceania,?\s*)?I am (now\s+)?ready to present[\s\S]*?(Let'?s submit it\.?)?\s*$/i;
+    // 비동기 comfyui_generate 완료 system event를 모델이 본문에 echo한 메타 텍스트.
+    // wake-up turn 자체는 _sendAsync의 pre-send snapshot이 baseline으로 끌어올려서
+    // 차단하지만(primary defense), 사용자 입력 turn 중간에 task 완료 event가 도착해
+    // 같은 PLANNER_RESPONSE에 prefix/suffix로 박힌 경우 — 그리고 모델이 paraphrase로
+    // 출력한 경우 — 까지 잡는 안전망.
+    // 두 종결구가 보통 함께 등장(`...로드될 것입니다. 사용자의 다음 선택 또는 입력을
+    // 기다립니다.`)하지만 짧은 형태(`로드될 것입니다.` 단독)로도 끝난다. lazy match가
+    // alternation의 첫 hit에서 멈추기 때문에 긴 형태를 먼저 strip해야 trailing이 남지
+    // 않는다. 영문 패턴도 동일(`task completes` vs `narrative scene`).
+    const IMAGE_COMPLETION_KO_LONG = /\[이미지 생성 완료\][\s\S]*?입력을 기다립니다\.?\s*/g;
+    const IMAGE_COMPLETION_KO_SHORT = /\[이미지 생성 완료\][\s\S]*?로드될 것입니다\.?\s*/g;
+    const IMAGE_QUEUED_EN_LONG = /An image has been queued for generation in the background\.[\s\S]*?narrative scene\.?\s*/g;
+    const IMAGE_QUEUED_EN_SHORT = /An image has been queued for generation in the background\.[\s\S]*?task completes\.?\s*/g;
     return content
       .replace(ECHO_PATTERN, "")
       .replace(TAG_PATTERN, "")
+      .replace(IMAGE_COMPLETION_KO_LONG, "")
+      .replace(IMAGE_COMPLETION_KO_SHORT, "")
+      .replace(IMAGE_QUEUED_EN_LONG, "")
+      .replace(IMAGE_QUEUED_EN_SHORT, "")
       .replace(TRAILING_META, "")
       .trim();
   }
@@ -570,7 +658,10 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
     return AntigravityModels.GEMINI_FLASH;
   }
 
-  private ensureAntigravityTrust(dir: string): void {
+  private ensureAntigravitySettings(dir: string): void {
+    // 글로벌 `~/.gemini/antigravity-cli/settings.json`에 trustedWorkspaces만 보장.
+    // 격리 / permissions deny 시도(2026-06-03)는 cascade 호환성 깨고 모델 자율 탐색
+    // 폭주 유발로 revert됨 — `cleanupLegacyGlobalSettings`가 그 잔재를 청소함.
     const settingsPath = path.join(os.homedir(), ".gemini", "antigravity-cli", "settings.json");
     if (!fs.existsSync(settingsPath)) return;
     let settings: Record<string, unknown> = {};
@@ -581,6 +672,44 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
     trusted.push(normalized);
     settings.trustedWorkspaces = trusted;
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), "utf-8");
+  }
+
+  /** Remove the permissions entries we previously wrote to the GLOBAL settings.json
+   *  (back when this wrapper patched the user's `~/.gemini/antigravity-cli/settings.json`
+   *  directly — superseded 2026-06-03 by the isolated profile approach). Idempotent.
+   *  Called once on first spawn so the user's global config is restored to whatever
+   *  it was before our intrusion. trustedWorkspaces entries we added are intentionally
+   *  left alone (the user may have grown to trust those dirs through normal IDE use). */
+  private cleanupLegacyGlobalSettings(): void {
+    const globalPath = path.join(os.homedir(), ".gemini", "antigravity-cli", "settings.json");
+    if (!fs.existsSync(globalPath)) return;
+    let settings: Record<string, unknown>;
+    try { settings = JSON.parse(fs.readFileSync(globalPath, "utf-8")); }
+    catch { return; }
+    const perms = settings.permissions as Record<string, unknown> | undefined;
+    if (!perms) return;
+    let dirty = false;
+    const stripRule = (key: "deny" | "allow", rule: string) => {
+      const list = perms[key];
+      if (!Array.isArray(list)) return;
+      const idx = list.indexOf(rule);
+      if (idx >= 0) { list.splice(idx, 1); dirty = true; }
+    };
+    stripRule("deny", "command(*)");
+    stripRule("allow", "mcp(*)");
+    // If all three lists now empty/absent, drop the `permissions` key entirely so the
+    // user's settings file looks pristine.
+    const allEmpty = (["deny", "allow", "ask"] as const).every(k => {
+      const v = perms[k];
+      return !Array.isArray(v) || v.length === 0;
+    });
+    if (allEmpty) { delete settings.permissions; dirty = true; }
+    if (dirty) {
+      try {
+        fs.writeFileSync(globalPath, JSON.stringify(settings, null, 2), "utf-8");
+        this.writeLog(`cleanupLegacyGlobalSettings: stripped bridge entries from ${globalPath}`);
+      } catch { /* best-effort */ }
+    }
   }
 
   private async discoverLsPort(): Promise<number | null> {
@@ -615,7 +744,7 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
     return null;
   }
 
-  private async rpc<T = unknown>(method: string, payload: Record<string, unknown>): Promise<T> {
+  private async rpc<T = unknown>(method: string, payload: Record<string, unknown>, timeoutMs = 30000): Promise<T> {
     if (!this.lsPort) throw new Error("LS port not discovered");
     const https = await import("https");
     const body = JSON.stringify(payload);
@@ -631,7 +760,7 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
             "Content-Length": Buffer.byteLength(body),
           },
           rejectUnauthorized: false,
-          timeout: 30000,
+          timeout: timeoutMs,
         },
         (res) => {
           const chunks: Buffer[] = [];
