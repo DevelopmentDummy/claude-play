@@ -816,7 +816,7 @@ server.registerTool(
   "generate_image",
   {
     description:
-      "High-level image generation compatible with legacy service behavior. Uses ComfyUI template mode with default quality/trigger tags.",
+      "[DEPRECATED — do not call] Legacy image generation. Ignores width/height/params from callers and hard-codes scene-style 1216x832, so portrait/anima packages render in the wrong aspect ratio. Use mcp__claude_play__comfyui_generate instead (passes the package's params.json width/height through correctly).",
     inputSchema: {
       template: z.string().optional(),
       prompt: z.string().optional(),
@@ -846,6 +846,17 @@ server.registerTool(
     },
   },
   async (input) => {
+    // Disabled 2026-06-02: legacy path ignores width/height and forces 1216x832,
+    // breaking portrait/anima packages. Route callers to comfyui_generate.
+    return fail(new Error(
+      "[generate_image is disabled] This legacy tool ignored package-level width/height and forced a horizontal 1216x832 latent, " +
+      "which made `portrait`, `anima-mixed-scene`, and other non-scene packages render at the wrong aspect ratio. " +
+      "Use `mcp__claude_play__comfyui_generate` instead — it accepts a `params` object (params.prompt, params.negative_prompt, " +
+      "params.width, params.height, params.seed, etc.) that is passed straight through to the workflow package's params.json, " +
+      "so the package's own default resolution (e.g. portrait 832x1216) is respected. " +
+      "Top-level fields stay the same: workflow, filename, targetScope, persona, loras, loras_left, loras_right, async."
+    ));
+    // eslint-disable-next-line no-unreachable
     try {
       const config = readComfyConfig();
       const preset = getActivePreset(config);
