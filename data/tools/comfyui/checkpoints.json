@@ -76,6 +76,11 @@
       "loader": "unet_only",
       "family": "anima"
     },
+    "boleromixAnima_v021.safetensors": {
+      "loader": "unet_only",
+      "family": "anima",
+      "notes": "BoleromixAnima v0.21 (3.90GB fp16, CivitAI 2575161@2960574). Anima 베이스 머지. gemma_3_12B 인코더 + qwen_image VAE 페어. 2026-06-04 도입."
+    },
     "bismuthIllustrious_v70.safetensors": {
       "loader": "checkpoint_simple",
       "family": "illustrious"
@@ -89,6 +94,11 @@
       "loader": "checkpoint_simple",
       "family": "illustrious",
       "notes": "LewDakaExplicitIllustraIL v1 (6.77GB fp16). NSFW/explicit 강조형 Illustrious 머지. 작가 샘플 메타: Euler a, CFG 5, steps 25, clip skip 2, 1024x1408 + Hires 2x (4x-UltraSharp, denoise 0.15). Trained words 없음. 권장 quality 헤더: 'masterpiece, ultra HD, high detail, depth of field, best quality, 8k, anime coloring, anime screencap:1.5, official art'. 'uncensored' 태그 활용 시 노출 표현 강화. CivitAI: 2519299@2831549"
+    },
+    "quartz_v3.safetensors": {
+      "loader": "checkpoint_simple",
+      "family": "illustrious",
+      "notes": "Quartz v3 (6.94GB fp32 pruned, F15837DE54). 2026-06-03 도입. 그래픽 일러스트풍(진한 라인+플랫 채색) 강조 머지. Trained words 없음. 작가 샘플 메타: Euler a Karras, CFG 3, steps 45, 권장 quality 헤더 'very awa, graphic illustration, sharp tapered lineart'. CivitAI: 2136263@2927409"
     }
   }
 }
