@@ -465,21 +465,43 @@ export class SessionInstance {
     // 2) WS broadcast — 다른 탭/devices 동기화
     this.broadcast("tool:answered", { toolUseId, answer });
 
-    // 3) Clear pending + send tool_result to provider
+    // 3) Clear pending + deliver the answer to the AI.
     if (this.pendingToolUseId === toolUseId) {
       this.pendingToolUseId = null;
     }
 
-    if (this.claude.isRunning()) {
-      try {
-        this.claude.sendToolResult(toolUseId, JSON.stringify(answer));
-        this._pendingTurn = true;
-      } catch (err) {
-        console.warn(`[session:${this.id}] sendToolResult threw:`, err);
-      }
+    // 헤드리스 `claude -p`는 AskUserQuestion을 **묻는 turn 내부에서** 곧바로 거부한다
+    // (CLI가 대화형 TTY 없이 실행 불가 → synthetic tool_result `is_error:true, "Answer questions?"`).
+    // 즉 tool_use가 이미 resolve된 상태라 stdin으로 보내는 tool_result는 죽은 no-op이며,
+    // 모델은 빈 turn("메시지 내용이 없습니다")으로 끝나 더 이상 진행하지 않는다.
+    // → 답을 일반 user 메시지 turn으로 전달한다. 거부 직후 프로세스는 idle이라 정상 이어진다.
+    //   (design 문서의 restart "일반 user message로 graceful degrade" 폴백을 전 케이스로 일반화.)
+    const answerText = this.formatToolAnswerForAI(answer);
+    if (!answerText) {
+      // 전달할 내용 없음 (orphan/provider-switch placeholder) — 카드 summary로 시각화는 이미 끝남.
+    } else if (this.claude.isRunning()) {
+      this.sendToAI(answerText);
     } else {
-      console.warn(`[session:${this.id}] sendToolResult skipped — process not running (orphan)`);
+      console.warn(`[session:${this.id}] tool answer not delivered — process not running (orphan)`);
     }
+  }
+
+  /** ToolAnswer를 AI에게 보낼 평문 user-message turn으로 변환한다.
+   *  AskUserQuestion은 헤드리스 모드에서 tool_result로 회신 불가하므로(submitToolAnswer 참고),
+   *  구조화된 선택을 모델이 바로 이어받을 수 있는 평문으로 펼친다.
+   *  전달할 게 없으면(orphan/provider-switch placeholder 등) "" 반환. */
+  private formatToolAnswerForAI(answer: ToolAnswer): string {
+    const lines: string[] = [];
+    for (const [question, sel] of Object.entries(answer.answers || {})) {
+      const labels = Array.isArray(sel) ? sel.filter(Boolean).join(", ") : sel;
+      if (!labels) continue;
+      const note = answer.notes?.[question];
+      lines.push(`- ${question}: ${labels}${note ? ` (직접 입력: ${note})` : ""}`);
+    }
+    const freeform = answer.notes?._freeform;
+    if (freeform) lines.push(`- ${freeform}`);
+    if (lines.length === 0) return "";
+    return `[질문 응답]\n${lines.join("\n")}`;
   }
 
   /** Send raw text to the AI process, marking turn as pending. */
