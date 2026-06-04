@@ -68,6 +68,7 @@ type Item =
 const isWs = (c: string | undefined): boolean => c === undefined || /\s/u.test(c);
 const isPunct = (c: string | undefined): boolean => c !== undefined && /[\p{P}\p{S}]/u.test(c);
 const isWord = (c: string | undefined): boolean => c !== undefined && /[\p{L}\p{N}]/u.test(c);
+const isLatinLetter = (c: string | undefined): boolean => c !== undefined && /\p{Script=Latin}/u.test(c);
 
 // CommonMark flanking. `before`/`after` are the chars surrounding the run in the
 // source; a string boundary counts as whitespace.
@@ -84,15 +85,22 @@ function rightFlanking(before: string | undefined, after: string | undefined): b
 
 // Thought quotes ('...' / ‘...’) use flanking too, so apostrophes inside words
 // (it's, don't) and possessives (James') stay literal: a quote may OPEN only when
-// the preceding char isn't a letter/digit and the next isn't whitespace, and may
-// CLOSE only when the preceding char isn't whitespace and the next isn't a
-// letter/digit. Apostrophes inside a thought (e.g. 'he said don't') can't close,
-// so they're naturally skipped.
+// the preceding char isn't a letter/digit and the next isn't whitespace.
+//
+// A quote may CLOSE only when it hugs the preceding content (prev char isn't
+// whitespace) AND it isn't a Latin intra-word apostrophe. The latter is detected
+// as "Latin letter on both sides" (it's, don't, rock'n) — those stay literal so
+// the matcher skips them and finds the real close. CJK text routinely attaches a
+// particle right after a closing quote with no space ('검사실'이었다, '진짜'가), and
+// such a quote is NOT both-sides-Latin, so it closes correctly. Using `isWord`
+// for the next char (the old rule) wrongly blocked every Korean particle, leaking
+// the thought to a much later quote.
 function quoteCanOpen(text: string, i: number): boolean {
   return !isWord(text[i - 1]) && !isWs(text[i + 1]);
 }
 function quoteCanClose(text: string, i: number): boolean {
-  return !isWs(text[i - 1]) && !isWord(text[i + 1]);
+  if (isWs(text[i - 1])) return false;
+  return !(isLatinLetter(text[i - 1]) && isLatinLetter(text[i + 1]));
 }
 interface NextClose {
   straight: Int32Array; // next close-eligible ' or ’ at index >= k  (for straight opens)
