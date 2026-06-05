@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { listConversationsForPersona } from "@/lib/session-list";
+import { isUnsafePathSegment } from "@/lib/path-safety";
 
 export const dynamic = "force-dynamic";
 
@@ -8,7 +9,7 @@ export async function GET(
   { params }: { params: Promise<{ name: string }> },
 ) {
   const { name } = await params;
-  if (!name || name.includes("/") || name.includes("..") || name.includes("\\")) {
+  if (isUnsafePathSegment(name)) {
     return NextResponse.json({ error: "invalid name" }, { status: 400 });
   }
   const result = listConversationsForPersona(name);

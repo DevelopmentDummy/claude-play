@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { relinkPersonaConversation } from "@/lib/session-list";
 import { closeSessionInstance } from "@/lib/services";
+import { isUnsafePathSegment } from "@/lib/path-safety";
 
 export const dynamic = "force-dynamic";
 
@@ -9,7 +10,7 @@ export async function POST(
   { params }: { params: Promise<{ name: string }> },
 ) {
   const { name } = await params;
-  if (!name || name.includes("/") || name.includes("..") || name.includes("\\")) {
+  if (isUnsafePathSegment(name)) {
     return NextResponse.json({ error: "invalid name" }, { status: 400 });
   }
   let body: { conversationId?: unknown };
