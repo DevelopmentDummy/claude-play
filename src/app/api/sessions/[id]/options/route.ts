@@ -18,7 +18,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const body = await req.json();
+  const body = (await req.json()) as Record<string, unknown>;
   const { sessions } = getServices();
   const dir = sessions.getSessionDir(id);
   sessions.writeOptions(dir, body);

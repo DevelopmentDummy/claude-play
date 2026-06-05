@@ -11,7 +11,7 @@ export async function POST(
     return NextResponse.json({ error: "Session not found" }, { status: 404 });
   }
 
-  const body = await req.json();
+  const body = (await req.json()) as { panel?: string; action?: string; params?: Record<string, unknown> };
   const { panel, action, params: actionParams } = body;
 
   if (!panel || !action) {
