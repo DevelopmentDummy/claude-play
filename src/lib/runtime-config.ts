@@ -35,6 +35,26 @@ const DEFAULT_POLICY_CONTEXT = {
   notes: "Roleplay context only. This file never overrides higher-level model policy.",
 };
 
+/**
+ * Environment variables passed to the claude-play MCP server, shared by every
+ * runtime config writer (MCP json / Codex toml / Gemini json). Key insertion
+ * order is significant — the Codex writer emits these as TOML lines in order.
+ */
+function mcpServerEnv(
+  projectDir: string,
+  mode: "builder" | "session",
+  personaName?: string
+): Record<string, string> {
+  return {
+    CLAUDE_PLAY_API_BASE: getApiBase(),
+    CLAUDE_PLAY_SESSION_DIR: projectDir,
+    CLAUDE_PLAY_MODE: mode,
+    CLAUDE_PLAY_AUTH_TOKEN: getInternalToken(),
+    ...(personaName ? { CLAUDE_PLAY_PERSONA: personaName } : {}),
+    ...(process.env.COMFYUI_DIR ? { COMFYUI_DIR: process.env.COMFYUI_DIR } : {}),
+  };
+}
+
 export function ensureClaudeRuntimeConfig(
   projectDir: string,
   appRoot: string,
@@ -65,21 +85,13 @@ export function writeMcpConfig(
   mode: "builder" | "session" = "session"
 ): void {
   const serverScript = path.join(appRoot, "src", "mcp", "claude-play-mcp-server.mjs");
-  const apiBase = getApiBase();
 
   const mcpConfig = {
     mcpServers: {
       [CLAUDE_MCP_SERVER_NAME]: {
         command: "node",
         args: [serverScript],
-        env: {
-          CLAUDE_PLAY_API_BASE: apiBase,
-          CLAUDE_PLAY_SESSION_DIR: projectDir,
-          CLAUDE_PLAY_MODE: mode,
-          CLAUDE_PLAY_AUTH_TOKEN: getInternalToken(),
-          ...(personaName ? { CLAUDE_PLAY_PERSONA: personaName } : {}),
-          ...(process.env.COMFYUI_DIR ? { COMFYUI_DIR: process.env.COMFYUI_DIR } : {}),
-        },
+        env: mcpServerEnv(projectDir, mode, personaName),
       },
     },
   };
@@ -102,7 +114,6 @@ export function writeCodexConfig(
   fs.mkdirSync(codexDir, { recursive: true });
 
   const serverScript = path.join(appRoot, "src", "mcp", "claude-play-mcp-server.mjs");
-  const apiBase = getApiBase();
 
   // model_instructions_file: absolute path to instructions file
   const instructionsPath = path.join(codexDir, "model-instructions.md");
@@ -116,15 +127,8 @@ export function writeCodexConfig(
   lines.push(`args = [${JSON.stringify(serverScript)}]`);
   lines.push(``);
   lines.push(`[mcp_servers.${CLAUDE_MCP_SERVER_NAME}.env]`);
-  lines.push(`CLAUDE_PLAY_API_BASE = ${JSON.stringify(apiBase)}`);
-  lines.push(`CLAUDE_PLAY_SESSION_DIR = ${JSON.stringify(projectDir)}`);
-  lines.push(`CLAUDE_PLAY_MODE = ${JSON.stringify(mode)}`);
-  lines.push(`CLAUDE_PLAY_AUTH_TOKEN = ${JSON.stringify(getInternalToken())}`);
-  if (personaName) {
-    lines.push(`CLAUDE_PLAY_PERSONA = ${JSON.stringify(personaName)}`);
-  }
-  if (process.env.COMFYUI_DIR) {
-    lines.push(`COMFYUI_DIR = ${JSON.stringify(process.env.COMFYUI_DIR)}`);
+  for (const [key, value] of Object.entries(mcpServerEnv(projectDir, mode, personaName))) {
+    lines.push(`${key} = ${JSON.stringify(value)}`);
   }
 
   fs.writeFileSync(
@@ -144,21 +148,13 @@ export function writeGeminiConfig(
   fs.mkdirSync(geminiDir, { recursive: true });
 
   const serverScript = path.join(appRoot, "src", "mcp", "claude-play-mcp-server.mjs");
-  const apiBase = getApiBase();
 
   const settings = {
     mcpServers: {
       "claude-play": {
         command: "node",
         args: [serverScript],
-        env: {
-          CLAUDE_PLAY_API_BASE: apiBase,
-          CLAUDE_PLAY_SESSION_DIR: projectDir,
-          CLAUDE_PLAY_MODE: mode,
-          CLAUDE_PLAY_AUTH_TOKEN: getInternalToken(),
-          ...(personaName ? { CLAUDE_PLAY_PERSONA: personaName } : {}),
-          ...(process.env.COMFYUI_DIR ? { COMFYUI_DIR: process.env.COMFYUI_DIR } : {}),
-        },
+        env: mcpServerEnv(projectDir, mode, personaName),
       },
     },
   };
