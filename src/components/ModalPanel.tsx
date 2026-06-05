@@ -6,6 +6,7 @@ import ImageModal from "./ImageModal";
 import { installImagePolling } from "@/lib/panel-image-polling";
 import { usePanelBridge } from "@/lib/use-panel-bridge";
 import { getPanelActionRegistry, parsePanelActions, stripPanelActions, stripPanelMeta } from "@/lib/panel-action-registry";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 
 interface ModalPanelProps {
   name: string;
@@ -220,14 +221,7 @@ export default function ModalPanel({
   // so that panel action handlers remain alive for choice actions.
 
   // Close on Escape key (only if dismissible AND topmost in stack)
-  useEffect(() => {
-    if (!dismissible || !isTopmost) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") handleClose();
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [dismissible, isTopmost, handleClose]);
+  useEscapeKey(handleClose, dismissible && isTopmost);
 
   return createPortal(
     <div style={{ display: closed ? "none" : "contents" }}>
