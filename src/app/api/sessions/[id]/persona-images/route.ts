@@ -10,17 +10,10 @@
 
 import { NextResponse } from "next/server";
 import { getServices } from "@/lib/services";
+import { mimeForPath } from "@/lib/static-file";
 import * as path from "path";
 import * as fs from "fs";
 import sharp from "sharp";
-
-const MIME_TYPES: Record<string, string> = {
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".webp": "image/webp",
-  ".gif": "image/gif",
-};
 
 const IMAGE_RE = /\.(png|jpe?g|webp|gif)$/i;
 const SKIP_FILES = new Set(["profile.png", "icon.png"]);
@@ -59,8 +52,7 @@ export async function GET(
     if (!fs.existsSync(filePath)) {
       return new NextResponse(null, { status: 404 });
     }
-    const ext = path.extname(safeName).toLowerCase();
-    const contentType = MIME_TYPES[ext] || "application/octet-stream";
+    const contentType = mimeForPath(safeName);
 
     // Optional thumbnail: ?thumb=240 → resize to fit within 240x240, webp output, disk-cached
     const thumbParam = url.searchParams.get("thumb");

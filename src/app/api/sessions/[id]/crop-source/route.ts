@@ -1,15 +1,8 @@
 import { NextResponse } from "next/server";
 import { getServices } from "@/lib/services";
+import { mimeForPath, resolveInside } from "@/lib/static-file";
 import * as path from "path";
 import * as fs from "fs";
-
-const MIME_TYPES: Record<string, string> = {
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".webp": "image/webp",
-  ".gif": "image/gif",
-};
 
 /**
  * Serves files from the configured `source_dir` in `character-lora-dataset.json`.
@@ -52,10 +45,10 @@ export async function GET(
   }
 
   const baseDir = path.resolve(sourceDir);
-  const resolved = path.resolve(baseDir, relPath);
+  const resolved = resolveInside(baseDir, relPath);
 
   // Block path traversal — must stay inside source_dir
-  if (!resolved.startsWith(baseDir + path.sep) && resolved !== baseDir) {
+  if (!resolved) {
     return NextResponse.json({ error: "Invalid path" }, { status: 403 });
   }
 
@@ -63,8 +56,7 @@ export async function GET(
     return NextResponse.json({ error: "File not found" }, { status: 404 });
   }
 
-  const ext = path.extname(resolved).toLowerCase();
-  const contentType = MIME_TYPES[ext] || "application/octet-stream";
+  const contentType = mimeForPath(resolved);
   const data = fs.readFileSync(resolved);
 
   return new NextResponse(new Uint8Array(data), {

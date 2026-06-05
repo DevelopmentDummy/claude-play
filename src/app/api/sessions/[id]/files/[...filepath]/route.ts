@@ -1,33 +1,11 @@
 import { NextResponse } from "next/server";
 import { getServices } from "@/lib/services";
+import { mimeForPath, resolveInside } from "@/lib/static-file";
 import * as path from "path";
 import * as fs from "fs";
 import sharp from "sharp";
 
 const THUMB_IMAGE_RE = /\.(png|jpe?g|webp|gif)$/i;
-
-const MIME_TYPES: Record<string, string> = {
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".webp": "image/webp",
-  ".gif": "image/gif",
-  ".svg": "image/svg+xml",
-  ".wav": "audio/wav",
-  ".mp3": "audio/mpeg",
-  ".ogg": "audio/ogg",
-};
-
-function resolveAndValidate(
-  sessionDir: string,
-  filePath: string
-): string | null {
-  const resolved = path.resolve(sessionDir, filePath);
-  if (!resolved.startsWith(sessionDir + path.sep) && resolved !== sessionDir) {
-    return null;
-  }
-  return resolved;
-}
 
 export async function GET(
   req: Request,
@@ -43,7 +21,7 @@ export async function GET(
     return NextResponse.json({ error: "Session not found" }, { status: 404 });
   }
 
-  const resolved = resolveAndValidate(sessionDir, filePath);
+  const resolved = resolveInside(sessionDir, filePath);
   if (!resolved) {
     return NextResponse.json({ error: "Invalid path" }, { status: 403 });
   }
@@ -52,8 +30,7 @@ export async function GET(
     return NextResponse.json({ error: "File not found" }, { status: 404 });
   }
 
-  const ext = path.extname(resolved).toLowerCase();
-  const contentType = MIME_TYPES[ext] || "application/octet-stream";
+  const contentType = mimeForPath(resolved);
 
   // Optional thumbnail support: ?thumb=240 → resize to fit, webp, disk-cached
   const url = new URL(req.url);
@@ -113,7 +90,7 @@ export async function HEAD(
     return new NextResponse(null, { status: 404 });
   }
 
-  const resolved = resolveAndValidate(sessionDir, filePath);
+  const resolved = resolveInside(sessionDir, filePath);
   if (!resolved) {
     return new NextResponse(null, { status: 403 });
   }
@@ -122,8 +99,7 @@ export async function HEAD(
     return new NextResponse(null, { status: 404 });
   }
 
-  const ext = path.extname(resolved).toLowerCase();
-  const contentType = MIME_TYPES[ext] || "application/octet-stream";
+  const contentType = mimeForPath(resolved);
 
   return new NextResponse(null, {
     status: 200,

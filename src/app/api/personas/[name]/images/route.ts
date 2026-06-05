@@ -1,14 +1,8 @@
 import { NextResponse } from "next/server";
 import { getServices } from "@/lib/services";
+import { mimeForPath } from "@/lib/static-file";
 import * as path from "path";
 import * as fs from "fs";
-
-const MIME_TYPES: Record<string, string> = {
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".webp": "image/webp",
-};
 
 export async function GET(
   req: Request,
@@ -40,8 +34,7 @@ export async function GET(
     return new NextResponse(null, { status: 404 });
   }
 
-  const ext = path.extname(safeName).toLowerCase();
-  const contentType = MIME_TYPES[ext] || "application/octet-stream";
+  const contentType = mimeForPath(safeName);
   const data = fs.readFileSync(filePath);
 
   return new NextResponse(data, {
