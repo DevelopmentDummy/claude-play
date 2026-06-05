@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { showToast } from "./ToastEffect";
 import { getPanelActionRegistry } from "@/lib/panel-action-registry";
 import UsageIndicator from "./UsageIndicator";
+import type { Choice } from "./ChatMessages";
 
 // Web Speech API type shim (not in default DOM lib)
 interface SpeechRecognitionEvent extends Event {
@@ -39,21 +40,6 @@ declare global {
     SpeechRecognition?: { new(): ISpeechRecognition };
     webkitSpeechRecognition?: { new(): ISpeechRecognition };
   }
-}
-
-export interface ChoiceAction {
-  tool?: string;       // legacy: tool name (e.g. "engine")
-  panel?: string;      // new: panel name (e.g. "advance", "schedule")
-  action: string;
-  args?: Record<string, unknown>;
-  params?: Record<string, unknown>; // panel action params (alias for args)
-}
-
-export interface Choice {
-  text: string;
-  score: number;
-  actions?: ChoiceAction[];
-  dry?: boolean;
 }
 
 /** Choice button with portal-based tooltip that escapes overflow clipping */
