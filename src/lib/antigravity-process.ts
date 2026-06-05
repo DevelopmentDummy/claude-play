@@ -3,16 +3,15 @@ import { EventEmitter } from "events";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
+import { recordAgyPid, forgetAgyPid } from "./antigravity-pid-registry";
 
 const AGY_PATH = path.join(os.homedir(), "AppData", "Local", "agy", "bin", "agy.exe");
 
 
-export const AntigravityModels = {
-  GEMINI_FLASH: 1018,
-  GEMINI_PRO_LOW: 1164,
-  GEMINI_PRO_HIGH: 1165,
-} as const;
-export type AntigravityModelId = typeof AntigravityModels[keyof typeof AntigravityModels];
+// 모델 ID는 agy 버전마다 바뀌는 동적 인덱스(MODEL_PLACEHOLDER_M{N})다.
+// 하드코딩 금지 — initialize()에서 GetAvailableModels로 displayName을 매칭해 조회한다.
+// (1.0.2: Pro High=165 → 1.0.5: 37로 바뀌어 "unknown model key M165: model not found"로
+//  cascade가 죽은 이력. 그래서 숫자를 박지 않고 매 spawn마다 LS에서 현재 인덱스를 받는다.)
 
 export interface AntigravityProcessEvents {
   message: [data: unknown];
@@ -32,7 +31,10 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
   private cascadeId: string | null = null;
   private spawnCwd = "";
   private spawnModelString: string | undefined;
-  private modelId: AntigravityModelId = AntigravityModels.GEMINI_FLASH;
+  /** agy가 cascade에 넣을 모델 키 — GetAvailableModels의 `model` 필드 전체 문자열
+   *  (예: "MODEL_PLACEHOLDER_M37"). agy는 이 값을 그대로 lookup 키로 쓰므로 숫자만
+   *  뽑아 보내면 "unknown model key 37"로 실패한다. 미해소 시 null → requestedModel 생략. */
+  private modelKey: string | null = null;
   private logStream: fs.WriteStream | null = null;
   private polling = false;
   private lastSeenMessageCount = 0;
@@ -62,7 +64,7 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
     this.spawnCwd = cwd;
     this.cascadeId = resumeId || null;
     this.spawnModelString = model;
-    this.modelId = this.resolveModelId(model);
+    // modelKey는 initialize()에서 LS 연결 후 GetAvailableModels로 동적 해소한다.
     this.lastSeenMessageCount = 0;
     this.lastSeenTailLength = 0;
 
@@ -144,7 +146,11 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
         return;
       }
       this.agyPid = pid;
-      this.writeLog(`spawn pid=${pid} model=${this.modelId}`);
+      // Persist the PID keyed by cwd so the detached process can be reaped even
+      // after this in-memory owner is lost (dev-server restart orphans it and
+      // its cwd handle blocks session-dir deletion with EBUSY).
+      recordAgyPid(pid, cwd, this.cascadeId);
+      this.writeLog(`spawn pid=${pid} model=${this.spawnModelString ?? "default"}`);
     } finally {
       try { fs.unlinkSync(tempScriptPath); } catch { /* */ }
       if (tempPrimerPath) { try { fs.unlinkSync(tempPrimerPath); } catch { /* */ } }
@@ -163,6 +169,9 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
     const port = await this.discoverLsPort();
     if (!port) throw new Error("LS port discovery timeout");
     this.lsPort = port;
+
+    // 모델 ID 동적 해소 (agy 버전마다 인덱스가 바뀌므로 하드코딩 불가).
+    this.modelKey = await this.resolveModelKeyDynamic(this.spawnModelString);
 
     if (resumeId) {
       this.cascadeId = resumeId;
@@ -301,15 +310,23 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
     // RP 페르소나는 자연스러워 보이지만 일반 페르소나는 환각 응답. binary strings의
     // `Chunk_Text` 패턴(protoc-gen-go nested type naming)이 단서. agy CLI native input과
     // 비교 검증 완료 (2026-05-27).
+    const plannerConfig: Record<string, unknown> = {
+      plannerTypeConfig: { conversational: {} },
+    };
+    // modelKey가 해소됐을 때만 명시 — 실패(null) 시 생략하면 agy default 모델로 동작.
+    // model은 GetAvailableModels의 키 문자열 전체("MODEL_PLACEHOLDER_M37")를 그대로 전달.
+    if (this.modelKey != null) {
+      plannerConfig.requestedModel = { model: this.modelKey };
+    }
+    // SendUserCascadeMessageRequest.items 는 TextOrScopeItem[] (agy proto codeium_common_pb).
+    // user text는 TextOrScopeItem.text(string) oneof 필드에 담는다. 이전엔
+    // items[].chunk.text.content 로 보냈는데 chunk 는 TextOrScopeItem 의 다른 oneof 멤버라
+    // agy 가 무시 → items 가 비어 USER_REQUEST 빈 채로 turn 진행 → 모델이 입력을 못 받음.
+    // (agy 1.0.5에서 확인. GetText/SetText/GetChunk/GetItem 메서드 + proto rawDesc로 검증.)
     await this.rpc("SendUserCascadeMessage", {
       cascadeId: this.cascadeId,
-      items: [{ chunk: { text: { content: text } } }],
-      cascadeConfig: {
-        plannerConfig: {
-          plannerTypeConfig: { conversational: {} },
-          requestedModel: { model: this.modelId },
-        },
-      },
+      items: [{ text }],
+      cascadeConfig: { plannerConfig },
     });
 
     this.polling = true;
@@ -642,6 +659,7 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
     if (!this.agyPid) return;
     try { execSync(`taskkill /T /F /PID ${this.agyPid}`, { stdio: "pipe" }); } catch { /* */ }
     this.writeLog(`killed pid=${this.agyPid}`);
+    forgetAgyPid(this.agyPid);
     this.agyPid = null;
     this.lsPort = null;
     this.polling = false;
@@ -650,12 +668,54 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
     if (this.logStream) { try { this.logStream.end(); } catch { /* */ } this.logStream = null; }
   }
 
-  private resolveModelId(model?: string): AntigravityModelId {
-    if (!model) return AntigravityModels.GEMINI_FLASH;
+  /** 모델 선택 문자열(antigravity-flash/-pro/-pro-low)을 agy displayName 패턴으로 매핑.
+   *  버전이 올라도 안 깨지게 세대 숫자("3.5") 대신 등급("Flash (High)"/"Pro (High)")으로 매칭. */
+  private modelPattern(model?: string): string {
+    if (!model) return "Flash (High)";
     const lower = model.toLowerCase();
-    if (lower.includes("pro-low")) return AntigravityModels.GEMINI_PRO_LOW;
-    if (lower.includes("pro")) return AntigravityModels.GEMINI_PRO_HIGH;
-    return AntigravityModels.GEMINI_FLASH;
+    if (lower.includes("pro-low")) return "Pro (Low)";
+    if (lower.includes("pro")) return "Pro (High)";
+    return "Flash (High)";
+  }
+
+  /** agy 1.0.5+는 모델 키가 동적 인덱스(MODEL_PLACEHOLDER_M{N})라 버전마다 바뀐다.
+   *  GetAvailableModels(로컬 LS)로 displayName을 매칭해 현재 모델 키 문자열을 조회한다.
+   *  agy는 cascade의 requestedModel.model을 lookup 키로 그대로 쓰므로(숫자만 보내면
+   *  "unknown model key 37" 실패) `model` 필드 전체 문자열을 반환한다.
+   *  실패 시 null → requestedModel 생략(agy default 모델). */
+  private async resolveModelKeyDynamic(model?: string): Promise<string | null> {
+    const pattern = this.modelPattern(model);
+    try {
+      const resp = await this.rpc<Record<string, unknown>>("GetAvailableModels", {});
+      const models = this.collectModels(resp);
+      const match = models.find(m => m.displayName.includes(pattern));
+      if (match) {
+        this.writeLog(`model resolved: "${pattern}" → "${match.displayName}" = "${match.model}"`);
+        return match.model;
+      }
+      const avail = models.map(m => `${m.displayName}=${m.model}`).join(", ");
+      this.writeLog(`model "${pattern}" not found among ${models.length} [${avail.slice(0, 400)}] — agy default`);
+    } catch (err) {
+      this.writeLog(`GetAvailableModels failed: ${err} — agy default`);
+    }
+    return null;
+  }
+
+  /** GetAvailableModels 응답을 재귀 walk해 {displayName, model} 쌍을 수집(중복 제거). */
+  private collectModels(obj: unknown): Array<{ displayName: string; model: string }> {
+    const out: Array<{ displayName: string; model: string }> = [];
+    const seen = new Set<string>();
+    const walk = (o: unknown): void => {
+      if (!o || typeof o !== "object") return;
+      const rec = o as Record<string, unknown>;
+      if (typeof rec.displayName === "string" && typeof rec.model === "string") {
+        const key = `${rec.model}|${rec.displayName}`;
+        if (!seen.has(key)) { seen.add(key); out.push({ displayName: rec.displayName, model: rec.model }); }
+      }
+      for (const v of Object.values(rec)) walk(v);
+    };
+    walk(obj);
+    return out;
   }
 
   private ensureAntigravitySettings(dir: string): void {
