@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSessionManager, getSessionInstance } from "@/lib/services";
 import { providerFromModel, parseModelEffort } from "@/lib/ai-provider";
+import { getResumeIdForProvider, writeInstructionsForProvider } from "@/lib/respawn-helpers";
 
 export async function POST(
   req: Request,
@@ -49,27 +50,11 @@ export async function POST(
       instance.switchProvider(provider);
     }
 
-    const resumeId = provider === "codex"
-      ? sm.getCodexThreadId(id)
-      : provider === "gemini"
-      ? sm.getGeminiSessionId(id)
-      : provider === "kimi"
-      ? sm.getKimiSessionId(id)
-      : provider === "antigravity"
-      ? sm.getAntigravityCascadeId(id)
-      : sm.getClaudeSessionId(id);
+    const resumeId = getResumeIdForProvider(sm, id, provider);
 
     const profile = info.profileSlug ? sm.getProfile(info.profileSlug) : undefined;
     const runtimeSystemPrompt = sm.buildServiceSystemPrompt(info.persona, provider, resolvedOptions, profile?.name);
-    if (provider === "codex") {
-      sm.writeCodexInstructions(sessionDir, runtimeSystemPrompt);
-    } else if (provider === "gemini") {
-      sm.writeGeminiInstructions(sessionDir, runtimeSystemPrompt);
-    } else if (provider === "kimi") {
-      sm.writeKimiInstructions(sessionDir, runtimeSystemPrompt);
-    } else if (provider === "antigravity") {
-      sm.writeAntigravityInstructions(sessionDir);
-    }
+    writeInstructionsForProvider(sm, sessionDir, provider, runtimeSystemPrompt);
     const skipPerms = resolvedOptions.skipPermissions !== false;
     instance.claude.spawn(sessionDir, resumeId, model || undefined, runtimeSystemPrompt, effort, skipPerms);
 

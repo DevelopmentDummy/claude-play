@@ -4,6 +4,7 @@ import * as path from "path";
 import { getServices, openSessionInstance } from "@/lib/services";
 import { providerFromModel, parseModelEffort } from "@/lib/ai-provider";
 import { consumeRestartMarker } from "@/lib/restart-notification";
+import { getResumeIdForProvider, writeInstructionsForProvider } from "@/lib/respawn-helpers";
 
 export async function POST(
   req: Request,
@@ -69,15 +70,7 @@ export async function POST(
   }
 
   // Resume previous session based on provider
-  let resumeId = provider === "codex"
-    ? svc.sessions.getCodexThreadId(id)
-    : provider === "gemini"
-    ? svc.sessions.getGeminiSessionId(id)
-    : provider === "kimi"
-    ? svc.sessions.getKimiSessionId(id)
-    : provider === "antigravity"
-    ? svc.sessions.getAntigravityCascadeId(id)
-    : svc.sessions.getClaudeSessionId(id);
+  let resumeId = getResumeIdForProvider(svc.sessions, id, provider);
   if (provider === "kimi" && !resumeId) {
     try {
       const { listConversationsForSession } = await import("@/lib/session-list");
@@ -117,18 +110,9 @@ export async function POST(
         runtimeSystemPrompt = `${runtimeSystemPrompt}\n\n${panelMarkdown}`;
       }
     } catch { /* optional — skip on failure */ }
-    // For Codex: write instructions file (file-based prompt delivery via model_instructions_file)
-    if (provider === "codex") {
-      svc.sessions.writeCodexInstructions(sessionDir, runtimeSystemPrompt);
-    } else if (provider === "gemini") {
-      svc.sessions.writeGeminiInstructions(sessionDir, runtimeSystemPrompt);
-    } else if (provider === "kimi") {
-      svc.sessions.writeKimiInstructions(sessionDir, runtimeSystemPrompt);
-    } else if (provider === "antigravity") {
-      // Antigravity: persona context into GEMINI.md (agy auto-loads). Primer
-      // goes through --prompt-interactive separately (in AntigravityProcess.spawn).
-      svc.sessions.writeAntigravityInstructions(sessionDir);
-    }
+    // Write provider-specific runtime instructions file (file-based prompt
+    // delivery for codex/gemini/kimi; persona context for antigravity).
+    writeInstructionsForProvider(svc.sessions, sessionDir, provider, runtimeSystemPrompt);
     const skipPerms = resolvedOptions.skipPermissions !== false;
     instance.claude.spawn(sessionDir, resumeId, effectiveModel || undefined, runtimeSystemPrompt, finalEffort, skipPerms);
   }
