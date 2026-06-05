@@ -99,10 +99,6 @@ export class PanelEngine {
     this.onUpdate = onUpdate;
     this.onLayoutUpdate = onLayoutUpdate || null;
     this.onImageUpdate = onImageUpdate || null;
-    this.registerHelpers();
-  }
-
-  private registerHelpers(): void {
     ensureHandlebarsHelpers();
   }
 

@@ -38,12 +38,8 @@ function getRegistry(): SchedulerRegistry {
   return g[GLOBAL_KEY];
 }
 
-function apiBase(): string {
-  return getApiBase();
-}
-
 async function requestJson(method: string, route: string, payload?: unknown) {
-  const response = await fetch(`${apiBase()}${route}`, {
+  const response = await fetch(`${getApiBase()}${route}`, {
     method,
     headers: {
       "Content-Type": "application/json",
