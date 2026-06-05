@@ -46,9 +46,8 @@ export function buildSnapshot(
   // Patterns only use `*` as wildcard; exact keys take precedence.
   const expandedRules: Array<[string, HintRule]> = [];
   for (const [key, rule] of Object.entries(hintRules)) {
-    if (key.startsWith("_") && !key.includes("*") && key !== "_passthrough" && key !== "_data_files") {
-      // Regular keys starting with _ (e.g. _master_status) still processed normally
-    }
+    // Regular keys starting with _ (e.g. _master_status) fall through to normal
+    // processing below; _passthrough / _data_files are handled separately later.
     if (key.includes("*")) {
       const regex = new RegExp("^" + key.replace(/\*/g, ".*") + "$");
       for (const varKey of Object.keys(vars)) {
@@ -137,7 +136,7 @@ export function buildSnapshot(
   const compAvailable = vars.__competitions_available;
   if (compAvailable && Array.isArray(compAvailable) && compAvailable.length > 0 && compRemaining !== undefined) {
     const urgency = compRemaining === 0 ? "마지막기회!" : `남은턴:${compRemaining}`;
-    const compList = (compAvailable as any[]).map((c: any) => `${c.id}(${c.name})`).join(', ');
+    const compList = (compAvailable as Array<{ id: string; name: string }>).map(c => `${c.id}(${c.name})`).join(', ');
     snapshot["competition_notice"] = `🏆대회참가가능(${urgency}) [${compList}]`;
   }
 
