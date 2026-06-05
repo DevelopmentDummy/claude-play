@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import PanelArea from "./PanelArea";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 
 interface Panel {
   name: string;
@@ -33,15 +34,8 @@ export default function PanelDrawer({
 }: PanelDrawerProps) {
   const drawerRef = useRef<HTMLDivElement>(null);
 
-  // Close on Escape
-  useEffect(() => {
-    if (!open) return;
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [open, onClose]);
+  // Close on Escape (only while the drawer is open)
+  useEscapeKey(onClose, open);
 
   return (
     <>

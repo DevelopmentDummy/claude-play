@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import VoiceSettings from "@/components/VoiceSettings";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 
 interface FileInfo {
   name: string;
@@ -76,13 +77,7 @@ function FileViewerModal({
   content: string;
   onClose: () => void;
 }) {
-  useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [onClose]);
+  useEscapeKey(onClose);
 
   const isJson = title.endsWith(".json");
   let displayContent = content;

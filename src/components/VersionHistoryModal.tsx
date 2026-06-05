@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 
 interface Version {
   hash: string;
@@ -45,13 +46,7 @@ export default function VersionHistoryModal({
     fetchVersions();
   }, [fetchVersions]);
 
-  useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [onClose]);
+  useEscapeKey(onClose);
 
   const handleRestore = async (hash: string) => {
     if (restoring) return;
