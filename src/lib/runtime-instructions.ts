@@ -3,6 +3,30 @@ import * as fs from "fs";
 import * as path from "path";
 
 /**
+ * Read session instructions from CLAUDE.md — the authoritative source that
+ * Claude never overwrites with runtime prompts. Trimmed; "" if missing/unreadable.
+ */
+function readSessionInstructions(projectDir: string): string {
+  const claudeMdPath = path.join(projectDir, "CLAUDE.md");
+  try {
+    if (fs.existsSync(claudeMdPath)) {
+      return fs.readFileSync(claudeMdPath, "utf-8").trim();
+    }
+  } catch { /* ignore */ }
+  return "";
+}
+
+/**
+ * Merge session instructions with a runtime system prompt for CLIs that read a
+ * single instruction file (Gemini/Kimi): CLAUDE.md content, separator, prompt.
+ */
+function combineInstructions(sessionInstructions: string, runtimePrompt: string): string {
+  return sessionInstructions
+    ? `${sessionInstructions}\n\n---\n\n${runtimePrompt}`
+    : runtimePrompt;
+}
+
+/**
  * Write Codex model instructions file (.codex/model-instructions.md).
  * Called before spawning Codex to ensure file-based prompt delivery.
  */
@@ -22,20 +46,8 @@ export function writeCodexInstructions(projectDir: string, content: string): voi
  * since Claude never overwrites it with runtime prompts.
  */
 export function writeGeminiInstructions(projectDir: string, runtimePrompt: string): void {
-  // CLAUDE.md is always authoritative — it contains the original instructions
-  // (session-instructions + style + profile + opening for sessions, or builder-prompt for builder)
-  // and is never overwritten by runtime prompts (Claude uses --system-prompt flag separately).
-  let sessionInstructions = "";
-  const claudeMdPath = path.join(projectDir, "CLAUDE.md");
-  try {
-    if (fs.existsSync(claudeMdPath)) {
-      sessionInstructions = fs.readFileSync(claudeMdPath, "utf-8").trim();
-    }
-  } catch { /* ignore */ }
-
-  const combined = sessionInstructions
-    ? `${sessionInstructions}\n\n---\n\n${runtimePrompt}`
-    : runtimePrompt;
+  const sessionInstructions = readSessionInstructions(projectDir);
+  const combined = combineInstructions(sessionInstructions, runtimePrompt);
 
   const geminiMdPath = path.join(projectDir, "GEMINI.md");
   fs.writeFileSync(geminiMdPath, combined, "utf-8");
@@ -52,13 +64,7 @@ export function writeGeminiInstructions(projectDir: string, runtimePrompt: strin
  * arrives via the spawn arg path instead.
  */
 export function writeAntigravityInstructions(projectDir: string): void {
-  let sessionInstructions = "";
-  const claudeMdPath = path.join(projectDir, "CLAUDE.md");
-  try {
-    if (fs.existsSync(claudeMdPath)) {
-      sessionInstructions = fs.readFileSync(claudeMdPath, "utf-8").trim();
-    }
-  } catch { /* ignore */ }
+  const sessionInstructions = readSessionInstructions(projectDir);
 
   const geminiMdPath = path.join(projectDir, "GEMINI.md");
   fs.writeFileSync(geminiMdPath, sessionInstructions, "utf-8");
@@ -70,17 +76,8 @@ export function writeAntigravityInstructions(projectDir: string): void {
  * Kimi Code CLI loads AGENTS.md from the working directory.
  */
 export function writeKimiInstructions(projectDir: string, runtimePrompt: string): void {
-  let sessionInstructions = "";
-  const claudeMdPath = path.join(projectDir, "CLAUDE.md");
-  try {
-    if (fs.existsSync(claudeMdPath)) {
-      sessionInstructions = fs.readFileSync(claudeMdPath, "utf-8").trim();
-    }
-  } catch { /* ignore */ }
-
-  const combined = sessionInstructions
-    ? `${sessionInstructions}\n\n---\n\n${runtimePrompt}`
-    : runtimePrompt;
+  const sessionInstructions = readSessionInstructions(projectDir);
+  const combined = combineInstructions(sessionInstructions, runtimePrompt);
 
   const agentsMdPath = path.join(projectDir, "AGENTS.md");
   fs.writeFileSync(agentsMdPath, combined, "utf-8");
