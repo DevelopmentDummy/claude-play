@@ -23,6 +23,19 @@ function loadHistoryForSession(sessionId: string): HistoryMessage[] {
   return [];
 }
 
+/** Apply an OOC toggle to a message in place: set the flag and add/strip the
+ *  "OOC: " prefix on user messages. */
+function applyOocToggle(msg: HistoryMessage, ooc: boolean | undefined): void {
+  msg.ooc = ooc || undefined;
+  if (msg.role === "user") {
+    if (ooc && !msg.content.startsWith("OOC:")) {
+      msg.content = `OOC: ${msg.content}`;
+    } else if (!ooc && msg.content.startsWith("OOC:")) {
+      msg.content = msg.content.replace(/^OOC:\s*/, "");
+    }
+  }
+}
+
 /** PATCH: Toggle ooc flag on a specific message */
 export async function PATCH(req: NextRequest) {
   const body = await req.json().catch(() => ({})) as { id?: string; ooc?: boolean; sessionId?: string };
@@ -41,14 +54,7 @@ export async function PATCH(req: NextRequest) {
     if (!msg) {
       return NextResponse.json({ error: "message not found" }, { status: 404 });
     }
-    msg.ooc = body.ooc || undefined;
-    if (msg.role === "user") {
-      if (body.ooc && !msg.content.startsWith("OOC:")) {
-        msg.content = `OOC: ${msg.content}`;
-      } else if (!body.ooc && msg.content.startsWith("OOC:")) {
-        msg.content = msg.content.replace(/^OOC:\s*/, "");
-      }
-    }
+    applyOocToggle(msg, body.ooc);
     instance.saveHistory();
     return NextResponse.json({ ok: true, message: msg });
   }
@@ -66,14 +72,7 @@ export async function PATCH(req: NextRequest) {
     if (!msg) {
       return NextResponse.json({ error: "message not found" }, { status: 404 });
     }
-    msg.ooc = body.ooc || undefined;
-    if (msg.role === "user") {
-      if (body.ooc && !msg.content.startsWith("OOC:")) {
-        msg.content = `OOC: ${msg.content}`;
-      } else if (!body.ooc && msg.content.startsWith("OOC:")) {
-        msg.content = msg.content.replace(/^OOC:\s*/, "");
-      }
-    }
+    applyOocToggle(msg, body.ooc);
     fs.writeFileSync(fp, JSON.stringify(history), "utf-8");
     return NextResponse.json({ ok: true, message: msg });
   } catch {
