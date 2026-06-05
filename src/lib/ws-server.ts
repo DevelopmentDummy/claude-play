@@ -220,8 +220,16 @@ export function setupWebSocket(server: HTTPServer): void {
 
       ws.on("message", (raw) => {
         const msg = parseIncomingMessage(raw);
-        if (msg) {
+        if (!msg) return;
+        // Guard the handler: parseIncomingMessage only validates `type` is a
+        // string, so a malformed frame (e.g. {type:"chat:send", text:123}) can
+        // make a `field as string` + `.trim()` throw. An uncaught throw here is
+        // an unhandled exception in the ws 'message' callback → can crash the
+        // server. Log and drop the bad frame instead.
+        try {
           handleMessage(client, msg);
+        } catch (err) {
+          console.error("[ws] message handler error:", err);
         }
       });
 
