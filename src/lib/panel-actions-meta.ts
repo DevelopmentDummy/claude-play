@@ -11,13 +11,9 @@
 
 import fs from "fs";
 import path from "path";
+import { formatActionSpecLine, type ActionSpec } from "./panel-action-spec";
 
-export interface ActionSpec {
-  label: string;
-  required?: string[];
-  values?: Record<string, string[]>;
-  note?: string;
-}
+export type { ActionSpec };
 
 export interface PanelActionsMeta {
   panels: Record<string, Record<string, ActionSpec>>;
@@ -54,29 +50,6 @@ export function getActionSpec(
 }
 
 /**
- * 단일 액션 spec을 한 줄 시그니처 문자열로 포맷.
- * 예: `베스라.besra_evening(필수: action ∈ {conversation,wine_session,...}) — 밤자리 시작. 야간 슬롯 완료 후...`
- */
-export function formatSpecAsLine(panel: string, action: string, spec: ActionSpec): string {
-  const required = spec.required ?? [];
-  const reqParts: string[] = [];
-  for (const param of required) {
-    const values = spec.values?.[param];
-    if (values && values.length > 0) {
-      const enumStr = values.length <= 6
-        ? values.join(",")
-        : `${values.slice(0, 5).join(",")},...총 ${values.length}개`;
-      reqParts.push(`${param} ∈ {${enumStr}}`);
-    } else {
-      reqParts.push(param);
-    }
-  }
-  const sig = reqParts.length > 0 ? `필수: ${reqParts.join(", ")}` : "no-arg";
-  const noteSuffix = spec.note ? ` — ${spec.note}` : "";
-  return `${panel}.${action}(${sig}) [${spec.label}]${noteSuffix}`;
-}
-
-/**
  * 전체 메타를 시스템 지시문 주입용 마크다운으로 변환.
  * 패널별 그룹핑, 각 액션 한 줄. 시스템 지시문 끝에 한 번 박힌다.
  */
@@ -92,7 +65,7 @@ export function formatPanelActionsAsMarkdown(meta: PanelActionsMeta | null): str
     sections.push(`### ${panel}`);
     sections.push("");
     for (const [actionId, spec] of Object.entries(actions)) {
-      sections.push(`- ${formatSpecAsLine(panel, actionId, spec)}`);
+      sections.push(`- ${formatActionSpecLine(panel, actionId, spec)}`);
     }
     sections.push("");
   }

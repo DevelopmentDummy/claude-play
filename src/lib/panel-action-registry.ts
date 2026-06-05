@@ -8,6 +8,10 @@
  * this is a plain library, not a React component/hook).
  */
 
+import { formatActionSpecLine, type ActionSpec } from "./panel-action-spec";
+
+export type { ActionSpec };
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -50,14 +54,6 @@ interface ActionEntry {
 // ---------------------------------------------------------------------------
 // Class
 // ---------------------------------------------------------------------------
-
-/** Per-action spec sourced from panels/_actions.meta.json (server-side sidecar). */
-export interface ActionSpec {
-  label: string;
-  required?: string[];
-  values?: Record<string, string[]>;
-  note?: string;
-}
 
 export class PanelActionRegistry {
   /** panel → actionId → entry */
@@ -108,22 +104,7 @@ export class PanelActionRegistry {
 
   /** Format a single spec as a one-line definition string for [정의] events. */
   formatSpecLine(panel: string, actionId: string, spec: ActionSpec): string {
-    const required = spec.required ?? [];
-    const reqParts: string[] = [];
-    for (const param of required) {
-      const values = spec.values?.[param];
-      if (values && values.length > 0) {
-        const enumStr = values.length <= 6
-          ? values.join(",")
-          : `${values.slice(0, 5).join(",")},...총 ${values.length}개`;
-        reqParts.push(`${param} ∈ {${enumStr}}`);
-      } else {
-        reqParts.push(param);
-      }
-    }
-    const sig = reqParts.length > 0 ? `필수: ${reqParts.join(", ")}` : "no-arg";
-    const noteSuffix = spec.note ? ` — ${spec.note}` : "";
-    return `${panel}.${actionId}(${sig}) [${spec.label}]${noteSuffix}`;
+    return formatActionSpecLine(panel, actionId, spec);
   }
 
   // -------------------------------------------------------------------------
