@@ -1,5 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
+import { refImageMime, writeSessionImage } from "./image-fs";
 
 interface OpenAIImageConfig {
   apiKey: string;
@@ -30,23 +31,11 @@ export class OpenAIImageClient {
     this.model = config.model || "gpt-image-2";
   }
 
-  /** Sanitize a relative file path: preserve subdirectories but prevent traversal */
-  private safePath(filePath: string): string {
-    const normalized = path.posix.normalize(filePath.replace(/\\/g, "/"));
-    const segments = normalized.split("/").filter(s => s && s !== ".." && s !== ".");
-    return segments.join("/") || path.basename(filePath);
-  }
-
   /** Resolve and validate reference image, return file buffer or null */
   private resolveReferenceImage(sessionDir: string, refPath: string): { buffer: Buffer; mimeType: string } | null {
     const resolved = path.resolve(sessionDir, refPath);
     if (!resolved.startsWith(sessionDir) || !fs.existsSync(resolved)) return null;
-    const ext = path.extname(resolved).toLowerCase();
-    const mimeMap: Record<string, string> = {
-      ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-      ".webp": "image/webp", ".gif": "image/gif",
-    };
-    return { buffer: fs.readFileSync(resolved), mimeType: mimeMap[ext] || "image/png" };
+    return { buffer: fs.readFileSync(resolved), mimeType: refImageMime(resolved) };
   }
 
   async generate(req: GenerateRequest): Promise<GenerateResult> {
@@ -106,15 +95,8 @@ export class OpenAIImageClient {
       }
 
       const imageBuffer = Buffer.from(b64, "base64");
-      const imagesDir = path.join(req.sessionDir, "images");
-      fs.mkdirSync(imagesDir, { recursive: true });
-
-      const safeName = this.safePath(req.filename);
-      const filepath = path.join(imagesDir, safeName);
-      fs.mkdirSync(path.dirname(filepath), { recursive: true });
-      fs.writeFileSync(filepath, imageBuffer);
-
-      return { success: true, filepath: `images/${safeName}` };
+      const filepath = writeSessionImage(req.sessionDir, req.filename, imageBuffer);
+      return { success: true, filepath };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return { success: false, error: message };

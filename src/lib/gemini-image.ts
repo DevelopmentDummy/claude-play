@@ -1,5 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
+import { refImageMime, writeSessionImage } from "./image-fs";
 
 interface GeminiImageConfig {
   apiKey: string;
@@ -30,13 +31,6 @@ export class GeminiImageClient {
     this.model = config.model || "gemini-3.1-flash-image-preview";
   }
 
-  /** Sanitize a relative file path: preserve subdirectories but prevent traversal */
-  private safePath(filePath: string): string {
-    const normalized = path.posix.normalize(filePath.replace(/\\/g, "/"));
-    const segments = normalized.split("/").filter(s => s && s !== ".." && s !== ".");
-    return segments.join("/") || path.basename(filePath);
-  }
-
   async generate(req: GenerateRequest): Promise<GenerateResult> {
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`;
@@ -50,14 +44,8 @@ export class GeminiImageClient {
       for (const ref of refImages) {
         const refPath = path.resolve(req.sessionDir, ref);
         if (refPath.startsWith(req.sessionDir) && fs.existsSync(refPath)) {
-          const ext = path.extname(refPath).toLowerCase();
-          const mimeMap: Record<string, string> = {
-            ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-            ".webp": "image/webp", ".gif": "image/gif",
-          };
-          const mimeType = mimeMap[ext] || "image/png";
           const base64 = fs.readFileSync(refPath).toString("base64");
-          inputParts.push({ inlineData: { mimeType, data: base64 } });
+          inputParts.push({ inlineData: { mimeType: refImageMime(refPath), data: base64 } });
         }
       }
 
@@ -106,15 +94,8 @@ export class GeminiImageClient {
       }
 
       const imageBuffer = Buffer.from(imagePart.inlineData.data, "base64");
-      const imagesDir = path.join(req.sessionDir, "images");
-      fs.mkdirSync(imagesDir, { recursive: true });
-
-      const safeName = this.safePath(req.filename);
-      const filepath = path.join(imagesDir, safeName);
-      fs.mkdirSync(path.dirname(filepath), { recursive: true });
-      fs.writeFileSync(filepath, imageBuffer);
-
-      return { success: true, filepath: `images/${safeName}` };
+      const filepath = writeSessionImage(req.sessionDir, req.filename, imageBuffer);
+      return { success: true, filepath };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return { success: false, error: message };
