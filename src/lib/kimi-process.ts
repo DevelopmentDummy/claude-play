@@ -70,6 +70,17 @@ export class KimiProcess extends EventEmitter<KimiProcessEvents> {
   private requestId = 0;
   private pendingRequests = new Map<string, PendingRequest>();
 
+  constructor() {
+    super();
+    // Permanent no-op "error" listener. EventEmitter throws (crashing the dev
+    // server) when "error" is emitted with zero listeners — which can happen if
+    // a late async error fires after the consumer removed its listeners on
+    // destroy(). Real errors still reach the session-instance "error" listener
+    // when attached; this only guarantees there is always ≥1 listener. Mirrors
+    // AntigravityProcess.
+    this.on("error", () => { /* swallowed — real handling via session-instance listener */ });
+  }
+
   spawn(
     cwd: string,
     resumeId?: string,

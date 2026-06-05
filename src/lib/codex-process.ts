@@ -39,6 +39,17 @@ export class CodexProcess extends EventEmitter<CodexProcessEvents> {
   private initialized = false;
   private threadCreated = false;
 
+  constructor() {
+    super();
+    // Permanent no-op "error" listener. EventEmitter throws (crashing the dev
+    // server) when "error" is emitted with zero listeners — which can happen if
+    // a late async error fires after the consumer removed its listeners on
+    // destroy(). Real errors still reach the session-instance "error" listener
+    // when attached; this only guarantees there is always ≥1 listener. Mirrors
+    // AntigravityProcess.
+    this.on("error", () => { /* swallowed — real handling via session-instance listener */ });
+  }
+
   /**
    * Ensure a directory is registered as a trusted project in ~/.codex/config.toml.
    * Codex ignores project-level config.toml (MCP servers, instructions) for untrusted dirs.
