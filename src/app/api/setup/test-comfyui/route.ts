@@ -5,7 +5,7 @@ export async function POST(req: NextRequest) {
   const authError = requireSetupAuth(req);
   if (authError) return authError;
 
-  const { host, port } = await req.json();
+  const { host, port } = (await req.json()) as { host?: string; port?: string | number };
   const url = `http://${host || "127.0.0.1"}:${port || 8188}/system_stats`;
 
   try {

@@ -24,7 +24,7 @@ export async function PUT(
   if (!existing) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
-  const { name, description, isPrimary } = await req.json();
+  const { name, description, isPrimary } = (await req.json()) as { name?: string; description?: string; isPrimary?: boolean };
   const newSlug = sessions.saveProfile({
     name: name || existing.name,
     description: description ?? existing.description,

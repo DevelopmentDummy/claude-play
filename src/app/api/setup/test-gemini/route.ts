@@ -5,7 +5,7 @@ export async function POST(req: NextRequest) {
   const authError = requireSetupAuth(req);
   if (authError) return authError;
 
-  const { key } = await req.json();
+  const { key } = (await req.json()) as { key?: string };
   if (!key) return NextResponse.json({ ok: false, error: "No key provided" });
 
   try {

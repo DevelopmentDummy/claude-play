@@ -8,7 +8,7 @@ import path from "path";
 const execFileAsync = promisify(execFile);
 
 export async function POST(req: Request) {
-  const { url, folderName } = await req.json();
+  const { url, folderName } = (await req.json()) as { url?: string; folderName?: string };
 
   if (!url || !folderName) {
     return NextResponse.json(

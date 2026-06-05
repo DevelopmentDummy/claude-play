@@ -59,7 +59,7 @@ async function tryFetchBinary(
 
 export async function POST(req: NextRequest) {
   try {
-    const { url } = await req.json();
+    const { url } = (await req.json()) as { url?: string };
     if (!url || typeof url !== "string") {
       return NextResponse.json({ error: "url is required" }, { status: 400 });
     }
