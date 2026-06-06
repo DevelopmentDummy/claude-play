@@ -7,10 +7,15 @@ export const MAX_SUBAGENTS = Number(process.env.SUBAGENT_MAX) > 0
   : 6;
 
 const NAME_RE = /^[a-z0-9][a-z0-9-]{0,31}$/;
-// Antigravity is excluded: it spawns via PowerShell (not node child_process), uses agyPid
-// (not proc.pid), does not emit an "exit" event, and requires a persistent Windows console
-// handle that cannot be safely shared inside the server process alongside other sub-agents.
-const PROVIDERS: AIProvider[] = ["claude", "codex", "gemini", "kimi"];
+// v1: sub-agents are Claude-provider only. Reason: a sub gets its role via the process's
+// appended system prompt, and ONLY ClaudeProcess.spawn actually applies that argument.
+// Codex delivers system prompt via baseInstructions (JSON-RPC, not spawn arg); Gemini/Kimi
+// read it from cwd instruction files (GEMINI.md/CLAUDE.md) — but subs share the session dir
+// whose instruction files belong to the MAIN narrator, so a non-Claude sub would inherit the
+// narrator's prompt instead of its role. Antigravity additionally spawns via PowerShell with a
+// different process surface. The core value (cheap specialized subs, e.g. main=Opus/sub=Haiku)
+// is fully served by Claude model tiers. Multi-provider subs (role-as-leading-message) are Phase 2.
+const PROVIDERS: AIProvider[] = ["claude"];
 
 export interface SubAgentDef {
   name: string;                          // [a-z0-9-], unique, used as dir name
@@ -62,7 +67,7 @@ export function validateManifest(raw: unknown): SubAgentManifest {
     if (seen.has(name)) throw new Error(`subagents[${i}]: duplicate name "${name}"`);
     seen.add(name);
     const provider = String(e.provider ?? "claude") as AIProvider;
-    if (!PROVIDERS.includes(provider)) throw new Error(`subagents[${i}]: unsupported provider "${provider}" for sub-agents (supported: ${PROVIDERS.join(", ")}). Note: "antigravity" is not supported in v1 — it requires a dedicated Windows console handle that cannot be shared inside the server process.`);
+    if (!PROVIDERS.includes(provider)) throw new Error(`subagents[${i}]: unsupported provider "${provider}" for sub-agents (v1 supports only: ${PROVIDERS.join(", ")}). Use any Claude model (e.g. claude-haiku-4-5) for cheap specialized subs; non-Claude providers are planned for a later phase.`);
     const autoTrigger = e.autoTrigger === "onAssistantTurn" ? "onAssistantTurn" : "none";
     return {
       name,
