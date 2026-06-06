@@ -171,7 +171,7 @@ function runExclusive<T>(filePath: string, fn: () => T | Promise<T>): Promise<T>
   _mutateChains.set(key, tail);
   // Best-effort cleanup: when this tail is the last one, drop the map entry to
   // avoid unbounded growth across many distinct file paths.
-  tail.then(() => {
+  void tail.then(() => {
     if (_mutateChains.get(key) === tail) _mutateChains.delete(key);
   });
   return next;
