@@ -7,7 +7,10 @@ export const MAX_SUBAGENTS = Number(process.env.SUBAGENT_MAX) > 0
   : 6;
 
 const NAME_RE = /^[a-z0-9][a-z0-9-]{0,31}$/;
-const PROVIDERS: AIProvider[] = ["claude", "codex", "gemini", "kimi", "antigravity"];
+// Antigravity is excluded: it spawns via PowerShell (not node child_process), uses agyPid
+// (not proc.pid), does not emit an "exit" event, and requires a persistent Windows console
+// handle that cannot be safely shared inside the server process alongside other sub-agents.
+const PROVIDERS: AIProvider[] = ["claude", "codex", "gemini", "kimi"];
 
 export interface SubAgentDef {
   name: string;                          // [a-z0-9-], unique, used as dir name
@@ -59,7 +62,7 @@ export function validateManifest(raw: unknown): SubAgentManifest {
     if (seen.has(name)) throw new Error(`subagents[${i}]: duplicate name "${name}"`);
     seen.add(name);
     const provider = String(e.provider ?? "claude") as AIProvider;
-    if (!PROVIDERS.includes(provider)) throw new Error(`subagents[${i}]: invalid provider "${provider}"`);
+    if (!PROVIDERS.includes(provider)) throw new Error(`subagents[${i}]: unsupported provider "${provider}" for sub-agents (supported: ${PROVIDERS.join(", ")}). Note: "antigravity" is not supported in v1 — it requires a dedicated Windows console handle that cannot be shared inside the server process.`);
     const autoTrigger = e.autoTrigger === "onAssistantTurn" ? "onAssistantTurn" : "none";
     return {
       name,
