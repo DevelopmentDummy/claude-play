@@ -13,7 +13,7 @@ import {
 import { getPort } from "./endpoints";
 import { ensureClaudeRuntimeConfig as ensureClaudeRuntimeConfigImpl } from "./runtime-config";
 import { AIProvider, providerFromModel } from "./ai-provider";
-import { SYSTEM_JSON } from "./session-state";
+import { SYSTEM_JSON, mutateSessionJsonSync } from "./session-state";
 import { fileDiffers, personaSkillsDiffer, dirDiffers, toolsDiffer, variablesDiffer, stripAssembledSections, liveInstructionsDiffer, getCustomDataFiles } from "./session-sync-diff";
 import { copyDirRecursive, mirrorAdditive } from "./fs-mirror";
 import {
@@ -777,15 +777,19 @@ export class SessionManager {
     try { return JSON.parse(fs.readFileSync(metaPath, "utf-8")) as SessionMeta; } catch { return null; }
   }
 
-  /** Read-modify-write session.json; no-op if missing, ignores parse errors */
+  /** Read-modify-write session.json; no-op if missing, ignores parse errors.
+   *  Writes via tmp+rename (mutateSessionJsonSync) so a crash mid-write can't
+   *  leave session.json truncated. session.json ∈ SYSTEM_JSON and is only
+   *  directory-watched (panel-engine.ts:218 ignores SYSTEM_JSON names), so the
+   *  rename is watcher-safe — unlike variables.json, which is per-file watched. */
   private patchSessionMeta(id: string, mutate: (meta: SessionMeta) => void): void {
     const metaPath = path.join(this.getSessionDir(id), "session.json");
     if (!fs.existsSync(metaPath)) return;
-    try {
-      const meta: SessionMeta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
+    mutateSessionJsonSync(metaPath, (current) => {
+      const meta = current as unknown as SessionMeta;
       mutate(meta);
-      fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), "utf-8");
-    } catch { /* ignore */ }
+      return meta as unknown as Record<string, unknown>;
+    });
   }
 
   /** Save the Claude session ID into session.json */
