@@ -37,6 +37,25 @@ function mergeUtf8Texts(a: string, b: string): string {
   return merged ? result.join("") : a;
 }
 
+/**
+ * Persona hooks are expected to be synchronous — their { variables, data }
+ * patches are read synchronously right after the call. An async hook instead
+ * returns a thenable whose eventual rejection would escape the surrounding
+ * try/catch (which only traps synchronous throws) and surface as an unhandled
+ * promise rejection, crashing the dev server. Detect that case, swallow the
+ * rejection, and signal the caller to bail — the patches were never available
+ * synchronously anyway, so this changes nothing for well-formed sync hooks.
+ */
+function guardAsyncHookResult(result: unknown, label: string): boolean {
+  if (result && typeof (result as { then?: unknown }).then === "function") {
+    void (result as Promise<unknown>).catch((err) =>
+      console.error(`[hooks/${label}] async hook rejected (ignored — hooks must be synchronous):`, err)
+    );
+    return true;
+  }
+  return false;
+}
+
 const DIALOG_OPEN = "<dialog_response>";
 const DIALOG_CLOSE = "</dialog_response>";
 const SPECIAL_TOKEN_REGEX = /\$(?:IMAGE|PANEL):[^$]+\$/g;
@@ -643,6 +662,7 @@ export class SessionInstance {
       if (typeof fn !== "function") return;
 
       const result = fn({ variables: { ...variables }, data, sessionDir: dir, message: messageText });
+      if (guardAsyncHookResult(result, "on-message")) return;
       if (!result || typeof result !== "object") return;
 
       if (result.variables && typeof result.variables === "object") {
@@ -690,6 +710,7 @@ export class SessionInstance {
       if (typeof fn !== "function") return;
 
       const result = fn({ variables: { ...variables }, data, sessionDir: dir, response: responseText });
+      if (guardAsyncHookResult(result, "on-assistant")) return;
       if (!result || typeof result !== "object") return;
 
       if (result.variables && typeof result.variables === "object") {
@@ -888,6 +909,7 @@ export class SessionInstance {
         reviewPromptTemplate,
         config,
       });
+      if (guardAsyncHookResult(result, "on-style-check")) return;
       if (!result || typeof result !== "object") return;
 
       if (result.fireAi && typeof result.fireAi === "object") {
