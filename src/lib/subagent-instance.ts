@@ -53,8 +53,8 @@ export class SubAgentInstance {
       this.resumeId = id;
       try { fs.writeFileSync(this.resumePath(), id, "utf-8"); } catch { /* ignore */ }
     });
-    // "exit" is emitted by claude / gemini / kimi on process close.
-    // codex emits "status:disconnected" instead — unregister there is handled by destroy().
+    // ClaudeProcess emits "exit" on process close (v1 restricts subs to Claude).
+    // destroy() also unregisters explicitly, so a missed "exit" is harmless (idempotent).
     this._process.on("exit", () => {
       if (this.pid) unregisterSubProc(this.pid);
     });
@@ -65,7 +65,12 @@ export class SubAgentInstance {
 
   private readInstructions(): string {
     const fp = path.join(this.subDir(), this.def.instructions);
-    try { return fs.readFileSync(fp, "utf-8"); } catch { return ""; }
+    try {
+      return fs.readFileSync(fp, "utf-8");
+    } catch {
+      console.warn(`[subagent:${this.sessionId}/${this.name}] instructions not found at ${fp} — sub will run with an empty role body`);
+      return "";
+    }
   }
 
   isRunning(): boolean { return this._process.isRunning(); }
@@ -82,8 +87,9 @@ export class SubAgentInstance {
     } catch { /* ignore */ }
     const systemPrompt = buildSubSystemPrompt(this.def, this.readInstructions());
     // spawn(cwd, resumeId?, model?, appendSystemPrompt?, effort?, skipPermissions=true)
-    // ClaudeProcess / CodexProcess / GeminiProcess / KimiProcess all accept this positional
-    // signature (gemini/kimi silently ignore appendSystemPrompt and effort args).
+    // Only ClaudeProcess is used here (v1 restricts sub PROVIDERS to ["claude"]), and it is the
+    // one provider whose spawn actually applies the appended system prompt — which is how the sub
+    // receives its role. skipPermissions defaults to true (correct for a background sub).
     this._process.spawn(
       this.sessionDir,
       this.resumeId ?? undefined,
