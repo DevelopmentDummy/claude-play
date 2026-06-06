@@ -34,7 +34,7 @@ const EMPTY: SubAgentManifest = { version: 1, subagents: [] };
  *  Throws Error with a readable message on a malformed/invalid manifest. */
 export function loadSubAgentManifest(dir: string): SubAgentManifest {
   const fp = path.join(dir, "subagents.json");
-  if (!fs.existsSync(fp)) return EMPTY;
+  if (!fs.existsSync(fp)) return { ...EMPTY };
   let raw: unknown;
   try {
     raw = JSON.parse(fs.readFileSync(fp, "utf-8"));
@@ -45,7 +45,7 @@ export function loadSubAgentManifest(dir: string): SubAgentManifest {
 }
 
 export function validateManifest(raw: unknown): SubAgentManifest {
-  if (!raw || typeof raw !== "object") throw new Error("subagents.json: root must be an object");
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("subagents.json: root must be an object");
   const obj = raw as Record<string, unknown>;
   const list = Array.isArray(obj.subagents) ? obj.subagents : [];
   if (list.length > MAX_SUBAGENTS) {
