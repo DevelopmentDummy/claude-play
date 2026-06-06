@@ -1,10 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
-import { ClaudeProcess } from "./claude-process";
-import { CodexProcess } from "./codex-process";
-import { GeminiProcess } from "./gemini-process";
-import { KimiProcess } from "./kimi-process";
-import { AntigravityProcess } from "./antigravity-process";
+import { AIProcess, createProcess } from "./ai-process-factory";
+export type { AIProcess } from "./ai-process-factory";
 import { SessionManager } from "./session-manager";
 import { PanelEngine } from "./panel-engine";
 import { AIProvider } from "./ai-provider";
@@ -153,8 +150,6 @@ export interface HistoryMessage {
   ooc?: boolean;
 }
 
-export type AIProcess = ClaudeProcess | CodexProcess | GeminiProcess | KimiProcess | AntigravityProcess;
-
 export type ToolAnswer = {
   answers: Record<string, string | string[]>;
   notes?: Record<string, string>;
@@ -165,14 +160,6 @@ export type BroadcastFn = (
   data: unknown,
   filter?: { sessionId?: string; isBuilder?: boolean; exclude?: unknown }
 ) => void;
-
-function createProcess(provider: AIProvider): AIProcess {
-  if (provider === "codex") return new CodexProcess();
-  if (provider === "gemini") return new GeminiProcess();
-  if (provider === "kimi") return new KimiProcess();
-  if (provider === "antigravity") return new AntigravityProcess();
-  return new ClaudeProcess();
-}
 
 // --- TTS helpers ---
 
