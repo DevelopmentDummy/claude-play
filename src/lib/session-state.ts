@@ -153,6 +153,33 @@ function prepareMutation(
   }
 }
 
+/** Serialize read-modify-write per file path within this process. Concurrent
+ *  mutateSessionJson calls to the same file would otherwise interleave
+ *  (read-read-write-write → lost update). The now-resident main + N sub-agents all
+ *  funnel variable writes through this one server process, so an in-process gate
+ *  is sufficient. */
+const _mutateChains = new Map<string, Promise<unknown>>();
+
+function runExclusive<T>(filePath: string, fn: () => T | Promise<T>): Promise<T> {
+  const key = path.resolve(filePath);
+  const prev = _mutateChains.get(key) ?? Promise.resolve();
+  // Run fn after prev settles (success OR failure), so one rejected mutation
+  // doesn't block the queue.
+  const next = prev.then(() => fn(), () => fn());
+  // Store a non-rejecting tail for the next caller to chain onto.
+  const tail = next.then(() => undefined, () => undefined);
+  _mutateChains.set(key, tail);
+  // Best-effort cleanup: when this tail is the last one, drop the map entry to
+  // avoid unbounded growth across many distinct file paths.
+  tail.then(() => {
+    if (_mutateChains.get(key) === tail) _mutateChains.delete(key);
+  });
+  return next;
+}
+
+// NOTE: sync variant is used inside hook execution where awaiting is not possible.
+// It is atomic (tmp+rename) but not serialized against concurrent async mutates of
+// the same file — last writer wins. Hooks and routes mutate disjoint keys in practice.
 /** 동기 원자적 read-modify-write. 훅 경로용(동기 완료 보장). */
 export function mutateSessionJsonSync(
   filePath: string,
@@ -174,13 +201,15 @@ export async function mutateSessionJson(
   filePath: string,
   transform: (current: Dict) => Dict,
 ): Promise<PatchResult> {
-  const p = prepareMutation(filePath, transform);
-  if (!p.ok) return { ok: false, error: p.error };
-  try {
-    await retryOnWindowsLock(() => atomicWriteJsonSync(filePath, p.next));
-  } catch (err) {
-    console.error(`[session-state] write failed ${filePath}:`, err);
-    return { ok: false, error: err };
-  }
-  return { ok: true, value: p.next };
+  return runExclusive(filePath, async () => {
+    const p = prepareMutation(filePath, transform);
+    if (!p.ok) return { ok: false, error: p.error } as PatchResult;
+    try {
+      await retryOnWindowsLock(() => atomicWriteJsonSync(filePath, p.next));
+    } catch (err) {
+      console.error(`[session-state] write failed ${filePath}:`, err);
+      return { ok: false, error: err } as PatchResult;
+    }
+    return { ok: true, value: p.next } as PatchResult;
+  });
 }
