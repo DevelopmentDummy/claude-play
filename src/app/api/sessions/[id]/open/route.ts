@@ -117,6 +117,13 @@ export async function POST(
     instance.claude.spawn(sessionDir, resumeId, effectiveModel || undefined, runtimeSystemPrompt, finalEffort, skipPerms);
   }
 
+  // Spawn always-on sub-agents declared in subagents.json (session mode only; builder has none).
+  // Idempotent: re-open with subs already running is a no-op. Never throws into the open flow.
+  if (!instance.isBuilder) {
+    try { instance.subAgents.spawnAll(); }
+    catch (err) { console.error(`[open:${id}] subAgents.spawnAll failed:`, err); }
+  }
+
   // Include initial panels + context in response (SSE may not be connected yet)
   const { panels, context: panelContext, sharedPlacements, popups } = instance.panels.getCurrentPanels();
 
