@@ -9,6 +9,7 @@ import { generateEdgeTts } from "./edge-tts-client";
 import { getGpuManagerUrl } from "./endpoints";
 import { buildHintSnapshotLine } from "./hint-snapshot";
 import { spawnBackgroundClaude } from "./background-session";
+import { SubAgentManager } from "./subagent-manager";
 import {
   mutateSessionJsonSync, readSessionJson, applyPatch, loadSessionData,
   resolveSessionFilePath, SYSTEM_JSON, LINT_SKIP_JSON,
@@ -217,6 +218,7 @@ export class SessionInstance {
   private _process: AIProcess;
   private _provider: AIProvider;
   readonly panels: PanelEngine;
+  readonly subAgents: SubAgentManager;
   readonly sessions: SessionManager;
   private readonly broadcastFn: BroadcastFn;
 
@@ -291,6 +293,7 @@ export class SessionInstance {
       (filename) => this.broadcast("image:updated", { filename }),
     );
 
+    this.subAgents = new SubAgentManager(id, () => this.getDir());
     this.bindProcessEvents(this._process);
   }
 
@@ -1750,6 +1753,7 @@ export class SessionInstance {
     if (this.resultFinalizeTimer) { clearTimeout(this.resultFinalizeTimer); this.resultFinalizeTimer = null; }
     this.heldResultMsg = null;
     this.pendingTaskCount = 0;
+    try { this.subAgents.destroyAll(); } catch (err) { console.error(`[session:${this.id}] subAgents.destroyAll failed:`, err); }
     this._process.kill();
     this._process.removeAllListeners();
     this.panels.stop();
