@@ -11,6 +11,7 @@ import { isAuthEnabled, verifyAuthToken, parseCookieToken } from "./src/lib/auth
 import { shouldRedirectToSetup } from "./src/lib/setup-guard";
 import { destroyAllBackgroundProcesses } from "./src/lib/background-session";
 import { destroyAllInstances } from "./src/lib/session-registry";
+import { reapOrphanSubProcs } from "./src/lib/subagent-registry";
 
 loadEnvConfig(process.cwd());
 
@@ -394,6 +395,8 @@ killPid(g.__comfyuiPid);
 killProcessOnPort(GPU_MANAGER_PORT);
 // Sweep orphan Antigravity agy.exe processes from prior crashes/hot-reloads
 killStaleAntigravityProcesses();
+// Reap any sub-agent PIDs that survived a previous server boot
+reapOrphanSubProcs();
 
 const ttsProcess = spawnTtsServer();
 let gpuManagerProcess = spawnGpuManager();
