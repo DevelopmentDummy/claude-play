@@ -48,6 +48,9 @@ data/
 │   ├── tasks.json / task_queue.json # Background task scheduling state
 │   ├── engine-meta.json             # Cached panel-engine metadata
 │   ├── *.json                       # Custom data files (inventory.json, world.json, …)
+│   ├── subagents.json               # Sub-agent manifest (template; copied to session on create)
+│   ├── subagents/{name}/
+│   │   └── instructions.md          # Role prompt template for this sub-agent
 │   ├── .gitignore                   # Excludes runtime artifacts from publish
 │   ├── builder-session.json         # Builder mode metadata (provider, conversation id)
 │   ├── chat-history.json            # Builder chat history
@@ -76,6 +79,9 @@ data/
 │   ├── .agents/skills/              # Same skills mirrored for Codex
 │   ├── .gemini/skills/              # Same skills mirrored for Gemini
 │   ├── .kimi/skills/                # Same skills mirrored for Kimi
+│   ├── subagents/{name}/
+│   │   ├── instructions.md          # Role prompt (template file, copied from persona dir)
+│   │   └── .resume                  # Runtime artifact — provider session id for resume (gitignored, not mirrored/published)
 │   ├── .mcp.json                    # MCP config for Claude (includes auth token)
 │   └── .codex/config.toml           # MCP config for Codex (includes auth token)
 ```

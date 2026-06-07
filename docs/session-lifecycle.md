@@ -1,13 +1,13 @@
 # Session Lifecycle
 
 1. **Create**: `POST /api/sessions` — 페르소나 디렉토리 → 세션 디렉토리 복사 (빌더 메타·런타임 설정 등은 자동 제외, 페르소나 루트 `.sessionignore`에 추가 제외 항목 등록 가능 — top-level 이름만), CLAUDE.md/AGENTS.md/GEMINI.md 조립, 런타임 설정 파일(`.claude/`, `.codex/`, `.gemini/`, `.kimi/`) 생성, panel-spec.md + 글로벌 스킬 동기화
-2. **Open**: `POST /api/sessions/[id]/open` — provider별 AI 프로세스 spawn, PanelEngine 시작, panel-spec.md 및 글로벌 스킬 갱신, panel-action 메타 markdown 직렬화 후 시스템 프롬프트에 주입. 페르소나 템플릿에 추가된 신규 파일(hooks, opt-in 설정 등)을 additive mirror — 페르소나에만 있고 세션에 없는 파일만 1회 복사, 기존 세션 파일은 절대 덮어쓰지 않음 (RP 상태 보호)
+2. **Open**: `POST /api/sessions/[id]/open` — provider별 AI 프로세스 spawn, PanelEngine 시작, panel-spec.md 및 글로벌 스킬 갱신, panel-action 메타 markdown 직렬화 후 시스템 프롬프트에 주입. 페르소나 템플릿에 추가된 신규 파일(hooks, opt-in 설정 등)을 additive mirror — 페르소나에만 있고 세션에 없는 파일만 1회 복사, 기존 세션 파일은 절대 덮어쓰지 않음 (RP 상태 보호). 메인 프로세스 spawn 완료 후 `subAgents.spawnAll()`로 상시 서브에이전트 기동 (`subagents.json` 존재 시)
 3. **Chat**: WebSocket `chat:send` 또는 `POST /api/chat/send` — 메시지 직전에 큐된 이벤트(`events.json`) / 패널 액션 / 힌트 스냅샷을 flush하여 한 번에 전달, NDJSON 스트리밍 응답
 4. **Accumulate**: `SessionInstance`에서 `text_delta` 이벤트를 수집, `<dialog_response>` / `<choice>` / `<break/>` (scene break) 추출, OOC 플래그 처리, 히스토리 저장
 5. **Hooks**: 메시지/응답 단계에서 `hooks/on-message.js`, `hooks/on-assistant.js` 실행 — 변수/데이터 패치 + `fireAi` 디스패치(`spawnBackgroundClaude()`) 가능. 추가로 Claude 런타임 compaction 종료 시 `hooks/on-compaction-resume.js`가 호출되어 `{contextBlock: string}`을 반환하면 silent system turn으로 주입 (페르소나 핵심 상태 재정착). 페르소나가 `style-check.json` + `hooks/on-style-check.js` 둘 다 보유하면 코어가 `__style_check_counter`를 굴리며 `intervalTurns` 도달 시 hook을 호출 — 공용 룰셋(`data/style-check/defaults.md`)과 페르소나 룰(`style-check-rules.md`)을 머지해 인자로 넘기고, hook은 `fireAi`를 반환해 검토 LLM을 띄움. 검토 LLM은 `update_variables` MCP로 `style_drift_verdict` / `style_warning` 변수를 직접 갱신
 6. **Panel refresh**: AI 턴 종료 시 `PanelEngine.reload()`로 데이터 파일 재로드 및 패널 재렌더링
 7. **Sync** (수동): `POST /api/sessions/[id]/sync` — 양방향. Forward(페르소나→세션)는 OOC 알림 전송, Reverse(세션→페르소나)는 페르소나 템플릿에 역기록
-8. **Leave/Disconnect**: 마지막 클라이언트 연결 해제 후 5초 유예 → AI 프로세스 종료, PanelEngine 중지, 파이프라인 스케줄러 정지
+8. **Leave/Disconnect**: 마지막 클라이언트 연결 해제 후 5초 유예 → AI 프로세스 종료, PanelEngine 중지, 파이프라인 스케줄러 정지, 서브에이전트 전체 종료 (`SubAgentManager.destroyAll()`)
 
 ## Penta Runtime (Claude / Codex / Gemini / Kimi / Antigravity)
 
@@ -31,6 +31,55 @@
   - `notify: true` — `[BACKGROUND_SESSION_COMPLETE]` silent system event를 caller 세션에 주입 → AI가 다음 턴에 응답. 라이브 인스턴스 없으면 `pending-events.json` disk fallback
   - `onExit.broadcast: { event, data }` — caller 세션 클라이언트에게만 WS 메시지(`wsBroadcast(..., { sessionId: callerSessionId })`). UI 스피너 숨김·지연 reveal·토스트 등 AI 턴 비개입 용도
   - `onExit.script: "hooks/xxx.js"` — `sessionDir` 안의 JS 모듈을 `require`해서 호출. 인자 `{ pid, exitCode, sessionDir, logTail }`, 반환 `{ broadcast?, queueEvent? }`로 동적 처리. path traversal 차단(세션 dir 밖 경로 거부), `require.cache`는 매 호출마다 invalidate
+
+## Sub-Agents (always-on)
+
+페르소나 디렉토리의 `subagents.json` 매니페스트로 정의된 **상시 상주 서브에이전트** 기능 (v1).
+
+### Spawn & Destroy
+- 세션 **Open** 시 `SessionInstance.subAgents`(`SubAgentManager`)가 매니페스트를 읽어 각 서브를 `SubAgentInstance`로 spawn. `SubAgentInstance`는 provider 프로세스의 경량 래퍼 — PanelEngine 없음.
+- 서브는 세션 디렉토리를 cwd로 공유 → MCP 도구(`run_tool` 등)를 통해 동일 변수/데이터에 직접 접근 가능.
+- 세션 **destroy** 시 (`SessionInstance.destroy()`) `SubAgentManager.destroyAll()`로 cascade 종료.
+- **v1: Claude provider 전용** (appended system prompt로 role 주입). Codex/Gemini/Kimi/Antigravity 서브 지원은 추후 단계로 연기.
+
+### Dispatch 경로 (3가지)
+1. **Hook-driven**: `hooks/on-assistant.js`가 `dispatch: [{ to, task }]`를 반환 → `SessionInstance.runAssistantHooks()`에서 `SubAgentManager.dispatch(name, task)` 호출.
+2. **Declarative autoTrigger**: 매니페스트에서 `autoTrigger: "onAssistantTurn"`으로 선언된 서브는 메인 AI 응답마다 `autoTriggerTask`(기본 태스크 + 최신 응답 cap append)로 자동 dispatch. `on-assistant.js` 없어도 동작.
+3. **MCP explicit delegation**: 메인 AI가 `bridge_delegate({ to, task })` MCP 도구 호출 → `POST /api/sessions/{id}/subagents/{name}/dispatch` → `SubAgentManager.dispatch`.
+
+### Sub → Main 리포트 (pure async)
+- 서브가 `report_to_main({ from, summary })` MCP 도구 호출 → `POST /api/sessions/{id}/events` → `pending-events.json`에 `[SUB:<from>] <summary>` 헤더로 큐잉.
+- 큐된 이벤트는 **다음 사용자 턴** 직전에 flush되어 메인 내레이터에 전달 (기존 event-queue → next-turn 메커니즘 재사용).
+- 전달은 **순수 비동기** — 전송 시점에 큐된 것만 포함, 실행 중인 서브의 결과는 그 다음 턴에 합류.
+
+### Manifest (`subagents.json`)
+```json
+{
+  "version": 1,
+  "subagents": [{
+    "name": "tracker",
+    "role": "상태 추적 역할 설명",
+    "provider": "claude",
+    "model": "claude-haiku-4-5",
+    "effort": "low",
+    "instructions": "subagents/tracker/instructions.md",
+    "delegable": true,
+    "autoTrigger": "onAssistantTurn",
+    "autoTriggerTask": "현재 상태를 분석하고 변수를 갱신하라",
+    "emitSummary": true,
+    "writes": ["variables.json"]
+  }]
+}
+```
+서브 수 상한: `SUBAGENT_MAX` 환경변수 (기본 6).
+
+### 파일 레이아웃
+- `subagents/{name}/instructions.md` — role prompt 템플릿 (persona dir에서 session dir로 복사).
+- `subagents/{name}/.resume` — runtime artifact (provider session id for resume). **gitignored, mirrored/published 대상 아님**.
+
+### PID 레지스트리
+- 서브 PID는 `data/.runtime/subagent-procs.json`에 영속화.
+- `server.ts` 부팅 시 `reapOrphanSubProcs()`가 고아 프로세스를 정리 — PID에 기록된 세션 디렉토리가 실제 프로세스 커맨드라인에 포함되어 있는지 검증 후 kill (PID recycling-safe; 비-Claude 프로세스에는 적용 안 됨).
 
 ## Pipeline Scheduler
 

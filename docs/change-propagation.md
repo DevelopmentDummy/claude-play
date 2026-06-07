@@ -28,6 +28,7 @@
 | 파이프라인 스케줄러 동작 변경 | `pipeline-scheduler.ts` + `bridge_scheduler_*` MCP 도구 + `docs/architecture.md` |
 | 재시작 후 복구 흐름 변경 | `restart-notification.ts` + `service/restart` 라우트 + `docs/session-lifecycle.md` |
 | 페르소나 lifecycle hook 추가/시그니처 변경 (`hooks/on-*.js`) | `session-instance.ts` (run*Hooks 메서드) + `docs/session-lifecycle.md` (Hooks 단계) + `docs/data-model.md` (`hooks/` 디렉토리 예시) |
+| 서브에이전트 추가/변경 시 | `subagents.json`(매니페스트) + `subagents/{name}/instructions.md` 편집. 영향 범위: 세션 Open 시 spawn(`subAgents.spawnAll()`), hook/autoTrigger dispatch 경로, `bridge_delegate`/`report_to_main`/`bridge_define_subagent` MCP 도구. `.resume`은 runtime artifact — gitignore 및 미러 SKIP 목록에 포함 유지. 변경 후 세션 재open 필요 (spawn은 Open 시점에만 발생). |
 
 ## 빌더 변경
 

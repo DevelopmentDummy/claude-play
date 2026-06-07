@@ -32,6 +32,11 @@ Python FastAPI child process (port 3342 by default) for serial GPU task queueing
 | `background-session.ts` | Spawns detached Claude subprocesses (`spawnBackgroundClaude()`) for long-running side jobs invoked from hooks or the `fire_ai` MCP tool. Optional minimal vs full persona-context system prompt. |
 | `pipeline-scheduler.ts` | Per-session polling loop that periodically invokes a custom `pipeline_tick()` tool, then dispatches resulting notifications. `start/stop/getPipelineSchedulerState()`. |
 | `restart-notification.ts` | After a service restart, reconciles active sessions: writes a marker, atomically renames it on consumption, and feeds a silent system message back to the AI so the conversation continues from where it stopped. |
+| `ai-process-factory.ts` | Factory helper that constructs the correct provider process (ClaudeProcess / CodexProcess / etc.) given a model id and options. Used by both main session and sub-agent spawn paths. |
+| `subagent-manifest.ts` | Reads and validates `subagents.json` — manifest schema types, `loadSubAgentManifest()`, cap enforcement (`SUBAGENT_MAX`). |
+| `subagent-instance.ts` | Per-sub stateful wrapper over a provider process (Claude-only in v1). No PanelEngine. Emits messages to `SubAgentManager`; persists `.resume` id for session continuity. |
+| `subagent-manager.ts` | `SubAgentManager` — owns all `SubAgentInstance` objects for a session. `spawnAll()` on session open, `dispatch(name, task)` for all three dispatch paths, `destroyAll()` on session destroy. |
+| `subagent-registry.ts` | PID registry for sub-agent processes (`data/.runtime/subagent-procs.json`). `reapOrphanSubProcs()` called on server boot to kill survivors, with recycling-safe session-dir verification. |
 
 ### AI Process Management
 
@@ -124,6 +129,9 @@ Python FastAPI child process (port 3342 by default) for serial GPU task queueing
 | `policy_context` | Read roleplay policy context (extreme traits, reviewed scenarios, intimacy policy) |
 | `run_tool` | Execute custom session tools — single or chained, with state snapshot |
 | `fire_ai` | Spawn a detached background AI run (long-form generation, side jobs). Exit-time hooks: `notify` (silent system event), `onExit.broadcast` (WS to caller session's clients — UI updates without AI turn), `onExit.script` (JS module inside session dir for dynamic broadcast/queueEvent). |
+| `bridge_delegate` | (세션 모드) 메인 AI가 상시 서브에이전트에게 태스크를 위임. `{ to: name, task: string }` → `SubAgentManager.dispatch()`. |
+| `report_to_main` | (서브에이전트 전용) 서브가 결과를 메인 세션 이벤트 큐에 보고. `{ from: name, summary: string }` → `pending-events.json` 큐잉 → 다음 사용자 턴에 flush. |
+| `bridge_define_subagent` | (빌더 모드 전용) 서브에이전트 정의 생성/갱신. `{ name, role, model?, instructions, delegable?, autoTrigger?, autoTriggerTask?, emitSummary? }` → 페르소나 디렉토리에 `subagents.json` + `subagents/{name}/instructions.md` 기록. |
 
 ### MCP Features
 
