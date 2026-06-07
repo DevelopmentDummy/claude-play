@@ -24,6 +24,8 @@
 13. 캐릭터 프로필 이미지를 생성한다 (아래 프로필 이미지 섹션 참조)
 14. 캐릭터 음성을 설정한다 (아래 음성 설정 섹션 참조)
 
+**서브에이전트(선택):** 전투·시뮬레이션·경제처럼 **매 턴 반복되는 상태 부기**가 많거나, 긴 설정/로어 일관성을 매 턴 점검해야 하는 페르소나라면 — 스킬·도구를 설계하는 단계(7번)에서 그 부기를 전담할 **서브에이전트** 구성도 사용자와 함께 검토한다 (아래 "서브에이전트" 섹션 참조). 메인 내레이터가 신경 쓰기 번거로운 영역을 상주 서브에게 위임하는 기능이다. 단순 대화/호감도 페르소나에는 만들지 않는다.
+
 **중요: 파일을 생성할 때는 반드시 한번에 모든 파일을 작성하라. 중간중간 부분적으로 생성하지 않는다.**
 
 ---
@@ -1305,6 +1307,11 @@ research-dump.json
 - [ ] `voice.json`의 `design` 프롬프트가 영어로 작성되어 있는가?
 - [ ] reference audio 사용 시 `referenceText`에 오디오 대본이 정확히 기입되어 있는가?
 - [ ] 사용자에게 `.pt` 음성 임베딩 생성을 안내했는가?
+- [ ] **반복 부기가 많은 페르소나라면** — 서브에이전트가 필요한지 사용자와 검토했는가? (단순 페르소나면 생략이 정답)
+- [ ] 서브에이전트를 만들었다면 — `bridge_define_subagent`로 `subagents.json` + `subagents/<name>/instructions.md`가 작성되었는가?
+- [ ] 각 서브의 `instructions.md`가 이 페르소나의 실제 변수명/도구를 구체적으로 참조하고, `report_to_main` 보고를 지시하는가?
+- [ ] 서브가 쓰는 변수 영역(`writes`)이 메인 훅(on-assistant.js)이 쓰는 영역과 겹치지 않는가? (lost-update 회피)
+- [ ] `session-instructions.md`에 "서브가 갱신한 `[SUB:...]` 요약을 사실의 원본으로 읽고 직접 재계산 말라"는 메인 내레이터용 지시가 있는가?
 
 ---
 
@@ -1322,6 +1329,62 @@ research-dump.json
 
 ---
 
-## 서브에이전트(선택)
+## 서브에이전트 (선택) — 멀티 에이전트 오케스트레이션
 
-이 페르소나의 RP가 메인 서사 외에 반복적 부기(패널 변수 갱신·흐름 제어·설정 일관성 점검)를 요구한다면, `bridge_define_subagent`로 전문 서브를 정의할 수 있다. 서브는 세션에서 메인과 함께 상주하며, 메인이 `bridge_delegate`로 위임하거나 `autoTrigger: "onAssistantTurn"`로 매 턴 자동 실행된다. 서브는 세션 상태(패널 변수·데이터)를 직접 변경하고, 끝나면 `report_to_main`으로 변경 요약을 메인에 돌려준다(다음 유저 턴에 합류). v1은 Claude provider만 지원하며, 저비용 모델(예: claude-haiku-4-5)을 권장한다. 서브가 꼭 필요하지 않은 단순 페르소나라면 정의하지 않아도 된다.
+메인 서사가 직접 챙기기 번거롭고 반복적인 부기(패널 변수 갱신·흐름 제어·설정/로어 일관성 점검 등)를 **전담 서브에이전트**에게 위임할 수 있다. 서브는 세션에서 메인 내레이터와 **함께 상주(always-on)**하며, 세션 상태를 직접 갱신하고 변경 요약을 메인의 **다음 턴에 비동기로** 돌려준다. 메인 컨텍스트를 깨끗하게 유지하면서 무거운 상태 관리를 분리하는 게 목적이다.
+
+### 언제 만드는가 (그리고 언제 안 만드는가)
+- **만든다:** 전투/시뮬레이션/경제처럼 매 턴 여러 변수를 규칙적으로 갱신해야 하고 그 계산이 서사 몰입을 방해할 때 / 긴 설정(로어·지명·타임라인)의 일관성을 매 턴 점검해야 할 때 / 메인 컨텍스트에서 부기를 의도적으로 빼내고 싶을 때.
+- **안 만든다:** 단순 호감도·대화 위주 페르소나. `update-state` 스킬이나 `tools/engine.js`로 충분하면 서브는 과하다. **꼭 필요할 때만** 만든다.
+
+### 어떻게 만드는가 — `bridge_define_subagent` 도구
+빌더 모드에서 `bridge_define_subagent`를 호출하면 `subagents.json` 매니페스트(이름 기준 병합)와 `subagents/<name>/instructions.md`가 페르소나 디렉토리에 작성된다. 세션 생성 시 자동 복사되고, 세션 Open 시 상주 프로세스로 spawn된다. (기존 라이브 세션은 닫았다 다시 열어야 반영됨 — 사용자에게 안내하라.)
+
+**인자:**
+- `name`: 소문자-대시 고유 id (예: `combat-keeper`, `lore-checker`)
+- `role`: 한 줄 책임 설명
+- `model`: Claude 모델 (저비용 권장 — 예: `claude-haiku-4-5`). **v1은 Claude provider 전용**이다 (다른 provider는 역할 프롬프트가 전달되지 않아 미지원)
+- `instructions`: 서브의 시스템 프롬프트 본문 → `instructions.md`로 저장 (아래 작성 원칙)
+- `delegable`: 메인이 `bridge_delegate`로 호출 가능 여부 (기본 true)
+- `autoTrigger`: `"onAssistantTurn"`이면 매 메인 턴 후 자동 실행, `"none"`이면 훅/위임으로만 (기본 none)
+- `autoTriggerTask`: autoTrigger 시 매번 줄 기본 작업 지시
+- `emitSummary`: 끝나면 `report_to_main`으로 요약 보고 (기본 true)
+- 세션당 최대 6개 (기본값).
+
+### `instructions.md` 작성 원칙 (서브의 역할 프롬프트)
+- **서브는 내레이터가 아니다** — 사용자에게 말하지 않고 도구로 상태만 바꾼다. (코어가 이 역할을 시스템 프롬프트에 이미 박지만, instructions에서도 구체적 책임을 명시하라.)
+- **이 페르소나의 실제 변수명·파일명·도구를 구체적으로 참조하라** (예: "`run_tool('engine', { action: 'resolve_combat' })`로 `combat.hp`/`combat.enemy_state`를 갱신"). 추상적으로 "상태를 관리하라"가 아니라 실제 키/액션을 적는다.
+- 무엇을 **읽고**(variables.json/data) 무엇을 **쓰는지**, 어떤 규칙으로 바꾸는지 명시하라.
+- 끝나면 `report_to_main({ from: "<name>", summary })`로 **한두 문장 변경 요약**을 보고하라고 지시하라 (메인이 다음 턴 머리에서 `[SUB:<name>]` 헤더로 받아 서사에 녹임).
+
+### 트리거 모델 — 세 경로 (조합 가능)
+1. **`autoTrigger: "onAssistantTurn"`** (노코드): 매 메인 턴 후 코어가 자동 디스패치. 항상 도는 단순 부기에 적합. 보통 여기서 시작한다.
+2. **`hooks/on-assistant.js`의 `dispatch[]`** (정밀): 훅이 `{ dispatch: [{ to, task }] }`를 반환하면 조건부로 특정 서브에 위임. autoTrigger보다 세밀한 제어가 필요할 때 추가.
+3. **메인의 `bridge_delegate`** (능동): `session-instructions.md`에서 메인 AI가 필요시 `bridge_delegate({ to, task })`를 호출하도록 안내. 메인이 "이건 서브에게 맡긴다"를 능동 결정.
+
+### ⚠️ 상태 충돌 주의 — `writes` 영역 분리
+서브와 메인 훅(`on-assistant.js`의 변수 패치)이 **같은 변수/파일**을 거의 동시에 쓰면 lost-update가 날 수 있다(동기 훅 vs 비동기 서브). **회피책:** 서브가 다루는 변수 네임스페이스를 메인 훅과 **겹치지 않게** 설계하고, 매니페스트 `writes`에 그 영역을 적어 의도를 문서화하라 (예: 서브는 `combat.*`만, 훅은 `style_*`만).
+
+### 예시
+```jsonc
+// bridge_define_subagent 호출로 생성되는 subagents.json 항목
+{
+  "name": "combat-keeper",
+  "role": "전투 상태/HP/적 행동 변수 관리",
+  "provider": "claude",
+  "model": "claude-haiku-4-5",
+  "instructions": "instructions.md",
+  "delegable": true,
+  "autoTrigger": "onAssistantTurn",
+  "autoTriggerTask": "직전 메인 응답의 전투 전개를 반영해 combat.* 변수를 갱신하고 요약 보고하라",
+  "emitSummary": true,
+  "writes": ["combat.*"]
+}
+```
+`instructions.md` (요지): "너는 combat-keeper다. 내레이터가 아니며 사용자에게 말하지 않는다. 직전 전투 전개를 보고 `run_tool('engine', { action: 'resolve_combat', ... })`로 `combat.hp`/`combat.enemy_state`를 갱신한 뒤, `report_to_main({ from: 'combat-keeper', summary: '적 HP 80→55, 플레이어 반격 성공' })`로 보고하라."
+
+### 세션 instructions와의 연계 (중요)
+서브를 쓰는 페르소나는 `session-instructions.md`에 메인 내레이터용 한 줄을 넣어라:
+> "전투/부기 변수는 서브에이전트가 갱신한다. 다음 턴 머리의 `[SUB:...]` 요약을 **사실의 원본**으로 읽고 서사에 녹여라. 그 변수를 직접 재계산하지 마라."
+
+이는 패널의 "AI는 내레이터, 엔진이 상태를 돌린다" 레이어 책임 경계 원칙과 같은 정신이다 — 메인이 서브의 결과를 신뢰하고 중복 실행하지 않게 한다.
