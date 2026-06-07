@@ -686,72 +686,99 @@ export class SessionInstance {
     const dir = this.getDir();
     if (!dir) return;
     const hookPath = path.join(dir, "hooks", "on-assistant.js");
-    if (!fs.existsSync(hookPath)) return;
 
-    try {
-      const varsPath = path.join(dir, "variables.json");
-      const { variables, data } = loadSessionData(dir);
+    // Track which sub-agents the hook explicitly dispatched this turn so the
+    // declarative autoTrigger loop can skip them and avoid double-dispatch.
+    let explicitlyDispatched = new Set<string>();
 
-      // eslint-disable-next-line no-eval
-      const nativeRequire = eval("require") as NodeRequire;
-      delete nativeRequire.cache[hookPath];
-      const mod = nativeRequire(hookPath);
-      const fn = typeof mod === "function" ? mod : mod.default;
-      if (typeof fn !== "function") return;
+    if (fs.existsSync(hookPath)) {
+      try {
+        const varsPath = path.join(dir, "variables.json");
+        const { variables, data } = loadSessionData(dir);
 
-      const result = fn({ variables: { ...variables }, data, sessionDir: dir, response: responseText });
-      if (guardAsyncHookResult(result, "on-assistant")) return;
-      if (!result || typeof result !== "object") return;
+        // eslint-disable-next-line no-eval
+        const nativeRequire = eval("require") as NodeRequire;
+        delete nativeRequire.cache[hookPath];
+        const mod = nativeRequire(hookPath);
+        const fn = typeof mod === "function" ? mod : mod.default;
+        if (typeof fn === "function") {
+          const result = fn({ variables: { ...variables }, data, sessionDir: dir, response: responseText });
+          if (!guardAsyncHookResult(result, "on-assistant") && result && typeof result === "object") {
+            if (result.variables && typeof result.variables === "object") {
+              mutateSessionJsonSync(varsPath, (current) => applyPatch(current, result.variables as Record<string, unknown>));
+            }
 
-      if (result.variables && typeof result.variables === "object") {
-        mutateSessionJsonSync(varsPath, (current) => applyPatch(current, result.variables as Record<string, unknown>));
-      }
+            if (result.data && typeof result.data === "object") {
+              for (const [rawKey, patch] of Object.entries(result.data as Record<string, Record<string, unknown>>)) {
+                if (!patch || typeof patch !== "object") continue;
+                const fileName = rawKey.endsWith(".json") ? rawKey : `${rawKey}.json`;
+                if (SYSTEM_JSON.has(fileName)) continue;
+                const fp = resolveSessionFilePath(dir, fileName);
+                if (!fp) continue;
+                mutateSessionJsonSync(fp, (current) => applyPatch(current, patch));
+              }
+            }
 
-      if (result.data && typeof result.data === "object") {
-        for (const [rawKey, patch] of Object.entries(result.data as Record<string, Record<string, unknown>>)) {
-          if (!patch || typeof patch !== "object") continue;
-          const fileName = rawKey.endsWith(".json") ? rawKey : `${rawKey}.json`;
-          if (SYSTEM_JSON.has(fileName)) continue;
-          const fp = resolveSessionFilePath(dir, fileName);
-          if (!fp) continue;
-          mutateSessionJsonSync(fp, (current) => applyPatch(current, patch));
-        }
-      }
+            // Optional fire-and-forget background AI request — hook returns
+            // { fireAi: { prompt, model?, effort?, notify?, useSessionContext?, onExit? } } to spawn analysis agent.
+            if (result.fireAi && typeof result.fireAi === "object") {
+              try {
+                const fa = result.fireAi as {
+                  prompt?: string;
+                  model?: string;
+                  effort?: string;
+                  notify?: boolean;
+                  useSessionContext?: boolean;
+                  onExit?: {
+                    broadcast?: { event: string; data?: unknown };
+                    script?: string;
+                  };
+                };
+                if (typeof fa.prompt === "string" && fa.prompt.trim()) {
+                  console.log(`[hooks/on-assistant fireAi] spawning bg claude for ${this.id} (model=${fa.model || "default"}, effort=${fa.effort || "default"})`);
+                  spawnBackgroundClaude({
+                    sessionDir: dir,
+                    prompt: fa.prompt,
+                    model: fa.model,
+                    effort: fa.effort,
+                    notify: fa.notify ?? false,
+                    callerSessionId: this.id,
+                    useSessionContext: fa.useSessionContext ?? false,
+                    onExit: fa.onExit,
+                  });
+                }
+              } catch (err) {
+                console.error("[hooks/on-assistant fireAi] spawn error:", err);
+              }
+            }
 
-      // Optional fire-and-forget background AI request — hook returns
-      // { fireAi: { prompt, model?, effort?, notify?, useSessionContext?, onExit? } } to spawn analysis agent.
-      if (result.fireAi && typeof result.fireAi === "object") {
-        try {
-          const fa = result.fireAi as {
-            prompt?: string;
-            model?: string;
-            effort?: string;
-            notify?: boolean;
-            useSessionContext?: boolean;
-            onExit?: {
-              broadcast?: { event: string; data?: unknown };
-              script?: string;
-            };
-          };
-          if (typeof fa.prompt === "string" && fa.prompt.trim()) {
-            console.log(`[hooks/on-assistant fireAi] spawning bg claude for ${this.id} (model=${fa.model || "default"}, effort=${fa.effort || "default"})`);
-            spawnBackgroundClaude({
-              sessionDir: dir,
-              prompt: fa.prompt,
-              model: fa.model,
-              effort: fa.effort,
-              notify: fa.notify ?? false,
-              callerSessionId: this.id,
-              useSessionContext: fa.useSessionContext ?? false,
-              onExit: fa.onExit,
-            });
+            // Handle dispatch[] — route tasks to named sub-agents (hook-driven auto-dispatch).
+            const dispatchList = (result as { dispatch?: unknown }).dispatch;
+            if (Array.isArray(dispatchList)) {
+              for (const item of dispatchList) {
+                const d = (item || {}) as { to?: unknown; task?: unknown };
+                const to = typeof d.to === "string" ? d.to : "";
+                const task = typeof d.task === "string" ? d.task : "";
+                if (to && task) {
+                  explicitlyDispatched.add(to);
+                  const ok = this.subAgents.dispatch(to, task);
+                  if (!ok) console.warn(`[session:${this.id}] on-assistant dispatch to unknown sub "${to}"`);
+                }
+              }
+            }
           }
-        } catch (err) {
-          console.error("[hooks/on-assistant fireAi] spawn error:", err);
         }
+      } catch (err) {
+        console.error("[hooks/on-assistant] error:", err);
       }
-    } catch (err) {
-      console.error("[hooks/on-assistant] error:", err);
+    }
+
+    // Declarative auto-trigger: subs with autoTrigger "onAssistantTurn" fire each main turn,
+    // unless the hook already dispatched them explicitly this turn.
+    for (const def of this.subAgents.autoTriggerDefs()) {
+      if (explicitlyDispatched.has(def.name)) continue;
+      const task = def.autoTriggerTask?.trim() || "최근 메인 턴을 반영해 네 담당 영역의 상태를 갱신하라.";
+      this.subAgents.dispatch(def.name, `${task}\n\n[직전 메인 응답]\n${responseText}`);
     }
   }
 
