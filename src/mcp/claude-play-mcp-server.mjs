@@ -1500,6 +1500,63 @@ server.registerTool(
   }
 );
 
+server.registerTool(
+  "bridge_define_subagent",
+  {
+    description:
+      "[Builder mode] Define or update a specialized sub-agent for this persona. " +
+      "Writes subagents.json (merging by name) and subagents/<name>/instructions.md in the persona dir. " +
+      "Sub-agents run always-on alongside the main narrator at session time and handle delegated bookkeeping " +
+      "(panel variable updates, flow control, lore consistency). v1: Claude provider only — pick a cheap model " +
+      "like claude-haiku-4-5 for low-cost specialized subs.",
+    inputSchema: {
+      name: z.string().regex(/^[a-z0-9][a-z0-9-]{0,31}$/).describe("Unique sub-agent id (lowercase, dashes)"),
+      role: z.string().min(1).describe("Short human description of the sub's responsibility"),
+      model: z.string().optional().describe("Claude model id (e.g. claude-haiku-4-5). Optional → provider default."),
+      instructions: z.string().min(1).describe("Full system-prompt body for the sub (saved to instructions.md)"),
+      delegable: z.boolean().optional().describe("Callable via bridge_delegate by the main narrator (default true)"),
+      autoTrigger: z.enum(["onAssistantTurn", "none"]).optional().describe("Auto-dispatch every main turn, or 'none' (hook-controlled). Default none."),
+      autoTriggerTask: z.string().optional().describe("Default task text when autoTrigger is onAssistantTurn"),
+      emitSummary: z.boolean().optional().describe("Sub should call report_to_main when done (default true)"),
+    },
+  },
+  async (input) => {
+    if (mode !== "builder") return fail("bridge_define_subagent is only available in builder mode");
+    try {
+      const manifestPath = path.join(sessionDir, "subagents.json");
+      let manifest = { version: 1, subagents: [] };
+      if (fs.existsSync(manifestPath)) {
+        try { manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8")); } catch { /* reset on corrupt */ }
+      }
+      if (!Array.isArray(manifest.subagents)) manifest.subagents = [];
+      const entry = {
+        name: input.name,
+        role: input.role,
+        provider: "claude",
+        ...(input.model ? { model: input.model } : {}),
+        instructions: "instructions.md",
+        delegable: input.delegable !== false,
+        autoTrigger: input.autoTrigger || "none",
+        ...(input.autoTriggerTask ? { autoTriggerTask: input.autoTriggerTask } : {}),
+        emitSummary: input.emitSummary !== false,
+      };
+      const idx = manifest.subagents.findIndex((s) => s && s.name === input.name);
+      if (idx >= 0) manifest.subagents[idx] = { ...manifest.subagents[idx], ...entry };
+      else manifest.subagents.push(entry);
+      if (manifest.subagents.length > 6) {
+        return fail(`Too many sub-agents (${manifest.subagents.length} > 6).`);
+      }
+      const subDir = path.join(sessionDir, "subagents", input.name);
+      fs.mkdirSync(subDir, { recursive: true });
+      fs.writeFileSync(path.join(subDir, "instructions.md"), input.instructions, "utf-8");
+      fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n", "utf-8");
+      return ok({ defined: input.name, total: manifest.subagents.length });
+    } catch (error) {
+      return fail(error);
+    }
+  }
+);
+
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
