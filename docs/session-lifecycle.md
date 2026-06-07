@@ -62,7 +62,7 @@
     "provider": "claude",
     "model": "claude-haiku-4-5",
     "effort": "low",
-    "instructions": "subagents/tracker/instructions.md",
+    "instructions": "instructions.md",
     "delegable": true,
     "autoTrigger": "onAssistantTurn",
     "autoTriggerTask": "현재 상태를 분석하고 변수를 갱신하라",
