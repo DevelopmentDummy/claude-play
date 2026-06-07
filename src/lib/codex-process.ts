@@ -100,7 +100,7 @@ export class CodexProcess extends EventEmitter<CodexProcessEvents> {
   /**
    * Start the codex app-server process and perform the initialize handshake.
    */
-  spawn(cwd: string, resumeId?: string, model?: string, _appendSystemPrompt?: string, effort?: string): void {
+  spawn(cwd: string, resumeId?: string, model?: string, _appendSystemPrompt?: string, effort?: string, _skipPermissions?: boolean, _logName?: string): void {
     if (this.proc) {
       this.kill();
     }

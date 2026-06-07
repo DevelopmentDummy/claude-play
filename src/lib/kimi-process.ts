@@ -88,6 +88,7 @@ export class KimiProcess extends EventEmitter<KimiProcessEvents> {
     _appendSystemPrompt?: string,
     _effort?: string,
     _skipPermissions?: boolean,
+    _logName?: string,
   ): void {
     if (this.proc) {
       this.kill();

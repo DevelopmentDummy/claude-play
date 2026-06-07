@@ -58,6 +58,7 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
     appendSystemPrompt?: string,
     _effort?: string,
     _skipPermissions?: boolean,
+    _logName?: string,
   ): void {
     if (this.agyPid) this.kill();
 

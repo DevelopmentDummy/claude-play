@@ -86,16 +86,22 @@ export class SubAgentInstance {
       }
     } catch { /* ignore */ }
     const systemPrompt = buildSubSystemPrompt(this.def, this.readInstructions());
-    // spawn(cwd, resumeId?, model?, appendSystemPrompt?, effort?, skipPermissions=true)
+    // spawn(cwd, resumeId?, model?, appendSystemPrompt?, effort?, skipPermissions, logName)
     // Only ClaudeProcess is used here (v1 restricts sub PROVIDERS to ["claude"]), and it is the
     // one provider whose spawn actually applies the appended system prompt — which is how the sub
-    // receives its role. skipPermissions defaults to true (correct for a background sub).
+    // receives its role. skipPermissions=true (correct for a background sub).
+    // logName is relative to sessionDir — each sub writes to its own subagents/<name>/sub.log
+    // so it never clobbers the main narrator's claude-stream.log.
+    // mkdirSync(subDir()) above already creates the directory; the mkdirSync in ClaudeProcess.spawn
+    // is belt-and-suspenders for safety.
     this._process.spawn(
       this.sessionDir,
       this.resumeId ?? undefined,
       this.def.model,
       systemPrompt,
       this.def.effort,
+      true,
+      path.join("subagents", this.name, "sub.log"),
     );
     // `proc` is private on all four supported provider classes; no public pid getter exists.
     // Accessing via structural cast is safe here: all four classes expose `proc?.pid` at

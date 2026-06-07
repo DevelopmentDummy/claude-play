@@ -156,16 +156,18 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
   }
 
   // Store spawn parameters for retry on resume failure
-  private lastSpawnParams: { cwd: string; model?: string; appendSystemPrompt?: string; effort?: string; skipPermissions?: boolean } | null = null;
+  private lastSpawnParams: { cwd: string; model?: string; appendSystemPrompt?: string; effort?: string; skipPermissions?: boolean; logName?: string } | null = null;
 
   /**
    * Spawn claude -p in the given directory.
    * If resumeId is provided, resumes that session with --resume.
    * CLAUDE.md in cwd is auto-loaded by Claude Code.
+   * logName is relative to cwd; defaults to "claude-stream.log". Sub-agents pass
+   * e.g. "subagents/<name>/sub.log" so each process gets its own log file.
    */
-  spawn(cwd: string, resumeId?: string, model?: string, appendSystemPrompt?: string, effort?: string, skipPermissions = true): void {
+  spawn(cwd: string, resumeId?: string, model?: string, appendSystemPrompt?: string, effort?: string, skipPermissions = true, logName = "claude-stream.log"): void {
     // Save params for potential retry (without resumeId)
-    this.lastSpawnParams = { cwd, model, appendSystemPrompt, effort, skipPermissions };
+    this.lastSpawnParams = { cwd, model, appendSystemPrompt, effort, skipPermissions, logName };
     if (this.proc) {
       this.kill();
     }
@@ -229,7 +231,10 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
 
     // Start stream log for debugging
     if (this.logStream) { try { this.logStream.end(); } catch { /* */ } }
-    const logPath = path.join(cwd, "claude-stream.log");
+    const logPath = path.join(cwd, logName);
+    // Ensure the log's parent directory exists (no-op for top-level files; creates
+    // subdirs like subagents/<name>/ when logName contains a path segment).
+    fs.mkdirSync(path.dirname(logPath), { recursive: true });
     this.logStream = fs.createWriteStream(logPath, { flags: "a" });
     this.logStream.write(`\n--- spawn ${new Date().toISOString()} args: ${args.join(" ")} ---\n`);
 
@@ -304,6 +309,7 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
           params?.appendSystemPrompt,
           params?.effort,
           params?.skipPermissions,
+          params?.logName,
         );
         return;
       }
@@ -407,7 +413,7 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
   respawn(): void {
     if (!this.lastSpawnParams) return;
     const p = this.lastSpawnParams;
-    this.spawn(p.cwd, this.lastSessionId || undefined, p.model, p.appendSystemPrompt, p.effort, p.skipPermissions);
+    this.spawn(p.cwd, this.lastSessionId || undefined, p.model, p.appendSystemPrompt, p.effort, p.skipPermissions, p.logName);
   }
 
   get running(): boolean {

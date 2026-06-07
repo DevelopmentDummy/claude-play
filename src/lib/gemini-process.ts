@@ -114,6 +114,7 @@ export class GeminiProcess extends EventEmitter<GeminiProcessEvents> {
     _appendSystemPrompt?: string,
     _effort?: string,
     _skipPermissions?: boolean,
+    _logName?: string,
   ): void {
     // Kill any existing process
     if (this.proc) {
