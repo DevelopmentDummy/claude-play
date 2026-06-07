@@ -678,9 +678,14 @@ export class SessionInstance {
    * Run session hooks/on-assistant.js if it exists.
    * Called right after AI stream completes and the assistant message is persisted.
    * Hook receives { variables, data, sessionDir, response } where response is the
-   * just-finished assistant message text. May return { variables?, data? } patches.
+   * just-finished assistant message text. May return { variables?, data?, fireAi?, dispatch? }:
+   *   - variables/data: JSON patches applied to session state
+   *   - fireAi: fire-and-forget background claude spawn
+   *   - dispatch: [{ to, task }] entries routed to named sub-agents
+   * After the hook (and even when no hook file exists), manifest-declared sub-agents
+   * with autoTrigger "onAssistantTurn" are dispatched with their default task.
    * Use case: static analysis of the AI response (style tic detection, etc.)
-   * that should surface in next turn's [STATE] header.
+   * that should surface in next turn's [STATE] header, plus sub-agent orchestration.
    */
   runAssistantHooks(responseText: string): void {
     const dir = this.getDir();
@@ -689,7 +694,7 @@ export class SessionInstance {
 
     // Track which sub-agents the hook explicitly dispatched this turn so the
     // declarative autoTrigger loop can skip them and avoid double-dispatch.
-    let explicitlyDispatched = new Set<string>();
+    const explicitlyDispatched = new Set<string>();
 
     if (fs.existsSync(hookPath)) {
       try {
@@ -775,10 +780,19 @@ export class SessionInstance {
 
     // Declarative auto-trigger: subs with autoTrigger "onAssistantTurn" fire each main turn,
     // unless the hook already dispatched them explicitly this turn.
-    for (const def of this.subAgents.autoTriggerDefs()) {
-      if (explicitlyDispatched.has(def.name)) continue;
-      const task = def.autoTriggerTask?.trim() || "최근 메인 턴을 반영해 네 담당 영역의 상태를 갱신하라.";
-      this.subAgents.dispatch(def.name, `${task}\n\n[직전 메인 응답]\n${responseText}`);
+    const autoDefs = this.subAgents.autoTriggerDefs();
+    if (autoDefs.length > 0) {
+      // Cap the appended response so a verbose main turn doesn't bloat every sub's input
+      // (computed once, reused across all autoTrigger subs). Tail kept — the end is most relevant.
+      const MAX_RESPONSE_CHARS = 4000;
+      const excerpt = responseText.length > MAX_RESPONSE_CHARS
+        ? `…(앞부분 생략)…\n${responseText.slice(-MAX_RESPONSE_CHARS)}`
+        : responseText;
+      for (const def of autoDefs) {
+        if (explicitlyDispatched.has(def.name)) continue;
+        const task = def.autoTriggerTask?.trim() || "최근 메인 턴을 반영해 네 담당 영역의 상태를 갱신하라.";
+        this.subAgents.dispatch(def.name, `${task}\n\n[직전 메인 응답]\n${excerpt}`);
+      }
     }
   }
 
