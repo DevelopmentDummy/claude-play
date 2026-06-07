@@ -702,6 +702,22 @@ export class SessionManager {
     this.copyToolSkills(agentsSkillsDest);
     this.copyToolSkills(kimiSkillsDest);
 
+    // Strip any sub-agent runtime artifacts copied from the persona template.
+    // subagents.json + subagents/*/instructions.md are intentionally copied above;
+    // .resume / sub.log / history.json are per-session runtime state and must not
+    // bleed in even if someone accidentally committed them to the persona dir.
+    try {
+      const subRoot = path.join(sessionDir, "subagents");
+      if (fs.existsSync(subRoot)) {
+        for (const entry of fs.readdirSync(subRoot)) {
+          for (const junk of [".resume", "sub.log", "history.json"]) {
+            const fp = path.join(subRoot, entry, junk);
+            try { if (fs.existsSync(fp)) fs.unlinkSync(fp); } catch { /* ignore */ }
+          }
+        }
+      }
+    } catch { /* ignore */ }
+
     return { id, ...meta, displayName: this.getPersonaDisplayName(personaName) };
   }
 
@@ -1492,6 +1508,10 @@ export class SessionManager {
       ".gemini/",
       ".kimi/",
       ".codex/",
+      "# Sub-agent runtime artifacts (session-only, must not publish)",
+      "subagents/*/.resume",
+      "subagents/*/sub.log",
+      "subagents/*/history.json",
       "",
     ].join("\n");
     fs.writeFileSync(path.join(dir, ".gitignore"), gitignoreContent, "utf-8");
