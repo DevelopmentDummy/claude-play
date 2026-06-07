@@ -1543,8 +1543,10 @@ server.registerTool(
       const idx = manifest.subagents.findIndex((s) => s && s.name === input.name);
       if (idx >= 0) manifest.subagents[idx] = { ...manifest.subagents[idx], ...entry };
       else manifest.subagents.push(entry);
-      if (manifest.subagents.length > 6) {
-        return fail(`Too many sub-agents (${manifest.subagents.length} > 6).`);
+      // Keep in sync with MAX_SUBAGENTS in src/lib/subagent-manifest.ts (can't import .ts here).
+      const maxSubs = Number(process.env.SUBAGENT_MAX) > 0 ? Number(process.env.SUBAGENT_MAX) : 6;
+      if (manifest.subagents.length > maxSubs) {
+        return fail(`Too many sub-agents (${manifest.subagents.length} > cap ${maxSubs}).`);
       }
       const subDir = path.join(sessionDir, "subagents", input.name);
       fs.mkdirSync(subDir, { recursive: true });
