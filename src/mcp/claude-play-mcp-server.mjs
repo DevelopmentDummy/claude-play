@@ -1411,6 +1411,62 @@ server.registerTool(
 );
 
 server.registerTool(
+  "bridge_delegate",
+  {
+    description:
+      "Delegate a task to a pre-configured sub-agent of THIS session (defined in subagents.json). " +
+      "Fire-and-forget: the sub works in the background and reports a summary back into your next turn " +
+      "via the event queue. Use for bookkeeping you don't want in your own context (panel variable updates, " +
+      "flow control, lore consistency checks).",
+    inputSchema: {
+      to: z.string().min(1).describe("Sub-agent name as declared in subagents.json"),
+      task: z.string().min(1).describe("The task instruction for the sub-agent"),
+    },
+  },
+  async ({ to, task }) => {
+    if (mode !== "session") return fail("bridge_delegate is only available in session mode");
+    try {
+      const data = await requestJson(
+        "POST",
+        `/api/sessions/${encodeURIComponent(sessionId)}/subagents/${encodeURIComponent(to)}/dispatch`,
+        { task },
+      );
+      return ok(data);
+    } catch (error) {
+      return fail(error);
+    }
+  }
+);
+
+server.registerTool(
+  "report_to_main",
+  {
+    description:
+      "Report a concise summary of what you changed back to the main narrator. " +
+      "Queues a [SUB:<from>] event delivered to the narrator on the next user turn. " +
+      "Call this when you (a sub-agent) finish a task. Keep the summary to one or two sentences.",
+    inputSchema: {
+      from: z.string().min(1).describe("Your own sub-agent name (as in subagents.json)"),
+      summary: z.string().min(1).describe("One or two concise sentences of what changed"),
+    },
+  },
+  async ({ from, summary }) => {
+    if (mode !== "session") return fail("report_to_main is only available in session mode");
+    try {
+      const header = `[SUB:${String(from).trim()}] ${String(summary).trim()}`;
+      const data = await requestJson(
+        "POST",
+        `/api/sessions/${encodeURIComponent(sessionId)}/events`,
+        { header },
+      );
+      return ok(data);
+    } catch (error) {
+      return fail(error);
+    }
+  }
+);
+
+server.registerTool(
   "bridge_restart_service",
   {
     description:
