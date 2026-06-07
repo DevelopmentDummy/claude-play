@@ -81,6 +81,14 @@
 - 서브 PID는 `data/.runtime/subagent-procs.json`에 영속화.
 - `server.ts` 부팅 시 `reapOrphanSubProcs()`가 고아 프로세스를 정리 — PID에 기록된 세션 디렉토리가 실제 프로세스 커맨드라인에 포함되어 있는지 검증 후 kill (PID recycling-safe; 비-Claude 프로세스에는 적용 안 됨).
 
+### 로그
+- 각 프로세스는 자기 로그를 씀: 메인은 `claude-stream.log`, 서브는 `subagents/{name}/sub.log` (cwd 공유로 인한 로그 충돌 방지). `ClaudeProcess.spawn(..., logName)` 7번째 인자로 제어.
+
+### v1 알려진 한계
+- **Claude provider 전용**: 서브의 역할은 spawn의 append-system-prompt로 전달되는데, Codex(baseInstructions)·Gemini/Kimi(cwd 지시문 파일)는 이 인자를 무시하므로 v1은 Claude만 지원. 저비용 모델(claude-haiku-4-5 등) 권장. 멀티 provider 서브(역할을 선두 메시지로 주입)는 후속 페이즈.
+- **sync 훅 ↔ async 서브 쓰기 레이스**: 메인의 `runAssistantHooks`는 `mutateSessionJsonSync`(동기, per-file 뮤텍스 우회)로 `variables.json`을 쓰고, 서브는 라우트 경유 `mutateSessionJson`(뮤텍스 적용)으로 쓴다. 같은 파일을 sync(메인)와 async(서브)가 거의 동시에 건드리면 atomic tmp+rename으로 파일 손상은 없으나 **lost update** 가능. 노출은 낮음(윈도우 짧음, 보통 disjoint 키). **회피책**: 매니페스트 `writes[]`(권고)에 맞춰 메인 훅과 서브가 서로 다른 변수/파일을 쓰도록 페르소나를 구성. 완전 해결(훅 변수 쓰기의 async 게이트 경유)은 후속 작업.
+- **서브의 narrator 컨텍스트 상속**: 서브는 cwd=세션 dir라 세션의 `CLAUDE.md`(narrator 지시문)를 컨텍스트로 로드하고 그 위에 sub-role을 append. 보통 world/character 맥락은 부기에 유용하지만, narrator CLAUDE.md가 매우 길면 저가형 서브가 서사로 흐를 수 있음 — role preamble("You are NOT the narrator")이 유일한 가드.
+
 ## Pipeline Scheduler
 
 - 세션별 폴링 루프로 `pipeline_tick()` 커스텀 도구를 주기적으로 실행
