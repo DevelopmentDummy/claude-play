@@ -1343,7 +1343,7 @@ research-dump.json
 **인자:**
 - `name`: 소문자-대시 고유 id (예: `combat-keeper`, `lore-checker`)
 - `role`: 한 줄 책임 설명
-- **provider·모델은 지정하지 않는다** — 서브는 세션을 연 provider/모델/effort를 자동으로 따라간다 (비용/인증이 세션과 일원화됨). 빌더는 `role`·`instructions`·`autoTrigger`만 정한다.
+- **provider·모델은 지정하지 않는다** — 서브는 세션을 연 provider/모델/effort를 자동으로 따라간다 (비용/인증이 세션과 일원화됨). 나머지 인자(`role`·`instructions`·`delegable`·`autoTrigger`·`autoTriggerTask`·`emitSummary`)는 아래 목록대로 정한다.
 - `instructions`: 서브의 시스템 프롬프트 본문 → `instructions.md`로 저장 (아래 작성 원칙)
 - `delegable`: 메인이 `bridge_delegate`로 호출 가능 여부 (기본 true)
 - `autoTrigger`: `"onAssistantTurn"`이면 매 메인 턴 후 자동 실행, `"none"`이면 훅/위임으로만 (기본 none)
@@ -1363,7 +1363,7 @@ research-dump.json
 3. **메인의 `bridge_delegate`** (능동): `session-instructions.md`에서 메인 AI가 필요시 `bridge_delegate({ to, task })`를 호출하도록 안내. 메인이 "이건 서브에게 맡긴다"를 능동 결정.
 
 ### ⚠️ 상태 충돌 주의 — `writes` 영역 분리
-서브와 메인 훅(`on-assistant.js`의 변수 패치)이 **같은 변수/파일**을 거의 동시에 쓰면 lost-update가 날 수 있다(동기 훅 vs 비동기 서브). **회피책:** 서브가 다루는 변수 네임스페이스를 메인 훅과 **겹치지 않게** 설계하고, 매니페스트 `writes`에 그 영역을 적어 의도를 문서화하라 (예: 서브는 `combat.*`만, 훅은 `style_*`만).
+서브와 메인 훅(`on-assistant.js`의 변수 패치)이 **같은 변수/파일**을 거의 동시에 쓰면 lost-update가 날 수 있다(동기 훅 vs 비동기 서브). **회피책:** 서브가 다루는 변수 네임스페이스를 메인 훅과 **겹치지 않게** 설계하고, 매니페스트 `writes`에 그 영역을 적어 의도를 문서화하라 (예: 서브는 `combat.*`만, 훅은 `style_*`만). 단, `writes`는 `bridge_define_subagent`의 도구 인자가 아니다 — 필요하면 `subagents.json`에 수동으로 추가하는 문서용(advisory) 필드이며, 코어가 강제하지 않는다.
 
 ### 예시
 ```jsonc
@@ -1375,8 +1375,7 @@ research-dump.json
   "delegable": true,
   "autoTrigger": "onAssistantTurn",
   "autoTriggerTask": "직전 메인 응답의 전투 전개를 반영해 combat.* 변수를 갱신하고 요약 보고하라",
-  "emitSummary": true,
-  "writes": ["combat.*"]
+  "emitSummary": true
 }
 ```
 `instructions.md` (요지): "너는 combat-keeper다. 내레이터가 아니며 사용자에게 말하지 않는다. 직전 전투 전개를 보고 `run_tool('engine', { action: 'resolve_combat', ... })`로 `combat.hp`/`combat.enemy_state`를 갱신한 뒤, `report_to_main({ from: 'combat-keeper', summary: '적 HP 80→55, 플레이어 반격 성공' })`로 보고하라."
