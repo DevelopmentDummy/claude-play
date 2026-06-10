@@ -38,6 +38,7 @@ export class SubAgentInstance {
   private resumeId: string | null = null;
   private destroyed = false;
   private pid: number | null = null;
+  private primed = false;
 
   constructor(def: SubAgentDef, sessionDir: string, sessionId: string) {
     this.def = def;
@@ -85,20 +86,17 @@ export class SubAgentInstance {
         this.resumeId = fs.readFileSync(this.resumePath(), "utf-8").trim() || null;
       }
     } catch { /* ignore */ }
-    const systemPrompt = buildSubSystemPrompt(this.def, this.readInstructions());
+    // A resumed conversation already contains the role leading-message from its first turn,
+    // so don't re-inject it. A fresh spawn primes on first dispatch (see dispatch()).
+    if (this.resumeId) this.primed = true;
+    // Role is delivered as a leading message on first dispatch — NOT as the appendSystemPrompt
+    // spawn arg (only ClaudeProcess applied that; leading-message is provider-uniform).
     // spawn(cwd, resumeId?, model?, appendSystemPrompt?, effort?, skipPermissions, logName)
-    // Only ClaudeProcess is used here (v1 restricts sub PROVIDERS to ["claude"]), and it is the
-    // one provider whose spawn actually applies the appended system prompt — which is how the sub
-    // receives its role. skipPermissions=true (correct for a background sub).
-    // logName is relative to sessionDir — each sub writes to its own subagents/<name>/sub.log
-    // so it never clobbers the main narrator's claude-stream.log.
-    // mkdirSync(subDir()) above already creates the directory; the mkdirSync in ClaudeProcess.spawn
-    // is belt-and-suspenders for safety.
     this._process.spawn(
       this.sessionDir,
       this.resumeId ?? undefined,
       this.def.model,
-      systemPrompt,
+      undefined,
       this.def.effort,
       true,
       path.join("subagents", this.name, "sub.log"),
@@ -112,7 +110,9 @@ export class SubAgentInstance {
     console.log(`[subagent:${this.sessionId}/${this.name}] started pid=${this.pid} provider=${this.def.provider}`);
   }
 
-  /** Dispatch a task to the sub. Spawns lazily if not yet running. Async-safe fire-and-forget. */
+  /** Dispatch a task to the sub. Spawns lazily if not yet running. Async-safe fire-and-forget.
+   *  On the first dispatch of a fresh conversation, the role contract is prepended as a
+   *  leading message (provider-uniform role delivery). */
   dispatch(task: string): void {
     if (this.destroyed) return;
     if (!this._process.isRunning()) this.start();
@@ -120,7 +120,13 @@ export class SubAgentInstance {
       console.warn(`[subagent:${this.sessionId}/${this.name}] dispatch skipped — not running`);
       return;
     }
-    this._process.send(task);
+    let payload = task;
+    if (!this.primed) {
+      const role = buildSubSystemPrompt(this.def, this.readInstructions());
+      payload = `${role}\n\n--- TASK ---\n${task}`;
+      this.primed = true;
+    }
+    this._process.send(payload);
   }
 
   destroy(): void {
