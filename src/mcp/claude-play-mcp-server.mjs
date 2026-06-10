@@ -1508,7 +1508,7 @@ server.registerTool(
       "Writes subagents.json (merging by name) and subagents/<name>/instructions.md in the persona dir. " +
       "Sub-agents run always-on alongside the main narrator at session time and handle delegated bookkeeping " +
       "(panel variable updates, flow control, lore consistency). A sub automatically runs on the SAME provider " +
-      "and model as the session it belongs to — you do not choose a provider or model here.",
+      "and model/effort as the session it belongs to — you do not choose a provider or model here.",
     inputSchema: {
       name: z.string().regex(/^[a-z0-9][a-z0-9-]{0,31}$/).describe("Unique sub-agent id (lowercase, dashes)"),
       role: z.string().min(1).describe("Short human description of the sub's responsibility"),

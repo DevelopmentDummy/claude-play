@@ -1343,7 +1343,7 @@ research-dump.json
 **인자:**
 - `name`: 소문자-대시 고유 id (예: `combat-keeper`, `lore-checker`)
 - `role`: 한 줄 책임 설명
-- `model`: Claude 모델 (저비용 권장 — 예: `claude-haiku-4-5`). **v1은 Claude provider 전용**이다 (다른 provider는 역할 프롬프트가 전달되지 않아 미지원)
+- **provider·모델은 지정하지 않는다** — 서브는 세션을 연 provider/모델/effort를 자동으로 따라간다 (비용/인증이 세션과 일원화됨). 빌더는 `role`·`instructions`·`autoTrigger`만 정한다.
 - `instructions`: 서브의 시스템 프롬프트 본문 → `instructions.md`로 저장 (아래 작성 원칙)
 - `delegable`: 메인이 `bridge_delegate`로 호출 가능 여부 (기본 true)
 - `autoTrigger`: `"onAssistantTurn"`이면 매 메인 턴 후 자동 실행, `"none"`이면 훅/위임으로만 (기본 none)
@@ -1371,8 +1371,6 @@ research-dump.json
 {
   "name": "combat-keeper",
   "role": "전투 상태/HP/적 행동 변수 관리",
-  "provider": "claude",
-  "model": "claude-haiku-4-5",
   "instructions": "instructions.md",
   "delegable": true,
   "autoTrigger": "onAssistantTurn",
