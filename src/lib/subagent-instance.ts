@@ -44,6 +44,10 @@ export class SubAgentInstance {
   private pid: number | null = null;
   /** True once the role leading-message has been injected (or resumed, so already present). */
   private primed = false;
+  /** True while a spawn's async handshake may still be in flight (codex/kimi JSON-RPC
+   *  init). Guards start() against respawning over — and thereby killing — a live
+   *  handshake. Cleared on process exit and once a dispatch observes readiness. */
+  private spawnInFlight = false;
 
   constructor(
     def: SubAgentDef,
@@ -64,14 +68,26 @@ export class SubAgentInstance {
     // Prevent unhandledRejection crashes if initialize/emit fires after destroy.
     this._process.on("error", (e: unknown) => {
       console.error(`[subagent:${sessionId}/${this.name}] process error:`, e);
+      // An error before the first conversation id was established means the role
+      // leading-message may not have been delivered (e.g. antigravity "not initialized",
+      // gemini spawn-on-send failure) — re-prime on the next dispatch. Conservative:
+      // a spurious pre-sessionId error just causes a harmless duplicate role injection.
+      if (!this.resumeId) this.primed = false;
     });
     this._process.on("sessionId", (id: string) => {
+      // Kimi's id discovery is a cwd+mtime heuristic that can pick up the MAIN
+      // narrator's conversation in the shared cwd. Never capture/persist it for a
+      // kimi sub — the sub starts a fresh conversation each session open and
+      // re-primes its role (primed = !!resumeId stays false), same tradeoff as a
+      // provider switch.
+      if (this.provider === "kimi") return;
       this.resumeId = id;
       try { fs.writeFileSync(this.resumePath(), id, "utf-8"); } catch { /* ignore */ }
     });
     // Provider processes emit "exit" on process close.
     // destroy() also unregisters explicitly, so a missed "exit" is harmless (idempotent).
     this._process.on("exit", () => {
+      this.spawnInFlight = false;
       if (this.pid) unregisterSubProc(this.pid);
     });
   }
@@ -94,13 +110,18 @@ export class SubAgentInstance {
 
   isRunning(): boolean { return this._process.isRunning(); }
 
-  /** Spawn the sub's provider process in the shared session dir. Idempotent: no-op if running. */
+  /** Spawn the sub's provider process in the shared session dir. Idempotent: no-op if
+   *  already running OR while a spawned handshake is still in flight (respawning would
+   *  kill the handshaking process). After a crash, the "exit" listener clears
+   *  spawnInFlight so a later dispatch can restart. */
   start(): void {
-    if (this.destroyed || this._process.isRunning()) return;
+    if (this.destroyed || this.spawnInFlight || this._process.isRunning()) return;
     fs.mkdirSync(this.subDir(), { recursive: true });
-    // Resume previous provider session id when available (intra-session continuity across restart).
+    // Resume previous provider session id when available (intra-session continuity across
+    // restart). Kimi is excluded: its id is never captured (see "sessionId" listener), and
+    // a stale .resume-kimi from before that fix could point at the MAIN narrator's conversation.
     try {
-      if (!this.resumeId && fs.existsSync(this.resumePath())) {
+      if (this.provider !== "kimi" && !this.resumeId && fs.existsSync(this.resumePath())) {
         this.resumeId = fs.readFileSync(this.resumePath(), "utf-8").trim() || null;
       }
     } catch { /* ignore */ }
@@ -112,6 +133,7 @@ export class SubAgentInstance {
     // Role is delivered as a leading message on first dispatch — NOT as the appendSystemPrompt
     // spawn arg (only ClaudeProcess applied that; leading-message is provider-uniform).
     // spawn(cwd, resumeId?, model?, appendSystemPrompt?, effort?, skipPermissions, logName)
+    this.spawnInFlight = true;
     this._process.spawn(
       this.sessionDir,
       this.resumeId ?? undefined,
@@ -130,28 +152,40 @@ export class SubAgentInstance {
     console.log(`[subagent:${this.sessionId}/${this.name}] started pid=${this.pid} provider=${this.provider}`);
   }
 
-  /** Dispatch a task to the sub. Spawns lazily if not yet running. Async-safe fire-and-forget.
-   *  On the first dispatch of a fresh conversation, the role contract is prepended as a
-   *  leading message (provider-uniform role delivery). */
+  /** Dispatch a task to the sub. Spawns lazily if not yet running, then gates the send
+   *  on provider readiness (waitForReady) instead of dropping the task — codex/kimi have
+   *  an async JSON-RPC handshake during which isRunning() is still false. Fire-and-forget:
+   *  rapid dispatches may interleave (waitForReady resolves immediately when already
+   *  ready, so steady-state ordering is preserved in practice). On the first dispatch of
+   *  a fresh conversation, the role contract is prepended as a leading message
+   *  (provider-uniform role delivery). */
   dispatch(task: string): void {
     if (this.destroyed) return;
-    if (!this._process.isRunning()) this.start();
-    if (!this._process.isRunning()) {
-      console.warn(`[subagent:${this.sessionId}/${this.name}] dispatch skipped — not running`);
-      return;
-    }
-    let payload = task;
-    if (!this.primed) {
-      const role = buildSubSystemPrompt(this.def, this.readInstructions());
-      // "--- TASK ---" is a visual separator between the role preamble and the per-turn task.
-      payload = `${role}\n\n--- TASK ---\n${task}`;
-      this.primed = true;
-    }
-    this._process.send(payload);
+    this.start(); // no-op when already running or a handshake is in flight
+    void this._process.waitForReady(20_000)
+      .then((ready) => {
+        if (this.destroyed) return;
+        // Handshake settled (ready or not) — allow a later dispatch to restart if needed.
+        this.spawnInFlight = false;
+        if (!ready || !this._process.isRunning()) {
+          console.warn(`[subagent:${this.sessionId}/${this.name}] dispatch skipped — provider not ready`);
+          return;
+        }
+        let payload = task;
+        if (!this.primed) {
+          const role = buildSubSystemPrompt(this.def, this.readInstructions());
+          // "--- TASK ---" is a visual separator between the role preamble and the per-turn task.
+          payload = `${role}\n\n--- TASK ---\n${task}`;
+          this.primed = true;
+        }
+        this._process.send(payload);
+      })
+      .catch((err) => console.warn(`[subagent:${this.sessionId}/${this.name}] dispatch failed:`, err));
   }
 
   destroy(): void {
     this.destroyed = true;
+    this.spawnInFlight = false;
     try { this._process.kill(); } catch { /* ignore */ }
     try { this._process.removeAllListeners(); } catch { /* ignore */ }
     if (this.pid) unregisterSubProc(this.pid);

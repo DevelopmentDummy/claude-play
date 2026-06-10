@@ -68,6 +68,11 @@ export class KimiProcess extends EventEmitter<KimiProcessEvents> {
   private appendSystemPrompt = "";
   private spawnStartedAt = 0;
   private initialized = false;
+  /** Session id resolved for the CURRENT spawn. findKimiSessionId() is a cwd+mtime
+   *  heuristic, and multiple KimiProcess instances (main narrator + sub-agents) can
+   *  share the same cwd — a later scan may pick up the OTHER process's conversation.
+   *  Once resolved (or seeded from a resumeId), we stick to it until the next spawn(). */
+  private resolvedSessionId: string | null = null;
   private requestId = 0;
   private pendingRequests = new Map<string, PendingRequest>();
 
@@ -100,6 +105,9 @@ export class KimiProcess extends EventEmitter<KimiProcessEvents> {
     this.effort = _effort;
     this.appendSystemPrompt = (_appendSystemPrompt || "").trim();
     this.spawnStartedAt = Date.now() - 1000;
+    // Reset stickiness per spawn: a fresh spawn legitimately creates a new conversation.
+    // When resuming, the resumeId IS the conversation id — treat it as resolved up front.
+    this.resolvedSessionId = resumeId || null;
     this.initialized = false;
     this.requestId = 0;
     this.pendingRequests.clear();
@@ -521,6 +529,16 @@ export class KimiProcess extends EventEmitter<KimiProcessEvents> {
   private emitKimiSessionId(): void {
     const sessionId = this.findKimiSessionId();
     if (!sessionId) return;
+    // Sticky per spawn: once an id is resolved for this spawn, ignore a DIFFERENT id
+    // from a later heuristic scan — it may belong to another KimiProcess sharing this
+    // cwd (main narrator vs sub-agent in the same session dir).
+    if (this.resolvedSessionId && sessionId !== this.resolvedSessionId) {
+      if (this.logStream) {
+        this.logStream.write(`[session] ignored heuristic id ${sessionId} (sticky: ${this.resolvedSessionId})\n`);
+      }
+      return;
+    }
+    this.resolvedSessionId = sessionId;
     if (this.logStream) this.logStream.write(`[session] ${sessionId}\n`);
     this.emit("sessionId", sessionId);
   }

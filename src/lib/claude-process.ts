@@ -236,6 +236,7 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
     // subdirs like subagents/<name>/ when logName contains a path segment).
     fs.mkdirSync(path.dirname(logPath), { recursive: true });
     this.logStream = fs.createWriteStream(logPath, { flags: "a" });
+    this.logStream.on("error", () => { this.logStream = null; });
     this.logStream.write(`\n--- spawn ${new Date().toISOString()} args: ${args.join(" ")} ---\n`);
 
     this.proc = spawn("claude", args, {
