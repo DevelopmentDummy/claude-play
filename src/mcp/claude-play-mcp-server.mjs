@@ -1507,12 +1507,11 @@ server.registerTool(
       "[Builder mode] Define or update a specialized sub-agent for this persona. " +
       "Writes subagents.json (merging by name) and subagents/<name>/instructions.md in the persona dir. " +
       "Sub-agents run always-on alongside the main narrator at session time and handle delegated bookkeeping " +
-      "(panel variable updates, flow control, lore consistency). v1: Claude provider only — pick a cheap model " +
-      "like claude-haiku-4-5 for low-cost specialized subs.",
+      "(panel variable updates, flow control, lore consistency). A sub automatically runs on the SAME provider " +
+      "and model as the session it belongs to — you do not choose a provider or model here.",
     inputSchema: {
       name: z.string().regex(/^[a-z0-9][a-z0-9-]{0,31}$/).describe("Unique sub-agent id (lowercase, dashes)"),
       role: z.string().min(1).describe("Short human description of the sub's responsibility"),
-      model: z.string().optional().describe("Claude model id (e.g. claude-haiku-4-5). Optional → provider default."),
       instructions: z.string().min(1).describe("Full system-prompt body for the sub (saved to instructions.md)"),
       delegable: z.boolean().optional().describe("Callable via bridge_delegate by the main narrator (default true)"),
       autoTrigger: z.enum(["onAssistantTurn", "none"]).optional().describe("Auto-dispatch every main turn, or 'none' (hook-controlled). Default none."),
@@ -1532,8 +1531,6 @@ server.registerTool(
       const entry = {
         name: input.name,
         role: input.role,
-        provider: "claude",
-        ...(input.model ? { model: input.model } : {}),
         instructions: "instructions.md",
         delegable: input.delegable !== false,
         autoTrigger: input.autoTrigger || "none",
