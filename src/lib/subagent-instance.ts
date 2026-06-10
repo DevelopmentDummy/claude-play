@@ -38,6 +38,7 @@ export class SubAgentInstance {
   private resumeId: string | null = null;
   private destroyed = false;
   private pid: number | null = null;
+  /** True once the role leading-message has been injected (or resumed, so already present). */
   private primed = false;
 
   constructor(def: SubAgentDef, sessionDir: string, sessionId: string) {
@@ -86,9 +87,11 @@ export class SubAgentInstance {
         this.resumeId = fs.readFileSync(this.resumePath(), "utf-8").trim() || null;
       }
     } catch { /* ignore */ }
-    // A resumed conversation already contains the role leading-message from its first turn,
-    // so don't re-inject it. A fresh spawn primes on first dispatch (see dispatch()).
-    if (this.resumeId) this.primed = true;
+    // Derive primed from actual resume state on every (re)start: a resumed conversation already
+    // contains the role leading-message from its first turn (don't re-inject), while a fresh
+    // conversation must re-prime on its first dispatch (see dispatch()) — even if a previous
+    // incarnation primed and then died before persisting a resume id.
+    this.primed = !!this.resumeId;
     // Role is delivered as a leading message on first dispatch — NOT as the appendSystemPrompt
     // spawn arg (only ClaudeProcess applied that; leading-message is provider-uniform).
     // spawn(cwd, resumeId?, model?, appendSystemPrompt?, effort?, skipPermissions, logName)
@@ -123,6 +126,7 @@ export class SubAgentInstance {
     let payload = task;
     if (!this.primed) {
       const role = buildSubSystemPrompt(this.def, this.readInstructions());
+      // "--- TASK ---" is a visual separator between the role preamble and the per-turn task.
       payload = `${role}\n\n--- TASK ---\n${task}`;
       this.primed = true;
     }
