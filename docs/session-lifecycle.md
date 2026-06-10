@@ -34,13 +34,13 @@
 
 ## Sub-Agents (always-on)
 
-페르소나 디렉토리의 `subagents.json` 매니페스트로 정의된 **상시 상주 서브에이전트** 기능 (v1).
+페르소나 디렉토리의 `subagents.json` 매니페스트로 정의된 **상시 상주 서브에이전트** 기능 (v2).
 
 ### Spawn & Destroy
 - 세션 **Open** 시 `SessionInstance.subAgents`(`SubAgentManager`)가 매니페스트를 읽어 각 서브를 `SubAgentInstance`로 spawn. `SubAgentInstance`는 provider 프로세스의 경량 래퍼 — PanelEngine 없음.
-- 서브는 세션 디렉토리를 cwd로 공유 → MCP 도구(`run_tool` 등)를 통해 동일 변수/데이터에 직접 접근 가능.
+- **v2: 서브는 세션을 연 provider·모델·effort를 자동 상속한다.** Open 라우트가 세션의 이미 결정된 값으로 `SubAgentManager.spawnAll(provider, model, effort)`를 호출. 재오픈 시 런타임이 바뀌면 기존 서브를 destroyAll하고 새 provider로 재생성.
+- 서브는 세션 디렉토리를 cwd로 공유 → MCP 도구(`run_tool` 등)를 통해 동일 변수/데이터에 직접 접근, MCP 설정도 자동 상속.
 - 세션 **destroy** 시 (`SessionInstance.destroy()`) `SubAgentManager.destroyAll()`로 cascade 종료.
-- **v1: Claude provider 전용** (appended system prompt로 role 주입). Codex/Gemini/Kimi/Antigravity 서브 지원은 추후 단계로 연기.
 
 ### Dispatch 경로 (3가지)
 1. **Hook-driven**: `hooks/on-assistant.js`가 `dispatch: [{ to, task }]`를 반환 → `SessionInstance.runAssistantHooks()`에서 `SubAgentManager.dispatch(name, task)` 호출.
@@ -59,9 +59,6 @@
   "subagents": [{
     "name": "tracker",
     "role": "상태 추적 역할 설명",
-    "provider": "claude",
-    "model": "claude-haiku-4-5",
-    "effort": "low",
     "instructions": "instructions.md",
     "delegable": true,
     "autoTrigger": "onAssistantTurn",
@@ -73,21 +70,27 @@
 ```
 서브 수 상한: `SUBAGENT_MAX` 환경변수 (기본 6).
 
+매니페스트의 `provider`/`model`/`effort` 필드는 하위 호환을 위해 파싱은 유지하되 런타임에서 무시된다 (v2부터 세션 값이 적용). `bridge_define_subagent` MCP 도구도 이 필드들을 더 이상 기록하지 않는다.
+
 ### 파일 레이아웃
 - `subagents/{name}/instructions.md` — role prompt 템플릿 (persona dir에서 session dir로 복사).
-- `subagents/{name}/.resume` — runtime artifact (provider session id for resume). **gitignored, mirrored/published 대상 아님**.
+- `subagents/{name}/.resume-<provider>` — runtime artifact (provider session id for resume). provider별로 분리되어 provider 전환 시 기존 파일은 무시되고 role이 재주입됨. **gitignored, mirrored/published 대상 아님**.
 
 ### PID 레지스트리
 - 서브 PID는 `data/.runtime/subagent-procs.json`에 영속화.
 - `server.ts` 부팅 시 `reapOrphanSubProcs()`가 고아 프로세스를 정리 — PID에 기록된 세션 디렉토리가 실제 프로세스 커맨드라인에 포함되어 있는지 검증 후 kill (PID recycling-safe; 비-Claude 프로세스에는 적용 안 됨).
 
 ### 로그
-- 각 프로세스는 자기 로그를 씀: 메인은 `claude-stream.log`, 서브는 `subagents/{name}/sub.log` (cwd 공유로 인한 로그 충돌 방지). `ClaudeProcess.spawn(..., logName)` 7번째 인자로 제어.
+- 각 프로세스는 자기 로그를 씀: 메인은 `<provider>-stream.log`(예: `claude-stream.log`), 서브는 `subagents/{name}/sub.log` (cwd 공유로 인한 로그 충돌 방지). 모든 5개 provider의 spawn이 `logName` 인자를 통해 로그 경로를 제어.
 
-### v1 알려진 한계
-- **Claude provider 전용**: 서브의 역할은 spawn의 append-system-prompt로 전달되는데, Codex(baseInstructions)·Gemini/Kimi(cwd 지시문 파일)는 이 인자를 무시하므로 v1은 Claude만 지원. 저비용 모델(claude-haiku-4-5 등) 권장. 멀티 provider 서브(역할을 선두 메시지로 주입)는 후속 페이즈.
+### Role 주입 (leading-message)
+- v2에서 서브의 role은 **spawn의 append-system-prompt가 아니라 서브 대화의 첫 번째 디스패치 메시지(leading-message)로 주입**된다. `instructions.md` 내용이 실제 태스크 앞에 prepend되어 전송(`primed` 플래그 관리). resume 재오픈 시 이미 primed된 서브는 재주입 생략. 이 경로는 5개 provider가 단일 코드로 처리한다.
+
+### v2 알려진 한계
+- ⓐ **leading-message 역할 고정의 약점**: 시스템 프롬프트보다 역할 고정력이 약하다. 장기 세션에서 컨텍스트 compaction이 발생하면 leading-message가 희석될 수 있음 — 주기적 재주입은 추후 작업.
+- ⓑ **서브의 narrator 컨텍스트 상속**: 서브는 cwd=세션 dir라 메인 narrator의 지시문 파일(`CLAUDE.md`/`GEMINI.md`/`AGENTS.md`)을 기본 컨텍스트로 로드한다. 보통 world/character 맥락은 부기에 유용하지만, narrator 지시문이 매우 길면 서브가 서사로 흐를 수 있음 — role leading-message의 preamble("You are NOT the narrator")이 유일한 가드.
+- ⓒ **비-Claude 서브의 cmdline 기반 고아 reap 미지원**: PID 레지스트리의 정상 등록·해제 경로는 모든 provider에서 동작한다. 단, `reapOrphanSubProcs()`가 PID의 커맨드라인에서 세션 디렉토리를 검증하는 로직은 Claude 프로세스 외에는 적용되지 않는다. Antigravity 서브는 `agy-procs.json` 레지스트리 + `killAgyForDir`로 별도 reap됨.
 - **sync 훅 ↔ async 서브 쓰기 레이스**: 메인의 `runAssistantHooks`는 `mutateSessionJsonSync`(동기, per-file 뮤텍스 우회)로 `variables.json`을 쓰고, 서브는 라우트 경유 `mutateSessionJson`(뮤텍스 적용)으로 쓴다. 같은 파일을 sync(메인)와 async(서브)가 거의 동시에 건드리면 atomic tmp+rename으로 파일 손상은 없으나 **lost update** 가능. 노출은 낮음(윈도우 짧음, 보통 disjoint 키). **회피책**: 매니페스트 `writes[]`(권고)에 맞춰 메인 훅과 서브가 서로 다른 변수/파일을 쓰도록 페르소나를 구성. 완전 해결(훅 변수 쓰기의 async 게이트 경유)은 후속 작업.
-- **서브의 narrator 컨텍스트 상속**: 서브는 cwd=세션 dir라 세션의 `CLAUDE.md`(narrator 지시문)를 컨텍스트로 로드하고 그 위에 sub-role을 append. 보통 world/character 맥락은 부기에 유용하지만, narrator CLAUDE.md가 매우 길면 저가형 서브가 서사로 흐를 수 있음 — role preamble("You are NOT the narrator")이 유일한 가드.
 
 ## Pipeline Scheduler
 
