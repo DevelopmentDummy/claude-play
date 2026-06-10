@@ -34,6 +34,7 @@ export class GeminiProcess extends EventEmitter<GeminiProcessEvents> {
   private proc: ChildProcess | null = null;
   private buffer = "";
   private logStream: fs.WriteStream | null = null;
+  private logName = "gemini-stream.log";
 
   // Stored spawn parameters
   private spawnCwd = "";
@@ -114,7 +115,7 @@ export class GeminiProcess extends EventEmitter<GeminiProcessEvents> {
     _appendSystemPrompt?: string,
     _effort?: string,
     _skipPermissions?: boolean,
-    _logName?: string,
+    logName?: string,
   ): void {
     // Kill any existing process
     if (this.proc) {
@@ -132,7 +133,8 @@ export class GeminiProcess extends EventEmitter<GeminiProcessEvents> {
 
     // Start log stream
     if (this.logStream) { try { this.logStream.end(); } catch { /* */ } }
-    const logPath = path.join(cwd, "gemini-stream.log");
+    if (logName) this.logName = logName;
+    const logPath = path.join(cwd, this.logName);
     this.logStream = fs.createWriteStream(logPath, { flags: "a" });
     this.logStream.write(
       `\n--- spawn ${new Date().toISOString()} model: ${model || "default"} resumeId: ${resumeId || "new"} ---\n`,

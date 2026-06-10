@@ -24,6 +24,7 @@ export class CodexProcess extends EventEmitter<CodexProcessEvents> {
   private proc: ChildProcess | null = null;
   private buffer = "";
   private logStream: fs.WriteStream | null = null;
+  private logName = "codex-stream.log";
 
   private cwd = "";
   private threadId: string | null = null;
@@ -100,7 +101,7 @@ export class CodexProcess extends EventEmitter<CodexProcessEvents> {
   /**
    * Start the codex app-server process and perform the initialize handshake.
    */
-  spawn(cwd: string, resumeId?: string, model?: string, _appendSystemPrompt?: string, effort?: string, _skipPermissions?: boolean, _logName?: string): void {
+  spawn(cwd: string, resumeId?: string, model?: string, _appendSystemPrompt?: string, effort?: string, _skipPermissions?: boolean, logName?: string): void {
     if (this.proc) {
       this.kill();
     }
@@ -118,7 +119,8 @@ export class CodexProcess extends EventEmitter<CodexProcessEvents> {
 
     // Start log stream
     if (this.logStream) { try { this.logStream.end(); } catch { /* */ } }
-    const logPath = path.join(cwd, "codex-stream.log");
+    if (logName) this.logName = logName;
+    const logPath = path.join(cwd, this.logName);
     this.logStream = fs.createWriteStream(logPath, { flags: "a" });
     this.logStream.write(`\n--- app-server init ${new Date().toISOString()} model: ${model || "default"} threadId: ${resumeId || "new"} ---\n`);
 

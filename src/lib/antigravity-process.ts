@@ -36,6 +36,7 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
    *  뽑아 보내면 "unknown model key 37"로 실패한다. 미해소 시 null → requestedModel 생략. */
   private modelKey: string | null = null;
   private logStream: fs.WriteStream | null = null;
+  private logName = "antigravity-stream.log";
   private polling = false;
   private lastSeenMessageCount = 0;
   private lastSeenTailLength = 0;
@@ -58,7 +59,7 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
     appendSystemPrompt?: string,
     _effort?: string,
     _skipPermissions?: boolean,
-    _logName?: string,
+    logName?: string,
   ): void {
     if (this.agyPid) this.kill();
 
@@ -71,6 +72,7 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
 
     this.cleanupLegacyGlobalSettings();
     this.ensureAntigravitySettings(cwd);
+    if (logName) this.logName = logName;
     this.openLogStream(cwd);
 
     // agy.exe는 bubbletea TUI 라이브러리 기반 — CONIN$/CONOUT$ console handle 필수.
@@ -884,7 +886,7 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
 
   private openLogStream(cwd: string): void {
     if (this.logStream) { try { this.logStream.end(); } catch { /* */ } }
-    const logPath = path.join(cwd, "antigravity-stream.log");
+    const logPath = path.join(cwd, this.logName);
     try {
       const stream = fs.createWriteStream(logPath, { flags: "a" });
       stream.on("error", () => {

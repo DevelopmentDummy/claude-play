@@ -60,6 +60,7 @@ export class KimiProcess extends EventEmitter<KimiProcessEvents> {
   private proc: ChildProcess | null = null;
   private buffer = "";
   private logStream: fs.WriteStream | null = null;
+  private logName = "kimi-stream.log";
 
   private cwd = "";
   private model: string | undefined;
@@ -88,7 +89,7 @@ export class KimiProcess extends EventEmitter<KimiProcessEvents> {
     _appendSystemPrompt?: string,
     _effort?: string,
     _skipPermissions?: boolean,
-    _logName?: string,
+    logName?: string,
   ): void {
     if (this.proc) {
       this.kill();
@@ -104,7 +105,8 @@ export class KimiProcess extends EventEmitter<KimiProcessEvents> {
     this.pendingRequests.clear();
 
     if (this.logStream) { try { this.logStream.end(); } catch { /* */ } }
-    const logPath = path.join(cwd, "kimi-stream.log");
+    if (logName) this.logName = logName;
+    const logPath = path.join(cwd, this.logName);
     this.logStream = fs.createWriteStream(logPath, { flags: "a" });
     this.logStream.write(
       `\n--- wire init ${new Date().toISOString()} model: ${model || "default"} resumeId: ${resumeId || "same cwd"} ---\n`,
