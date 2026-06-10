@@ -23,6 +23,9 @@ const GITIGNORE_ENTRIES = [
   ".gemini/",
   ".kimi/",
   ".codex/",
+  "subagents/*/.resume*",
+  "subagents/*/sub.log",
+  "subagents/*/history.json",
 ];
 
 /** Run git command in persona directory */
