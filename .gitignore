@@ -53,3 +53,9 @@ docs/superpowers/
 
 # Antigravity bridge-owned isolated profile (per-spawn settings/conversations/brain)
 data/.agy-profile/
+
+# Runtime process registries (agy/subagent PID tracking)
+data/.runtime/
+
+# Throwaway local test scripts
+scratch/
