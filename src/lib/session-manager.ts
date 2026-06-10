@@ -704,15 +704,20 @@ export class SessionManager {
 
     // Strip any sub-agent runtime artifacts copied from the persona template.
     // subagents.json + subagents/*/instructions.md are intentionally copied above;
-    // .resume / sub.log / history.json are per-session runtime state and must not
+    // .resume* / sub.log / history.json are per-session runtime state and must not
     // bleed in even if someone accidentally committed them to the persona dir.
+    // (.resume is a prefix match: files are provider-namespaced, e.g. .resume-claude.)
     try {
       const subRoot = path.join(sessionDir, "subagents");
       if (fs.existsSync(subRoot)) {
         for (const entry of fs.readdirSync(subRoot)) {
-          for (const junk of [".resume", "sub.log", "history.json"]) {
-            const fp = path.join(subRoot, entry, junk);
-            try { if (fs.existsSync(fp)) fs.unlinkSync(fp); } catch { /* ignore */ }
+          const subDir = path.join(subRoot, entry);
+          let files: string[] = [];
+          try { files = fs.readdirSync(subDir); } catch { continue; /* not a directory */ }
+          for (const file of files) {
+            if (file.startsWith(".resume") || file === "sub.log" || file === "history.json") {
+              try { fs.unlinkSync(path.join(subDir, file)); } catch { /* ignore */ }
+            }
           }
         }
       }
@@ -1509,7 +1514,7 @@ export class SessionManager {
       ".kimi/",
       ".codex/",
       "# Sub-agent runtime artifacts (session-only, must not publish)",
-      "subagents/*/.resume",
+      "subagents/*/.resume*",
       "subagents/*/sub.log",
       "subagents/*/history.json",
       "",
