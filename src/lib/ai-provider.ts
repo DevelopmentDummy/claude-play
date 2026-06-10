@@ -156,6 +156,13 @@ function buildModelGroups(): ModelGroup[] {
         { value: "opus[1m]:xhigh", label: "Opus 1M XHigh" },
         { value: "opus[1m]:max", label: "Opus 1M Max" },
         { value: "opus[1m]:ultracode", label: "Opus 1M Ultracode" },
+        // "fable" alias is not accepted by the CLI yet — full id required ([1m] suffix works)
+        { value: "claude-fable-5[1m]", label: "Fable 1M" },
+        { value: "claude-fable-5[1m]:medium", label: "Fable 1M Medium" },
+        { value: "claude-fable-5[1m]:high", label: "Fable 1M High" },
+        { value: "claude-fable-5[1m]:xhigh", label: "Fable 1M XHigh" },
+        { value: "claude-fable-5[1m]:max", label: "Fable 1M Max" },
+        { value: "claude-fable-5[1m]:ultracode", label: "Fable 1M Ultracode" },
       ],
     },
     {
