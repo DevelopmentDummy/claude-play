@@ -77,7 +77,10 @@ export class SubAgentInstance {
   }
 
   private subDir(): string { return path.join(this.sessionDir, "subagents", this.name); }
-  private resumePath(): string { return path.join(this.subDir(), ".resume"); }
+  /** Resume file is provider-namespaced: a conversation id is only meaningful to the
+   *  provider that issued it. On a session provider switch the old file is simply
+   *  ignored — the sub starts a fresh conversation and re-primes its role. */
+  private resumePath(): string { return path.join(this.subDir(), `.resume-${this.provider}`); }
 
   private readInstructions(): string {
     const fp = path.join(this.subDir(), this.def.instructions);
