@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { AIProcess, createProcess } from "./ai-process-factory";
+import { AIProvider } from "./ai-provider";
 import { SubAgentDef } from "./subagent-manifest";
 import { registerSubProc, unregisterSubProc } from "./subagent-registry";
 
@@ -26,12 +27,15 @@ function buildSubSystemPrompt(def: SubAgentDef, instructions: string): string {
 /** Internal shape shared by ClaudeProcess / CodexProcess / GeminiProcess / KimiProcess.
  *  All four providers expose a `proc` field (ChildProcess | null) internally.
  *  There is no public pid getter, so we access it via a structural cast.
- *  AntigravityProcess is excluded from sub-agents entirely (see subagent-manifest.ts). */
+ *  AntigravityProcess tracks its pid as `agyPid` (not `proc`), so this cast yields undefined for it. */
 type ProcCarrier = { proc?: { pid?: number } | null };
 
 export class SubAgentInstance {
   readonly name: string;
   readonly def: SubAgentDef;
+  readonly provider: AIProvider;
+  readonly model?: string;
+  readonly effort?: string;
   private readonly sessionDir: string;
   private readonly sessionId: string;
   private _process: AIProcess;
@@ -41,12 +45,22 @@ export class SubAgentInstance {
   /** True once the role leading-message has been injected (or resumed, so already present). */
   private primed = false;
 
-  constructor(def: SubAgentDef, sessionDir: string, sessionId: string) {
+  constructor(
+    def: SubAgentDef,
+    sessionDir: string,
+    sessionId: string,
+    provider: AIProvider,
+    model?: string,
+    effort?: string,
+  ) {
     this.def = def;
     this.name = def.name;
     this.sessionDir = sessionDir;
     this.sessionId = sessionId;
-    this._process = createProcess(def.provider);
+    this.provider = provider;
+    this.model = model;
+    this.effort = effort;
+    this._process = createProcess(provider);
     // Prevent unhandledRejection crashes if initialize/emit fires after destroy.
     this._process.on("error", (e: unknown) => {
       console.error(`[subagent:${sessionId}/${this.name}] process error:`, e);
@@ -55,7 +69,7 @@ export class SubAgentInstance {
       this.resumeId = id;
       try { fs.writeFileSync(this.resumePath(), id, "utf-8"); } catch { /* ignore */ }
     });
-    // ClaudeProcess emits "exit" on process close (v1 restricts subs to Claude).
+    // Provider processes emit "exit" on process close.
     // destroy() also unregisters explicitly, so a missed "exit" is harmless (idempotent).
     this._process.on("exit", () => {
       if (this.pid) unregisterSubProc(this.pid);
@@ -98,19 +112,19 @@ export class SubAgentInstance {
     this._process.spawn(
       this.sessionDir,
       this.resumeId ?? undefined,
-      this.def.model,
+      this.model,
       undefined,
-      this.def.effort,
+      this.effort,
       true,
       path.join("subagents", this.name, "sub.log"),
     );
-    // `proc` is private on all four supported provider classes; no public pid getter exists.
-    // Accessing via structural cast is safe here: all four classes expose `proc?.pid` at
-    // runtime immediately after spawn(). AntigravityProcess (which uses `agyPid` instead)
-    // is excluded from PROVIDERS in subagent-manifest.ts.
+    // `proc` is private on the pipe-based provider classes; no public pid getter exists.
+    // Accessing via structural cast is safe: those classes expose `proc?.pid` at runtime
+    // immediately after spawn(). AntigravityProcess uses `agyPid` instead, so this yields
+    // null for antigravity subs — they are reaped via the agy-procs.json registry instead.
     this.pid = (this._process as unknown as ProcCarrier).proc?.pid ?? null;
     if (this.pid) registerSubProc(this.pid, this.sessionId, this.name, this.sessionDir);
-    console.log(`[subagent:${this.sessionId}/${this.name}] started pid=${this.pid} provider=${this.def.provider}`);
+    console.log(`[subagent:${this.sessionId}/${this.name}] started pid=${this.pid} provider=${this.provider}`);
   }
 
   /** Dispatch a task to the sub. Spawns lazily if not yet running. Async-safe fire-and-forget.

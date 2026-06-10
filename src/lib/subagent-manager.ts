@@ -1,5 +1,6 @@
 import { SubAgentInstance } from "./subagent-instance";
 import { loadSubAgentManifest, SubAgentDef } from "./subagent-manifest";
+import { AIProvider } from "./ai-provider";
 
 /** Owns the sub-agent instances for one session. Created and held by the parent
  *  SessionInstance; lifecycle is tied to the parent (spawnAll on open, destroyAll
@@ -15,10 +16,12 @@ export class SubAgentManager {
     this.getDir = getDir;
   }
 
-  /** Read the manifest and spawn every declared sub-agent. Safe to call again
-   *  (re-open) — already-running subs are left as-is. Manifest errors are logged,
-   *  never thrown into the open flow. */
-  spawnAll(): void {
+  /** Read the manifest and spawn every declared sub-agent with the SESSION's
+   *  provider/model/effort (subs follow the session, not the manifest). Safe to call
+   *  again (re-open): already-running subs with the same runtime are left as-is; if the
+   *  session provider/model/effort changed, the cached sub is destroyed and recreated.
+   *  Manifest errors are logged, never thrown into the open flow. */
+  spawnAll(provider: AIProvider, model?: string, effort?: string): void {
     const dir = this.getDir();
     if (!dir) return;
     let defs: SubAgentDef[] = [];
@@ -31,8 +34,13 @@ export class SubAgentManager {
     for (const def of defs) {
       this.defs.set(def.name, def);
       let inst = this.subs.get(def.name);
+      if (inst && (inst.provider !== provider || inst.model !== model || inst.effort !== effort)) {
+        try { inst.destroy(); } catch { /* ignore */ }
+        this.subs.delete(def.name);
+        inst = undefined;
+      }
       if (!inst) {
-        inst = new SubAgentInstance(def, dir, this.sessionId);
+        inst = new SubAgentInstance(def, dir, this.sessionId, provider, model, effort);
         this.subs.set(def.name, inst);
       }
       try { inst.start(); } catch (err) {

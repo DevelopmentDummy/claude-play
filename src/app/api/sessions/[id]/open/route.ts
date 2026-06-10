@@ -120,7 +120,7 @@ export async function POST(
   // Spawn always-on sub-agents declared in subagents.json (session mode only; builder has none).
   // Idempotent: re-open with subs already running is a no-op. Never throws into the open flow.
   if (!instance.isBuilder) {
-    try { instance.subAgents.spawnAll(); }
+    try { instance.subAgents.spawnAll(provider, effectiveModel || undefined, finalEffort); }
     catch (err) { console.error(`[open:${id}] subAgents.spawnAll failed:`, err); }
   }
 
