@@ -136,6 +136,7 @@ export class GeminiProcess extends EventEmitter<GeminiProcessEvents> {
     if (logName) this.logName = logName;
     const logPath = path.join(cwd, this.logName);
     this.logStream = fs.createWriteStream(logPath, { flags: "a" });
+    this.logStream.on("error", () => { this.logStream = null; });
     this.logStream.write(
       `\n--- spawn ${new Date().toISOString()} model: ${model || "default"} resumeId: ${resumeId || "new"} ---\n`,
     );

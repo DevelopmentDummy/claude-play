@@ -122,6 +122,7 @@ export class CodexProcess extends EventEmitter<CodexProcessEvents> {
     if (logName) this.logName = logName;
     const logPath = path.join(cwd, this.logName);
     this.logStream = fs.createWriteStream(logPath, { flags: "a" });
+    this.logStream.on("error", () => { this.logStream = null; });
     this.logStream.write(`\n--- app-server init ${new Date().toISOString()} model: ${model || "default"} threadId: ${resumeId || "new"} ---\n`);
 
     // Build clean env

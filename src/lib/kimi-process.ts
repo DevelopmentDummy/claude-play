@@ -108,6 +108,7 @@ export class KimiProcess extends EventEmitter<KimiProcessEvents> {
     if (logName) this.logName = logName;
     const logPath = path.join(cwd, this.logName);
     this.logStream = fs.createWriteStream(logPath, { flags: "a" });
+    this.logStream.on("error", () => { this.logStream = null; });
     this.logStream.write(
       `\n--- wire init ${new Date().toISOString()} model: ${model || "default"} resumeId: ${resumeId || "same cwd"} ---\n`,
     );
