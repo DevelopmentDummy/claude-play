@@ -1454,10 +1454,12 @@ server.registerTool(
     if (mode !== "session") return fail("report_to_main is only available in session mode");
     try {
       const header = `[SUB:${String(from).trim()}] ${String(summary).trim()}`;
+      // silent: queue the [SUB:...] event for next-turn injection without broadcasting
+      // event:pending — sub-agent bookkeeping should not surface as a UI chip above the input.
       const data = await requestJson(
         "POST",
         `/api/sessions/${encodeURIComponent(sessionId)}/events`,
-        { header },
+        { header, silent: true },
       );
       return ok(data);
     } catch (error) {

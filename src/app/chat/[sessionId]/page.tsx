@@ -517,7 +517,12 @@ export default function ChatPage() {
       },
       "event:pending": (d) => {
         const { headers } = d as { headers: string[] };
-        setPendingEvents(headers || []);
+        // [SUB:...] are sub-agent bookkeeping reports — kept in the server queue for
+        // next-turn narrator injection, but never shown as input chips (they're noise to
+        // the user). report_to_main also sends silent:true so the live broadcast skips
+        // them; this filter additionally covers the reconnect path (ws-server replays the
+        // full queue on connect).
+        setPendingEvents((headers || []).filter((h) => !h.startsWith("[SUB:")));
       },
       "profile:update": (p) => {
         const update = p as { profile?: string; timestamp?: number; sessionId?: string };
