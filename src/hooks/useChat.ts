@@ -24,6 +24,17 @@ function toolUseKey(name: string, input: unknown, id?: string): string {
   }
 }
 
+/** Serialized length of a tool input, for picking the more complete of two
+ *  deliveries of the same tool_use id (streamed start carries empty input,
+ *  the cumulative assistant message carries the full input). */
+function toolInputLen(input: unknown): number {
+  try {
+    return JSON.stringify(input)?.length ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
 const graphemeSegmenter = typeof Intl !== "undefined" && typeof Intl.Segmenter === "function"
   ? new Intl.Segmenter(undefined, { granularity: "grapheme" })
   : null;
@@ -120,9 +131,14 @@ export function useChat(rawSessionId?: string) {
     setMessages((prev) => {
       const last = prev[prev.length - 1];
       if (last && last.role === "assistant" && last.id.startsWith("stream-")) {
+        // toolsRef.current가 비어있으면 기존 tools를 보존한다.
+        // finishAssistantTurn은 flushAssistantText()로 이 updater를 큐에 넣은 뒤
+        // (동기적으로) toolsRef.current = [] 로 리셋한다. updater는 나중에 React
+        // 렌더 단계에서 실행되므로 그대로 [...toolsRef.current]를 읽으면 빈 배열이
+        // 되어 AskUserQuestion 카드/툴 블록이 turn 종료 순간 통째로 사라진다.
         return [
           ...prev.slice(0, -1),
-          { ...last, content, tools: [...toolsRef.current], ooc: isOOC || undefined },
+          { ...last, content, tools: toolsRef.current.length ? [...toolsRef.current] : (last.tools ?? []), ooc: isOOC || undefined },
         ];
       }
       const id = `stream-${++msgIdRef.current}`;
@@ -154,6 +170,20 @@ export function useChat(rawSessionId?: string) {
 
   const addToolUse = useCallback(
     (name: string, input: unknown, id?: string) => {
+      // Same tool_use id can arrive twice: streamed content_block_start with empty
+      // input, then the cumulative assistant message with the full input. Refresh to
+      // the more complete input instead of skipping, so AskUserQuestion keeps its
+      // `questions` and renders as a card rather than an empty tool block.
+      if (id) {
+        const existing = toolsRef.current.find((t) => t.id === id);
+        if (existing) {
+          if (toolInputLen(input) > toolInputLen(existing.input)) {
+            existing.input = input;
+            upsertAssistantMessage(displayAssistantTextRef.current);
+          }
+          return;
+        }
+      }
       const key = toolUseKey(name, input, id);
       if (seenToolKeysRef.current.has(key)) return;
       seenToolKeysRef.current.add(key);

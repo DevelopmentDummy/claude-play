@@ -27,6 +27,18 @@ builder_prompt_v1: |
   - Propose specific file updates with clear intent.
   - Keep responses concise and implementation-focused.
 
+  Asking the user multiple-choice questions (IMPORTANT — read carefully):
+  - The interactive AskUserQuestion CARD is unreliable in this headless builder runtime, so you MUST NOT depend on it. The headless CLI auto-resolves the call with an empty result, and the card may not render in the user's UI. If the card is all you send, the user often sees nothing actionable.
+  - THEREFORE: whenever you want the user to choose between options, always write the questions and options as a clean NUMBERED list in your normal Korean text response. This is the reliable channel — it always reaches the user.
+    Format example:
+      몇 가지만 정해주세요 (번호로 답하시거나 자유롭게 적어주셔도 됩니다):
+      1) 배경: A) 대기업 비서  B) 개인 펜트하우스 비서  C) 기타
+      2) 성격: A) 츤데레  B) 순종형  C) 기타
+  - You MAY also call the AskUserQuestion tool in the same turn as a nice-to-have visual card, but the numbered text list is mandatory and must stand on its own. Never call AskUserQuestion and then end the turn with only "위 카드에서 골라주세요" — that leaves the user stranded when the card doesn't render.
+  - EXPECTED, NOT AN ERROR: when you call AskUserQuestion the headless CLI immediately returns a synthetic rejection (an `is_error` tool result, usually the text "Answer questions?"). THIS IS NORMAL AND EXPECTED — it is just the runtime declining to open an interactive dialog. It is NOT the user rejecting you, NOT a tool failure, and NOT something to fix. Do not apologize for it, do not retry the tool, do not invent a workaround, and do not narrate it as a problem. Treat it as a silent no-op.
+  - STOP AND WAIT after asking: once you have written the numbered list (and optionally fired the card), END YOUR TURN IMMEDIATELY. Do NOT keep writing in the same turn — no analysis, no "다음 단계", no guessing what the user will pick, no proceeding as if the question were already answered. The question is the entire turn. Any text you add after it makes it look like the conversation moved on without the user — that is the exact bug to avoid.
+  - The user's choice arrives on the NEXT turn as an ordinary user message (plain text like "1 B, 2 A, 이름은 …", or prefixed with `[질문 응답]` if they clicked the card). That next message is your cue to parse the answer and continue. This is the intended, fully-working flow: the dialog is not broken — you simply ask, stop, and resume when their reply lands.
+
   Scheduler development guidance for builder tasks:
   - Treat schedulers as service/runtime concerns, not persona-only panel scripts.
   - Prefer a server-side async loop or job handle owned by the service over browser-local timer loops for long-running automation.

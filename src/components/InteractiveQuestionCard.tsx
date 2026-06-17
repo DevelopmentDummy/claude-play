@@ -15,6 +15,9 @@ interface Props {
   input: { questions: Question[] };
   answer?: ToolAnswer;
   sessionId: string;
+  /** Called after a successful submit — lets the parent mark the turn as
+   *  streaming (Send→Stop, disable input) since answering triggers a new AI turn. */
+  onAnswerSubmitted?: () => void;
 }
 
 const OTHER_LABEL = "Other";
@@ -276,6 +279,7 @@ export default function InteractiveQuestionCard({
   input,
   answer,
   sessionId,
+  onAnswerSubmitted,
 }: Props) {
   const questions = input.questions;
   const [step, setStep] = useState(0);
@@ -286,10 +290,13 @@ export default function InteractiveQuestionCard({
   const [submitting, setSubmitting] = useState(false);
   const [otherDirty, setOtherDirty] = useState<Record<string, boolean>>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // 제출 성공 직후 낙관적 전환 — tool:answered WS 브로드캐스트가 늦거나 유실돼도 카드가 잠긴다
+  const [localAnswer, setLocalAnswer] = useState<ToolAnswer | null>(null);
 
   // ── Stacked summary mode ────────────────────────────────────────────────
-  if (answer) {
-    return <StackedSummary questions={questions} answer={answer} />;
+  const effectiveAnswer = answer ?? localAnswer;
+  if (effectiveAnswer) {
+    return <StackedSummary questions={questions} answer={effectiveAnswer} />;
   }
 
   // ── Wizard state ────────────────────────────────────────────────────────
@@ -375,6 +382,11 @@ export default function InteractiveQuestionCard({
         const errBody = await res.text().catch(() => res.statusText);
         console.error(`[InteractiveQuestionCard] submit returned ${res.status}: ${errBody}`);
         setSubmitError(`제출 실패 (${res.status})`);
+      } else {
+        setSubmitError(null);
+        setLocalAnswer(finalAnswer);
+        // 답변 제출 → 백엔드가 새 AI turn을 시작한다. 부모에 알려 입력 대기 상태로 전환.
+        onAnswerSubmitted?.();
       }
     } catch (err) {
       console.error("[InteractiveQuestionCard] submit failed:", err);

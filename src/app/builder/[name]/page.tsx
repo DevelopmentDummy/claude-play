@@ -34,12 +34,14 @@ export default function BuilderPage() {
   const {
     messages,
     isStreaming,
+    setStreamingManually,
     status,
     error,
     setStatus,
     setError,
     prepareSend,
     handleClaudeMessage,
+    handleToolAnswered,
     handleCancelled,
     clearMessages,
     loadHistory,
@@ -87,6 +89,7 @@ export default function BuilderPage() {
       },
       "claude:error": (e) => setError(e as string),
       "claude:status": (s) => setStatus(s as string),
+      "tool:answered": (d) => handleToolAnswered(d as Parameters<typeof handleToolAnswered>[0]),
       "chat:cancelled": () => handleCancelled(),
       "panels:update": () => {},
       "command:result": (d) => {
@@ -297,6 +300,8 @@ export default function BuilderPage() {
             hasMore={hasMore}
             onLoadMore={loadMore}
             personaName={decodedName}
+            sessionId={name}
+            onAnswerSubmitted={() => setStreamingManually(true)}
           />
           <ChatInput
             disabled={isStreaming}

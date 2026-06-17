@@ -40,6 +40,9 @@ interface ChatMessagesProps {
   audioStatus?: Record<string, { generating: boolean; totalChunks: number; readyCount: number }>;
   onRequestTts?: (messageId: string, text: string) => void;
   onPlayAudio?: (messageId: string) => void;
+  /** Called after an InteractiveQuestionCard answer is submitted, so the parent
+   *  can mark the turn as streaming (Send→Stop, disable input). */
+  onAnswerSubmitted?: () => void;
 }
 
 const OPEN_TAG = "<dialog_response>";
@@ -376,6 +379,7 @@ export default function ChatMessages({
   audioStatus,
   onRequestTts,
   onPlayAudio,
+  onAnswerSubmitted,
 }: ChatMessagesProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -710,13 +714,20 @@ export default function ChatMessages({
               <div className="flex flex-wrap items-start gap-1.5 mt-2">
                 {msg.tools.map((tool, i) =>
                   isAskUserQuestion(tool)
-                    ? <InteractiveQuestionCard
-                        key={tool.id ?? `tool-${i}`}
-                        toolUseId={tool.id}
-                        input={tool.input as { questions: Array<{ question: string; header: string; multiSelect: boolean; options: Array<{ label: string; description?: string }> }> }}
-                        answer={tool.answer}
-                        sessionId={sessionId ?? ""}
-                      />
+                    // R1: 응답 turn이 끝나기 전(=이 메시지가 아직 스트리밍 중, isLastAssistant)에는
+                    //     카드를 숨기고, turn이 종료된 뒤에만 렌더한다. (이미 답한 카드는 answer가
+                    //     있으니 항상 read-only 요약으로 표시) — finishAssistantTurn의 tools 보존
+                    //     레이스가 고쳐졌으므로 종료 후 카드가 정상적으로 남는다.
+                    ? (isLastAssistant && !tool.answer
+                        ? null
+                        : <InteractiveQuestionCard
+                            key={tool.id ?? `tool-${i}`}
+                            toolUseId={tool.id}
+                            input={tool.input as { questions: Array<{ question: string; header: string; multiSelect: boolean; options: Array<{ label: string; description?: string }> }> }}
+                            answer={tool.answer}
+                            sessionId={sessionId ?? ""}
+                            onAnswerSubmitted={onAnswerSubmitted}
+                          />)
                     : <ToolBlock key={i} name={tool.name} input={tool.input} />
                 )}
               </div>
