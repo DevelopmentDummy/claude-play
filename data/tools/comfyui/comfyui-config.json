@@ -2,19 +2,38 @@
   "active_preset": "anime",
   "presets": {
     "anime": {
-      "checkpoint": "lewdakaexplicitillus_v1.safetensors",
+      "checkpoint": "oneObsession_v21Anime.safetensors",
       "default_template": "scene",
       "quality_tags": "masterpiece, best quality, amazing quality, very aesthetic, absurdres, high detail",
       "style_tags": "",
       "negative": "bad quality, worst quality, worst detail, lowres, bad anatomy, bad hands, extra fingers, fused fingers, too many fingers, mutated hands, poorly drawn hands, poorly drawn face, extra arms, extra legs, blurry, jpeg artifacts, sketch, censored, watermark, signature, text, cropped, sharp teeth",
       "baseLoras": [
-        { "name": "sexy_details_v4.safetensors", "strength": 0.4 },
-        { "name": "Age_V2.5.safetensors", "strength": -3 },
-        { "name": "eye_detail_glossy_stylized.safetensors", "strength": 0.6 },
-        { "name": "QAQv5p2_IL-40.safetensors", "strength": 0.4 }
+        {
+          "name": "sexy_details_v4.safetensors",
+          "strength": 0.4
+        },
+        {
+          "name": "Age_V2.5.safetensors",
+          "strength": -3
+        },
+        {
+          "name": "eye_detail_glossy_stylized.safetensors",
+          "strength": 0.6
+        },
+        {
+          "name": "QAQv5p2_IL-40.safetensors",
+          "strength": 0.4
+        },
+        {
+          "name": "detailed hand focus style illustriousXL v1.1.safetensors",
+          "strength": 0.5
+        }
       ],
       "nsfwLoras": [
-        { "name": "BuAnime_NSFW_Style_V6.safetensors", "strength": 0.8 }
+        {
+          "name": "BuAnime_NSFW_Style_V6.safetensors",
+          "strength": 0.8
+        }
       ]
     },
     "anima": {
@@ -24,10 +43,22 @@
       "style_tags": "",
       "negative": "worst quality, low quality, score_1, score_2, score_3, blurry, jpeg artifacts, bad anatomy, bad hands, bad arms, bad legs, bad feet, extra fingers, fused fingers, too many fingers, mutated hands, poorly drawn hands, extra arms, extra legs, extra feet, three arms, three legs, three feet, twisted limbs, watermark, signature, text",
       "baseLoras": [
-        { "name": "anima-preview-3-masterpieces-v5.safetensors", "strength": 0.5 },
-        { "name": "Hentai_Studio_Quality_Anima-step00001300.safetensors", "strength": 0.5 },
-        { "name": "anima-e20_styles.safetensors", "strength": 0.85 },
-        { "name": "anima_lora_lattice_v2.safetensors", "strength": 0.8 }
+        {
+          "name": "anima-preview-3-masterpieces-v5.safetensors",
+          "strength": 0.5
+        },
+        {
+          "name": "Hentai_Studio_Quality_Anima-step00001300.safetensors",
+          "strength": 0.5
+        },
+        {
+          "name": "anima-e20_styles.safetensors",
+          "strength": 0.85
+        },
+        {
+          "name": "anima_lora_lattice_v2.safetensors",
+          "strength": 0.8
+        }
       ]
     }
   }

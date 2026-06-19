@@ -99,6 +99,11 @@
       "loader": "checkpoint_simple",
       "family": "illustrious",
       "notes": "Quartz v3 (6.94GB fp32 pruned, F15837DE54). 2026-06-03 도입. 그래픽 일러스트풍(진한 라인+플랫 채색) 강조 머지. Trained words 없음. 작가 샘플 메타: Euler a Karras, CFG 3, steps 45, 권장 quality 헤더 'very awa, graphic illustration, sharp tapered lineart'. CivitAI: 2136263@2927409"
+    },
+    "oneObsession_v21Anime.safetensors": {
+      "loader": "checkpoint_simple",
+      "family": "illustrious",
+      "notes": "One Obsession v21_Anime (6.46GB, CivitAI 1318945@2823418). 2026-06-17 도입. Illustrious 베이스 애니메 실험판 — 질감 촉촉, 광영 강화, 3D 약화, 캐릭터 큐트, 화풍/화가串에 민감. Trained words 없음. 권장: CFG 4~7, steps 25~35, Euler/Euler a, 해상도 832x1216·896x1152·1024x1536"
     }
   }
 }
