@@ -22,6 +22,18 @@ export default function PanelArea({ panels, position, size, profileImageUrl, ses
 
   const isBottom = position === "bottom";
 
+  // Route the portrait through the files ?thumb= resizer (sharp Lanczos3 → webp,
+  // disk-cached) sized to ~2× the panel width instead of letting the browser
+  // CSS-downscale the full-res profile.png. A large single-step browser downscale
+  // aliases and looks rough; pre-resizing with a proper filter fixes that. 2×
+  // covers hi-DPI displays; the route caps at 1024 and never upscales the source.
+  const profileSrc = profileImageUrl
+    ? `${profileImageUrl}${profileImageUrl.includes("?") ? "&" : "?"}thumb=${Math.min(
+        1024,
+        Math.max(256, Math.round(size * 2))
+      )}`
+    : null;
+
   return (
     <aside
       className={`h-full w-full overflow-y-auto bg-surface/50 backdrop-blur-[16px] flex flex-col gap-3 p-4 ${
@@ -32,9 +44,9 @@ export default function PanelArea({ panels, position, size, profileImageUrl, ses
             : "border-l border-border"
       }`}
     >
-      {profileImageUrl && (
+      {profileSrc && (
         <img
-          src={profileImageUrl}
+          src={profileSrc}
           alt="Profile"
           className="w-full object-cover shrink-0 rounded-xl"
           style={{ maxHeight: `${Math.round(size * 1.2)}px` }}
