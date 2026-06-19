@@ -93,6 +93,17 @@ function toolUseKey(name: string, input: unknown, id?: string): string {
   }
 }
 
+/** Serialized length of a tool input, for picking the more complete of two
+ *  deliveries of the same tool_use id (streamed start carries empty input,
+ *  the cumulative assistant message carries the full input). */
+function toolInputLen(input: unknown): number {
+  try {
+    return JSON.stringify(input)?.length ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
 function extractChoiceBlock(raw: string): string | null {
   const openIdx = raw.lastIndexOf(CHOICE_OPEN);
   if (openIdx === -1) return null;
@@ -1153,6 +1164,17 @@ export class SessionInstance {
   // --- Accumulator helpers ---
 
   private addToolUse(toolName: string, input: unknown, id?: string): void {
+    // Same tool_use id can be delivered twice: streamed content_block_start with
+    // empty input, then the cumulative assistant message with the full input.
+    // Refresh to the more complete input instead of skipping, so AskUserQuestion
+    // keeps its `questions` and renders as a card rather than an empty tool block.
+    if (id) {
+      const existing = this.tools.find((t) => t.id === id);
+      if (existing) {
+        if (toolInputLen(input) > toolInputLen(existing.input)) existing.input = input;
+        return;
+      }
+    }
     const key = toolUseKey(toolName, input, id);
     if (this.seenToolKeys.has(key)) return;
     this.seenToolKeys.add(key);

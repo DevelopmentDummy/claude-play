@@ -6,7 +6,8 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const id = decodeURIComponent(rawId);
   const instance = getSessionInstance(id);
   if (!instance) {
     return NextResponse.json({ error: "Session not found" }, { status: 404 });

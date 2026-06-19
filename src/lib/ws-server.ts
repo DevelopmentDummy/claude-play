@@ -319,6 +319,16 @@ function handleMessage(
 
       const silent = !!msg.silent;
 
+      // Pending AskUserQuestion fallback — 평문을 자유 답변으로 흡수 (REST /api/chat/send와 동일).
+      // silent(스케줄러/패널 시스템 메시지)와 OOC는 일반 turn으로 통과시킨다.
+      if (instance.pendingToolUseId && !silent && !text.startsWith("OOC:")) {
+        const pendingId = instance.pendingToolUseId;
+        void instance
+          .submitToolAnswer(pendingId, { answers: {}, notes: { _freeform: text } })
+          .catch((err) => console.warn("[ws] pending tool answer absorption failed:", err));
+        break;
+      }
+
       if (silent) {
         // Silent mode: send to AI only — no history, no broadcast
         // Still flush pending event headers so they reach the AI
