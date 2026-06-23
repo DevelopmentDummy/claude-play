@@ -16,11 +16,13 @@ export class SubAgentManager {
     this.getDir = getDir;
   }
 
-  /** Read the manifest and spawn every declared sub-agent with the SESSION's
-   *  provider/model/effort (subs follow the session, not the manifest). Safe to call
-   *  again (re-open): already-running subs with the same runtime are left as-is; if the
-   *  session provider/model/effort changed, the cached sub is destroyed and recreated.
-   *  Manifest errors are logged, never thrown into the open flow. */
+  /** Read the manifest and spawn every declared sub-agent. By default a sub follows the
+   *  SESSION's provider/model/effort, but a sub MAY override per-agent via the manifest
+   *  (model/effort, and explicit provider) — those take precedence; unset fields fall back
+   *  to the session's. Safe to call again (re-open): already-running subs with the same
+   *  resolved runtime are left as-is; if the resolved provider/model/effort changed, the
+   *  cached sub is destroyed and recreated. Manifest errors are logged, never thrown into
+   *  the open flow. */
   spawnAll(provider: AIProvider, model?: string, effort?: string): void {
     const dir = this.getDir();
     if (!dir) return;
@@ -33,14 +35,22 @@ export class SubAgentManager {
     }
     for (const def of defs) {
       this.defs.set(def.name, def);
+      // Per-sub overrides take precedence; unset → session value. providerExplicit is set
+      // only when the manifest actually specified a provider (avoids forcing "claude" on all).
+      const subProvider = def.providerExplicit ?? provider;
+      const subModel = def.model ?? model;
+      // effort: explicit sub effort wins; else inherit the session effort ONLY when the sub
+      // runs on the same provider as the session (a foreign provider's effort scale differs);
+      // otherwise leave undefined so that provider's own default applies.
+      const subEffort = def.effort ?? (subProvider === provider ? effort : undefined);
       let inst = this.subs.get(def.name);
-      if (inst && (inst.provider !== provider || inst.model !== model || inst.effort !== effort)) {
+      if (inst && (inst.provider !== subProvider || inst.model !== subModel || inst.effort !== subEffort)) {
         try { inst.destroy(); } catch { /* ignore */ }
         this.subs.delete(def.name);
         inst = undefined;
       }
       if (!inst) {
-        inst = new SubAgentInstance(def, dir, this.sessionId, provider, model, effort);
+        inst = new SubAgentInstance(def, dir, this.sessionId, subProvider, subModel, subEffort);
         this.subs.set(def.name, inst);
       }
       try { inst.start(); } catch (err) {

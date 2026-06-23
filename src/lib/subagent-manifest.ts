@@ -1,22 +1,26 @@
 import * as fs from "fs";
 import * as path from "path";
-import { AIProvider } from "./ai-provider";
+import { AIProvider, providerFromModel, parseModelEffort } from "./ai-provider";
 
 export const MAX_SUBAGENTS = Number(process.env.SUBAGENT_MAX) > 0
   ? Number(process.env.SUBAGENT_MAX)
   : 6;
 
 const NAME_RE = /^[a-z0-9][a-z0-9-]{0,31}$/;
-// v2: a sub follows the SESSION's provider/model/effort (resolved at spawn time in
-// SubAgentManager.spawnAll). The manifest's provider/model/effort are parsed for backward
-// compat but ignored at runtime.
+// v2.1: by default a sub follows the SESSION's provider/model/effort (resolved at spawn time
+// in SubAgentManager.spawnAll). A sub MAY pin itself by setting `model` (a single id, optionally
+// with an effort suffix like "gpt-5.4:high"); validateManifest derives provider via
+// providerFromModel and splits the effort via parseModelEffort into the per-sub fields below.
+// An explicit `provider`/`effort` in the manifest (hand-edit) still takes precedence over derivation.
+// `provider` is always default-filled ("claude"); use `providerExplicit` to detect a real override.
 
 export interface SubAgentDef {
   name: string;                          // [a-z0-9-], unique, used as dir name
   role: string;                          // human description
-  provider: AIProvider;                  // back-compat only — runtime uses the session's provider
-  model?: string;                        // back-compat only — runtime uses the session's model
-  effort?: string;                       // back-compat only — runtime uses the session's effort
+  provider: AIProvider;                  // default-filled ("claude") for back-compat consumers
+  providerExplicit?: AIProvider;         // set ONLY when the manifest explicitly specified provider (per-sub override)
+  model?: string;                        // per-sub model override; unset → session model
+  effort?: string;                       // per-sub effort override; unset → session effort
   instructions: string;                  // relative path under subagents/{name}/, e.g. "instructions.md"
   delegable: boolean;                    // callable via bridge_delegate
   autoTrigger: "onAssistantTurn" | "none";
@@ -60,14 +64,48 @@ export function validateManifest(raw: unknown): SubAgentManifest {
     if (!NAME_RE.test(name)) throw new Error(`subagents[${i}]: invalid name "${name}" (expect ${NAME_RE})`);
     if (seen.has(name)) throw new Error(`subagents[${i}]: duplicate name "${name}"`);
     seen.add(name);
-    const provider = String(e.provider ?? "claude") as AIProvider; // parsed for back-compat; ignored at runtime
+    // Single `model` string is the primary source: split any effort suffix
+    // (parseModelEffort) and infer the provider (providerFromModel). A manifest MAY still
+    // specify `provider`/`effort` explicitly (legacy / hand-edit) — those take precedence.
+    const rawModel = typeof e.model === "string" && e.model.trim() ? e.model.trim() : undefined;
+    const explicitProvider = typeof e.provider === "string" && e.provider.trim()
+      ? (e.provider.trim() as AIProvider) : undefined;
+    let providerExplicit: AIProvider | undefined = explicitProvider;
+    let baseModel: string | undefined;
+    let suffixEffort: string | undefined;
+    if (rawModel) {
+      const parsed = parseModelEffort(rawModel);
+      if (explicitProvider) {
+        baseModel = parsed.model || undefined;       // explicit provider given — keep derived model/effort
+        suffixEffort = parsed.effort;
+      } else {
+        try {
+          providerExplicit = providerFromModel(rawModel);   // infer from model id
+          baseModel = parsed.model || undefined;
+          suffixEffort = parsed.effort;
+        } catch {
+          // Provider inference failed (e.g. gemini disabled) — drop the WHOLE model pin so the
+          // sub falls back to the session runtime, instead of spawning the session provider with
+          // a foreign model id. (spec fallback table, row 4)
+          console.warn(`[subagent-manifest] could not infer provider for model "${rawModel}" (sub "${name}") — falling back to session runtime`);
+          providerExplicit = undefined;
+          baseModel = undefined;
+          suffixEffort = undefined;
+        }
+      }
+    }
+    const provider = providerExplicit ?? ("claude" as AIProvider); // default-filled for back-compat
+    const effort = typeof e.effort === "string" && e.effort.trim()
+      ? e.effort.trim()                                          // explicit effort wins
+      : suffixEffort;                                            // else from model suffix
     const autoTrigger = e.autoTrigger === "onAssistantTurn" ? "onAssistantTurn" : "none";
     return {
       name,
       role: String(e.role ?? ""),
       provider,
-      model: typeof e.model === "string" ? e.model : undefined,
-      effort: typeof e.effort === "string" ? e.effort : undefined,
+      providerExplicit,
+      model: baseModel,
+      effort,
       instructions: typeof e.instructions === "string" && e.instructions.trim()
         ? e.instructions : "instructions.md",
       delegable: e.delegable !== false,

@@ -1509,8 +1509,10 @@ server.registerTool(
       "[Builder mode] Define or update a specialized sub-agent for this persona. " +
       "Writes subagents.json (merging by name) and subagents/<name>/instructions.md in the persona dir. " +
       "Sub-agents run always-on alongside the main narrator at session time and handle delegated bookkeeping " +
-      "(panel variable updates, flow control, lore consistency). A sub automatically runs on the SAME provider " +
-      "and model/effort as the session it belongs to — you do not choose a provider or model here.",
+      "(panel variable updates, flow control, lore consistency). By default a sub follows the session's " +
+      "provider/model/effort. Optionally pin it to a specific model with `model` (a single id like " +
+      "'gemini-3-flash-preview' or 'gpt-5.4:high'); the provider is inferred from the id and that CLI must be " +
+      "authenticated. Omit `model` to follow the session.",
     inputSchema: {
       name: z.string().regex(/^[a-z0-9][a-z0-9-]{0,31}$/).describe("Unique sub-agent id (lowercase, dashes)"),
       role: z.string().min(1).describe("Short human description of the sub's responsibility"),
@@ -1519,6 +1521,7 @@ server.registerTool(
       autoTrigger: z.enum(["onAssistantTurn", "none"]).optional().describe("Auto-dispatch every main turn, or 'none' (hook-controlled). Default none."),
       autoTriggerTask: z.string().optional().describe("Default task text when autoTrigger is onAssistantTurn"),
       emitSummary: z.boolean().optional().describe("Sub should call report_to_main when done (default true)"),
+      model: z.string().optional().describe("Optional: pin this sub to a model id (e.g. 'gemini-3-flash-preview', 'gpt-5.4:high', 'opus[1m]'). Provider is inferred from the id. Omit to follow the session's provider/model/effort."),
     },
   },
   async (input) => {
@@ -1538,6 +1541,7 @@ server.registerTool(
         autoTrigger: input.autoTrigger || "none",
         ...(input.autoTriggerTask ? { autoTriggerTask: input.autoTriggerTask } : {}),
         emitSummary: input.emitSummary !== false,
+        ...(input.model && input.model.trim() ? { model: input.model.trim() } : {}),
       };
       const idx = manifest.subagents.findIndex((s) => s && s.name === input.name);
       if (idx >= 0) manifest.subagents[idx] = { ...manifest.subagents[idx], ...entry };

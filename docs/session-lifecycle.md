@@ -38,7 +38,7 @@
 
 ### Spawn & Destroy
 - 세션 **Open** 시 `SessionInstance.subAgents`(`SubAgentManager`)가 매니페스트를 읽어 각 서브를 `SubAgentInstance`로 spawn. `SubAgentInstance`는 provider 프로세스의 경량 래퍼 — PanelEngine 없음.
-- **v2: 서브는 세션을 연 provider·모델·effort를 자동 상속한다.** Open 라우트가 세션의 이미 결정된 값으로 `SubAgentManager.spawnAll(provider, model, effort)`를 호출.
+- **v2.1: 서브는 기본적으로 세션의 provider·모델·effort를 상속하되, 매니페스트 `model`로 개별 고정할 수 있다.** Open 라우트가 세션 값으로 `SubAgentManager.spawnAll(provider, model, effort)`를 호출하고, `spawnAll`이 def별로 resolve한다 — `model`이 지정된 서브는 그 id에서 provider를 도출(`providerFromModel`)하고 effort suffix를 분리(`parseModelEffort`); effort는 서브가 세션과 같은 provider일 때만 세션 값을 상속하고, 다른 provider면 그 provider 기본을 쓴다. `model` 미지정 서브는 세션 값을 그대로 따른다.
 - **런타임 전환 시 재생성**: 재오픈에서 세션 provider/모델/effort가 바뀌었으면 `spawnAll()`이 캐시된 서브를 개별 destroy 후 새 런타임으로 재생성한다.
 - 서비스 재시작 후 세션이 재오픈되면 `spawnAll()`이 다시 실행된다 — `subagents/{name}/.resume-{provider}` 파일이 있으면 resume으로 기동(이미 primed 취급), 없으면 첫 dispatch에서 role 재주입.
 - 서브는 세션 디렉토리를 cwd로 공유 → MCP 도구(`run_tool` 등)를 통해 동일 변수/데이터에 직접 접근, MCP 설정도 자동 상속.
@@ -75,7 +75,7 @@
 ```
 서브 수 상한: `SUBAGENT_MAX` 환경변수 (기본 6).
 
-매니페스트의 `provider`/`model`/`effort` 필드는 하위 호환을 위해 파싱은 유지하되 런타임에서 무시된다 (v2부터 세션 값이 적용). `bridge_define_subagent` MCP 도구도 이 필드들을 더 이상 기록하지 않는다.
+매니페스트의 `model` 필드(effort suffix 포함 가능)는 해당 서브의 런타임 고정에 사용된다 — `validateManifest`가 `providerFromModel`/`parseModelEffort`로 `providerExplicit`/`model`/`effort` 분리 필드를 채운다. 매니페스트에 `provider`/`effort`를 직접 적으면(수동 편집) 도출보다 우선한다. `bridge_define_subagent` MCP 도구는 단일 `model` 문자열만 받아 기록하고(분해는 `validateManifest`가 수행), 미지정 시 세션 값을 상속한다.
 
 ### 파일 레이아웃
 - `subagents/{name}/instructions.md` — role prompt 템플릿 (persona dir에서 session dir로 복사).
