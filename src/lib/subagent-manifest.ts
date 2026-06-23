@@ -68,14 +68,31 @@ export function validateManifest(raw: unknown): SubAgentManifest {
     // (parseModelEffort) and infer the provider (providerFromModel). A manifest MAY still
     // specify `provider`/`effort` explicitly (legacy / hand-edit) — those take precedence.
     const rawModel = typeof e.model === "string" && e.model.trim() ? e.model.trim() : undefined;
-    const { model: baseModel, effort: suffixEffort }: { model: string | undefined; effort: string | undefined } =
-      rawModel ? parseModelEffort(rawModel) : { model: undefined, effort: undefined };
-    let providerExplicit: AIProvider | undefined;
-    if (typeof e.provider === "string" && e.provider.trim()) {
-      providerExplicit = e.provider.trim() as AIProvider;       // explicit override wins
-    } else if (rawModel) {
-      try { providerExplicit = providerFromModel(rawModel); }   // infer from model id
-      catch { providerExplicit = undefined; }                   // e.g. gemini disabled → session fallback
+    const explicitProvider = typeof e.provider === "string" && e.provider.trim()
+      ? (e.provider.trim() as AIProvider) : undefined;
+    let providerExplicit: AIProvider | undefined = explicitProvider;
+    let baseModel: string | undefined;
+    let suffixEffort: string | undefined;
+    if (rawModel) {
+      const parsed = parseModelEffort(rawModel);
+      if (explicitProvider) {
+        baseModel = parsed.model || undefined;       // explicit provider given — keep derived model/effort
+        suffixEffort = parsed.effort;
+      } else {
+        try {
+          providerExplicit = providerFromModel(rawModel);   // infer from model id
+          baseModel = parsed.model || undefined;
+          suffixEffort = parsed.effort;
+        } catch {
+          // Provider inference failed (e.g. gemini disabled) — drop the WHOLE model pin so the
+          // sub falls back to the session runtime, instead of spawning the session provider with
+          // a foreign model id. (spec fallback table, row 4)
+          console.warn(`[subagent-manifest] could not infer provider for model "${rawModel}" (sub "${name}") — falling back to session runtime`);
+          providerExplicit = undefined;
+          baseModel = undefined;
+          suffixEffort = undefined;
+        }
+      }
     }
     const provider = providerExplicit ?? ("claude" as AIProvider); // default-filled for back-compat
     const effort = typeof e.effort === "string" && e.effort.trim()
@@ -87,7 +104,7 @@ export function validateManifest(raw: unknown): SubAgentManifest {
       role: String(e.role ?? ""),
       provider,
       providerExplicit,
-      model: baseModel || undefined,
+      model: baseModel,
       effort,
       instructions: typeof e.instructions === "string" && e.instructions.trim()
         ? e.instructions : "instructions.md",
