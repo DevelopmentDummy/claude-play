@@ -1343,12 +1343,13 @@ research-dump.json
 **인자:**
 - `name`: 소문자-대시 고유 id (예: `combat-keeper`, `lore-checker`)
 - `role`: 한 줄 책임 설명
-- **provider·모델은 지정하지 않는다** — 서브는 세션을 연 provider/모델/effort를 자동으로 따라간다 (비용/인증이 세션과 일원화됨). 나머지 인자(`role`·`instructions`·`delegable`·`autoTrigger`·`autoTriggerTask`·`emitSummary`)는 아래 목록대로 정한다.
+- **모델은 기본 미지정(세션 상속)이다** — 서브는 기본적으로 세션을 연 provider/모델/effort를 그대로 따라간다. 특정 서브에 다른 모델/프로바이더가 유리하면 `model` 인자에 **단일 id**를 지정한다(provider는 id에서 자동 판별). 예: 가볍고 빈번한 부기 → `gemini-3-flash-preview`·`gpt-5.4`; 무거운 일관성 분석 → `gpt-5.4:high`·`opus[1m]:high`. ⚠️ 지정한 provider의 CLI가 **인증돼 있어야** 한다(미인증이면 그 서브만 spawn 실패, 메인엔 영향 없음). ⚠️ `antigravity-*`는 spawn이 무겁고 도구 호출 안정성이 낮으니 꼭 필요할 때만. 유효 id 예시: Claude `opus[1m]`·`sonnet`, Codex `gpt-5.4`·`gpt-5.5`, Gemini `gemini-3-flash-preview`·`gemini-3.1-pro-preview`, Kimi `kimi-auto`, Antigravity `antigravity-flash`. 나머지 인자(`role`·`instructions`·`delegable`·`autoTrigger`·`autoTriggerTask`·`emitSummary`)는 아래 목록대로 정한다.
 - `instructions`: 서브의 시스템 프롬프트 본문 → `instructions.md`로 저장 (아래 작성 원칙)
 - `delegable`: 메인이 `bridge_delegate`로 호출 가능 여부 (기본 true)
 - `autoTrigger`: `"onAssistantTurn"`이면 매 메인 턴 후 자동 실행, `"none"`이면 훅/위임으로만 (기본 none)
 - `autoTriggerTask`: autoTrigger 시 매번 줄 기본 작업 지시
 - `emitSummary`: 끝나면 `report_to_main`으로 요약 보고 (기본 true)
+- `model`(선택): 이 서브를 특정 모델에 고정하는 단일 id (예: `gemini-3-flash-preview`, `gpt-5.4:high`). provider는 id에서 도출. **생략하면 세션 상속**(권장 기본값).
 - 세션당 최대 6개 (기본값).
 
 ### `instructions.md` 작성 원칙 (서브의 역할 프롬프트)
@@ -1375,6 +1376,18 @@ research-dump.json
   "delegable": true,
   "autoTrigger": "onAssistantTurn",
   "autoTriggerTask": "직전 메인 응답의 전투 전개를 반영해 combat.* 변수를 갱신하고 요약 보고하라",
+  "emitSummary": true
+}
+```
+```jsonc
+// 다른 프로바이더로 고정한 서브 (문체 검토를 가벼운 Gemini로)
+{
+  "name": "style-checker",
+  "role": "문체 드리프트 점검",
+  "instructions": "instructions.md",
+  "model": "gemini-3-flash-preview",   // provider는 id에서 gemini로 자동 판별; 생략 시 세션 상속
+  "delegable": true,
+  "autoTrigger": "none",
   "emitSummary": true
 }
 ```
