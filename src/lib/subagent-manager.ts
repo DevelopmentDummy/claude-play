@@ -1,6 +1,7 @@
 import { SubAgentInstance } from "./subagent-instance";
 import { loadSubAgentManifest, SubAgentDef } from "./subagent-manifest";
 import { AIProvider } from "./ai-provider";
+import type { TranscriptEntry, TranscriptOrigin } from "./subagent-transcript";
 
 /** Owns the sub-agent instances for one session. Created and held by the parent
  *  SessionInstance; lifecycle is tied to the parent (spawnAll on open, destroyAll
@@ -8,12 +9,18 @@ import { AIProvider } from "./ai-provider";
 export class SubAgentManager {
   private readonly sessionId: string;
   private readonly getDir: () => string | null;
+  private readonly broadcast?: (event: string, data: unknown) => void;
   private subs = new Map<string, SubAgentInstance>();
   private defs = new Map<string, SubAgentDef>();
 
-  constructor(sessionId: string, getDir: () => string | null) {
+  constructor(
+    sessionId: string,
+    getDir: () => string | null,
+    broadcast?: (event: string, data: unknown) => void,
+  ) {
     this.sessionId = sessionId;
     this.getDir = getDir;
+    this.broadcast = broadcast;
   }
 
   /** Read the manifest and spawn every declared sub-agent. By default a sub follows the
@@ -50,7 +57,11 @@ export class SubAgentManager {
         inst = undefined;
       }
       if (!inst) {
-        inst = new SubAgentInstance(def, dir, this.sessionId, subProvider, subModel, subEffort);
+        const subName = def.name;
+        inst = new SubAgentInstance(
+          def, dir, this.sessionId, subProvider, subModel, subEffort,
+          (entry) => this.broadcast?.("subagent:message", { name: subName, entry }),
+        );
         this.subs.set(def.name, inst);
       }
       try { inst.start(); } catch (err) {
@@ -60,19 +71,44 @@ export class SubAgentManager {
   }
 
   /** Route a task to a named sub. Returns false if unknown/undeclared. */
-  dispatch(name: string, task: string): boolean {
+  dispatch(name: string, task: string, origin: TranscriptOrigin = "delegate"): boolean {
     const inst = this.subs.get(name);
     if (!inst) {
       console.warn(`[subagent-manager:${this.sessionId}] dispatch to unknown sub "${name}"`);
       return false;
     }
-    inst.dispatch(task);
+    inst.dispatch(task, origin);
     return true;
   }
 
   /** Defs whose autoTrigger === "onAssistantTurn" (with their default task). */
   autoTriggerDefs(): SubAgentDef[] {
     return [...this.defs.values()].filter(d => d.autoTrigger === "onAssistantTurn");
+  }
+
+  /** Record a sub→main report into the named sub's transcript. Returns false if unknown. */
+  recordReport(name: string, summary: string): boolean {
+    const inst = this.subs.get(name);
+    if (!inst) return false;
+    inst.recordReport(summary);
+    return true;
+  }
+
+  /** Detailed list for the chat modal sidebar. */
+  listDetailed(): Array<{ name: string; role: string; provider: AIProvider; model?: string; running: boolean }> {
+    return [...this.subs.values()].map((s) => ({
+      name: s.name,
+      role: s.def.role,
+      provider: s.provider,
+      model: s.model,
+      running: s.isRunning(),
+    }));
+  }
+
+  /** Tail of a named sub's transcript. Returns [] if unknown. */
+  readTranscript(name: string, n: number): TranscriptEntry[] {
+    const inst = this.subs.get(name);
+    return inst ? inst.readTranscript(n) : [];
   }
 
   has(name: string): boolean { return this.subs.has(name); }
