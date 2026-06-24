@@ -24,6 +24,8 @@ import SteeringPresetsModal from "@/components/SteeringPresetsModal";
 import PopupEffect from "@/components/PopupEffect";
 import ToastEffect from "@/components/ToastEffect";
 import UsageModal from "@/components/UsageModal";
+import SubAgentChatModal from "@/components/SubAgentChatModal";
+import type { TranscriptEntry } from "@/lib/subagent-transcript";
 import { dispatchBridgeEvent } from "@/lib/use-panel-bridge";
 import { buildAutoplayMessage, calculateAutoplayDelay, getSelectedPreset, type SteeringPreset } from "@/lib/autoplay";
 import { getPanelActionRegistry, destroyPanelActionRegistry, parsePanelActions, parsePanelMeta } from "@/lib/panel-action-registry";
@@ -74,6 +76,10 @@ export default function ChatPage() {
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [wsEnabled, setWsEnabled] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [subModalOpen, setSubModalOpen] = useState(false);
+  const [activeSubName, setActiveSubName] = useState<string | null>(null);
+  const [subLiveEntry, setSubLiveEntry] = useState<{ name: string; entry: TranscriptEntry } | null>(null);
+  const [subUnread, setSubUnread] = useState<Record<string, number>>({});
   const [currentModel, setCurrentModel] = useState(searchParams.get("model") || "");
   const [currentProvider, setCurrentProvider] = useState<AIProvider>("claude");
   const [showOOC, setShowOOC] = useState(false);
@@ -515,6 +521,15 @@ export default function ChatPage() {
           }
         }
       },
+      "subagent:message": (d) => {
+          const { name, entry } = d as { name: string; entry: TranscriptEntry };
+          setSubLiveEntry({ name, entry });
+          const focused = subModalOpen && activeSubName === name;
+          // Only sub-originated turns (responses/reports) count as unread, not our own dispatches.
+          if (!focused && entry.dir === "out") {
+            setSubUnread((prev) => ({ ...prev, [name]: (prev[name] || 0) + 1 }));
+          }
+        },
       "event:pending": (d) => {
         const { headers } = d as { headers: string[] };
         // [SUB:...] are sub-agent bookkeeping reports — kept in the server queue for
@@ -1069,6 +1084,8 @@ export default function ChatPage() {
         usageRefreshTrigger={usageTrigger}
         sessionId={sessionId}
         onForceInputToggle={() => setForceInput((v) => !v)}
+        onSubAgents={() => setSubModalOpen(true)}
+        subAgentUnread={Object.values(subUnread).reduce((a, b) => a + b, 0)}
       />
       <ErrorBanner error={error} onDismiss={() => setError(null)} />
       <div className="flex-1 relative min-h-0">
@@ -1226,6 +1243,17 @@ export default function ChatPage() {
           onSendMessage={sendMessage}
         />
       )}
+      <SubAgentChatModal
+        sessionId={sessionId}
+        open={subModalOpen}
+        onClose={() => setSubModalOpen(false)}
+        liveEntry={subLiveEntry}
+        activeSubName={activeSubName}
+        onActiveSubChange={(name) => {
+          setActiveSubName(name);
+          setSubUnread((prev) => ({ ...prev, [name]: 0 }));
+        }}
+      />
       {/* Modal panels — always mounted (hidden via display:none when inactive) to keep Shadow DOM + handlers alive */}
       {effectiveModalPanels.map((p) => {
         const isActive = !!modalsState?.[p.name] && !minimizedModals.has(p.name);

@@ -34,6 +34,9 @@ interface StatusBarProps {
   onContext?: () => void;
   /** Open prior-sessions list modal */
   onSessionList?: () => void;
+  /** Sub-agent chat modal */
+  onSubAgents?: () => void;
+  subAgentUnread?: number;
   /** Version snapshot (builder mode) */
   onVersionSave?: () => void;
   onVersionHistory?: () => void;
@@ -87,6 +90,8 @@ export default function StatusBar({
   onCompact,
   onContext,
   onSessionList,
+  onSubAgents,
+  subAgentUnread,
   onVersionSave,
   onVersionHistory,
   versionSaving,
@@ -133,7 +138,7 @@ export default function StatusBar({
     disconnected: "Disconnected",
   };
 
-  const hasDebugItems = onUsage || onCompact || onContext || onReinit || (!isBuilderMode && onSync) || onForceInputToggle || onSessionList;
+  const hasDebugItems = onUsage || onCompact || onContext || onReinit || (!isBuilderMode && onSync) || onForceInputToggle || onSessionList || onSubAgents;
 
   return (
     <header className="flex flex-wrap items-center gap-2 px-4 py-2 bg-surface backdrop-blur-[16px] border-b border-border shrink-0">
@@ -207,21 +212,28 @@ export default function StatusBar({
         {/* Debug / Tools dropdown */}
         {hasDebugItems && (
           <>
-            <button
-              ref={debugBtnRef}
-              onClick={() => setDebugOpen(!debugOpen)}
-              aria-label="도구 메뉴"
-              aria-haspopup="menu"
-              aria-expanded={debugOpen}
-              className={`px-2 py-1 rounded-md text-xs border cursor-pointer transition-all duration-fast
-                ${debugOpen
-                  ? "border-accent/40 text-accent/70 bg-accent/5"
-                  : "border-border/40 text-text-dim/60 bg-transparent hover:border-border/60 hover:text-text-dim/80"
-                }`}
-              title="도구"
-            >
-              &#9776;
-            </button>
+            <div className="relative">
+              <button
+                ref={debugBtnRef}
+                onClick={() => setDebugOpen(!debugOpen)}
+                aria-label="도구 메뉴"
+                aria-haspopup="menu"
+                aria-expanded={debugOpen}
+                className={`px-2 py-1 rounded-md text-xs border cursor-pointer transition-all duration-fast
+                  ${debugOpen
+                    ? "border-accent/40 text-accent/70 bg-accent/5"
+                    : "border-border/40 text-text-dim/60 bg-transparent hover:border-border/60 hover:text-text-dim/80"
+                  }`}
+                title="도구"
+              >
+                &#9776;
+              </button>
+              {!!subAgentUnread && subAgentUnread > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-1 rounded-full bg-accent text-[9px] leading-[14px] text-center text-black font-bold pointer-events-none">
+                  {subAgentUnread > 9 ? "9+" : subAgentUnread}
+                </span>
+              )}
+            </div>
             {debugOpen && debugPos && createPortal(
               <div
                 ref={debugMenuRef}
@@ -244,6 +256,14 @@ export default function StatusBar({
                     className={menuBtnClass}
                   >
                     Sessions
+                  </button>
+                )}
+                {onSubAgents && (
+                  <button
+                    onClick={() => { onSubAgents(); setDebugOpen(false); }}
+                    className={menuBtnClass}
+                  >
+                    서브에이전트{subAgentUnread ? ` (${subAgentUnread})` : ""}
                   </button>
                 )}
                 {onForceInputToggle && (
