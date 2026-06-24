@@ -304,7 +304,7 @@ export class SessionInstance {
       (filename) => this.broadcast("image:updated", { filename }),
     );
 
-    this.subAgents = new SubAgentManager(id, () => this.getDir());
+    this.subAgents = new SubAgentManager(id, () => this.getDir(), (ev, data) => this.broadcast(ev, data));
     this.bindProcessEvents(this._process);
   }
 
@@ -777,7 +777,7 @@ export class SessionInstance {
                 const task = typeof d.task === "string" ? d.task : "";
                 if (to && task) {
                   explicitlyDispatched.add(to);
-                  const ok = this.subAgents.dispatch(to, task);
+                  const ok = this.subAgents.dispatch(to, task, "hook");
                   if (!ok) console.warn(`[session:${this.id}] on-assistant dispatch to unknown sub "${to}"`);
                 }
               }
@@ -802,7 +802,7 @@ export class SessionInstance {
       for (const def of autoDefs) {
         if (explicitlyDispatched.has(def.name)) continue;
         const task = def.autoTriggerTask?.trim() || "최근 메인 턴을 반영해 네 담당 영역의 상태를 갱신하라.";
-        this.subAgents.dispatch(def.name, `${task}\n\n[직전 메인 응답]\n${excerpt}`);
+        this.subAgents.dispatch(def.name, `${task}\n\n[직전 메인 응답]\n${excerpt}`, "auto");
       }
     }
   }

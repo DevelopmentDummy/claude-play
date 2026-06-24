@@ -715,7 +715,7 @@ export class SessionManager {
           let files: string[] = [];
           try { files = fs.readdirSync(subDir); } catch { continue; /* not a directory */ }
           for (const file of files) {
-            if (file.startsWith(".resume") || file === "sub.log" || file === "history.json") {
+            if (file.startsWith(".resume") || file === "sub.log" || file === "history.json" || file === "transcript.jsonl") {
               try { fs.unlinkSync(path.join(subDir, file)); } catch { /* ignore */ }
             }
           }
@@ -1517,6 +1517,7 @@ export class SessionManager {
       "subagents/*/.resume*",
       "subagents/*/sub.log",
       "subagents/*/history.json",
+      "subagents/*/transcript.jsonl",
       "",
     ].join("\n");
     fs.writeFileSync(path.join(dir, ".gitignore"), gitignoreContent, "utf-8");
