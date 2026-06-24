@@ -178,18 +178,28 @@ export default function SubAgentChatModal({
 }
 
 function TranscriptRow({ e }: { e: TranscriptEntry }) {
+  const [expanded, setExpanded] = useState(false);
   // operator dispatch → right bubble; response → left bubble;
-  // auto/hook/delegate dispatch → faint system line; report → →메인 chip.
+  // auto/hook/delegate dispatch → faint system line (collapsible); report → →메인 chip.
   if (e.kind === "report") {
     return (
-      <div className="text-[11px] text-amber-300/80 italic">→메인: {e.text}</div>
+      <div className="text-[11px] text-amber-300/80 italic whitespace-pre-wrap break-words">→메인: {e.text}</div>
     );
   }
   if (e.kind === "dispatch" && e.origin !== "operator") {
+    // Auto/hook/delegate dispatches carry the (long, multi-line) task + main-response
+    // excerpt. Collapsed to one line by default; click to reveal the full text with
+    // line breaks preserved, so the transcript isn't flooded by the excerpt every turn.
     return (
-      <div className="text-[11px] text-text-dim/60 italic truncate" title={e.text}>
-        ⟳ {e.origin}: {e.text}
-      </div>
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="block w-full text-left text-[11px] text-text-dim/60 italic hover:text-text-dim/80"
+        title={expanded ? "접기" : "펼치기"}
+      >
+        <span className="opacity-70">⟳ {e.origin} {expanded ? "▾" : "▸"}</span>
+        <div className={expanded ? "whitespace-pre-wrap break-words mt-0.5 not-italic" : "truncate"}>{e.text}</div>
+      </button>
     );
   }
   const isOperator = e.kind === "dispatch" && e.origin === "operator";
