@@ -33,6 +33,11 @@ export default function SubAgentChatModal({
   const [sending, setSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  const activeSubNameRef = useRef(activeSubName);
+  activeSubNameRef.current = activeSubName;
+  const onActiveSubChangeRef = useRef(onActiveSubChange);
+  onActiveSubChangeRef.current = onActiveSubChange;
+
   useEscapeKey(onClose, open);
 
   // Load sub list when opened.
@@ -43,10 +48,10 @@ export default function SubAgentChatModal({
       .then((d) => {
         const list: SubInfo[] = d.subs || [];
         setSubs(list);
-        if (!activeSubName && list.length > 0) onActiveSubChange(list[0].name);
+        if (!activeSubNameRef.current && list.length > 0) onActiveSubChangeRef.current(list[0].name);
       })
       .catch(() => {});
-  }, [open, sessionId, activeSubName, onActiveSubChange]);
+  }, [open, sessionId]);
 
   // Load transcript when the focused sub changes (or modal opens).
   useEffect(() => {
@@ -128,7 +133,7 @@ export default function SubAgentChatModal({
             <button onClick={onClose} aria-label="닫기" className="text-white/40 hover:text-white/80 p-1">✕</button>
           </div>
           <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4 space-y-2">
-            {entries.map((e, i) => <TranscriptRow key={i} e={e} />)}
+            {entries.map((e, i) => <TranscriptRow key={`${e.ts}-${i}`} e={e} />)}
           </div>
           <div className="flex items-center gap-2 px-4 py-3 border-t border-white/[0.06]">
             <input
