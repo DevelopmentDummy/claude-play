@@ -4,6 +4,10 @@ import { AIProcess, createProcess } from "./ai-process-factory";
 import { AIProvider } from "./ai-provider";
 import { SubAgentDef } from "./subagent-manifest";
 import { registerSubProc, unregisterSubProc } from "./subagent-registry";
+import {
+  newSubTextState, reduceSubMessage, appendTranscriptLine, readTranscriptTail,
+  type SubTextState, type TranscriptEntry, type TranscriptDir, type TranscriptKind, type TranscriptOrigin,
+} from "./subagent-transcript";
 
 /** System-prompt preamble prepended to every sub-agent's instructions. Establishes
  *  the sub's contract: it actuates shared state, never talks to the end user, and
@@ -13,6 +17,7 @@ function buildSubSystemPrompt(def: SubAgentDef, instructions: string): string {
     `You are "${def.name}", a specialized background sub-agent for a roleplay session.`,
     `Your role: ${def.role}`,
     "You are NOT the narrator and you do NOT talk to the end user. The main narrator handles all user-facing prose.",
+    "Exception: a message beginning with [OPERATOR] is the human operator talking to you directly, out of character. In that turn, reply to the operator concisely and conversationally. You MAY still use your tools and call report_to_main when you actually change state.",
     "You operate on the SHARED session directory: read/write panel variables and data files using the MCP tools available to you (run_tool and the session's custom tools).",
     def.emitSummary
       ? `When you finish a task, call the MCP tool report_to_main with { from: "${def.name}", summary: "<one or two concise sentences of what changed>" } so the narrator learns what happened on its next turn. Do NOT write user-facing narrative.`
@@ -48,6 +53,8 @@ export class SubAgentInstance {
    *  init). Guards start() against respawning over — and thereby killing — a live
    *  handshake. Cleared on process exit and once a dispatch observes readiness. */
   private spawnInFlight = false;
+  /** Per-turn text accumulator for capturing the sub's final response text. */
+  private textState: SubTextState = newSubTextState();
 
   constructor(
     def: SubAgentDef,
@@ -56,6 +63,7 @@ export class SubAgentInstance {
     provider: AIProvider,
     model?: string,
     effort?: string,
+    private readonly onTranscript?: (entry: TranscriptEntry) => void,
   ) {
     this.def = def;
     this.name = def.name;
@@ -89,6 +97,12 @@ export class SubAgentInstance {
     this._process.on("exit", () => {
       this.spawnInFlight = false;
       if (this.pid) unregisterSubProc(this.pid);
+    });
+    // Capture the sub's final response text per turn (turn-complete, not streamed).
+    this._process.on("message", (d) => {
+      const { state, final } = reduceSubMessage(this.textState, d as Record<string, unknown>);
+      this.textState = state;
+      if (final) this.appendTranscript({ dir: "out", kind: "response", text: final });
     });
   }
 
@@ -159,28 +173,46 @@ export class SubAgentInstance {
    *  ready, so steady-state ordering is preserved in practice). On the first dispatch of
    *  a fresh conversation, the role contract is prepended as a leading message
    *  (provider-uniform role delivery). */
-  dispatch(task: string): void {
+  dispatch(task: string, origin: TranscriptOrigin = "delegate"): void {
     if (this.destroyed) return;
+    this.appendTranscript({ dir: "in", kind: "dispatch", origin, text: task });
+    // Operator OOC messages get a marker so the sub replies conversationally (see preamble).
+    const taskText = origin === "operator" ? `[OPERATOR]\n${task}` : task;
     this.start(); // no-op when already running or a handshake is in flight
     void this._process.waitForReady(20_000)
       .then((ready) => {
         if (this.destroyed) return;
-        // Handshake settled (ready or not) — allow a later dispatch to restart if needed.
         this.spawnInFlight = false;
         if (!ready || !this._process.isRunning()) {
           console.warn(`[subagent:${this.sessionId}/${this.name}] dispatch skipped — provider not ready`);
           return;
         }
-        let payload = task;
+        let payload = taskText;
         if (!this.primed) {
           const role = buildSubSystemPrompt(this.def, this.readInstructions());
-          // "--- TASK ---" is a visual separator between the role preamble and the per-turn task.
-          payload = `${role}\n\n--- TASK ---\n${task}`;
+          payload = `${role}\n\n--- TASK ---\n${taskText}`;
           this.primed = true;
         }
         this._process.send(payload);
       })
       .catch((err) => console.warn(`[subagent:${this.sessionId}/${this.name}] dispatch failed:`, err));
+  }
+
+  /** Append a transcript entry (best-effort file write) and push it over WS. */
+  private appendTranscript(e: { dir: TranscriptDir; kind: TranscriptKind; origin?: TranscriptOrigin; text: string }): void {
+    const entry: TranscriptEntry = { ts: new Date().toISOString(), ...e };
+    try { appendTranscriptLine(this.sessionDir, this.name, entry); } catch { /* best-effort */ }
+    try { this.onTranscript?.(entry); } catch { /* ignore */ }
+  }
+
+  /** Record a sub→main report summary into this sub's transcript. */
+  recordReport(summary: string): void {
+    this.appendTranscript({ dir: "out", kind: "report", text: summary });
+  }
+
+  /** Read the last `n` transcript entries for display. */
+  readTranscript(n: number): TranscriptEntry[] {
+    return readTranscriptTail(this.sessionDir, this.name, n);
   }
 
   destroy(): void {
