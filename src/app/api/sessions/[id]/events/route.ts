@@ -18,6 +18,11 @@ export async function POST(
   }
 
   instance.queueEvent(header.trim());
+  // Mirror sub→main reports into the originating sub's transcript (does not affect queueing).
+  const subMatch = /^\[SUB:([^\]]+)\]\s*([\s\S]*)$/.exec(header.trim());
+  if (subMatch) {
+    instance.subAgents.recordReport(subMatch[1].trim(), subMatch[2].trim());
+  }
   if (!silent) {
     instance.broadcast("event:pending", { headers: instance.getPendingEvents() });
   }
