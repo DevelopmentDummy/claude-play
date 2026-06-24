@@ -55,6 +55,8 @@ export class SubAgentInstance {
   private spawnInFlight = false;
   /** Per-turn text accumulator for capturing the sub's final response text. */
   private textState: SubTextState = newSubTextState();
+  /** Origin of the most recent dispatch — tags the response it produces so the UI can decide unread relevance. */
+  private lastDispatchOrigin: TranscriptOrigin = "delegate";
 
   constructor(
     def: SubAgentDef,
@@ -102,7 +104,7 @@ export class SubAgentInstance {
     this._process.on("message", (d) => {
       const { state, final } = reduceSubMessage(this.textState, d as Record<string, unknown>);
       this.textState = state;
-      if (final) this.appendTranscript({ dir: "out", kind: "response", text: final });
+      if (final) this.appendTranscript({ dir: "out", kind: "response", origin: this.lastDispatchOrigin, text: final });
     });
   }
 
@@ -176,6 +178,7 @@ export class SubAgentInstance {
   dispatch(task: string, origin: TranscriptOrigin = "delegate"): void {
     if (this.destroyed) return;
     this.appendTranscript({ dir: "in", kind: "dispatch", origin, text: task });
+    this.lastDispatchOrigin = origin;
     // Operator OOC messages get a marker so the sub replies conversationally (see preamble).
     const taskText = origin === "operator" ? `[OPERATOR]\n${task}` : task;
     this.start(); // no-op when already running or a handshake is in flight

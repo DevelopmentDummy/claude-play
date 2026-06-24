@@ -525,8 +525,10 @@ export default function ChatPage() {
           const { name, entry } = d as { name: string; entry: TranscriptEntry };
           setSubLiveEntry({ name, entry });
           const focused = subModalOpen && activeSubName === name;
-          // Only sub-originated turns (responses/reports) count as unread, not our own dispatches.
-          if (!focused && entry.dir === "out") {
+          const alerts =
+            entry.dir === "out" &&
+            (entry.kind === "report" || (entry.kind === "response" && entry.origin === "operator"));
+          if (!focused && alerts) {
             setSubUnread((prev) => ({ ...prev, [name]: (prev[name] || 0) + 1 }));
           }
         },

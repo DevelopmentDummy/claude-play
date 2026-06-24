@@ -64,9 +64,9 @@ export default function SubAgentChatModal({
 
   // Append live entries for the focused sub.
   useEffect(() => {
-    if (!liveEntry || liveEntry.name !== activeSubName) return;
+    if (!liveEntry || liveEntry.name !== activeSubNameRef.current) return;
     setEntries((prev) => [...prev, liveEntry.entry]);
-  }, [liveEntry, activeSubName]);
+  }, [liveEntry]);
 
   // Auto-scroll to bottom on new entries.
   useEffect(() => {
