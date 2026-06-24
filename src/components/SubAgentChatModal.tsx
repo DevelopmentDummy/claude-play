@@ -37,6 +37,10 @@ export default function SubAgentChatModal({
   activeSubNameRef.current = activeSubName;
   const onActiveSubChangeRef = useRef(onActiveSubChange);
   onActiveSubChangeRef.current = onActiveSubChange;
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  // True while an IME composition (Korean etc.) is in progress — guards Enter-to-send
+  // against firing on the composition-confirming Enter keystroke.
+  const composingRef = useRef(false);
 
   useEscapeKey(onClose, open);
 
@@ -78,6 +82,7 @@ export default function SubAgentChatModal({
     if (!text || !activeSubName || sending) return;
     setSending(true);
     setInput("");
+    if (inputRef.current) inputRef.current.style.height = "auto";
     try {
       await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/subagents/${encodeURIComponent(activeSubName)}/message`, {
         method: "POST",
@@ -135,14 +140,27 @@ export default function SubAgentChatModal({
           <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4 space-y-2">
             {entries.map((e, i) => <TranscriptRow key={`${e.ts}-${i}`} e={e} />)}
           </div>
-          <div className="flex items-center gap-2 px-4 py-3 border-t border-white/[0.06]">
-            <input
+          <div className="flex items-end gap-2 px-4 py-3 border-t border-white/[0.06]">
+            <textarea
+              ref={inputRef}
               value={input}
-              onChange={(ev) => setInput(ev.target.value)}
-              onKeyDown={(ev) => { if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); void handleSend(); } }}
-              placeholder={activeSubName ? `${activeSubName}에게 직접 말하기…` : "서브를 선택하세요"}
+              rows={1}
+              onChange={(ev) => {
+                setInput(ev.target.value);
+                const el = ev.target;
+                el.style.height = "auto";
+                el.style.height = Math.min(el.scrollHeight, 120) + "px";
+              }}
+              onKeyDown={(ev) => {
+                // Enter sends; Shift+Enter inserts a newline. Skip while IME composing (Korean etc.).
+                if (ev.nativeEvent.isComposing || composingRef.current || ev.keyCode === 229) return;
+                if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); void handleSend(); }
+              }}
+              onCompositionStart={() => { composingRef.current = true; }}
+              onCompositionEnd={() => { composingRef.current = false; }}
+              placeholder={activeSubName ? `${activeSubName}에게 직접 말하기… (Shift+Enter 줄바꿈)` : "서브를 선택하세요"}
               disabled={!activeSubName || sending}
-              className="flex-1 px-3 py-2 rounded-lg bg-white/[0.04] border border-white/[0.08] text-sm text-text outline-none focus:border-accent/60"
+              className="flex-1 px-3 py-2 rounded-lg bg-white/[0.04] border border-white/[0.08] text-sm text-text outline-none resize-none max-h-[120px] focus:border-accent/60"
             />
             <button
               onClick={() => void handleSend()}
