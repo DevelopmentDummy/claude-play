@@ -997,7 +997,7 @@ server.registerTool(
 server.registerTool(
   "generate_image_gemini",
   {
-    description: "High-level Gemini image generation compatible with legacy service behavior.",
+    description: "Gemini image generation. ⚠️ Use ONLY when the user explicitly requests the Gemini backend (e.g. '제미니로 그려줘'). The DEFAULT image generator is comfyui_generate (ComfyUI) — never auto-select this without an explicit user request, even for backgrounds/icons/concept art.",
     inputSchema: {
       prompt: z.string().min(1),
       filename: z.string().optional().describe("Filename only — do NOT prefix with 'images/'. The tool auto-saves under the images/ directory. Passing 'images/foo.png' results in 'images/images/foo.png' on disk, mismatching the $IMAGE:images/foo.png$ token (404). Use 'foo.png' instead."),
@@ -1035,7 +1035,7 @@ server.registerTool(
 server.registerTool(
   "generate_image_openai",
   {
-    description: "Generate an image using OpenAI GPT image model (gpt-image-2). Supports reference image via /v1/images/edits endpoint.",
+    description: "OpenAI gpt-image-2 image generation (strong text rendering + image editing via reference). ⚠️ Use ONLY when the user explicitly requests the OpenAI/GPT backend (e.g. 'GPT로 그려줘'). The DEFAULT image generator is comfyui_generate (ComfyUI) — never auto-select this without an explicit user request, even when text rendering or precise composition seems beneficial.",
     inputSchema: {
       prompt: z.string().min(1),
       filename: z.string().optional().describe("Filename only — do NOT prefix with 'images/'. The tool auto-saves under the images/ directory. Passing 'images/foo.png' results in 'images/images/foo.png' on disk, mismatching the $IMAGE:images/foo.png$ token (404). Use 'foo.png' instead."),
