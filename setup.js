@@ -300,7 +300,7 @@ async function stepEnvLocal(port, hasComfyUI) {
     ``,
     `# API keys (optional)`,
     `# OPENAI_API_KEY=`,
-    `# OPENAI_IMAGE_MODEL=gpt-image-2`,
+    `# OPENAI_IMAGE_MODEL=gpt-5.5`,
     `# GEMINI_API_KEY=`,
     `# GEMINI_IMAGE_MODEL=gemini-3.1-flash-image-preview`,
     `# CIVITAI_API_KEY=`,

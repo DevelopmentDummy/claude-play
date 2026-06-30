@@ -62,7 +62,8 @@ Python FastAPI child process (port 3342 by default) for serial GPU task queueing
 | `comfyui-client.ts` | ComfyUI integration — image generation. Queues workflows, polls for results, downloads output images to session dir. Routes through GPU Manager when available. |
 | `workflow-resolver.ts` | ComfyUI workflow package management. Loads packages, validates `ParamDef` defs, merges prefix/suffix, supports custom `resolver.mjs` plugins. `loadPackage()`, `listPackages()`, `resolveWorkflow()`, `validateParams()`. |
 | `gemini-image.ts` | Gemini image generation via `generativelanguage.googleapis.com` API. Configurable model (`GEMINI_IMAGE_MODEL`). Supports multiple reference images and aspect ratio. |
-| `openai-image.ts` | OpenAI image generation. Supports reference images (uses `/v1/images/edits`). Configurable model, size, quality parameters. |
+| `openai-image.ts` | OpenAI image generation via the metered Responses API `image_generation` tool (model `gpt-5.5`). Reference images are sent as `input_image` (base64 data URL) for editing (`action: edit`). Used only when `OPENAI_IMAGE_BACKEND=api`. |
+| `codex-image.ts` | **Default** OpenAI/GPT image backend (`OPENAI_IMAGE_BACKEND=codex`). Drives `codex exec` whose built-in `image_gen` tool renders via the ChatGPT subscription (no per-call cost / no `OPENAI_API_KEY`). Snapshots `$CODEX_HOME/generated_images`, harvests the new `ig_*.png`, copies into the session `images/`. Editing via `codex exec -i <reference>`. Slower (a full agent turn) and bound by the plan's rate limits. |
 
 ### Panel System
 
@@ -123,7 +124,7 @@ Python FastAPI child process (port 3342 by default) for serial GPU task queueing
 | `gemini_generate` | Direct Gemini image API call (legacy wrapper) |
 | `generate_image` | High-level template-mode image generation (auto-picks ComfyUI defaults / trigger tags) |
 | `generate_image_gemini` | High-level Gemini image generation |
-| `generate_image_openai` | High-level OpenAI image generation (`gpt-image-2`) |
+| `generate_image_openai` | High-level OpenAI/GPT image generation. Default backend = Codex CLI built-in `image_gen` (ChatGPT subscription, no per-call cost); `OPENAI_IMAGE_BACKEND=api` switches to the metered Responses API |
 | `update_profile` | Replace persona profile image and auto-crop a 256×256 icon |
 | `policy_review` | Local content-policy review (allow / deny / uncertain) with decision logging |
 | `policy_context` | Read roleplay policy context (extreme traits, reviewed scenarios, intimacy policy) |

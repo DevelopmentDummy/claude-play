@@ -47,8 +47,9 @@
 |----------|---------|---------|
 | `GEMINI_API_KEY` | (none) | Gemini image generation API key |
 | `GEMINI_IMAGE_MODEL` | `gemini-3.1-flash-image-preview` | Gemini image model |
-| `OPENAI_API_KEY` | (none) | OpenAI image generation API key |
-| `OPENAI_IMAGE_MODEL` | `gpt-image-2` | OpenAI image model |
+| `OPENAI_IMAGE_BACKEND` | `codex` | OpenAI/GPT image backend: `codex` (Codex CLI built-in `image_gen`, ChatGPT-subscription-covered, no per-call cost) or `api` (metered OpenAI Responses API) |
+| `OPENAI_API_KEY` | (none) | OpenAI API key — required only when `OPENAI_IMAGE_BACKEND=api` |
+| `OPENAI_IMAGE_MODEL` | `gpt-5.5` | OpenAI Responses model driving the `image_generation` tool (only used when `OPENAI_IMAGE_BACKEND=api`) |
 | `CIVITAI_API_KEY` | (none) | CivitAI model download key |
 
 ### TTS & GPU

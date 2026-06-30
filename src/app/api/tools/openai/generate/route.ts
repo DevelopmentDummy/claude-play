@@ -1,15 +1,18 @@
 import { NextResponse } from "next/server";
 import { getSessionManager } from "@/lib/services";
 import { OpenAIImageClient } from "@/lib/openai-image";
+import { CodexImageClient } from "@/lib/codex-image";
+
+// Backend selection:
+//   "codex" (default) — render via the Codex CLI's built-in image_gen tool,
+//                        covered by the ChatGPT subscription (no per-call cost).
+//   "api"             — render via the metered OpenAI Responses API (needs OPENAI_API_KEY).
+function selectedBackend(): "codex" | "api" {
+  return (process.env.OPENAI_IMAGE_BACKEND || "codex").toLowerCase() === "api" ? "api" : "codex";
+}
 
 export async function POST(req: Request) {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json(
-      { error: "OPENAI_API_KEY not configured" },
-      { status: 500 }
-    );
-  }
+  const backend = selectedBackend();
 
   const sm = getSessionManager();
 
@@ -49,10 +52,25 @@ export async function POST(req: Request) {
     );
   }
 
-  const model = process.env.OPENAI_IMAGE_MODEL || "gpt-image-2";
-  const client = new OpenAIImageClient({ apiKey, model });
+  // Build the chosen backend client (the API path requires a key).
+  let client: { generate: (r: {
+    prompt: string; filename: string; sessionDir: string;
+    referenceImage?: string; size?: string; quality?: string;
+  }) => Promise<{ success: boolean; filepath?: string; error?: string }> };
+
+  if (backend === "api") {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json({ error: "OPENAI_API_KEY not configured" }, { status: 500 });
+    }
+    const model = process.env.OPENAI_IMAGE_MODEL || "gpt-5.5";
+    client = new OpenAIImageClient({ apiKey, model });
+  } else {
+    client = new CodexImageClient();
+  }
 
   const resultPath = `images/${filename}`;
+  const logTag = backend === "api" ? "openai" : "codex-image";
 
   // Background generation (fire-and-forget)
   client
@@ -66,13 +84,13 @@ export async function POST(req: Request) {
     })
     .then((result) => {
       if (result.success) {
-        console.log(`[openai] Generated: ${result.filepath}`);
+        console.log(`[${logTag}] Generated: ${result.filepath}`);
       } else {
-        console.error(`[openai] Generation failed: ${result.error}`);
+        console.error(`[${logTag}] Generation failed: ${result.error}`);
       }
     })
     .catch((err) => {
-      console.error(`[openai] Unexpected error:`, err);
+      console.error(`[${logTag}] Unexpected error:`, err);
     });
 
   return NextResponse.json({

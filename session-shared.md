@@ -248,7 +248,7 @@ mcp__claude_play__run_tool({
 
 - ComfyUI: Danbooru 태그 스타일 프롬프트. `character-tags.json` + `comfyui-config.json` 참조. 로컬 무료.
 - Gemini: 영어 자연어 서술형 프롬프트. 아트 스타일을 명시하면 더 좋은 결과. **유료 API이므로 호출을 최소화하라.**
-- OpenAI (gpt-image-2): 영어 자연어 프롬프트. 긴 지시문도 잘 따르며 텍스트 렌더링이 강하다. `referenceImage` 파라미터로 기존 이미지를 편집/변형할 수 있다. **유료 API이므로 호출을 최소화하라.**
+- OpenAI/GPT (기본 Codex 구독 백엔드): 영어 자연어 프롬프트. 긴 지시문도 잘 따르며 텍스트 렌더링이 강하다. `referenceImage` 파라미터로 기존 이미지를 편집/변형할 수 있다. **건당 과금은 없지만 한 장에 수십 초 걸리니 호출을 최소화하라.**
 
 세 도구 모두 결과는 `images/` 디렉토리에 저장되며, `$IMAGE:images/파일명.png$` 토큰으로 응답에 삽입한다. 한번 생성한 이미지는 반드시 재사용한다.
 

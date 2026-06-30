@@ -1035,14 +1035,14 @@ server.registerTool(
 server.registerTool(
   "generate_image_openai",
   {
-    description: "OpenAI gpt-image-2 image generation (strong text rendering + image editing via reference). ⚠️ Use ONLY when the user explicitly requests the OpenAI/GPT backend (e.g. 'GPT로 그려줘'). The DEFAULT image generator is comfyui_generate (ComfyUI) — never auto-select this without an explicit user request, even when text rendering or precise composition seems beneficial.",
+    description: "OpenAI/GPT image generation (strong text rendering + image editing via reference). Default backend renders through the Codex CLI's built-in image_gen tool, covered by the ChatGPT subscription (no per-call cost); set OPENAI_IMAGE_BACKEND=api to use the metered OpenAI Responses API instead. ⚠️ Use ONLY when the user explicitly requests the OpenAI/GPT backend (e.g. 'GPT로 그려줘'). The DEFAULT image generator is comfyui_generate (ComfyUI, local/instant) — never auto-select this without an explicit user request, even when text rendering or precise composition seems beneficial.",
     inputSchema: {
       prompt: z.string().min(1),
       filename: z.string().optional().describe("Filename only — do NOT prefix with 'images/'. The tool auto-saves under the images/ directory. Passing 'images/foo.png' results in 'images/images/foo.png' on disk, mismatching the $IMAGE:images/foo.png$ token (404). Use 'foo.png' instead."),
       persona: z.string().optional(),
-      reference_image: z.string().optional().describe("Relative path to a reference image in the session directory (e.g. images/portrait.png). Uses edits endpoint when provided."),
+      reference_image: z.string().optional().describe("Relative path to a reference image in the session directory (e.g. images/portrait.png). Sent as an input_image for editing; the tool action becomes 'edit'."),
       size: z.string().optional().describe("Image size: 1024x1024, 1536x1024, 1024x1536, auto (default: auto)"),
-      quality: z.string().optional().describe("Quality: low, medium, high (default: auto)"),
+      quality: z.string().optional().describe("Quality: low, medium, high, auto (default: auto)"),
     },
   },
   async (input) => {
