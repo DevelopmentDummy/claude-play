@@ -156,15 +156,13 @@ function buildModelGroups(): ModelGroup[] {
         { value: "opus:xhigh", label: "Opus XHigh" },
         { value: "opus:max", label: "Opus Max" },
         { value: "opus:ultracode", label: "Opus Ultracode" },
-        // Fable disabled 2026-06-26: the CLI rejects it with
-        // "model may not exist or you may not have access to it". Re-enable by
-        // uncommenting if access is restored (the "fable" alias still requires the full id).
-        // { value: "claude-fable-5", label: "Fable" },
-        // { value: "claude-fable-5:medium", label: "Fable Medium" },
-        // { value: "claude-fable-5:high", label: "Fable High" },
-        // { value: "claude-fable-5:xhigh", label: "Fable XHigh" },
-        // { value: "claude-fable-5:max", label: "Fable Max" },
-        // { value: "claude-fable-5:ultracode", label: "Fable Ultracode" },
+        // Fable re-enabled 2026-07-02 (access restored; the "fable" alias still requires the full id).
+        { value: "claude-fable-5", label: "Fable" },
+        { value: "claude-fable-5:medium", label: "Fable Medium" },
+        { value: "claude-fable-5:high", label: "Fable High" },
+        { value: "claude-fable-5:xhigh", label: "Fable XHigh" },
+        { value: "claude-fable-5:max", label: "Fable Max" },
+        { value: "claude-fable-5:ultracode", label: "Fable Ultracode" },
       ],
     },
     {
