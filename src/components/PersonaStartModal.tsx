@@ -58,7 +58,7 @@ export default function PersonaStartModal({
   const [personaContent, setPersonaContent] = useState<string | null>(null);
   const [openingContent, setOpeningContent] = useState<string | null>(null);
   const [hasProfileImage, setHasProfileImage] = useState(false);
-  const [selectedModel, setSelectedModel] = useState<string>("opus[1m]:medium");
+  const [selectedModel, setSelectedModel] = useState<string>("opus:medium");
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
 

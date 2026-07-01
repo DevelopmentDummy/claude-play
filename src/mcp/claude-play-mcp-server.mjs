@@ -1521,7 +1521,7 @@ server.registerTool(
       autoTrigger: z.enum(["onAssistantTurn", "none"]).optional().describe("Auto-dispatch every main turn, or 'none' (hook-controlled). Default none."),
       autoTriggerTask: z.string().optional().describe("Default task text when autoTrigger is onAssistantTurn"),
       emitSummary: z.boolean().optional().describe("Sub should call report_to_main when done (default true)"),
-      model: z.string().optional().describe("Optional: pin this sub to a model id (e.g. 'gemini-3-flash-preview', 'gpt-5.4:high', 'opus[1m]'). Provider is inferred from the id. Omit to follow the session's provider/model/effort."),
+      model: z.string().optional().describe("Optional: pin this sub to a model id (e.g. 'gemini-3-flash-preview', 'gpt-5.4:high', 'opus'). Provider is inferred from the id. Omit to follow the session's provider/model/effort."),
     },
   },
   async (input) => {

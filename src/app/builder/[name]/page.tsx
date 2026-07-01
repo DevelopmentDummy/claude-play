@@ -52,7 +52,7 @@ export default function BuilderPage() {
 
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [wsEnabled, setWsEnabled] = useState(false);
-  const [builderModel, setBuilderModel] = useState("opus[1m]:medium");
+  const [builderModel, setBuilderModel] = useState("opus:medium");
   const [displayName, setDisplayName] = useState(decodedName);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [voiceChat, setVoiceChat] = useState(false);
@@ -132,7 +132,7 @@ export default function BuilderPage() {
 
       const data = await res.json();
       if (data.model) setBuilderModel(data.model);
-      else if (data.provider) setBuilderModel(data.provider === "codex" ? "gpt-5.4:medium" : data.provider === "gemini" ? "gemini-auto" : "opus[1m]:medium");
+      else if (data.provider) setBuilderModel(data.provider === "codex" ? "gpt-5.4:medium" : data.provider === "gemini" ? "gemini-auto" : "opus:medium");
       if (data.displayName) setDisplayName(data.displayName);
 
       // Load chat options schema + persona defaults

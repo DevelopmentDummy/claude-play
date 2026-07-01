@@ -1590,7 +1590,7 @@ export class SessionManager {
     }
   }
 
-  /** Get saved builder model (includes effort suffix, e.g. "opus[1m]:high") */
+  /** Get saved builder model (includes effort suffix, e.g. "opus:high") */
   getBuilderModel(name: string): string | undefined {
     const metaPath = path.join(this.getPersonaDir(name), "builder-session.json");
     if (!fs.existsSync(metaPath)) return undefined;

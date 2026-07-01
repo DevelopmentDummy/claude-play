@@ -111,7 +111,7 @@ export interface ModelGroup {
 
 /** Default model per provider (used when no model is specified) */
 const DEFAULT_MODELS: Record<AIProvider, string> = {
-  claude: "opus[1m]",
+  claude: "opus",
   codex: "gpt-5.4",
   gemini: "gemini-3.1-pro-preview",
   kimi: "kimi-auto",
@@ -150,19 +150,21 @@ function buildModelGroups(): ModelGroup[] {
         { value: "sonnet", label: "Sonnet" },
         { value: "sonnet:medium", label: "Sonnet Medium" },
         { value: "sonnet:high", label: "Sonnet High" },
-        { value: "opus[1m]", label: "Opus 1M" },
-        { value: "opus[1m]:medium", label: "Opus 1M Medium" },
-        { value: "opus[1m]:high", label: "Opus 1M High" },
-        { value: "opus[1m]:xhigh", label: "Opus 1M XHigh" },
-        { value: "opus[1m]:max", label: "Opus 1M Max" },
-        { value: "opus[1m]:ultracode", label: "Opus 1M Ultracode" },
-        // "fable" alias is not accepted by the CLI yet — full id required ([1m] suffix works)
-        { value: "claude-fable-5[1m]", label: "Fable 1M" },
-        { value: "claude-fable-5[1m]:medium", label: "Fable 1M Medium" },
-        { value: "claude-fable-5[1m]:high", label: "Fable 1M High" },
-        { value: "claude-fable-5[1m]:xhigh", label: "Fable 1M XHigh" },
-        { value: "claude-fable-5[1m]:max", label: "Fable 1M Max" },
-        { value: "claude-fable-5[1m]:ultracode", label: "Fable 1M Ultracode" },
+        { value: "opus", label: "Opus" },
+        { value: "opus:medium", label: "Opus Medium" },
+        { value: "opus:high", label: "Opus High" },
+        { value: "opus:xhigh", label: "Opus XHigh" },
+        { value: "opus:max", label: "Opus Max" },
+        { value: "opus:ultracode", label: "Opus Ultracode" },
+        // Fable disabled 2026-06-26: the CLI rejects it with
+        // "model may not exist or you may not have access to it". Re-enable by
+        // uncommenting if access is restored (the "fable" alias still requires the full id).
+        // { value: "claude-fable-5", label: "Fable" },
+        // { value: "claude-fable-5:medium", label: "Fable Medium" },
+        // { value: "claude-fable-5:high", label: "Fable High" },
+        // { value: "claude-fable-5:xhigh", label: "Fable XHigh" },
+        // { value: "claude-fable-5:max", label: "Fable Max" },
+        // { value: "claude-fable-5:ultracode", label: "Fable Ultracode" },
       ],
     },
     {

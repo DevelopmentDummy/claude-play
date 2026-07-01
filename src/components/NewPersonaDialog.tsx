@@ -17,7 +17,7 @@ export default function NewPersonaDialog({
 }: NewPersonaDialogProps) {
   const panelRef = useFocusTrap<HTMLDivElement>({ active: open, initialFocus: false });
   const inputRef = useRef<HTMLInputElement>(null);
-  const [selectedModel, setSelectedModel] = useState("opus[1m]:ultracode");
+  const [selectedModel, setSelectedModel] = useState("opus:ultracode");
 
   const handleOk = useCallback(() => {
     const name = inputRef.current?.value
