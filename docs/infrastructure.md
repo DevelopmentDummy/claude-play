@@ -3,7 +3,7 @@
 - **Setup wizard**: `node setup.js` (CLI) + `/setup` web wizard. `data/.setup-complete` flag controls redirect.
 - **Port auto-calculation**: `TTS_PORT` defaults to `PORT+1`, `GPU_MANAGER_PORT` defaults to `PORT+2`.
 - **MCP authentication**: Internal token per server process → `.mcp.json` / `.codex/config.toml` / `.gemini/` / `.kimi/` env vars → `x-bridge-token` header.
-- **MCP bootstrap**: Claude launched with `--mcp-config <cwd>/.mcp.json --strict-mcp-config`. Codex auto-loads `.codex/config.toml` from cwd. Gemini and Kimi receive their own per-runtime config dirs.
+- **MCP bootstrap**: Claude launched with `--mcp-config <cwd>/.mcp.json --strict-mcp-config`. Codex does **not** read a project/cwd `.codex/config.toml` — config (incl. `mcp_servers`) is loaded only from `$CODEX_HOME/config.toml` (codex-cli 0.124.0). `CodexProcess.spawn` therefore points `CODEX_HOME` at the session's own `.codex` dir (and copies `~/.codex/auth.json` in so account auth survives the repoint) so the per-session config written by `writeCodexConfig` — MCP server + `model_instructions_file` + cwd `trust_level` — actually takes effect. Gemini and Kimi receive their own per-runtime config dirs.
 - **Permission sandboxing**: `.claude/settings.json` per session restricts Claude tools to session directory.
 - **Admin authentication**: Optional via `ADMIN_PASSWORD`. HMAC-SHA256 tokens in httpOnly cookies (90-day). Rate-limited login (5/min per IP). MCP server bypasses via `x-bridge-token`.
 - **Global singleton pattern**: `session-registry.ts` and `ws-server.ts` use `globalThis[key]` for HMR-safe state sharing.

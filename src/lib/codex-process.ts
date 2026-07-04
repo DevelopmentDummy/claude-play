@@ -51,30 +51,6 @@ export class CodexProcess extends EventEmitter<CodexProcessEvents> {
     this.on("error", () => { /* swallowed — real handling via session-instance listener */ });
   }
 
-  /**
-   * Ensure a directory is registered as a trusted project in ~/.codex/config.toml.
-   * Codex ignores project-level config.toml (MCP servers, instructions) for untrusted dirs.
-   */
-  private ensureCodexTrust(dir: string): void {
-    const globalConfig = path.join(os.homedir(), ".codex", "config.toml");
-    // Codex uses \\?\ prefix on Windows for trust keys
-    const trustKey = process.platform === "win32"
-      ? `'\\\\?\\${dir.replace(/\//g, "\\")}'`
-      : `'${dir}'`;
-    const sectionHeader = `[projects.${trustKey}]`;
-
-    let content = "";
-    if (fs.existsSync(globalConfig)) {
-      content = fs.readFileSync(globalConfig, "utf-8");
-      // Already trusted — skip
-      if (content.includes(sectionHeader)) return;
-    }
-
-    // Append trust entry
-    const entry = `\n${sectionHeader}\ntrust_level = "trusted"\n`;
-    fs.appendFileSync(globalConfig, entry, "utf-8");
-  }
-
   private parseOutputLine(line: string): void {
     const trimmed = line.trim();
     if (!trimmed) return;
@@ -132,6 +108,29 @@ export class CodexProcess extends EventEmitter<CodexProcessEvents> {
         delete (env as Record<string, string | undefined>)[key];
       }
     }
+
+    // Codex loads config.toml (mcp_servers + model_instructions_file) ONLY from
+    // $CODEX_HOME/config.toml — it does NOT treat the session dir's .codex/config.toml
+    // as project config (verified: codex-cli 0.124.0). Point CODEX_HOME at the session's
+    // own .codex dir so the per-session config written by writeCodexConfig is actually
+    // honored — this is what registers the claude_play MCP server and the 39KB
+    // model-instructions.md system prompt. Copy the real auth.json in (fresh each spawn)
+    // so ChatGPT/account auth survives the CODEX_HOME repoint. Only touches the child
+    // env; the bridge server's process.env.CODEX_HOME stays unset (codex-image.ts relies
+    // on that default).
+    const sessionCodexHome = path.join(cwd, ".codex");
+    env.CODEX_HOME = sessionCodexHome;
+    try {
+      fs.mkdirSync(sessionCodexHome, { recursive: true });
+      const realAuth = path.join(os.homedir(), ".codex", "auth.json");
+      if (fs.existsSync(realAuth)) {
+        fs.copyFileSync(realAuth, path.join(sessionCodexHome, "auth.json"));
+      }
+    } catch (e) {
+      if (this.logStream) {
+        this.logStream.write(`[codex-home] auth.json copy failed: ${e instanceof Error ? e.message : String(e)}\n`);
+      }
+    }
     // Force UTF-8 locale to mitigate CLI-side CJK buffer boundary corruption
     env.LANG = env.LANG || "en_US.UTF-8";
     env.LC_ALL = env.LC_ALL || "en_US.UTF-8";
@@ -163,10 +162,8 @@ export class CodexProcess extends EventEmitter<CodexProcessEvents> {
       }
     }
 
-    // Ensure cwd is registered as a trusted project in global ~/.codex/config.toml.
-    // Codex ignores project .codex/config.toml (including MCP settings) unless the
-    // directory is explicitly trusted. We add it automatically before each spawn.
-    this.ensureCodexTrust(cwd);
+    // Trust for this cwd is emitted into the session's own .codex/config.toml by
+    // writeCodexConfig (read via CODEX_HOME above) — no global ~/.codex write needed.
 
     if (this.logStream) {
       this.logStream.write(`[start] args: codex ${args.join(" ")}\n`);

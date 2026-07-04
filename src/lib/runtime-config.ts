@@ -104,7 +104,18 @@ export function writeMcpConfig(
   );
 }
 
-/** Write .codex/config.toml with MCP server config + model_instructions_file for Codex CLI */
+/**
+ * Write .codex/config.toml with MCP server config + model_instructions_file for Codex CLI.
+ *
+ * IMPORTANT: Codex does NOT read a project/cwd `.codex/config.toml` as project config
+ * (verified against codex-cli 0.124.0 — config, incl. `mcp_servers` and
+ * `model_instructions_file`, is loaded ONLY from `$CODEX_HOME/config.toml`). To make
+ * this file take effect, `CodexProcess.spawn` points `CODEX_HOME` at this `.codex` dir
+ * (and copies the real auth.json in). That is why we ALSO emit a `[projects.<dir>]`
+ * trust entry here: when CODEX_HOME is this dir, Codex must trust the session cwd to
+ * honor its mcp_servers + instructions. This replaces the old approach of appending
+ * trust to the global ~/.codex/config.toml.
+ */
 export function writeCodexConfig(
   projectDir: string,
   appRoot: string,
@@ -119,9 +130,19 @@ export function writeCodexConfig(
   // model_instructions_file: absolute path to instructions file
   const instructionsPath = path.join(codexDir, "model-instructions.md");
 
+  // Trust the session dir so Codex (reading this file via CODEX_HOME) honors its
+  // mcp_servers + instructions for this cwd. Windows uses the \\?\ extended prefix,
+  // matching how Codex itself keys trusted projects.
+  const trustKey = process.platform === "win32"
+    ? `'\\\\?\\${projectDir.replace(/\//g, "\\")}'`
+    : `'${projectDir}'`;
+
   // Build TOML content
   const lines: string[] = [];
   lines.push(`model_instructions_file = ${JSON.stringify(instructionsPath)}`);
+  lines.push(``);
+  lines.push(`[projects.${trustKey}]`);
+  lines.push(`trust_level = "trusted"`);
   lines.push(``);
   lines.push(`[mcp_servers.${CLAUDE_MCP_SERVER_NAME}]`);
   lines.push(`command = "node"`);
