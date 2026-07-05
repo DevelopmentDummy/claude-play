@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServices } from "@/lib/services";
-import { spawnBackgroundClaude, type FireAIOnExit } from "@/lib/background-session";
+import { spawnBackgroundAI, type FireAIOnExit } from "@/lib/background-session";
 
 function sanitizeOnExit(raw: unknown): FireAIOnExit | undefined {
   if (!raw || typeof raw !== "object") return undefined;
@@ -52,7 +52,7 @@ export async function POST(
 
     const sessionDir = svc.sessions.getSessionDir(id);
 
-    const result = spawnBackgroundClaude({
+    const result = spawnBackgroundAI({
       sessionDir,
       prompt,
       model,

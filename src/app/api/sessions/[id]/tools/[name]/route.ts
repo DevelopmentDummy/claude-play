@@ -2,7 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { NextResponse } from "next/server";
 import { getServices, getSessionInstance } from "@/lib/services";
-import { spawnBackgroundClaude } from "@/lib/background-session";
+import { spawnBackgroundAI } from "@/lib/background-session";
 import { mutateSessionJson, applyPatch, loadSessionData, resolveSessionFilePath } from "@/lib/session-state";
 import { readModalGroups, applyModalChange } from "@/lib/modal-merge";
 
@@ -143,8 +143,8 @@ export async function POST(
           useSessionContext?: boolean;
         };
         if (typeof fa.prompt === "string" && fa.prompt.trim()) {
-          console.log(`[tools/${name} fireAi] spawning bg claude for ${sessionId} (model=${fa.model || "default"}, effort=${fa.effort || "default"})`);
-          spawnBackgroundClaude({
+          console.log(`[tools/${name} fireAi] spawning bg AI for ${sessionId} (model=${fa.model || "default"}, effort=${fa.effort || "default"})`);
+          spawnBackgroundAI({
             sessionDir,
             prompt: fa.prompt,
             model: fa.model,

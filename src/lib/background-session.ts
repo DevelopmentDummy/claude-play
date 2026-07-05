@@ -1,11 +1,10 @@
-import { spawn, ChildProcess, execSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
-import { StringDecoder } from "string_decoder";
-import { getSessionManager } from "./session-registry";
-import { getSessionInstance } from "./session-registry";
+import { getSessionManager, getSessionInstance } from "./session-registry";
 import { wsBroadcast } from "./ws-server";
-import { resolveClaudeEffort } from "./ai-provider";
+import { AIProvider, providerFromModel, parseModelEffort } from "./ai-provider";
+import { AIProcess, createProcess } from "./ai-process-factory";
+import { newSubTextState, reduceSubMessage, type SubTextState } from "./subagent-transcript";
 
 // ── Interfaces ──────────────────────────────────────────────
 
@@ -25,6 +24,7 @@ export interface FireAIOnExit {
 export interface FireAIOptions {
   sessionDir: string;
   prompt: string;
+  /** Model id; provider is derived via providerFromModel(). Empty/undefined → Claude (opus). */
   model?: string;
   effort?: string;
   notify?: boolean;
@@ -56,26 +56,24 @@ export interface FireAIResult {
 
 // ── Active process tracking ─────────────────────────────────
 
-const activeProcesses = new Map<number, ChildProcess>();
+/** Live background provider processes. Killed en masse on server shutdown. */
+const activeProcesses = new Set<AIProcess>();
+
+/** Structural accessor for a provider process's underlying child pid.
+ *  Pipe-based providers (claude/codex/gemini/kimi) expose `proc?.pid`; AntigravityProcess
+ *  tracks `agyPid` instead, so this yields undefined for it — agy is reaped via its own
+ *  PID registry (data/.runtime/agy-procs.json), not via this pid. */
+type ProcCarrier = { proc?: { pid?: number } | null };
+
+/** Safety timeout for a background turn. A persistent provider process (unlike the old
+ *  one-shot `claude -p`) does not self-exit, so a hung turn must be killed. */
+const DEFAULT_FIRE_AI_TIMEOUT_MS = 600_000; // 10 min
 
 // ── Helpers ─────────────────────────────────────────────────
 
-/** Build a clean env without CLAUDECODE/CLAUDE_CODE vars (prevents nested session errors) */
-function buildCleanEnv(): NodeJS.ProcessEnv {
-  const env = { ...process.env };
-  for (const key of Object.keys(env)) {
-    if (key.startsWith("CLAUDECODE") || key.startsWith("CLAUDE_CODE")) {
-      delete env[key];
-    }
-  }
-  return env;
-}
-
-/** Read session.json from the session directory and build the system prompt */
-function buildSystemPromptForSession(sessionDir: string): string {
+/** Read session.json and build the full persona system prompt for the given provider. */
+function buildSystemPromptForSession(sessionDir: string, provider: AIProvider): string {
   const sm = getSessionManager();
-
-  // Read persona name and profile from session.json
   const metaPath = path.join(sessionDir, "session.json");
   let personaName: string | undefined;
   let userName: string | undefined;
@@ -87,12 +85,8 @@ function buildSystemPromptForSession(sessionDir: string): string {
       userName = profile?.name;
     }
   } catch { /* ignore — will build prompt without persona */ }
-
-  // Resolve options (schema defaults → persona overrides → session overrides)
   const resolvedOptions = sm.resolveOptions(sessionDir);
-
-  // Build the same system prompt pipeline as normal sessions
-  return sm.buildServiceSystemPrompt(personaName, "claude", resolvedOptions, userName);
+  return sm.buildServiceSystemPrompt(personaName, provider, resolvedOptions, userName);
 }
 
 /** Push a completion event to the caller session's pending-events.json.
@@ -165,13 +159,15 @@ function resolveScriptPath(sessionDir: string, scriptRel: string): string | null
 }
 
 /** Run the onExit hook. Order: static broadcast → script callback → script-returned
- *  broadcast/queueEvent. The `notify` completion event is handled separately by the caller. */
+ *  broadcast/queueEvent. The `notify` completion event is handled separately by the caller.
+ *  `logName` selects which per-provider log file the script's logTail reads from. */
 function runOnExit(
   onExit: FireAIOnExit,
   sessionDir: string,
   callerSessionId: string | undefined,
   pid: number,
-  exitCode: number | null
+  exitCode: number | null,
+  logName: string,
 ): void {
   // 1) Static broadcast — caller-session-scoped only.
   if (onExit.broadcast && typeof onExit.broadcast.event === "string") {
@@ -191,7 +187,7 @@ function runOnExit(
     const scriptPath = resolveScriptPath(sessionDir, onExit.script);
     if (scriptPath) {
       try {
-        const logPath = path.join(sessionDir, "background-session.log");
+        const logPath = path.join(sessionDir, logName);
         const logTail = tailFile(logPath, 4096);
 
         // eslint-disable-next-line no-eval
@@ -249,151 +245,148 @@ function runOnExit(
 // ── Core function ───────────────────────────────────────────
 
 /**
- * Spawn an independent one-shot `claude -p "prompt"` process in the given session directory.
- * Returns immediately with the PID — does not wait for completion.
+ * Spawn an independent one-shot background AI turn in the given session directory,
+ * on the provider derived from `model` (default Claude). Reuses the session/subagent
+ * provider-process engine: spawn → send prompt → on turn-ending `{type:"result"}` →
+ * kill + fire onExit/notify. Returns immediately with the child pid (0 for antigravity,
+ * whose pid is not exposed on the process object) — does not wait for completion.
  */
-export function spawnBackgroundClaude(opts: FireAIOptions): FireAIResult {
+export function spawnBackgroundAI(opts: FireAIOptions): FireAIResult {
   const { sessionDir, prompt, model, effort, notify, callerSessionId, useSessionContext, onExit } = opts;
 
-  // Default: minimal task-execution prompt (spawns *do* tasks, they don't roleplay).
-  // Opt-in: full persona system prompt for cases where character context is genuinely needed.
+  // Parse model (may carry an embedded effort suffix, e.g. "opus:ultracode"); explicit
+  // `effort` wins over the embedded one. Provider is derived from the model (default claude).
+  const { model: parsedModel, effort: embeddedEffort } = parseModelEffort(model || "");
+  const effectiveModel = parsedModel || undefined;
+  const effectiveEffort = effort || embeddedEffort || undefined;
+
+  let provider: AIProvider;
+  try {
+    provider = effectiveModel ? providerFromModel(effectiveModel) : "claude";
+  } catch (err) {
+    // providerFromModel throws e.g. when Gemini is disabled. Surface to the caller
+    // (route/hook already wrap in try/catch, so the session turn is unaffected).
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[background-session] provider routing failed for model="${model}": ${msg}`);
+    throw new Error(`fire_ai: ${msg}`);
+  }
+
+  // System prompt: minimal task prompt (default) or full persona context.
   const systemPrompt = useSessionContext
-    ? buildSystemPromptForSession(sessionDir)
+    ? buildSystemPromptForSession(sessionDir, provider)
     : TASK_EXECUTION_SYSTEM_PROMPT;
 
-  // Build args: one-shot mode (no --input-format / --output-format)
-  const args: string[] = [
-    "-p",
-    prompt,
-    "--dangerously-skip-permissions",
-    "--verbose",
-  ];
+  // Claude applies the spawn's appendSystemPrompt arg as a real `--system-prompt` (full
+  // replacement). Other provider classes ignore that arg, so for them the system prompt is
+  // delivered as a leading message block instead (provider-uniform, mirrors subagent role
+  // delivery). Note: non-Claude providers also load the session config's own baseInstructions
+  // (persona), so the minimal prompt layers on top rather than fully replacing it.
+  const claudeSystemPrompt = provider === "claude" ? systemPrompt : undefined;
+  const payload = provider === "claude"
+    ? prompt
+    : `${systemPrompt}\n\n--- TASK ---\n${prompt}`;
 
-  if (model) {
-    args.push("--model", model);
-  }
+  const logName = `background-${provider}.log`;
+  const logPath = path.join(sessionDir, logName);
 
-  // "ultracode" pseudo-effort → real --effort (xhigh) + Workflow tool (env, set below).
-  const { effortFlag, enableWorkflows, systemAppend } = resolveClaudeEffort(effort);
-  if (effortFlag) {
-    args.push("--effort", effortFlag);
-  }
+  const proc = createProcess(provider);
+  activeProcesses.add(proc);
 
-  if (systemPrompt) {
-    args.push("--system-prompt", systemPrompt);
-  }
+  // Per-turn text accumulator — final text harvested to the log for debugging.
+  let textState: SubTextState = newSubTextState();
+  let finalText = "";
+  let settled = false;
+  let timer: ReturnType<typeof setTimeout> | null = null;
 
-  if (systemAppend) {
-    args.push("--append-system-prompt", systemAppend);
-  }
+  const pidOf = (): number => (proc as unknown as ProcCarrier).proc?.pid ?? -1;
 
-  // MCP config from session directory
-  const mcpConfigPath = path.join(sessionDir, ".mcp.json");
-  if (fs.existsSync(mcpConfigPath)) {
-    args.push("--mcp-config", mcpConfigPath, "--strict-mcp-config");
-  }
+  const settle = (code: number | null): void => {
+    if (settled) return;
+    settled = true;
+    if (timer) { clearTimeout(timer); timer = null; }
+    activeProcesses.delete(proc);
+    const pid = pidOf();
+    try { proc.kill(); } catch { /* already dead */ }
 
-  // Build clean env
-  const env = buildCleanEnv();
-  if (enableWorkflows) {
-    env.CLAUDE_CODE_WORKFLOWS = "1";
-  }
+    // Append a settle marker (+ harvested final text) so onExit scripts / debugging have it.
+    try {
+      const stream = fs.createWriteStream(logPath, { flags: "a" });
+      stream.write(`\n--- fire_ai settle provider=${provider} code=${code} at ${new Date().toISOString()} ---\n`);
+      if (finalText) {
+        stream.write(`[final] ${finalText.slice(0, 500)}${finalText.length > 500 ? "..." : ""}\n`);
+      }
+      stream.end();
+    } catch { /* best-effort */ }
 
-  // Prepare log file
-  const logPath = path.join(sessionDir, "background-session.log");
-  const logStream = fs.createWriteStream(logPath, { flags: "a" });
-  logStream.write(`\n--- background spawn ${new Date().toISOString()} ---\n`);
-  logStream.write(`prompt: ${prompt.slice(0, 200)}${prompt.length > 200 ? "..." : ""}\n`);
-  logStream.write(`model: ${model || "(default)"} | effort: ${effort || "(default)"} | notify: ${notify || false}\n`);
-
-  // Spawn the process
-  const proc = spawn("claude", args, {
-    env,
-    cwd: sessionDir,
-    stdio: ["ignore", "pipe", "pipe"],
-    shell: false,
-  });
-
-  if (!proc.pid) {
-    logStream.write(`--- spawn failed: no pid ---\n`);
-    logStream.end();
-    throw new Error("Failed to spawn background claude process");
-  }
-
-  const pid = proc.pid;
-  activeProcesses.set(pid, proc);
-
-  console.log(`[background-session] Spawned pid=${pid} in ${sessionDir}`);
-
-  // Pipe stdout/stderr to log file
-  const stderrDecoder = new StringDecoder("utf-8");
-  let stderrFlushed = false;
-  const flushStderr = () => {
-    if (stderrFlushed) return;
-    stderrFlushed = true;
-    const tail = stderrDecoder.end();
-    if (tail) {
-      logStream.write(`[stderr] ${tail}`);
-    }
-  };
-
-  proc.stdout?.on("data", (chunk: Buffer) => {
-    logStream.write(chunk);
-  });
-
-  proc.stderr?.on("data", (chunk: Buffer) => {
-    const text = stderrDecoder.write(chunk);
-    if (text) {
-      logStream.write(`[stderr] ${text}`);
-    }
-  });
-  proc.stderr?.on("end", flushStderr);
-  proc.stderr?.on("close", flushStderr);
-
-  // On exit: cleanup, log, optionally notify
-  proc.on("exit", (code) => {
-    activeProcesses.delete(pid);
-    logStream.write(`\n--- exit code=${code} at ${new Date().toISOString()} ---\n`);
-    logStream.end();
-
-    console.log(`[background-session] pid=${pid} exited with code=${code}`);
-
-    // onExit (broadcast / script) runs first so UI updates and side-effects land
-    // before any silent system event would advance the next turn.
     if (onExit && (onExit.broadcast || onExit.script)) {
-      runOnExit(onExit, sessionDir, callerSessionId, pid, code);
+      runOnExit(onExit, sessionDir, callerSessionId, pid, code, logName);
     }
-
-    // Push completion event to caller session if requested
     if (notify && callerSessionId) {
       pushCompletionEvent(sessionDir, callerSessionId, pid, code);
     }
+    console.log(`[background-session] settled provider=${provider} pid=${pid} code=${code}`);
+  };
+
+  proc.on("message", (d: unknown) => {
+    const msg = d as Record<string, unknown>;
+    const { state, final } = reduceSubMessage(textState, msg);
+    textState = state;
+    if (final) finalText = final;
+    // Turn-ending result → normal completion.
+    if (msg.type === "result") settle(0);
+  });
+  proc.on("error", (err: unknown) => {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[background-session] provider=${provider} error: ${msg}`);
+    settle(1);
+  });
+  proc.on("exit", () => {
+    // Persistent process exited without a prior `result` → crash/abnormal. If a result
+    // already settled us, this is the kill()-triggered exit and is a no-op (idempotent).
+    settle(1);
   });
 
-  proc.on("error", (err) => {
-    activeProcesses.delete(pid);
-    logStream.write(`\n--- error: ${err.message} at ${new Date().toISOString()} ---\n`);
-    logStream.end();
+  // Fresh conversation (no resumeId). Log to background-<provider>.log.
+  proc.spawn(sessionDir, undefined, effectiveModel, claudeSystemPrompt, effectiveEffort, true, logName);
 
-    console.error(`[background-session] pid=${pid} error:`, err.message);
-  });
+  const spawnedPid = pidOf();
+  console.log(`[background-session] spawned provider=${provider} pid=${spawnedPid} model=${effectiveModel || "(default)"} effort=${effectiveEffort || "(default)"} notify=${notify || false}`);
 
-  return { pid, status: "fired" };
+  // Safety timeout — kill + treat as error if the turn never completes.
+  const timeoutMs = Number(process.env.FIRE_AI_TIMEOUT_MS) || DEFAULT_FIRE_AI_TIMEOUT_MS;
+  timer = setTimeout(() => {
+    console.warn(`[background-session] provider=${provider} timed out after ${timeoutMs}ms — killing`);
+    settle(1);
+  }, timeoutMs);
+
+  // Gate the send on provider readiness (codex/kimi have an async JSON-RPC handshake during
+  // which isRunning() is briefly false; claude/gemini resolve immediately).
+  void proc.waitForReady(20_000)
+    .then((ready) => {
+      if (settled) return;
+      if (!ready || !proc.isRunning()) {
+        console.warn(`[background-session] provider=${provider} not ready — aborting`);
+        settle(1);
+        return;
+      }
+      proc.send(payload);
+    })
+    .catch((err) => {
+      if (settled) return;
+      console.warn(`[background-session] provider=${provider} waitForReady failed:`, err);
+      settle(1);
+    });
+
+  return { pid: spawnedPid >= 0 ? spawnedPid : 0, status: "fired" };
 }
 
 // ── Cleanup ─────────────────────────────────────────────────
 
-/** Destroy all active background processes (called on server shutdown) */
+/** Destroy all active background provider processes (called on server shutdown).
+ *  Each provider's kill() handles its own process-tree teardown (Windows taskkill /T, etc.). */
 export function destroyAllBackgroundProcesses(): void {
-  for (const [pid, proc] of Array.from(activeProcesses.entries())) {
-    console.log(`[background-session] Killing pid=${pid}`);
-    try {
-      if (process.platform === "win32") {
-        execSync(`taskkill /T /F /PID ${pid}`, { stdio: "ignore" });
-      } else {
-        proc.kill();
-      }
-    } catch { /* already exited */ }
+  for (const proc of Array.from(activeProcesses)) {
+    try { proc.kill(); } catch { /* already exited */ }
   }
   activeProcesses.clear();
 }

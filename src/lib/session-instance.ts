@@ -8,7 +8,7 @@ import { AIProvider } from "./ai-provider";
 import { generateEdgeTts } from "./edge-tts-client";
 import { getGpuManagerUrl } from "./endpoints";
 import { buildHintSnapshotLine } from "./hint-snapshot";
-import { spawnBackgroundClaude } from "./background-session";
+import { spawnBackgroundAI } from "./background-session";
 import { SubAgentManager } from "./subagent-manager";
 import {
   mutateSessionJsonSync, readSessionJson, applyPatch, loadSessionData,
@@ -751,8 +751,8 @@ export class SessionInstance {
                   };
                 };
                 if (typeof fa.prompt === "string" && fa.prompt.trim()) {
-                  console.log(`[hooks/on-assistant fireAi] spawning bg claude for ${this.id} (model=${fa.model || "default"}, effort=${fa.effort || "default"})`);
-                  spawnBackgroundClaude({
+                  console.log(`[hooks/on-assistant fireAi] spawning bg AI for ${this.id} (model=${fa.model || "default"}, effort=${fa.effort || "default"})`);
+                  spawnBackgroundAI({
                     sessionDir: dir,
                     prompt: fa.prompt,
                     model: fa.model,
@@ -964,8 +964,8 @@ export class SessionInstance {
             useSessionContext?: boolean;
           };
           if (typeof fa.prompt === "string" && fa.prompt.trim()) {
-            console.log(`[hooks/on-style-check fireAi] spawning bg claude for ${this.id} (counter=${counter}, model=${fa.model || config.model || "default"})`);
-            spawnBackgroundClaude({
+            console.log(`[hooks/on-style-check fireAi] spawning bg AI for ${this.id} (counter=${counter}, model=${fa.model || config.model || "default"})`);
+            spawnBackgroundAI({
               sessionDir: dir,
               prompt: fa.prompt,
               model: fa.model || config.model,
