@@ -1444,6 +1444,10 @@ export class SessionInstance {
     const msg = d as Record<string, unknown>;
     const isSlash = this.isSlashCommand;
     const isOOC = this.isOOC;
+    // Antigravity idle-watch가 재진입한 자발적 wake-up turn(async 이미지/영상 완료로
+    // 모델이 스스로 깨어난 turn). 사용자 입력에 대한 응답이 아니므로, 비거나 메타뿐이라도
+    // silent-retry(응답 누락 보정 nudge)를 걸지 않는다. 본문이 있으면 일반 turn처럼 노출·기록.
+    const isSpontaneous = msg.spontaneous === true;
 
     // 빈 응답 감지: Antigravity가 segments/tools 둘 다 비운 채 turn을 끝낸 경우
     // chat-history에 아무 entry도 추가되지 않으므로 사용자는 침묵을 받음.
@@ -1465,6 +1469,19 @@ export class SessionInstance {
       && this.tools.length === 0
       && this.detectAntigravityMetaResponse(this.segments.join(""));
 
+    // 누출된 툴콜 감지: Claude 계열(claude/kimi) 모델이 정식 tool_use 대신 함수호출
+    // XML(<invoke .../>, <function_calls>)을 텍스트로 흘린 케이스. 에이전트형 턴에서는
+    // 실제 tool_use가 성공한 뒤 마지막에 하나가 누출되기도 하므로 tools.length로 게이트하지
+    // 않고 텍스트 패턴만으로 판정한다. assistantFullText는 sawTextDelta 여부와 무관하게
+    // 전체 assistant 텍스트를 담으므로 segments와 합쳐 프로브한다.
+    const leakProbeText = `${this.segments.join("")}\n${this.assistantFullText ?? ""}`;
+    const isLeakedToolCall = !isSlash && !isOOC
+      && (this._provider === "claude" || this._provider === "kimi")
+      && this.detectLeakedToolCall(leakProbeText);
+
+    // 누출 스트립 후의 본문(frontend 교체용). null=누출 아님, ""=스트립 후 본문 없음.
+    let leakCleanedContent: string | null = null;
+
     if (isSlash) {
       const result = msg.result as Record<string, unknown> | string | undefined;
       const text =
@@ -1481,6 +1498,12 @@ export class SessionInstance {
           if (rawContent.includes("\ufffd") || this.assistantFullText.includes("\ufffd")) {
             rawContent = mergeUtf8Texts(rawContent, this.assistantFullText);
           }
+        }
+        // \ub204\ucd9c\ub41c \ud234\ucf5c XML\uc740 \ubcf8\ubb38\uc5d0\uc11c \uc798\ub77c\ub0b8\ub2e4. \uc774\ubbf8 \uc131\uacf5\ud55c \uc2e4\uc81c tool_use(this.tools)\uc640
+        // RP \ubcf8\ubb38\uc740 \uadf8\ub300\ub85c \uc720\uc9c0\ud558\uace0, \uc798\ub77c\ub0b8 \uacb0\uacfc(\ube48 \ubb38\uc790\uc5f4\uc77c \uc218 \uc788\uc74c)\ub294 frontend \uad50\uccb4\uc6a9\uc73c\ub85c \ubcf4\uad00.
+        if (isLeakedToolCall) {
+          rawContent = this.stripLeakedToolCalls(rawContent);
+          leakCleanedContent = rawContent;
         }
         if (rawContent) {
           this.chatHistory.push({
@@ -1544,7 +1567,11 @@ export class SessionInstance {
       this.panels.reload();
     }
 
-    if (!isSlash && !isOOC && this.chatHistory.length > 0) {
+    // 이번 턴에 새 본문이 안 남은 경우(antigravity 메타 폐기 / 순수 누출 후 빈 본문)
+    // lastMsg는 직전 턴 메시지를 가리키므로 TTS 재트리거를 막는다.
+    const turnHadNoNewBody = isAntigravityMetaOnly
+      || (isLeakedToolCall && (leakCleanedContent ?? "").trim().length === 0);
+    if (!isSlash && !isOOC && !turnHadNoNewBody && this.chatHistory.length > 0) {
       const lastMsg = this.chatHistory[this.chatHistory.length - 1];
       if (lastMsg.role === "assistant" && lastMsg.content) {
         const dialogOnly = extractDialog(lastMsg.content);
@@ -1558,25 +1585,44 @@ export class SessionInstance {
     // 그걸로 streaming buffer를 finalize하면 직전 메시지가 메타 텍스트로 덮어쓰일 위험이 있다.
     // messageId를 명시적으로 비우고 `antigravityMetaSkipped` 플래그로 frontend에 discard 신호.
     const lastSaved = this.chatHistory[this.chatHistory.length - 1];
-    const resultPayload = isAntigravityMetaOnly
-      ? { ...(d as Record<string, unknown>), messageId: null, antigravityMetaSkipped: true }
-      : lastSaved
+    // 결과 payload 분기:
+    //  - antigravity 메타: 전체 폐기(turnDiscarded) — frontend가 live 메시지 제거.
+    //  - 누출된 툴콜: 누출 XML을 제거한 cleanedContent로 표시 텍스트 교체(leakStripped).
+    //    빈 문자열이면 frontend가 메시지를 제거(순수 누출). 그 외엔 lastSaved가 스트립된 메시지.
+    //  - 정상: lastSaved.id 부여.
+    let resultPayload: Record<string, unknown>;
+    if (isAntigravityMetaOnly) {
+      resultPayload = { ...(d as Record<string, unknown>), messageId: null, turnDiscarded: true, antigravityMetaSkipped: true };
+    } else if (isLeakedToolCall) {
+      const cleaned = leakCleanedContent ?? "";
+      const hasBody = cleaned.trim().length > 0;
+      resultPayload = { ...(d as Record<string, unknown>), messageId: hasBody && lastSaved ? lastSaved.id : null, leakStripped: true, cleanedContent: cleaned };
+    } else {
+      resultPayload = lastSaved
         ? { ...(d as Record<string, unknown>), messageId: lastSaved.id }
-        : d;
+        : (d as Record<string, unknown>);
+    }
     this.broadcast("claude:message", resultPayload);
 
     // Keep separate messageId broadcast for backwards compat (e.g. reconnected clients)
-    if (lastSaved && !isAntigravityMetaOnly) {
+    if (lastSaved && !isAntigravityMetaOnly && !isLeakedToolCall) {
       this.broadcast("claude:messageId", { messageId: lastSaved.id });
     }
 
     // Flush idle waiters (scheduler sendMessage)
     this.flushIdleWaiters();
 
-    // Antigravity 모델이 응답 없이 turn을 끝냈으면 silent system prompt로 한 번만 재시도
-    if (isAntigravityEmpty || isAntigravityMetaOnly) {
+    // Antigravity 모델이 응답 없이 turn을 끝냈으면 silent system prompt로 한 번만 재시도.
+    // 단, idle-watch가 재진입한 자발적 wake-up turn은 사용자 응답 누락이 아니므로 제외.
+    // 누출/메타 모두 silentRetryDone으로 턴당 1회만 재시도(무한루프 방지). 누출 스트립
+    // 자체는 silentRetryDone과 무관하게 매번 수행되지만, 재시도 nudge는 1회로 제한된다.
+    if ((isAntigravityEmpty || isAntigravityMetaOnly || isLeakedToolCall) && !isSpontaneous && !this.silentRetryDone) {
       this.silentRetryDone = true;
-      this.scheduleSilentRetry();
+      this.scheduleSilentRetry(
+        isLeakedToolCall
+          ? "[system] 직전 응답에서 도구 호출 일부가 실제로 실행되지 않고 텍스트(<invoke>/<function_calls>)로만 출력되었습니다. 실행되지 않은 그 도구를 정식 tool call로 다시 호출하세요. 호출 문법을 본문 텍스트로 쓰지 말고, 이미 성공한 호출은 반복하지 마세요."
+          : "[system] 직전 응답이 누락되었습니다. 직전 사용자 요청에 대한 응답을 생성해 주세요.",
+      );
     }
   }
 
@@ -1612,18 +1658,37 @@ export class SessionInstance {
     return metaCues.some(re => re.test(content));
   }
 
-  /** Antigravity 빈 응답 감지 시 다음 tick에 silent system prompt를 한 번만 보낸다.
-   *  새 user turn 시작(sendMessage 진입)에서 silentRetryDone이 false로 리셋되므로
-   *  매 사용자 입력마다 최대 1회 재시도. */
-  private scheduleSilentRetry(): void {
+  /** Claude 함수호출 XML(<invoke .../>, <function_calls>)이 정식 tool_use 대신
+   *  텍스트 채널로 누출됐는지 판정. 한국어 RP 본문엔 거의 없는 패턴이라 오탐 극소. */
+  private detectLeakedToolCall(content: string): boolean {
+    if (!content) return false;
+    return /<invoke\s+name\s*=\s*["']/i.test(content)
+      || /<function_calls\s*>/i.test(content);
+  }
+
+  /** 누출된 툴콜 XML 블록을 본문에서 제거. RP 본문은 보존한다. 선행 "call" 토큰,
+   *  <function_calls> 래퍼, 단독 <invoke>, 닫히지 않은(truncated) 잔재까지 처리.
+   *  (정규식은 scratchpad 단위테스트 15케이스로 검증됨) */
+  private stripLeakedToolCalls(content: string): string {
+    let out = content;
+    out = out.replace(/\n*\s*call\s*\n?\s*<function_calls>[\s\S]*?<\/function_calls>/gi, "");
+    out = out.replace(/\n*\s*call\s*\n?\s*<invoke\b[\s\S]*?<\/invoke>/gi, "");
+    out = out.replace(/<function_calls>[\s\S]*?<\/function_calls>/gi, "");
+    out = out.replace(/<invoke\b[\s\S]*?<\/invoke>/gi, "");
+    // 닫히지 않은(truncated) 잔재 — 선행 call 포함 끝까지
+    out = out.replace(/\n*\s*call\s*\n?\s*<(?:function_calls|invoke)\b[\s\S]*$/i, "");
+    return out.trim();
+  }
+
+  /** 불량 턴(antigravity 빈/메타 응답, 누출된 툴콜) 감지 시 다음 tick에 교정용
+   *  silent system prompt를 한 번만 보낸다. 새 user turn 시작(sendMessage 진입)에서
+   *  silentRetryDone이 false로 리셋되므로 매 사용자 입력마다 최대 1회 재시도. */
+  private scheduleSilentRetry(message: string): void {
     if (this.destroyed) return;
     setImmediate(() => {
       if (this.destroyed || !this.claude.isRunning()) return;
-      console.warn(`[session:${this.id}] empty Antigravity turn — issuing silent retry`);
-      this.sendMessage(
-        "[system] 직전 응답이 누락되었습니다. 직전 사용자 요청에 대한 응답을 생성해 주세요.",
-        { _silentRetry: true },
-      ).catch(err => {
+      console.warn(`[session:${this.id}] bad turn — issuing silent retry`);
+      this.sendMessage(message, { _silentRetry: true }).catch(err => {
         console.warn(`[session:${this.id}] silent retry failed:`, err);
       });
     });

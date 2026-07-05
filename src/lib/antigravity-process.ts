@@ -41,6 +41,18 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
   private lastSeenMessageCount = 0;
   private lastSeenTailLength = 0;
   private initPromise: Promise<void> | null = null;
+  /** 현재 진행 중인 pollLoop의 promise. _sendAsync가 새 turn 시작 전 in-flight
+   *  pollLoop(특히 idle-watch가 재진입한 wake-up turn)을 await해 두 loop가 같은
+   *  cascade에 동시 polling하는 것을 막는다. */
+  private pollLoopPromise: Promise<void> | null = null;
+  /** 턴 종료 후 idle 구간에 trajectory를 가볍게 감시 중인지 여부. async 도구
+   *  (예: comfyui async 이미지/영상 생성)가 turn 종료 뒤 wake-up step을 cascade에
+   *  주입하면 즉시 잡아 live emit하기 위함. _sendAsync/kill에서 해제. */
+  private idleWatching = false;
+  /** 현재 진행 중인 turn이 idle-watch가 재진입한 자발적 wake-up turn인지 여부.
+   *  result emit에 실려 SessionInstance가 silent-retry(사용자 응답 누락 보정)를
+   *  자발적 turn에는 적용하지 않도록 한다 — 자발적 turn은 nudge 대상이 아니다. */
+  private currentTurnSpontaneous = false;
 
   constructor() {
     super();
@@ -285,6 +297,20 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
       return;
     }
 
+    // idle-watch 중단 + in-flight pollLoop(=idle-watch가 재진입한 wake-up turn) 정리.
+    // 같은 cascade에 두 poll loop가 동시에 돌면 lastSeenMessageCount race로 emit이
+    // 꼬이므로, 새 user turn을 시작하기 전에 직렬화한다. polling=false로 신호 후
+    // 그 loop가 result를 emit하고 끝나길 기다린다(짧음 — wake-up turn은 보통 즉시 종료).
+    this.idleWatching = false;
+    const inflight = this.pollLoopPromise;
+    if (inflight) {
+      this.polling = false;
+      try { await inflight; } catch { /* */ }
+      // 그 loop의 .finally가 idle-watch를 재무장했을 수 있으니 다시 해제(레이스 차단).
+      // 재무장된 watch는 sleep 중이며, 다음 깨어남에서 이 플래그를 보고 즉시 break한다.
+      this.idleWatching = false;
+    }
+
     this.emit("status", "streaming");
 
     // Wake-up turn skip: 이전 turn 종료 후 idle 중에 agy 내부가 async 도구 task 완료
@@ -332,12 +358,76 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
       cascadeConfig: { plannerConfig },
     });
 
+    this.startPollLoop();
+  }
+
+  /** pollLoop을 시작하고 promise를 추적한다. 턴이 자연 종료되면 idle-watch를 재무장해
+   *  async wake-up step을 계속 감시한다. _sendAsync(새 user turn)와 idle-watch(재진입)
+   *  양쪽에서 호출된다. */
+  private startPollLoop(spontaneous = false): void {
+    this.idleWatching = false; // 턴이 idle-watch보다 우선
+    this.currentTurnSpontaneous = spontaneous;
     this.polling = true;
-    this.pollLoop().catch(err => {
-      this.emit("error", `Polling failed: ${err}`);
-      this.polling = false;
-      this.emit("status", "connected");
-    });
+    this.pollLoopPromise = this.pollLoop()
+      .catch(err => {
+        this.emit("error", `Polling failed: ${err}`);
+        this.polling = false;
+        this.emit("status", "connected");
+      })
+      .finally(() => {
+        this.pollLoopPromise = null;
+        // 턴 종료 후 idle 구간 감시 시작(살아있을 때만). 비-차단.
+        if (this.cascadeId && this.lsPort) void this.startIdleWatch();
+      });
+  }
+
+  /** 턴 종료 후 idle 구간에 trajectory step 수를 가볍게(GetAllCascadeTrajectories,
+   *  ~2.5KB) 폴링한다. async 도구 완료로 agy가 wake-up step을 주입해 step 수가 늘면
+   *  즉시 pollLoop을 재진입해 그 응답을 live emit한다 — 사용자의 다음 입력까지 묵혀
+   *  두지 않는다. emitNewChunks가 stripSystemMessageEcho로 순수 메타 echo는 걸러내므로
+   *  실제 내러티브만 노출된다. 무한 폴링 방지를 위해 turn당 max window로 제한하고,
+   *  새 user turn(_sendAsync)·kill·재진입 시 즉시 해제한다. */
+  private async startIdleWatch(): Promise<void> {
+    if (process.env.ANTIGRAVITY_IDLE_WATCH === "false") return;
+    if (!this.cascadeId || !this.lsPort || this.polling) return;
+    const INTERVAL_MS = 4000;
+    const MAX_WINDOW_MS = 15 * 60 * 1000; // 긴 async 영상 생성(wan-i2v 등)까지 커버
+    const MAX_CONSECUTIVE_FAILS = 3;      // LS가 죽었으면 빠르게 포기
+    const watchStart = Date.now();
+    let consecutiveFails = 0;
+    this.idleWatching = true;
+    this.writeLog(`idle-watch: armed (baseline steps=${this.lastSeenMessageCount})`);
+    while (this.idleWatching && this.cascadeId && !this.polling && this.isRunning()) {
+      await new Promise(r => setTimeout(r, INTERVAL_MS));
+      if (!this.idleWatching || this.polling || !this.cascadeId || !this.isRunning()) break;
+      if (Date.now() - watchStart > MAX_WINDOW_MS) {
+        this.writeLog(`idle-watch: window elapsed (${MAX_WINDOW_MS / 1000}s) — stopping`);
+        break;
+      }
+      let stepCount: number | undefined;
+      try {
+        const all = await this.rpc<{ trajectorySummaries?: Record<string, { stepCount?: number }> }>(
+          "GetAllCascadeTrajectories", {}
+        );
+        stepCount = all.trajectorySummaries?.[this.cascadeId]?.stepCount;
+        consecutiveFails = 0;
+      } catch (err) {
+        if (++consecutiveFails >= MAX_CONSECUTIVE_FAILS) {
+          this.writeLog(`idle-watch: ${consecutiveFails} consecutive status-check failures — stopping (${err})`);
+          break;
+        }
+        this.writeLog(`idle-watch: status check failed (${consecutiveFails}/${MAX_CONSECUTIVE_FAILS}): ${err}`);
+        continue;
+      }
+      if (typeof stepCount === "number" && stepCount > this.lastSeenMessageCount) {
+        this.writeLog(`idle-watch: async wake-up detected (steps ${this.lastSeenMessageCount} → ${stepCount}) — re-entering turn for live emit`);
+        this.idleWatching = false;
+        this.emit("status", "streaming");
+        this.startPollLoop(true); // 자발적 wake-up turn을 live emit하고 끝나면 idle-watch 재무장
+        return;
+      }
+    }
+    this.idleWatching = false;
   }
 
   private async pollLoop(): Promise<void> {
@@ -476,7 +566,7 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
     }
 
     this.polling = false;
-    this.emit("message", { type: "result" });
+    this.emit("message", { type: "result", spontaneous: this.currentTurnSpontaneous });
     this.emit("status", "connected");
   }
 
@@ -666,6 +756,7 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
     this.agyPid = null;
     this.lsPort = null;
     this.polling = false;
+    this.idleWatching = false;
     this.initPromise = null;
     this.emit("status", "disconnected");
     if (this.logStream) { try { this.logStream.end(); } catch { /* */ } this.logStream = null; }

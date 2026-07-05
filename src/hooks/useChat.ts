@@ -206,7 +206,7 @@ export function useChat(rawSessionId?: string) {
     });
   }, []);
 
-  const finishAssistantTurn = useCallback((backendId?: string) => {
+  const finishAssistantTurn = useCallback((backendId?: string, contentOverride?: string) => {
     flushAssistantText();
 
     // UTF-8 healing: character-level merge of delta-accumulated vs assistant full text.
@@ -231,7 +231,9 @@ export function useChat(rawSessionId?: string) {
       const last = prev[prev.length - 1];
       if (last && last.role === "assistant" && last.live) {
         const updated = { ...last, live: undefined };
-        if (healedText) updated.content = healedText;
+        // contentOverride(누출 스트립된 본문)가 있으면 표시 텍스트를 그것으로 교체한다.
+        if (typeof contentOverride === "string") updated.content = contentOverride;
+        else if (healedText) updated.content = healedText;
         if (backendId) updated.id = backendId;
         return [...prev.slice(0, -1), updated];
       }
@@ -251,6 +253,31 @@ export function useChat(rawSessionId?: string) {
     oocRef.current = false;
     setIsStreaming(false);
   }, [flushAssistantText]);
+
+  /** 서버가 버린 턴(turnDiscarded: 누출된 툴콜 XML / antigravity 메타 응답)을
+   *  화면에서 제거한다. finishAssistantTurn과 달리 스트리밍 버퍼를 flush하지 않고
+   *  진행 중이던 live assistant 메시지를 통째로 드롭한다. 서버는 이미 silent retry를
+   *  걸어 진짜 응답을 곧 새 메시지로 스트리밍한다. */
+  const discardAssistantTurn = useCallback(() => {
+    setMessages((prev) => {
+      const last = prev[prev.length - 1];
+      if (last && last.role === "assistant" && last.live) {
+        return prev.slice(0, -1);
+      }
+      return prev;
+    });
+    rawAssistantTextRef.current = "";
+    displayAssistantTextRef.current = "";
+    carryAssistantTextRef.current = "";
+    assistantFullTextRef.current = null;
+    toolsRef.current = [];
+    seenToolKeysRef.current.clear();
+    sawTextDeltaRef.current = false;
+    currentBlockTypeRef.current = "text";
+    pushedTextsByMsgIdRef.current.clear();
+    oocRef.current = false;
+    setIsStreaming(false);
+  }, []);
 
   const handleClaudeMessage = useCallback(
     (data: unknown) => {
@@ -323,25 +350,42 @@ export function useChat(rawSessionId?: string) {
       }
 
       if (type === "result") {
-        if (!rawAssistantTextRef.current && msg.result) {
-          const result = msg.result as Record<string, unknown>;
-          const text =
-            typeof result === "string"
-              ? result
-              : typeof result.text === "string"
-                ? result.text
-                : null;
-          if (text) appendAssistantText(text);
+        // 서버가 버린 턴(antigravity 메타): 스트리밍된 live 메시지를 폐기.
+        if (msg.turnDiscarded === true) {
+          discardAssistantTurn();
+          setStatus("connected");
+        } else if (msg.leakStripped === true) {
+          // 누출된 툴콜 XML이 제거된 케이스: 표시 텍스트를 cleanedContent로 교체.
+          // 빈 문자열(순수 누출)이면 메시지를 통째로 제거. silent retry가 곧 이어진다.
+          const cleaned = typeof msg.cleanedContent === "string" ? msg.cleanedContent : "";
+          if (cleaned.trim() === "") {
+            discardAssistantTurn();
+          } else {
+            const backendId = typeof msg.messageId === "string" ? msg.messageId : undefined;
+            finishAssistantTurn(backendId, cleaned);
+          }
+          setStatus("connected");
+        } else {
+          if (!rawAssistantTextRef.current && msg.result) {
+            const result = msg.result as Record<string, unknown>;
+            const text =
+              typeof result === "string"
+                ? result
+                : typeof result.text === "string"
+                  ? result.text
+                  : null;
+            if (text) appendAssistantText(text);
+          }
+          // Pass messageId (included in result payload) so finishAssistantTurn
+          // can assign the backend ID in the same setMessages call (no flicker).
+          const backendId = typeof msg.messageId === "string" ? msg.messageId : undefined;
+          finishAssistantTurn(backendId);
+          setStatus("connected");
         }
-        // Pass messageId (included in result payload) so finishAssistantTurn
-        // can assign the backend ID in the same setMessages call (no flicker).
-        const backendId = typeof msg.messageId === "string" ? msg.messageId : undefined;
-        finishAssistantTurn(backendId);
-        setStatus("connected");
       }
 
     },
-    [appendAssistantText, addToolUse, finishAssistantTurn]
+    [appendAssistantText, addToolUse, finishAssistantTurn, discardAssistantTurn]
   );
 
   /** Prepare local UI state for sending (adds user message, sets streaming). Does NOT send to server. */
