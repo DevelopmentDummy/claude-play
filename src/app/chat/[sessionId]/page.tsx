@@ -79,7 +79,8 @@ export default function ChatPage() {
   const [subModalOpen, setSubModalOpen] = useState(false);
   const [activeSubName, setActiveSubName] = useState<string | null>(null);
   const [subLiveEntry, setSubLiveEntry] = useState<{ name: string; entry: TranscriptEntry } | null>(null);
-  const [subUnread, setSubUnread] = useState<Record<string, number>>({});
+  // Names of sub-agents currently working a task (live, non-blocking activity indicator).
+  const [busySubs, setBusySubs] = useState<Record<string, boolean>>({});
   const [currentModel, setCurrentModel] = useState(searchParams.get("model") || "");
   const [currentProvider, setCurrentProvider] = useState<AIProvider>("claude");
   const [showOOC, setShowOOC] = useState(false);
@@ -343,6 +344,22 @@ export default function ChatPage() {
     }
   }, [sessionId, currentModel, setStatus]);
 
+  // Re-seed sub-agent busy state from the server. Called on every (re)connect so a
+  // client that missed the live subagent:status events (e.g. reconnected mid-task)
+  // reflects reality instead of sticking on/off.
+  const seedSubBusy = useCallback(() => {
+    fetch(`/api/sessions/${encodeURIComponent(sessionId)}/subagents`)
+      .then((r) => r.json())
+      .then((d) => {
+        const next: Record<string, boolean> = {};
+        for (const s of (d.subs || []) as Array<{ name: string; busy?: boolean }>) {
+          if (s.busy) next[s.name] = true;
+        }
+        setBusySubs(next);
+      })
+      .catch(() => {});
+  }, [sessionId]);
+
   // WebSocket connection — only connect after session open completes
   const { sendChat, sendCancel, send: wsSend } = useWebSocket({
     sessionId,
@@ -354,6 +371,7 @@ export default function ChatPage() {
         // claude:status event (which may not arrive if the AI is idle).
         const { currentStatus } = d as { currentStatus?: string };
         if (typeof currentStatus === "string") setStatus(currentStatus);
+        seedSubBusy();
       },
       "chat:user": (d) => {
         const { text, isOOC } = d as { text: string; isOOC?: boolean };
@@ -524,13 +542,16 @@ export default function ChatPage() {
       "subagent:message": (d) => {
           const { name, entry } = d as { name: string; entry: TranscriptEntry };
           setSubLiveEntry({ name, entry });
-          const focused = subModalOpen && activeSubName === name;
-          const alerts =
-            entry.dir === "out" &&
-            (entry.kind === "report" || (entry.kind === "response" && entry.origin === "operator"));
-          if (!focused && alerts) {
-            setSubUnread((prev) => ({ ...prev, [name]: (prev[name] || 0) + 1 }));
-          }
+        },
+      "subagent:status": (d) => {
+          const { name, busy } = d as { name: string; busy: boolean };
+          setBusySubs((prev) => {
+            if (!!prev[name] === !!busy) return prev;
+            const next = { ...prev };
+            if (busy) next[name] = true;
+            else delete next[name];
+            return next;
+          });
         },
       "event:pending": (d) => {
         const { headers } = d as { headers: string[] };
@@ -1087,7 +1108,7 @@ export default function ChatPage() {
         sessionId={sessionId}
         onForceInputToggle={() => setForceInput((v) => !v)}
         onSubAgents={() => setSubModalOpen(true)}
-        subAgentUnread={Object.values(subUnread).reduce((a, b) => a + b, 0)}
+        busySubNames={Object.keys(busySubs)}
       />
       <ErrorBanner error={error} onDismiss={() => setError(null)} />
       <div className="flex-1 relative min-h-0">
@@ -1253,7 +1274,6 @@ export default function ChatPage() {
         activeSubName={activeSubName}
         onActiveSubChange={(name) => {
           setActiveSubName(name);
-          setSubUnread((prev) => ({ ...prev, [name]: 0 }));
         }}
       />
       {/* Modal panels — always mounted (hidden via display:none when inactive) to keep Shadow DOM + handlers alive */}

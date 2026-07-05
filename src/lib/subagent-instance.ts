@@ -57,6 +57,9 @@ export class SubAgentInstance {
   private textState: SubTextState = newSubTextState();
   /** Origin of the most recent dispatch — tags the response it produces so the UI can decide unread relevance. */
   private lastDispatchOrigin: TranscriptOrigin = "delegate";
+  /** True from the moment a task is dispatched until the provider's turn-ending `result`
+   *  (or an error/exit/never-ready dispatch). Drives the frontend "작업 중" indicator. */
+  private busy = false;
 
   constructor(
     def: SubAgentDef,
@@ -66,6 +69,7 @@ export class SubAgentInstance {
     model?: string,
     effort?: string,
     private readonly onTranscript?: (entry: TranscriptEntry) => void,
+    private readonly onStatus?: (busy: boolean) => void,
   ) {
     this.def = def;
     this.name = def.name;
@@ -78,6 +82,9 @@ export class SubAgentInstance {
     // Prevent unhandledRejection crashes if initialize/emit fires after destroy.
     this._process.on("error", (e: unknown) => {
       console.error(`[subagent:${sessionId}/${this.name}] process error:`, e);
+      // A mid-turn error means the turn won't reach `result` — clear busy so the
+      // indicator doesn't stick on.
+      this.setBusy(false);
       // An error before the first conversation id was established means the role
       // leading-message may not have been delivered (e.g. antigravity "not initialized",
       // gemini spawn-on-send failure) — re-prime on the next dispatch. Conservative:
@@ -98,13 +105,18 @@ export class SubAgentInstance {
     // destroy() also unregisters explicitly, so a missed "exit" is harmless (idempotent).
     this._process.on("exit", () => {
       this.spawnInFlight = false;
+      this.setBusy(false);
       if (this.pid) unregisterSubProc(this.pid);
     });
     // Capture the sub's final response text per turn (turn-complete, not streamed).
     this._process.on("message", (d) => {
-      const { state, final } = reduceSubMessage(this.textState, d as Record<string, unknown>);
+      const msg = d as Record<string, unknown>;
+      const { state, final } = reduceSubMessage(this.textState, msg);
       this.textState = state;
       if (final) this.appendTranscript({ dir: "out", kind: "response", origin: this.lastDispatchOrigin, text: final });
+      // The turn-ending `result` clears busy even when the turn produced no final text
+      // (tool-only turn → reduceSubMessage returns no `final`), so it never sticks on.
+      if (msg.type === "result") this.setBusy(false);
     });
   }
 
@@ -125,6 +137,16 @@ export class SubAgentInstance {
   }
 
   isRunning(): boolean { return this._process.isRunning(); }
+
+  /** True while a dispatched task is still being worked (until the turn completes). */
+  isBusy(): boolean { return this.busy; }
+
+  /** Update busy state, emitting onStatus only on an actual transition. */
+  private setBusy(b: boolean): void {
+    if (this.busy === b) return;
+    this.busy = b;
+    try { this.onStatus?.(b); } catch { /* ignore */ }
+  }
 
   /** Spawn the sub's provider process in the shared session dir. Idempotent: no-op if
    *  already running OR while a spawned handshake is still in flight (respawning would
@@ -179,6 +201,9 @@ export class SubAgentInstance {
     if (this.destroyed) return;
     this.appendTranscript({ dir: "in", kind: "dispatch", origin, text: task });
     this.lastDispatchOrigin = origin;
+    // Mark busy immediately for instant UI feedback; cleared on the turn-ending `result`,
+    // or below if the provider never becomes ready.
+    this.setBusy(true);
     // Operator OOC messages get a marker so the sub replies conversationally (see preamble).
     const taskText = origin === "operator" ? `[OPERATOR]\n${task}` : task;
     this.start(); // no-op when already running or a handshake is in flight
@@ -188,6 +213,7 @@ export class SubAgentInstance {
         this.spawnInFlight = false;
         if (!ready || !this._process.isRunning()) {
           console.warn(`[subagent:${this.sessionId}/${this.name}] dispatch skipped — provider not ready`);
+          this.setBusy(false);
           return;
         }
         let payload = taskText;
@@ -198,7 +224,10 @@ export class SubAgentInstance {
         }
         this._process.send(payload);
       })
-      .catch((err) => console.warn(`[subagent:${this.sessionId}/${this.name}] dispatch failed:`, err));
+      .catch((err) => {
+        console.warn(`[subagent:${this.sessionId}/${this.name}] dispatch failed:`, err);
+        this.setBusy(false);
+      });
   }
 
   /** Append a transcript entry (best-effort file write) and push it over WS. */
@@ -221,6 +250,9 @@ export class SubAgentInstance {
   destroy(): void {
     this.destroyed = true;
     this.spawnInFlight = false;
+    // Clear any lingering busy so a destroyed/recreated sub (e.g. model change on re-open)
+    // doesn't leave a stale "작업 중" indicator on the client.
+    this.setBusy(false);
     try { this._process.kill(); } catch { /* ignore */ }
     try { this._process.removeAllListeners(); } catch { /* ignore */ }
     if (this.pid) unregisterSubProc(this.pid);

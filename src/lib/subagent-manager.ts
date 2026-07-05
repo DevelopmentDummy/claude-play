@@ -61,6 +61,7 @@ export class SubAgentManager {
         inst = new SubAgentInstance(
           def, dir, this.sessionId, subProvider, subModel, subEffort,
           (entry) => this.broadcast?.("subagent:message", { name: subName, entry }),
+          (busy) => this.broadcast?.("subagent:status", { name: subName, busy }),
         );
         this.subs.set(def.name, inst);
       }
@@ -94,14 +95,16 @@ export class SubAgentManager {
     return true;
   }
 
-  /** Detailed list for the chat modal sidebar. */
-  listDetailed(): Array<{ name: string; role: string; provider: AIProvider; model?: string; running: boolean }> {
+  /** Detailed list for the chat modal sidebar. `busy` lets a (re)connecting client
+   *  seed the in-progress indicator without waiting for the next subagent:status event. */
+  listDetailed(): Array<{ name: string; role: string; provider: AIProvider; model?: string; running: boolean; busy: boolean }> {
     return [...this.subs.values()].map((s) => ({
       name: s.name,
       role: s.def.role,
       provider: s.provider,
       model: s.model,
       running: s.isRunning(),
+      busy: s.isBusy(),
     }));
   }
 

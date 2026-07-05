@@ -36,7 +36,8 @@ interface StatusBarProps {
   onSessionList?: () => void;
   /** Sub-agent chat modal */
   onSubAgents?: () => void;
-  subAgentUnread?: number;
+  /** Names of sub-agents currently working a task — drives the ambient activity indicator. */
+  busySubNames?: string[];
   /** Version snapshot (builder mode) */
   onVersionSave?: () => void;
   onVersionHistory?: () => void;
@@ -91,7 +92,7 @@ export default function StatusBar({
   onContext,
   onSessionList,
   onSubAgents,
-  subAgentUnread,
+  busySubNames,
   onVersionSave,
   onVersionHistory,
   versionSaving,
@@ -209,6 +210,25 @@ export default function StatusBar({
           </button>
         )}
 
+        {/* Sub-agent activity — ambient, non-blocking. Pulses while a sub works; click opens its modal. */}
+        {onSubAgents && !!busySubNames && busySubNames.length > 0 && (
+          <button
+            type="button"
+            onClick={onSubAgents}
+            aria-live="polite"
+            title={`작업 중: ${busySubNames.join(", ")}`}
+            className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs min-w-0 cursor-pointer
+              border border-accent/30 bg-accent/[0.07] text-accent/80
+              hover:bg-accent/10 hover:text-accent transition-colors"
+          >
+            <span className="relative flex h-1.5 w-1.5 shrink-0">
+              <span className="absolute inline-flex h-full w-full rounded-full bg-accent opacity-60 animate-ping motion-reduce:animate-none" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-accent" />
+            </span>
+            <span className="truncate max-w-[140px]">{busySubNames.join(" · ")} 작업 중</span>
+          </button>
+        )}
+
         {/* Debug / Tools dropdown */}
         {hasDebugItems && (
           <>
@@ -228,11 +248,6 @@ export default function StatusBar({
               >
                 &#9776;
               </button>
-              {!!subAgentUnread && subAgentUnread > 0 && (
-                <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-1 rounded-full bg-accent text-[9px] leading-[14px] text-center text-black font-bold pointer-events-none">
-                  {subAgentUnread > 9 ? "9+" : subAgentUnread}
-                </span>
-              )}
             </div>
             {debugOpen && debugPos && createPortal(
               <div
@@ -263,7 +278,7 @@ export default function StatusBar({
                     onClick={() => { onSubAgents(); setDebugOpen(false); }}
                     className={menuBtnClass}
                   >
-                    서브에이전트{subAgentUnread ? ` (${subAgentUnread})` : ""}
+                    서브에이전트
                   </button>
                 )}
                 {onForceInputToggle && (
