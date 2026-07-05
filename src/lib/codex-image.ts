@@ -34,7 +34,12 @@ interface GenerateResult {
   error?: string;
 }
 
-const CODEX_TIMEOUT_MS = 240_000;
+const CODEX_TIMEOUT_MS = 420_000;
+// After the process exits (or is killed), the image_gen tool may flush its
+// ig_*.png slightly later. Poll for the fresh file for a short grace window
+// before declaring failure, instead of scanning exactly once.
+const HARVEST_RETRY_ATTEMPTS = 10;
+const HARVEST_RETRY_DELAY_MS = 1_500;
 
 /** Root directory where Codex's built-in image_gen tool saves outputs. */
 function codexGeneratedImagesDir(): string {
@@ -107,8 +112,8 @@ export class CodexImageClient {
 
       const sizeHint = req.size && req.size !== "auto" ? ` Target image size: ${req.size}.` : "";
       const prompt = refAbs
-        ? `Use your built-in image_gen tool to edit ${refForPrompt}. Edit instructions: ${req.prompt}.${sizeHint} Produce exactly one edited image with the built-in image_gen tool only. Do NOT use the CLI fallback (scripts/image_gen.py) or the OpenAI API. Do NOT create or modify any other files. When the single image is ready, reply with only: DONE`
-        : `Use your built-in image_gen tool to generate exactly one image. Image description: ${req.prompt}.${sizeHint} Use the built-in image_gen tool only. Do NOT use the CLI fallback (scripts/image_gen.py) or the OpenAI API. Do NOT create or modify any files in the working directory. When the single image is ready, reply with only: DONE`;
+        ? `Immediately call your built-in image_gen tool exactly once — do not plan, explain, or write anything first. Edit ${refForPrompt} with these instructions: ${req.prompt}.${sizeHint} Use the built-in image_gen tool ONLY (never the CLI fallback scripts/image_gen.py or the OpenAI API). Do NOT create or modify any other files. As soon as the single image is saved, reply with only: DONE`
+        : `Immediately call your built-in image_gen tool exactly once — do not plan, explain, or write anything first. Generate one image: ${req.prompt}.${sizeHint} Use the built-in image_gen tool ONLY (never the CLI fallback scripts/image_gen.py or the OpenAI API). Do NOT create or modify any files in the working directory. As soon as the single image is saved, reply with only: DONE`;
 
       // Clean child env. Mirror codex-process.ts conventions, and crucially DROP
       // OPENAI_API_KEY so Codex can never fall back to the paid CLI path — the
@@ -150,11 +155,18 @@ export class CodexImageClient {
       });
 
       // Harvest regardless of exit code — Codex sometimes exits non-zero after a
-      // successful generation. The new file is the source of truth.
-      const after = listIgImages(genRoot);
-      const fresh = [...after].filter((p) => !before.has(p));
+      // successful generation, and the ig_*.png can be flushed a few seconds
+      // after the process closes. Poll for the fresh file across a short grace
+      // window instead of scanning exactly once.
+      let fresh: string[] = [];
+      for (let attempt = 0; attempt < HARVEST_RETRY_ATTEMPTS; attempt++) {
+        const after = listIgImages(genRoot);
+        fresh = [...after].filter((p) => !before.has(p));
+        if (fresh.length > 0) break;
+        await new Promise((r) => setTimeout(r, HARVEST_RETRY_DELAY_MS));
+      }
       if (fresh.length === 0) {
-        return { success: false, error: exit.err || "Codex produced no image (no new ig_*.png found)" };
+        return { success: false, error: exit.err || "Codex produced no image (no new ig_*.png found after grace window)" };
       }
       // NOTE: with concurrent generations this newest-new heuristic can mis-assign
       // between simultaneous calls; acceptable for a single-user service.
