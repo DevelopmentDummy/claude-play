@@ -80,6 +80,12 @@ export async function POST(req: Request) {
 
   const instance = openSessionInstance(name, true, resolved.provider);
   const providerChanged = existingInstance ? resolved.provider !== existingInstance.provider : false;
+  // Model switch / reinit: an explicit model request must respawn the locked process to
+  // apply the model. We respawn on ANY explicit request — not just when it differs from the
+  // saved value — so a stale process (e.g. stuck on a now-disabled model like fable while
+  // the saved model already points to opus) can be recovered by simply re-selecting. Plain
+  // reopen (no model in the request body) keeps resuming without a respawn.
+  const modelRequested = !!requestedModel;
 
   if (providerChanged) {
     instance.clearHistory();
@@ -89,10 +95,13 @@ export async function POST(req: Request) {
 
   instance.panels.watch(personaDir);
 
+  // Try to resume the existing conversation across the model switch. If the resume fails
+  // (e.g. the session was created with a now-unavailable model like fable), claude-process
+  // auto-retries without --resume, starting a fresh session with the new model.
   const resumeId = providerChanged ? undefined : svc.sessions.getBuilderSessionId(name, resolved.provider);
 
-  // Only spawn if process is not running or provider changed
-  if (!instance.claude.isRunning() || providerChanged) {
+  // Spawn when the process isn't running, the provider changed, or a model was explicitly requested.
+  if (!instance.claude.isRunning() || providerChanged || modelRequested) {
     const runtimeSystemPrompt = svc.sessions.buildBuilderSystemPrompt(name);
     if (resolved.provider === "codex") {
       svc.sessions.writeCodexInstructions(personaDir, runtimeSystemPrompt);
