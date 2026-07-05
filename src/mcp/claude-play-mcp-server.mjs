@@ -1357,8 +1357,10 @@ server.registerTool(
   {
     description:
       "Fire an independent AI session in the background. " +
-      "Spawns claude in one-shot mode with the current session's system prompt and MCP tools. " +
-      "Returns immediately without waiting for completion. " +
+      "Runs a one-shot turn on the provider derived from `model` (default: Claude) with " +
+      "the session's system prompt and MCP tools. Any provider model id works: opus/sonnet " +
+      "(Claude), gpt-5.4 (Codex), gemini-3.1-pro-preview (Gemini), antigravity-flash " +
+      "(Antigravity), kimi-auto (Kimi). Returns immediately without waiting for completion. " +
       "Use for time-consuming content generation that shouldn't block the conversation.\n" +
       "Exit-time options:\n" +
       "  - notify=true: silent system event injected into next user turn (AI responds to it).\n" +
@@ -1367,7 +1369,7 @@ server.registerTool(
       "{ pid, exitCode, sessionDir, logTail }; may return { broadcast, queueEvent }.",
     inputSchema: {
       prompt: z.string().min(1).describe("The prompt/task to execute in the background session"),
-      model: z.string().optional().describe("Model override (e.g. sonnet, opus)"),
+      model: z.string().optional().describe("Model id — provider is auto-derived (e.g. opus, gpt-5.4, gemini-3.1-pro-preview, antigravity-flash, kimi-auto). Omit for Claude default."),
       effort: z.string().optional().describe("Reasoning effort: low, medium, high"),
       notify: z.boolean().optional().describe("Send completion event to this session when done (default: false)"),
       onExit: z
