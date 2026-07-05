@@ -4,7 +4,7 @@
 2. **Open**: `POST /api/sessions/[id]/open` — provider별 AI 프로세스 spawn, PanelEngine 시작, panel-spec.md 및 글로벌 스킬 갱신, panel-action 메타 markdown 직렬화 후 시스템 프롬프트에 주입. 페르소나 템플릿에 추가된 신규 파일(hooks, opt-in 설정 등)을 additive mirror — 페르소나에만 있고 세션에 없는 파일만 1회 복사, 기존 세션 파일은 절대 덮어쓰지 않음 (RP 상태 보호). 메인 프로세스 spawn 완료 후 `subAgents.spawnAll()`로 상시 서브에이전트 기동 (`subagents.json` 존재 시)
 3. **Chat**: WebSocket `chat:send` 또는 `POST /api/chat/send` — 메시지 직전에 큐된 이벤트(`events.json`) / 패널 액션 / 힌트 스냅샷을 flush하여 한 번에 전달, NDJSON 스트리밍 응답
 4. **Accumulate**: `SessionInstance`에서 `text_delta` 이벤트를 수집, `<dialog_response>` / `<choice>` / `<break/>` (scene break) 추출, OOC 플래그 처리, 히스토리 저장
-5. **Hooks**: 메시지/응답 단계에서 `hooks/on-message.js`, `hooks/on-assistant.js` 실행 — 변수/데이터 패치 + `fireAi` 디스패치(`spawnBackgroundClaude()`) 가능. 추가로 Claude 런타임 compaction 종료 시 `hooks/on-compaction-resume.js`가 호출되어 `{contextBlock: string}`을 반환하면 silent system turn으로 주입 (페르소나 핵심 상태 재정착). 페르소나가 `style-check.json` + `hooks/on-style-check.js` 둘 다 보유하면 코어가 `__style_check_counter`를 굴리며 `intervalTurns` 도달 시 hook을 호출 — 공용 룰셋(`data/style-check/defaults.md`)과 페르소나 룰(`style-check-rules.md`)을 머지해 인자로 넘기고, hook은 `fireAi`를 반환해 검토 LLM을 띄움. 검토 LLM은 `update_variables` MCP로 `style_drift_verdict` / `style_warning` 변수를 직접 갱신
+5. **Hooks**: 메시지/응답 단계에서 `hooks/on-message.js`, `hooks/on-assistant.js` 실행 — 변수/데이터 패치 + `fireAi` 디스패치(`spawnBackgroundAI()`) 가능. 추가로 Claude 런타임 compaction 종료 시 `hooks/on-compaction-resume.js`가 호출되어 `{contextBlock: string}`을 반환하면 silent system turn으로 주입 (페르소나 핵심 상태 재정착). 페르소나가 `style-check.json` + `hooks/on-style-check.js` 둘 다 보유하면 코어가 `__style_check_counter`를 굴리며 `intervalTurns` 도달 시 hook을 호출 — 공용 룰셋(`data/style-check/defaults.md`)과 페르소나 룰(`style-check-rules.md`)을 머지해 인자로 넘기고, hook은 `fireAi`를 반환해 검토 LLM을 띄움. 검토 LLM은 `update_variables` MCP로 `style_drift_verdict` / `style_warning` 변수를 직접 갱신
 6. **Panel refresh**: AI 턴 종료 시 `PanelEngine.reload()`로 데이터 파일 재로드 및 패널 재렌더링
 7. **Sync** (수동): `POST /api/sessions/[id]/sync` — 양방향. Forward(페르소나→세션)는 OOC 알림 전송, Reverse(세션→페르소나)는 페르소나 템플릿에 역기록
 8. **Leave/Disconnect**: 마지막 클라이언트 연결 해제 후 5초 유예 → AI 프로세스 종료, PanelEngine 중지, 파이프라인 스케줄러 정지, 서브에이전트 전체 종료 (`SubAgentManager.destroyAll()`)
@@ -25,7 +25,7 @@
 ## Background AI (`fire_ai`)
 
 - MCP `fire_ai` 도구 또는 hook 반환값(`fireAi`)으로 트리거
-- `background-session.ts`의 `spawnBackgroundClaude()`가 detached Claude를 spawn — PID 즉시 반환, 메인 턴 비차단
+- `background-session.ts`의 `spawnBackgroundAI()`가 `model`에서 도출된 provider(기본 Claude)로 백그라운드 턴을 spawn(`createProcess` 엔진 재사용) — PID 즉시 반환, 메인 턴 비차단. 한 턴 실행 후 `{type:"result"}` 수신 시 settle(kill+notify/onExit).
 - `useSessionContext: true`이면 페르소나 전체 컨텍스트, 아니면 최소 시스템 프롬프트
 - 종료 시점 옵션 (모두 독립적, 순서: `onExit.broadcast` → `onExit.script` → `notify`):
   - `notify: true` — `[BACKGROUND_SESSION_COMPLETE]` silent system event를 caller 세션에 주입 → AI가 다음 턴에 응답. 라이브 인스턴스 없으면 `pending-events.json` disk fallback

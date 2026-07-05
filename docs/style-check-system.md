@@ -66,7 +66,7 @@ LLM 자가검토 프롬프트에 들어가는 일반 문체 가이드. 페르소
 ### Layer 4 — 자가검토 실행 + 결과 머지
 
 **실행:**
-- hook에서 `fireAi` 반환 → 코어가 `spawnBackgroundClaude()` 호출 (기존 fire_ai 인프라 재사용)
+- hook에서 `fireAi` 반환 → 코어가 `spawnBackgroundAI()` 호출 (기존 fire_ai 인프라 재사용; model 지정 시 provider 도출)
 - 백그라운드 세션의 프롬프트:
   ```
   너는 문체 검토관이다. 아래 [룰셋]과 [최근 응답 N개]를 받아
@@ -158,7 +158,7 @@ LLM 자가검토 프롬프트에 들어가는 일반 문체 가이드. 페르소
 
 - 컴팩션 hook: `data/skills/panel-design/references/engine-and-data.md` 참조
 - 코어 hook 실행 위치: `src/lib/session-instance.ts:runCompactionResumeHook()` (라인 685-742 부근)
-- fire_ai 백그라운드 세션: `src/lib/background-session.ts:spawnBackgroundClaude()`
+- fire_ai 백그라운드 세션: `src/lib/background-session.ts:spawnBackgroundAI()`
 - 변수 갱신 경로: 백그라운드 세션 → MCP `run_tool` → 페르소나 engine.js → variables.json
 
 ## 변경 영향 파일 (예상)
