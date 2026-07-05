@@ -333,7 +333,12 @@ export function spawnBackgroundAI(opts: FireAIOptions): FireAIResult {
     textState = state;
     if (final) finalText = final;
     // Turn-ending result → normal completion.
-    if (msg.type === "result") settle(0);
+    // Settle only on a genuine turn-ending result. AntigravityProcess tags an
+    // idle-watch re-entry result with spontaneous:true (async tool wake-up after
+    // the turn); guard so such a result can never settle a still-working turn
+    // early. Other providers never set the flag, so this is true for them. The
+    // safety timeout backstops the (unreachable in practice) all-spontaneous case.
+    if (msg.type === "result" && msg.spontaneous !== true) settle(0);
   });
   proc.on("error", (err: unknown) => {
     const msg = err instanceof Error ? err.message : String(err);

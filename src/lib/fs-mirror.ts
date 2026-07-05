@@ -2,11 +2,18 @@
 import * as fs from "fs";
 import * as path from "path";
 
+/** Transient background-AI runtime logs (background-<provider>.log) must never be
+ *  mirrored or cloned into another persona/session dir, regardless of the caller's
+ *  skip set — they are per-run artifacts, not template content. */
+function isTransientBackgroundLog(name: string): boolean {
+  return /^background-.*\.log$/.test(name);
+}
+
 export function copyDirRecursive(src: string, dest: string, skip?: Set<string>): void {
   if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
   const entries = fs.readdirSync(src, { withFileTypes: true });
   for (const entry of entries) {
-    if (skip && skip.has(entry.name)) continue;
+    if ((skip && skip.has(entry.name)) || isTransientBackgroundLog(entry.name)) continue;
     const srcPath = path.join(src, entry.name);
     const destPath = path.join(dest, entry.name);
     if (entry.isDirectory()) {
@@ -23,7 +30,7 @@ export function copyDirRecursive(src: string, dest: string, skip?: Set<string>):
 export function mirrorAdditive(src: string, dest: string, skip?: Set<string>): void {
   if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
   for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
-    if (skip && skip.has(entry.name)) continue;
+    if ((skip && skip.has(entry.name)) || isTransientBackgroundLog(entry.name)) continue;
     const srcPath = path.join(src, entry.name);
     const destPath = path.join(dest, entry.name);
     if (entry.isDirectory()) {

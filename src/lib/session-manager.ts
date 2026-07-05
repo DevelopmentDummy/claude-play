@@ -1735,7 +1735,6 @@ export class SessionManager {
       "images",
       ".sessionignore",
       "claude-stream.log",
-      "background-session.log",
       ".restart-pending.json",
       ".restart-pending.processing",
     ]);

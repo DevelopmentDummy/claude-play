@@ -25,7 +25,7 @@ function copyRecursive(src: string, dest: string) {
   const entries = fs.readdirSync(src, { withFileTypes: true });
   fs.mkdirSync(dest, { recursive: true });
   for (const entry of entries) {
-    if (EXCLUDE.has(entry.name)) continue;
+    if (EXCLUDE.has(entry.name) || /^background-.*\.log$/.test(entry.name)) continue;
     const srcPath = path.join(src, entry.name);
     const destPath = path.join(dest, entry.name);
     if (entry.isDirectory()) {
