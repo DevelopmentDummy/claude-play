@@ -1,0 +1,63 @@
+{
+  "description": "Z-Image-Turbo 실사 t2i 이미지 패키지 (Moody Pro Mix ZIT V13 fp8). qwen_3_4b(lumina2) + ae VAE + ModelSamplingAuraFlow shift3 + res_multistep 8step cfg1, negative는 ConditioningZeroOut. 빠르고 가볍고(16GB 여유) 실사 표현 강함. upscale=true면 4x-AnimeSharp net 2x.",
+  "features": {
+    "checkpoint_auto": false,
+    "lora_injection": false,
+    "lora_couple_branches": false,
+    "seed_randomize": false,
+    "trigger_tags": false,
+    "detailer_chain": false
+  },
+  "params": {
+    "prompt": {
+      "node": "4",
+      "field": "text",
+      "type": "string",
+      "required": true,
+      "description": "자연어 프롬프트 권장 (Z-Image는 Qwen 인코더라 서술형을 잘 이해)"
+    },
+    "width": {
+      "node": "6",
+      "field": "width",
+      "type": "number",
+      "default": 832
+    },
+    "height": {
+      "node": "6",
+      "field": "height",
+      "type": "number",
+      "default": 1216
+    },
+    "steps": {
+      "node": "8",
+      "field": "steps",
+      "type": "number",
+      "default": 8,
+      "description": "Turbo 8 권장"
+    },
+    "cfg": {
+      "node": "8",
+      "field": "cfg",
+      "type": "number",
+      "default": 1,
+      "description": "Turbo distilled는 cfg 1 고정 권장"
+    },
+    "shift": {
+      "node": "7",
+      "field": "shift",
+      "type": "number",
+      "default": 3,
+      "description": "ModelSamplingAuraFlow shift"
+    },
+    "seed": {
+      "type": "number",
+      "default": -1,
+      "description": "-1 랜덤"
+    },
+    "upscale": {
+      "type": "boolean",
+      "default": false,
+      "description": "true면 4x-AnimeSharp로 net 2x 업스케일"
+    }
+  }
+}

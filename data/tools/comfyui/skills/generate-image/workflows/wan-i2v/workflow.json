@@ -1,0 +1,270 @@
+{
+  "1": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors",
+      "weight_dtype": "default"
+    },
+    "_meta": {
+      "title": "wan-high-noise"
+    }
+  },
+  "2": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors",
+      "weight_dtype": "default"
+    },
+    "_meta": {
+      "title": "wan-low-noise"
+    }
+  },
+  "3": {
+    "class_type": "LoraLoaderModelOnly",
+    "inputs": {
+      "lora_name": "wan22-lightning-i2v-high_noise.safetensors",
+      "strength_model": 1,
+      "model": [
+        "1",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "lightning-high"
+    }
+  },
+  "4": {
+    "class_type": "LoraLoaderModelOnly",
+    "inputs": {
+      "lora_name": "wan22-lightning-i2v-low_noise.safetensors",
+      "strength_model": 1,
+      "model": [
+        "2",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "lightning-low"
+    }
+  },
+  "5": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "type": "wan"
+    },
+    "_meta": {
+      "title": "umt5-encoder"
+    }
+  },
+  "6": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "",
+      "clip": [
+        "5",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "pos-motion"
+    }
+  },
+  "7": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "",
+      "clip": [
+        "5",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "neg"
+    }
+  },
+  "8": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "latice-explicit-startframe.png"
+    },
+    "_meta": {
+      "title": "start-frame"
+    }
+  },
+  "9": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "wan_2.1_vae.safetensors"
+    },
+    "_meta": {
+      "title": "wan-vae"
+    }
+  },
+  "10": {
+    "class_type": "WanFirstLastFrameToVideo",
+    "inputs": {
+      "width": 480,
+      "height": 832,
+      "length": 49,
+      "batch_size": 1,
+      "positive": [
+        "6",
+        0
+      ],
+      "negative": [
+        "7",
+        0
+      ],
+      "vae": [
+        "9",
+        0
+      ],
+      "start_image": [
+        "8",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "i2v-flf"
+    }
+  },
+  "11": {
+    "class_type": "KSamplerAdvanced",
+    "inputs": {
+      "add_noise": "enable",
+      "noise_seed": 0,
+      "steps": 6,
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "start_at_step": 0,
+      "end_at_step": 3,
+      "return_with_leftover_noise": "enable",
+      "model": [
+        "3",
+        0
+      ],
+      "positive": [
+        "10",
+        0
+      ],
+      "negative": [
+        "10",
+        1
+      ],
+      "latent_image": [
+        "10",
+        2
+      ]
+    },
+    "_meta": {
+      "title": "ksampler-high"
+    }
+  },
+  "12": {
+    "class_type": "KSamplerAdvanced",
+    "inputs": {
+      "add_noise": "disable",
+      "noise_seed": 0,
+      "steps": 6,
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "start_at_step": 3,
+      "end_at_step": 10000,
+      "return_with_leftover_noise": "disable",
+      "model": [
+        "4",
+        0
+      ],
+      "positive": [
+        "10",
+        0
+      ],
+      "negative": [
+        "10",
+        1
+      ],
+      "latent_image": [
+        "11",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "ksampler-low"
+    }
+  },
+  "13": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "12",
+        0
+      ],
+      "vae": [
+        "9",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "decode"
+    }
+  },
+  "14": {
+    "class_type": "SaveAnimatedWEBP",
+    "inputs": {
+      "images": [
+        "17",
+        0
+      ],
+      "filename_prefix": "wan_i2v",
+      "fps": 16,
+      "lossless": false,
+      "quality": 92,
+      "method": "default"
+    },
+    "_meta": {
+      "title": "save-webp"
+    }
+  },
+  "15": {
+    "class_type": "UpscaleModelLoader",
+    "inputs": {
+      "model_name": "4x-AnimeSharp.pth"
+    },
+    "_meta": {
+      "title": "upscale-model"
+    }
+  },
+  "16": {
+    "class_type": "ImageUpscaleWithModel",
+    "inputs": {
+      "upscale_model": [
+        "15",
+        0
+      ],
+      "image": [
+        "13",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "upscale-4x"
+    }
+  },
+  "17": {
+    "class_type": "ImageScaleBy",
+    "inputs": {
+      "upscale_method": "lanczos",
+      "scale_by": 0.5,
+      "image": [
+        "16",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "downscale-0.5x"
+    }
+  }
+}

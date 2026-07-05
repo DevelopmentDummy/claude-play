@@ -1,0 +1,344 @@
+{
+  "1": {
+    "class_type": "CheckpointLoaderSimple",
+    "inputs": {
+      "ckpt_name": "waiIllustriousSDXL_v160.safetensors"
+    },
+    "_meta": {
+      "title": "ckpt"
+    }
+  },
+  "2": {
+    "class_type": "LoraLoader",
+    "inputs": {
+      "lora_name": "mesugaki_Illust_v1.safetensors",
+      "strength_model": 0.8,
+      "strength_clip": 0.8,
+      "model": [
+        "1",
+        0
+      ],
+      "clip": [
+        "1",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "mesugaki-lora"
+    }
+  },
+  "3": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "",
+      "clip": [
+        "2",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "pos"
+    }
+  },
+  "4": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "",
+      "clip": [
+        "2",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "neg"
+    }
+  },
+  "5": {
+    "class_type": "IPAdapterUnifiedLoader",
+    "inputs": {
+      "model": [
+        "2",
+        0
+      ],
+      "preset": "PLUS (high strength)"
+    },
+    "_meta": {
+      "title": "ipa-unified"
+    }
+  },
+  "6": {
+    "class_type": "IPAdapterAdvanced",
+    "inputs": {
+      "model": [
+        "5",
+        0
+      ],
+      "ipadapter": [
+        "5",
+        1
+      ],
+      "image": [
+        "44",
+        0
+      ],
+      "weight": 0.75,
+      "weight_type": "linear",
+      "combine_embeds": "average",
+      "start_at": 0,
+      "end_at": 1,
+      "embeds_scaling": "V only"
+    },
+    "_meta": {
+      "title": "ipa-advanced"
+    }
+  },
+  "7": {
+    "class_type": "EmptyLatentImage",
+    "inputs": {
+      "width": 832,
+      "height": 1216,
+      "batch_size": 1
+    },
+    "_meta": {
+      "title": "latent"
+    }
+  },
+  "8": {
+    "class_type": "KSampler",
+    "inputs": {
+      "seed": 0,
+      "steps": 26,
+      "cfg": 5.5,
+      "sampler_name": "euler_ancestral",
+      "scheduler": "karras",
+      "denoise": 1,
+      "model": [
+        "6",
+        0
+      ],
+      "positive": [
+        "3",
+        0
+      ],
+      "negative": [
+        "4",
+        0
+      ],
+      "latent_image": [
+        "7",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "sampler"
+    }
+  },
+  "9": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "8",
+        0
+      ],
+      "vae": [
+        "1",
+        2
+      ]
+    },
+    "_meta": {
+      "title": "decode"
+    }
+  },
+  "10": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "gemjjang_ipa",
+      "images": [
+        "9",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "save"
+    }
+  },
+  "11": {
+    "class_type": "UpscaleModelLoader",
+    "inputs": {
+      "model_name": "4x-AnimeSharp.pth"
+    },
+    "_meta": {
+      "title": "upscale-model"
+    }
+  },
+  "12": {
+    "class_type": "ImageUpscaleWithModel",
+    "inputs": {
+      "upscale_model": [
+        "11",
+        0
+      ],
+      "image": [
+        "9",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "upscale-4x"
+    }
+  },
+  "13": {
+    "class_type": "ImageScaleBy",
+    "inputs": {
+      "upscale_method": "lanczos",
+      "scale_by": 0.5,
+      "image": [
+        "12",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "downscale"
+    }
+  },
+  "20": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "gemjjang/gemjjang_ref_01.png",
+      "upload": "image"
+    },
+    "_meta": {
+      "title": "ref01"
+    }
+  },
+  "21": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "gemjjang/gemjjang_ref_02.png",
+      "upload": "image"
+    },
+    "_meta": {
+      "title": "ref02"
+    }
+  },
+  "22": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "gemjjang/gemjjang_ref_03.png",
+      "upload": "image"
+    },
+    "_meta": {
+      "title": "ref03"
+    }
+  },
+  "23": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "gemjjang/gemjjang_ref_04.png",
+      "upload": "image"
+    },
+    "_meta": {
+      "title": "ref04"
+    }
+  },
+  "24": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "gemjjang/gemjjang_ref_05.png",
+      "upload": "image"
+    },
+    "_meta": {
+      "title": "ref05"
+    }
+  },
+  "25": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "gemjjang/gemjjang_ref_06.png",
+      "upload": "image"
+    },
+    "_meta": {
+      "title": "ref06"
+    }
+  },
+  "40": {
+    "class_type": "ImageBatch",
+    "inputs": {
+      "image1": [
+        "20",
+        0
+      ],
+      "image2": [
+        "21",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "batch1"
+    }
+  },
+  "41": {
+    "class_type": "ImageBatch",
+    "inputs": {
+      "image1": [
+        "40",
+        0
+      ],
+      "image2": [
+        "22",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "batch2"
+    }
+  },
+  "42": {
+    "class_type": "ImageBatch",
+    "inputs": {
+      "image1": [
+        "41",
+        0
+      ],
+      "image2": [
+        "23",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "batch3"
+    }
+  },
+  "43": {
+    "class_type": "ImageBatch",
+    "inputs": {
+      "image1": [
+        "42",
+        0
+      ],
+      "image2": [
+        "24",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "batch4"
+    }
+  },
+  "44": {
+    "class_type": "ImageBatch",
+    "inputs": {
+      "image1": [
+        "43",
+        0
+      ],
+      "image2": [
+        "25",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "batch5"
+    }
+  }
+}

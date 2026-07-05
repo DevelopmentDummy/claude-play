@@ -1,0 +1,91 @@
+{
+  "description": "WAN 2.2 i2v 영상 패키지 — 시작 이미지 1장으로 webp 영상 생성. lightning 6step 2-stage(high/low noise MoE) + 4x-AnimeSharp 업스케일(net 2x). loop=true면 FLF2V로 끝=시작 닫힌 루프. 모든 모델 자산은 환경 내장.",
+  "features": {
+    "checkpoint_auto": false,
+    "lora_injection": false,
+    "lora_couple_branches": false,
+    "seed_randomize": false,
+    "trigger_tags": false,
+    "detailer_chain": false
+  },
+  "params": {
+    "start_image": {
+      "node": "8",
+      "field": "image",
+      "type": "string",
+      "required": true,
+      "description": "ComfyUI input 폴더 기준 시작 프레임 파일명"
+    },
+    "prompt": {
+      "node": "6",
+      "field": "text",
+      "type": "string",
+      "required": true,
+      "description": "모션 묘사 자연어 프롬프트 (영상은 움직임을 서술)"
+    },
+    "negative_prompt": {
+      "node": "7",
+      "field": "text",
+      "type": "string",
+      "default": "clothed, censored, mosaic, static, still image, abrupt jump, blurry, distorted, deformed, low quality, worst quality, jpeg artifacts, watermark, extra limbs, mutated, bad hands",
+      "description": "네거티브 프롬프트"
+    },
+    "width": {
+      "node": "10",
+      "field": "width",
+      "type": "number",
+      "default": 480
+    },
+    "height": {
+      "node": "10",
+      "field": "height",
+      "type": "number",
+      "default": 832
+    },
+    "length": {
+      "node": "10",
+      "field": "length",
+      "type": "number",
+      "default": 49,
+      "description": "프레임 수 (16fps 기준 49f≈3초, 81f≈5초)"
+    },
+    "fps": {
+      "node": "14",
+      "field": "fps",
+      "type": "number",
+      "default": 16
+    },
+    "upscale_scale": {
+      "node": "17",
+      "field": "scale_by",
+      "type": "number",
+      "default": 0.5,
+      "description": "4x 업스케일 후 다운스케일 배수 (0.5=net 2x)"
+    },
+    "seed": {
+      "type": "number",
+      "default": -1,
+      "description": "-1이면 랜덤. 두 스테이지에 동일 적용"
+    },
+    "steps": {
+      "type": "number",
+      "default": 6,
+      "description": "lightning 총 step. high/low로 절반씩 분할"
+    },
+    "cfg": {
+      "type": "number",
+      "default": 1,
+      "description": "lightning은 1.0 권장"
+    },
+    "loop": {
+      "type": "boolean",
+      "default": false,
+      "description": "true면 FLF2V로 끝=시작 닫힌 루프 생성"
+    },
+    "upscale": {
+      "type": "boolean",
+      "default": true,
+      "description": "false면 업스케일 생략하고 native 해상도로 출력"
+    }
+  }
+}

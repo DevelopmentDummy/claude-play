@@ -104,6 +104,11 @@
       "loader": "checkpoint_simple",
       "family": "illustrious",
       "notes": "One Obsession v21_Anime (6.46GB, CivitAI 1318945@2823418). 2026-06-17 도입. Illustrious 베이스 애니메 실험판 — 질감 촉촉, 광영 강화, 3D 약화, 캐릭터 큐트, 화풍/화가串에 민감. Trained words 없음. 권장: CFG 4~7, steps 25~35, Euler/Euler a, 해상도 832x1216·896x1152·1024x1536"
+    },
+    "rinHErosNSFW_v30.safetensors": {
+      "loader": "checkpoint_simple",
+      "family": "illustrious",
+      "notes": "RIN H-eros NSFW Illustrious v3.0 (6.46GB, CivitAI 2096105@3061212). 2026-06-24 도입. Illustrious 베이스 NSFW 머지. v3.0 변경점: 라인아트 선명·정확한 색감(머리/눈/피부)·얼굴 비율 개선·의상/소품 디테일 강화. Trained words 없음. NSFW 컷 후보."
     }
   }
 }

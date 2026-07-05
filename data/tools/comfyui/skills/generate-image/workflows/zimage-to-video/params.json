@@ -1,0 +1,114 @@
+{
+  "description": "Z-Image-Turbo t2i → WAN 2.2 i2v 통합 영상 패키지. 텍스트 프롬프트 한 번으로 실사 베이스(Z-Image moodyProMix fp8)를 생성하고, 그 이미지를 곰바로 WAN i2v에 넘겨 영상까지 만든다. 중간 파일 복사 불필요. base_prompt=외형/포즈, motion_prompt=움직임. loop=true면 FLF 루프, upscale=true면 4x-AnimeSharp net 2x.",
+  "features": {
+    "checkpoint_auto": false,
+    "lora_injection": false,
+    "lora_couple_branches": false,
+    "seed_randomize": false,
+    "trigger_tags": false,
+    "detailer_chain": false
+  },
+  "params": {
+    "base_prompt": {
+      "node": "4",
+      "field": "text",
+      "type": "string",
+      "required": true,
+      "description": "Z-Image t2i 실사 베이스 프롬프트 (외형·포즈·배경, 자연어 권장)"
+    },
+    "motion_prompt": {
+      "node": "25",
+      "field": "text",
+      "type": "string",
+      "required": true,
+      "description": "WAN i2v 움직임 프롬프트 (동작 주체를 명시, 예: 허리 스윙→가슴 종속)"
+    },
+    "negative_prompt": {
+      "node": "26",
+      "field": "text",
+      "type": "string",
+      "default": "static, still image, slow motion, slow, sluggish, stiff, frozen, clothed, censored, mosaic, blurry, distorted, deformed, low quality, worst quality, jpeg artifacts, watermark, extra limbs, mutated, bad hands",
+      "description": "영상 네거티브"
+    },
+    "width": {
+      "node": "6",
+      "field": "width",
+      "type": "number",
+      "default": 768,
+      "description": "베이스 t2i 가로"
+    },
+    "height": {
+      "node": "6",
+      "field": "height",
+      "type": "number",
+      "default": 1344,
+      "description": "베이스 t2i 세로"
+    },
+    "video_width": {
+      "node": "29",
+      "field": "width",
+      "type": "number",
+      "default": 480,
+      "description": "출력 영상 가로"
+    },
+    "video_height": {
+      "node": "29",
+      "field": "height",
+      "type": "number",
+      "default": 832,
+      "description": "출력 영상 세로"
+    },
+    "length": {
+      "node": "29",
+      "field": "length",
+      "type": "number",
+      "default": 65,
+      "description": "프레임 수 (16fps 기준 길이)"
+    },
+    "fps": {
+      "node": "33",
+      "field": "fps",
+      "type": "number",
+      "default": 22
+    },
+    "base_steps": {
+      "node": "8",
+      "field": "steps",
+      "type": "number",
+      "default": 8,
+      "description": "Z-Image t2i step (Turbo 8 권장)"
+    },
+    "shift": {
+      "node": "7",
+      "field": "shift",
+      "type": "number",
+      "default": 3,
+      "description": "Z-Image ModelSamplingAuraFlow shift"
+    },
+    "base_seed": {
+      "type": "number",
+      "default": -1,
+      "description": "베이스 시드 (-1 랜덤)"
+    },
+    "motion_seed": {
+      "type": "number",
+      "default": -1,
+      "description": "영상 시드 (-1 랜덤, 2-stage 동일)"
+    },
+    "motion_steps": {
+      "type": "number",
+      "default": 8,
+      "description": "WAN i2v lightning 총 step, high/low 절반 분할"
+    },
+    "loop": {
+      "type": "boolean",
+      "default": false,
+      "description": "true면 FLF2V로 끝=시작 닫힌 루프"
+    },
+    "upscale": {
+      "type": "boolean",
+      "default": true,
+      "description": "false면 업스케일 생략"
+    }
+  }
+}
