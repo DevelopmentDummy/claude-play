@@ -290,22 +290,22 @@ export function spawnBackgroundAI(opts: FireAIOptions): FireAIResult {
   const logPath = path.join(sessionDir, logName);
 
   const proc = createProcess(provider);
-  activeProcesses.add(proc);
 
   // Per-turn text accumulator — final text harvested to the log for debugging.
   let textState: SubTextState = newSubTextState();
   let finalText = "";
   let settled = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
-
-  const pidOf = (): number => (proc as unknown as ProcCarrier).proc?.pid ?? -1;
+  // Cached once, right after spawn() returns — reused everywhere below so a later
+  // internal-proc nulling (on crash/exit) can't turn the pid into -1.
+  let firedPid = 0;
 
   const settle = (code: number | null): void => {
     if (settled) return;
     settled = true;
     if (timer) { clearTimeout(timer); timer = null; }
     activeProcesses.delete(proc);
-    const pid = pidOf();
+    const pid = firedPid;
     try { proc.kill(); } catch { /* already dead */ }
 
     // Append a settle marker (+ harvested final text) so onExit scripts / debugging have it.
@@ -348,9 +348,10 @@ export function spawnBackgroundAI(opts: FireAIOptions): FireAIResult {
 
   // Fresh conversation (no resumeId). Log to background-<provider>.log.
   proc.spawn(sessionDir, undefined, effectiveModel, claudeSystemPrompt, effectiveEffort, true, logName);
+  activeProcesses.add(proc);
+  firedPid = (proc as unknown as ProcCarrier).proc?.pid ?? 0;
 
-  const spawnedPid = pidOf();
-  console.log(`[background-session] spawned provider=${provider} pid=${spawnedPid} model=${effectiveModel || "(default)"} effort=${effectiveEffort || "(default)"} notify=${notify || false}`);
+  console.log(`[background-session] spawned provider=${provider} pid=${firedPid} model=${effectiveModel || "(default)"} effort=${effectiveEffort || "(default)"} notify=${notify || false}`);
 
   // Safety timeout — kill + treat as error if the turn never completes.
   const timeoutMs = Number(process.env.FIRE_AI_TIMEOUT_MS) || DEFAULT_FIRE_AI_TIMEOUT_MS;
@@ -377,7 +378,7 @@ export function spawnBackgroundAI(opts: FireAIOptions): FireAIResult {
       settle(1);
     });
 
-  return { pid: spawnedPid >= 0 ? spawnedPid : 0, status: "fired" };
+  return { pid: firedPid, status: "fired" };
 }
 
 // ── Cleanup ─────────────────────────────────────────────────
