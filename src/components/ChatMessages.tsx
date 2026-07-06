@@ -394,6 +394,12 @@ export default function ChatMessages({
   const [loadingMore, setLoadingMore] = useState(false);
   const dockWrapperRef = useRef<HTMLDivElement>(null);
   const [dockMeasuredHeight, setDockMeasuredHeight] = useState(0);
+  // When messages overflow the viewport, pull the sticky dock up over the last
+  // messages (negative margin-top) so it reserves no empty band; when they fit,
+  // fall back to mt-auto bottom-anchoring. Reconciles the two prior approaches
+  // (negative-margin overlap vs mt-auto anchor) that each broke the other case.
+  const [dockOverlap, setDockOverlap] = useState(false);
+  const dockOverlapRef = useRef(false);
   const bottomThreshold = 120;
 
   // Determine active dock side (right takes priority if both)
@@ -528,6 +534,20 @@ export default function ChatMessages({
       const dockRect = dockEl.getBoundingClientRect();
       const msgs = contentRef.current?.querySelectorAll<HTMLElement>("[data-msg]");
       if (!msgs) return;
+
+      // Decide overlap vs bottom-anchor from the messages' own height, which is
+      // independent of the dock's vertical margin — so toggling the margin can't
+      // feed back into the decision and oscillate. Overlap when messages don't
+      // fit the viewport (there is real content to float over); otherwise anchor.
+      let msgsH = 0;
+      for (const m of msgs) msgsH += m.offsetHeight;
+      msgsH += 12 * Math.max(0, msgs.length - 1); // gap-3 between flex items
+      const needOverlap = msgsH > scrollEl.clientHeight - 8;
+      if (needOverlap !== dockOverlapRef.current) {
+        dockOverlapRef.current = needOverlap;
+        setDockOverlap(needOverlap);
+      }
+
       const dockW = dockRect.width + 16;
       const scrollW = scrollEl.clientWidth;
       const availMax = scrollW - dockW - 32;
@@ -751,8 +771,10 @@ export default function ChatMessages({
                 : dockWidthProp
                   ? `min(${dockWidthProp}, calc(100vw - 2rem))`
                   : "50%",
-              // No negative margin — this wrapper is only used for dock-right / dock-left.
-              // mt-auto + sticky bottom-2 keep it anchored to the bottom of the chat area.
+              // When messages overflow, pull the dock up so it floats over the last
+              // messages instead of reserving an empty band (mt-auto is 0 here anyway).
+              // When they fit, no inline margin → mt-auto + sticky bottom-2 anchor it.
+              marginTop: dockOverlap && dockMeasuredHeight > 0 ? `-${dockMeasuredHeight}px` : undefined,
               pointerEvents: hasDockFloat ? "auto" : "none",
             }}
           >
