@@ -195,6 +195,7 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
         const traj = await this.rpc<Record<string, unknown>>("GetCascadeTrajectory", { cascadeId: resumeId });
         const steps = this.extractItems(traj) || [];
         this.lastSeenMessageCount = steps.length;
+        this.syncTailBaseline(steps);
         this.writeLog(`init(resume): baseline stepCount=${steps.length}`);
       } catch (err) { this.writeLog(`init(resume): baseline snapshot failed: ${err}`); }
       this.emit("sessionId", resumeId);
@@ -229,9 +230,24 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
       const traj = await this.rpc<Record<string, unknown>>("GetCascadeTrajectory", { cascadeId: foundId });
       const steps = this.extractItems(traj) || [];
       this.lastSeenMessageCount = steps.length;
-      this.lastSeenTailLength = 0;
+      this.syncTailBaseline(steps);
       this.writeLog(`init(new): baseline after primer-response stepCount=${steps.length}`);
     } catch (err) { this.writeLog(`init(new): baseline snapshot failed: ${err}`); }
+  }
+
+  /** baseline 갱신 시 마지막 step이 assistant 텍스트면 그 stripped 길이를 tail로 동기화.
+   *  0으로 리셋하면 SendUserCascadeMessage 직후 agy가 USER_INPUT step을 아직 안 붙인
+   *  poll race에서 emitNewChunks의 tail-delta 경로가 "이미 baseline으로 제외한 마지막
+   *  assistant 응답 전체"를 새 delta로 오인 emit한다 — 신규 세션 첫 턴에서 primer 턴의
+   *  선행 RP 응답이 실제 응답 앞에 중복 출력된 근본 원인 (slavejourney 2026-07-06). */
+  private syncTailBaseline(steps: Record<string, unknown>[]): void {
+    const last = steps.length > 0 ? steps[steps.length - 1] : null;
+    if (last && this.extractRole(last) === "assistant") {
+      const raw = this.extractText(last) ?? "";
+      this.lastSeenTailLength = this.stripSystemMessageEcho(raw).length;
+    } else {
+      this.lastSeenTailLength = 0;
+    }
   }
 
   private async waitForIdle(cascadeId: string, timeoutMs = 5 * 60 * 1000): Promise<void> {
@@ -325,7 +341,7 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
       if (steps.length > this.lastSeenMessageCount) {
         this.writeLog(`pre-send: dropping ${steps.length - this.lastSeenMessageCount} wake-up step(s) from baseline (was ${this.lastSeenMessageCount}, now ${steps.length})`);
         this.lastSeenMessageCount = steps.length;
-        this.lastSeenTailLength = 0;
+        this.syncTailBaseline(steps);
       }
     } catch (err) {
       this.writeLog(`pre-send snapshot failed: ${err}`);
