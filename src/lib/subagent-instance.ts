@@ -211,10 +211,18 @@ export class SubAgentInstance {
       .then((ready) => {
         if (this.destroyed) return;
         this.spawnInFlight = false;
-        if (!ready || !this._process.isRunning()) {
-          console.warn(`[subagent:${this.sessionId}/${this.name}] dispatch skipped — provider not ready`);
+        // A `false` ready is NOT necessarily failure: antigravity's init awaits the agy
+        // primer-response turn, which can exceed the 20s wait. Abort only if the process is
+        // actually dead — otherwise dispatch, since each provider's send() awaits its own
+        // readiness (antigravity's send() awaits initPromise). Treating a slow-init timeout as
+        // failure dropped antigravity dispatches before the message was ever sent.
+        if (!this._process.isRunning()) {
+          console.warn(`[subagent:${this.sessionId}/${this.name}] dispatch skipped — provider not running`);
           this.setBusy(false);
           return;
+        }
+        if (!ready) {
+          console.log(`[subagent:${this.sessionId}/${this.name}] still initializing after 20s — dispatching anyway (send awaits init)`);
         }
         let payload = taskText;
         if (!this.primed) {

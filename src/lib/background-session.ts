@@ -264,7 +264,8 @@ export function spawnBackgroundAI(opts: FireAIOptions): FireAIResult {
   try {
     provider = effectiveModel ? providerFromModel(effectiveModel) : "claude";
   } catch (err) {
-    // providerFromModel throws e.g. when Gemini is disabled. Surface to the caller
+    // Defensive: providerFromModel now routes gemini-* to antigravity when disabled (no throw),
+    // but keep this guard so any future routing validation surfaces cleanly to the caller
     // (route/hook already wrap in try/catch, so the session turn is unaffected).
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[background-session] provider routing failed for model="${model}": ${msg}`);
@@ -365,15 +366,23 @@ export function spawnBackgroundAI(opts: FireAIOptions): FireAIResult {
     settle(1);
   }, timeoutMs);
 
-  // Gate the send on provider readiness (codex/kimi have an async JSON-RPC handshake during
-  // which isRunning() is briefly false; claude/gemini resolve immediately).
+  // Give the provider up to 20s to reach readiness (codex/kimi have an async JSON-RPC
+  // handshake; claude resolves immediately). A `false` result is NOT necessarily failure:
+  // antigravity's init awaits the agy primer-response turn, which can exceed 20s. Abort only
+  // when the process is actually dead — otherwise dispatch, because each provider's send()
+  // awaits its own readiness (antigravity's send() awaits initPromise before injecting the
+  // message). Treating a slow-init timeout as failure here killed antigravity turns before the
+  // prompt was ever sent (no SendUserCascadeMessage; ~20s then exit 1).
   void proc.waitForReady(20_000)
     .then((ready) => {
       if (settled) return;
-      if (!ready || !proc.isRunning()) {
-        console.warn(`[background-session] provider=${provider} not ready — aborting`);
+      if (!proc.isRunning()) {
+        console.warn(`[background-session] provider=${provider} not running after readiness wait — aborting`);
         settle(1);
         return;
+      }
+      if (!ready) {
+        console.log(`[background-session] provider=${provider} still initializing after 20s — dispatching anyway (send awaits init)`);
       }
       proc.send(payload);
     })
