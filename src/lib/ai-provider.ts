@@ -26,9 +26,12 @@ export function providerFromModel(model: string): AIProvider {
   const isGeminiModel = GEMINI_MODEL_EXACT.has(base) ||
     GEMINI_MODEL_PREFIXES.some(p => base.startsWith(p));
   if (isGeminiModel) {
-    if (GEMINI_DISABLED) {
-      throw new Error(`Gemini provider is disabled (NEXT_PUBLIC_DISABLE_GEMINI=true). Model: ${model}`);
-    }
+    // Gemini CLI (text/chat) is retired. When disabled, transparently route gemini-* ids to
+    // the Antigravity backend — which serves the same Gemini models — instead of throwing, so
+    // existing sessions/personas/subagents/fire_ai keep working (and session open/sync/options,
+    // which call this without try/catch, don't 500). AntigravityProcess.modelPattern is
+    // keyword-based ("pro"/"pro-low"/else): "gemini-…-pro…" → Pro tier, everything else → Flash.
+    if (GEMINI_DISABLED) return "antigravity";
     return "gemini";
   }
   if (KIMI_MODEL_EXACT.has(base)) return "kimi";
@@ -199,7 +202,9 @@ function buildModelGroups(): ModelGroup[] {
     });
   }
   groups.push({
-    label: "Antigravity",
+    // Gemini CLI is retired (see NEXT_PUBLIC_DISABLE_GEMINI); Gemini now runs through
+    // the Antigravity backend, so surface these as the Gemini options in the picker.
+    label: "Gemini (Antigravity)",
     provider: "antigravity" as AIProvider,
     options: [
       { value: "antigravity-flash", label: "Gemini 3.5 Flash" },

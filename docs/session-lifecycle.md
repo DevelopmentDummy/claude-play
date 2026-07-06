@@ -14,7 +14,7 @@
 - Provider determined by model at session creation (`providerFromModel()`), locked for session lifetime
 - **Claude**: `claude -p` persistent process, NDJSON stream-json I/O
 - **Codex**: `codex app-server` persistent JSON-RPC 2.0 over stdin/stdout. `external/...` 모델은 `model_provider="external"`을 per-process로 주입 (외부 게이트웨이 사용 시)
-- **Gemini**: `gemini` per-turn spawning with `--resume` for session continuity. **⚠️ 2026-06-18부터 Google이 무료/Pro/Ultra 요청 처리 중단** — `NEXT_PUBLIC_DISABLE_GEMINI=true`로 즉시 차단 가능, Antigravity로 마이그레이션 권장
+- **Gemini** (은퇴): `gemini` per-turn spawning with `--resume`. **⚠️ 2026-06-18부터 Google이 무료/Pro/Ultra 요청 처리 중단으로 Gemini CLI 텍스트 프로바이더 사용 불가** → 현재 배포는 `NEXT_PUBLIC_DISABLE_GEMINI=true` **기본 설정**. 이때 `providerFromModel`이 **gemini-* id를 antigravity로 투명 리맵**(gemini-…-pro→Pro tier, 그 외→Flash; agy `modelPattern`이 키워드 기반이라 매핑 테이블 불필요) + 선택기 Gemini 그룹 숨김. 기존 gemini 세션/페르소나/서브/fire_ai가 그대로 agy에서 동작(세션 open/sync/options 라우트의 uncaught throw 500도 해소). 신규 선택은 "Gemini (Antigravity)" 옵션(Gemini 3.5 Flash / 3.1 Pro). (이미지 생성용 `GEMINI_API_KEY`는 별개로 유효)
 - **Kimi**: `kimi --wire` JSON-RPC persistent process, `:thinking` suffix는 `--thinking` 플래그로 전달
 - **Antigravity** (agy 1.0.0): PowerShell `Start-Process -WindowStyle Hidden`으로 agy 백그라운드 spawn, 자체 in-process Language Server(HTTPS+gRPC, random port)에 ConnectRPC 직접 호출(`/exa.language_server_pb.LanguageServerService/*`). Service: `StartCascade` → `SendUserCascadeMessage` → `GetCascadeTrajectory` 500ms 폴링. agy CLI in-process LS는 unauth (CSRF 토큰 불필요). `~/.gemini/antigravity-cli/settings.json` trustedWorkspaces 자동 등록. Windows-only 현재
 - 모두 동일한 EventEmitter interface (`message/status/error/sessionId`)
