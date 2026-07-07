@@ -1364,6 +1364,9 @@ server.registerTool(
       "Use for time-consuming content generation that shouldn't block the conversation.\n" +
       "Exit-time options:\n" +
       "  - notify=true: silent system event injected into next user turn (AI responds to it).\n" +
+      "  - autoResume=true: on completion, fire a response turn as soon as you're idle " +
+      "(immediately if idle, else right after your current turn ends) — no user input needed. " +
+      "Subsumes notify. Use for background output you want to react to the moment it's ready.\n" +
       "  - onExit.broadcast: WS event to this session's clients (UI spinners, delayed reveal, badges).\n" +
       "  - onExit.script: relative JS module inside the session dir, called with " +
       "{ pid, exitCode, sessionDir, logTail }; may return { broadcast, queueEvent }.",
@@ -1372,6 +1375,7 @@ server.registerTool(
       model: z.string().optional().describe("Model id — provider is auto-derived (e.g. opus, gpt-5.4, gemini-3.1-pro-preview, antigravity-flash, kimi-auto). Omit for Claude default."),
       effort: z.string().optional().describe("Reasoning effort: low, medium, high"),
       notify: z.boolean().optional().describe("Send completion event to this session when done (default: false)"),
+      autoResume: z.boolean().optional().describe("On completion, auto-fire a response turn when idle (immediately if idle, else right after the current turn). Subsumes notify. Default false."),
       onExit: z
         .object({
           broadcast: z
@@ -1403,6 +1407,7 @@ server.registerTool(
         model: input.model,
         effort: input.effort,
         notify: input.notify ?? false,
+        autoResume: input.autoResume ?? false,
         onExit: input.onExit,
       });
       return ok(result);
