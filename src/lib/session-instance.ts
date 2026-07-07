@@ -268,6 +268,13 @@ export class SessionInstance {
   // 한 번만 silent system prompt로 재시도. 새 user turn마다 false로 리셋.
   private silentRetryDone = false;
 
+  /** 서버 개시 자발적 턴(autoResume) 진행 표시 — processResult의 empty/meta
+   *  silent-retry 휴리스틱을 오작동시키지 않도록 현재 턴을 spontaneous로 마킹. */
+  private _spontaneousResume = false;
+  /** autoResume 연쇄 카운터 — 실제 유저 턴에서 0으로 리셋, 자동발동마다 +1.
+   *  FIRE_AI_AUTORESUME_MAX 초과 시 발동 강등(런어웨이 루프 가드). */
+  private _autoResumeChain = 0;
+
   // TTS queue — serialize requests to avoid ENOBUFS
   private ttsQueue: Array<() => Promise<void>> = [];
   private ttsRunning = false;
@@ -405,6 +412,14 @@ export class SessionInstance {
     return new Promise(resolve => this.idleResolvers.push(resolve));
   }
 
+  /** Antigravity 세션에서 매 턴 role을 reanchor하는 오케스트레이터 리마인더.
+   *  비-antigravity면 빈 문자열. sendMessage와 autoResumeTurn이 공유. */
+  private get orchestratorReminder(): string {
+    return this._provider === "antigravity"
+      ? "[ROLE] 당신이 오케스트레이터입니다. 유저에게 나갈 응답을 직접 작성해야 합니다. 다른 에이전트/슈퍼바이저/시스템에 제출·위임하지 마세요. 백그라운드 task 결과나 SYSTEM_MESSAGE를 받았으면 그 정보는 당신이 직접 처리한 것이며, 본문에 echo하지 말고 narrative에 자연스럽게 녹여 즉시 <dialog_response>로 응답을 마무리하세요."
+      : "";
+  }
+
   /** Wait until the underlying AI process is ready to accept input.
    *  Resolves true if ready within timeout, false otherwise. */
   waitForReady(timeoutMs = 20_000): Promise<boolean> {
@@ -427,6 +442,9 @@ export class SessionInstance {
     // 새로운 user turn 시작 시 silent retry flag 리셋. silent retry 자기 자신은 리셋 안 함.
     if (!opts?._silentRetry) {
       this.silentRetryDone = false;
+      // 실제 유저 턴 → autoResume 연쇄 리셋 + 자발적 마킹 해제.
+      this._autoResumeChain = 0;
+      this._spontaneousResume = false;
     }
     // Wait for idle with timeout
     const timeout = new Promise<void>((resolve) => {
@@ -451,9 +469,7 @@ export class SessionInstance {
     // Antigravity Flash 등이 sub-agent orchestration을 hallucinate해서 응답을
     // 가상의 supervisor에게 제출하는 메타 인사말로 끝내는 패턴 방지.
     // 매 user turn마다 role을 명시적으로 reanchor.
-    const orchestratorReminder = this._provider === "antigravity"
-      ? "[ROLE] 당신이 오케스트레이터입니다. 유저에게 나갈 응답을 직접 작성해야 합니다. 다른 에이전트/슈퍼바이저/시스템에 제출·위임하지 마세요. 백그라운드 task 결과나 SYSTEM_MESSAGE를 받았으면 그 정보는 당신이 직접 처리한 것이며, 본문에 echo하지 말고 narrative에 자연스럽게 녹여 즉시 <dialog_response>로 응답을 마무리하세요."
-      : "";
+    const orchestratorReminder = this.orchestratorReminder;
     const parts = [orchestratorReminder, eventHeaders, jsonLint, hintSnapshot, actionHistory, text].filter(Boolean);
     this._pendingTurn = true;
     this.claude.send(parts.join("\n"));
@@ -528,6 +544,40 @@ export class SessionInstance {
   sendToAI(text: string): void {
     this._pendingTurn = true;
     this.claude.send(text);
+  }
+
+  /** 백그라운드 완료(fire_ai autoResume) 시 자발적 응답 턴을 발동한다.
+   *  완료 헤더를 큐에 넣고 현재 턴 드레인을 기다린 뒤, 처리할 이벤트가 남아 있으면
+   *  고정 지속지시문 + 이벤트로 새 턴을 연다. 유저 턴이나 다른 auto-resume이 큐를
+   *  먼저 비우면 no-op(자연 merge/coalesce). fire-and-forget: 내부 예외는 삼킨다. */
+  async autoResumeTurn(header: string): Promise<void> {
+    this.queueEvent(header);
+    await this.waitForIdle();
+    // 프로세스 없음(grace 만료로 page 닫힘 / crash) — 이벤트는 disk에 남겨 다음 open이 surface.
+    if (this.destroyed || !this.claude.isRunning()) return;
+    // idle race에서 유저 턴 등이 이미 새 턴을 시작함 — 그 턴이 큐 헤더를 싣고 가므로 중복 발동 금지.
+    if (this._pendingTurn) return;
+    // 유저 턴/이전 auto-resume이 이미 flush — 이어줄 이벤트 없음.
+    if (this.readPendingEvents().length === 0) return;
+    // 런어웨이 가드: 자동 턴이 계속 fire_ai(autoResume)를 재발화하는 연쇄 차단.
+    const max = Number(process.env.FIRE_AI_AUTORESUME_MAX) || 5;
+    if (this._autoResumeChain >= max) {
+      console.warn(`[session:${this.id}] autoResume chain cap (${max}) reached — leaving event queued for next user turn`);
+      return;
+    }
+
+    const directive = "[BACKGROUND_RESUME] fire_ai 결과 콜백입니다.";
+    const eventHeaders = this.flushEvents();
+    const jsonLint = this.buildJsonLint();
+    const hintSnapshot = this.buildHintSnapshot();
+    const actionHistory = this.flushActions();
+    const parts = [this.orchestratorReminder, directive, eventHeaders, jsonLint, hintSnapshot, actionHistory].filter(Boolean);
+
+    this._pendingTurn = true;
+    this._spontaneousResume = true;
+    this._autoResumeChain += 1;
+    console.log(`[session:${this.id}] autoResume firing (chain=${this._autoResumeChain})`);
+    this.claude.send(parts.join("\n"));
   }
 
   /** Flush all pending event headers, returning formatted string (or empty) */
@@ -1447,7 +1497,7 @@ export class SessionInstance {
     // Antigravity idle-watch가 재진입한 자발적 wake-up turn(async 이미지/영상 완료로
     // 모델이 스스로 깨어난 turn). 사용자 입력에 대한 응답이 아니므로, 비거나 메타뿐이라도
     // silent-retry(응답 누락 보정 nudge)를 걸지 않는다. 본문이 있으면 일반 turn처럼 노출·기록.
-    const isSpontaneous = msg.spontaneous === true;
+    const isSpontaneous = msg.spontaneous === true || this._spontaneousResume;
 
     // 빈 응답 감지: Antigravity가 segments/tools 둘 다 비운 채 turn을 끝낸 경우
     // chat-history에 아무 entry도 추가되지 않으므로 사용자는 침묵을 받음.
@@ -1624,6 +1674,9 @@ export class SessionInstance {
           : "[system] 직전 응답이 누락되었습니다. 직전 사용자 요청에 대한 응답을 생성해 주세요.",
       );
     }
+
+    // 자발적 autoResume 턴 처리 완료 — 다음 턴이 이 플래그를 물려받지 않도록 해제.
+    this._spontaneousResume = false;
   }
 
   /** Antigravity 모델이 sub-agent orchestration 패턴을 hallucinate한 결과인지 판정.
