@@ -26,11 +26,12 @@ export async function POST(
     const { id: rawId } = await params;
     const id = decodeURIComponent(rawId);
     const body = await req.json().catch(() => ({}));
-    const { prompt, model, effort, notify, onExit } = body as {
+    const { prompt, model, effort, notify, autoResume, onExit } = body as {
       prompt?: string;
       model?: string;
       effort?: string;
       notify?: boolean;
+      autoResume?: boolean;
       onExit?: unknown;
     };
 
@@ -58,6 +59,7 @@ export async function POST(
       model,
       effort,
       notify: notify ?? false,
+      autoResume: autoResume ?? false,
       callerSessionId: id,
       onExit: sanitizeOnExit(onExit),
     });
