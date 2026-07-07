@@ -27,8 +27,9 @@
 - MCP `fire_ai` 도구 또는 hook 반환값(`fireAi`)으로 트리거
 - `background-session.ts`의 `spawnBackgroundAI()`가 `model`에서 도출된 provider(기본 Claude)로 백그라운드 턴을 spawn(`createProcess` 엔진 재사용) — PID 즉시 반환, 메인 턴 비차단. 한 턴 실행 후 `{type:"result"}` 수신 시 settle(kill+notify/onExit).
 - `useSessionContext: true`이면 페르소나 전체 컨텍스트, 아니면 최소 시스템 프롬프트
-- 종료 시점 옵션 (모두 독립적, 순서: `onExit.broadcast` → `onExit.script` → `notify`):
-  - `notify: true` — `[BACKGROUND_SESSION_COMPLETE]` silent system event를 caller 세션에 주입 → AI가 다음 턴에 응답. 라이브 인스턴스 없으면 `pending-events.json` disk fallback
+- 종료 시점 옵션 (`onExit`는 독립적, 순서: `onExit.broadcast` → `onExit.script` → 완료 통지. 완료 통지는 `autoResume` > `notify` 우선순위로 택일):
+  - `notify: true` — `[BACKGROUND_SESSION_COMPLETE]` silent system event를 caller 세션에 주입 → AI가 **다음 유저 턴**에 응답(큐잉만). 라이브 인스턴스 없으면 `pending-events.json` disk fallback
+  - `autoResume: true` — 완료 시 caller AI가 **idle이면 즉시, busy면 현재 턴 종료 직후** 자발적 응답 턴을 발동(유저 입력 대기 없음). `notify`를 흡수(설정 시 큐잉+자동발동 모두 수행). 구현: `SessionInstance.autoResumeTurn()`이 `queueEvent`→`waitForIdle()`→(`setImmediate` yield로 co-waking 유저 턴에 양보)→빈-큐/`_pendingTurn`/체인캡 가드 통과 시 `[BACKGROUND_RESUME] fire_ai 결과 콜백입니다.` 지시문+이벤트로 `claude.send`. 빈-큐 가드가 유저 merge·다중완료 coalesce를 자연 해소. 런어웨이 루프 가드 `_autoResumeChain`(상한 `FIRE_AI_AUTORESUME_MAX`, 기본 5, 유저 턴마다 리셋). 라이브 인스턴스/프로세스 없으면 `notify`와 동일하게 disk fallback
   - `onExit.broadcast: { event, data }` — caller 세션 클라이언트에게만 WS 메시지(`wsBroadcast(..., { sessionId: callerSessionId })`). UI 스피너 숨김·지연 reveal·토스트 등 AI 턴 비개입 용도
   - `onExit.script: "hooks/xxx.js"` — `sessionDir` 안의 JS 모듈을 `require`해서 호출. 인자 `{ pid, exitCode, sessionDir, logTail }`, 반환 `{ broadcast?, queueEvent? }`로 동적 처리. path traversal 차단(세션 dir 밖 경로 거부), `require.cache`는 매 호출마다 invalidate
 

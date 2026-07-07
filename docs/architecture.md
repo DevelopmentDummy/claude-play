@@ -129,7 +129,7 @@ Python FastAPI child process (port 3342 by default) for serial GPU task queueing
 | `policy_review` | Local content-policy review (allow / deny / uncertain) with decision logging |
 | `policy_context` | Read roleplay policy context (extreme traits, reviewed scenarios, intimacy policy) |
 | `run_tool` | Execute custom session tools — single or chained, with state snapshot |
-| `fire_ai` | Spawn a detached background AI run (long-form generation, side jobs). Exit-time hooks: `notify` (silent system event), `onExit.broadcast` (WS to caller session's clients — UI updates without AI turn), `onExit.script` (JS module inside session dir for dynamic broadcast/queueEvent). |
+| `fire_ai` | Spawn a detached background AI run (long-form generation, side jobs). Exit-time hooks: `notify` (silent system event queued for next user turn), `autoResume` (fire a spontaneous response turn as soon as the caller AI is idle — immediately if idle, else right after the current turn; subsumes `notify`), `onExit.broadcast` (WS to caller session's clients — UI updates without AI turn), `onExit.script` (JS module inside session dir for dynamic broadcast/queueEvent). |
 | `bridge_delegate` | (세션 모드) 메인 AI가 상시 서브에이전트에게 태스크를 위임. `{ to: name, task: string }` → `SubAgentManager.dispatch()`. |
 | `report_to_main` | (서브에이전트 전용) 서브가 결과를 메인 세션 이벤트 큐에 보고. `{ from: name, summary: string }` → `pending-events.json` 큐잉 → 다음 사용자 턴에 flush. |
 | `bridge_define_subagent` | (빌더 모드 전용) 서브에이전트 정의 생성/갱신. `{ name, role, model?, instructions, delegable?, autoTrigger?, autoTriggerTask?, emitSummary? }` → 페르소나 디렉토리에 `subagents.json` + `subagents/{name}/instructions.md` 기록. |
@@ -141,4 +141,4 @@ Python FastAPI child process (port 3342 by default) for serial GPU task queueing
 - Tool chaining with sequential execution and early exit on failure
 - Image deduplication within single turn (30s window) via `deduplicateImageFilename()`
 - ComfyUI config reading (session-level → global fallback)
-- Background `fire_ai` jobs run independently of the main turn, broadcasting completion notifications. Per-call `onExit` lets the caller pick UI-only (`broadcast`), dynamic-callback (`script`), and/or AI-resuming (`notify`) behaviour — independent flags
+- Background `fire_ai` jobs run independently of the main turn, broadcasting completion notifications. Per-call `onExit` lets the caller pick UI-only (`broadcast`) and/or dynamic-callback (`script`) behaviour; completion delivery to the AI is `notify` (queued for next user turn) or `autoResume` (spontaneous turn when idle — subsumes `notify`)
