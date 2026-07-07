@@ -429,6 +429,10 @@ export class SessionInstance {
   /** Reset pending turn state and resolve all idle waiters. */
   private flushIdleWaiters(): void {
     this._pendingTurn = false;
+    // Turn ended (normal / error / exit / cancel) — clear the spontaneous-resume mark
+    // so it can't leak into a later turn. processResult captures its isSpontaneous
+    // local BEFORE calling this, so clearing here doesn't disturb the retry decision.
+    this._spontaneousResume = false;
     for (const resolve of this.idleResolvers.splice(0)) resolve();
   }
 
@@ -553,6 +557,12 @@ export class SessionInstance {
   async autoResumeTurn(header: string): Promise<void> {
     this.queueEvent(header);
     await this.waitForIdle();
+    // Yield past all microtasks so a co-waking user sendMessage (which awaits a
+    // timeout wrapper = 2 microtask hops, vs our direct 1) flushes the queue and
+    // marks _pendingTurn first — restoring "user wins → we no-op (merge)". The
+    // guards below then correctly bail. Coalesce still holds: two auto-resumes both
+    // yield via setImmediate (FIFO), the first fires + sets _pendingTurn, the second bails.
+    await new Promise<void>((r) => setImmediate(r));
     // 프로세스 없음(grace 만료로 page 닫힘 / crash) — 이벤트는 disk에 남겨 다음 open이 surface.
     if (this.destroyed || !this.claude.isRunning()) return;
     // idle race에서 유저 턴 등이 이미 새 턴을 시작함 — 그 턴이 큐 헤더를 싣고 가므로 중복 발동 금지.
@@ -1674,9 +1684,6 @@ export class SessionInstance {
           : "[system] 직전 응답이 누락되었습니다. 직전 사용자 요청에 대한 응답을 생성해 주세요.",
       );
     }
-
-    // 자발적 autoResume 턴 처리 완료 — 다음 턴이 이 플래그를 물려받지 않도록 해제.
-    this._spontaneousResume = false;
   }
 
   /** Antigravity 모델이 sub-agent orchestration 패턴을 hallucinate한 결과인지 판정.
