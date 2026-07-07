@@ -1,10 +1,12 @@
 # Style Check System — 공용 문체 점검기 설계
 
+> ⚠️ **역사적 설계 노트** — 이 시스템은 2026-05-25에 구현 완료됨 (코어 `7a2cbe8`, 공용 룰셋 `928e6f8`). 현재 동작의 정본은 [data-model.md](data-model.md)·[session-lifecycle.md](session-lifecycle.md)의 style-check 항목과 `builder-prompt.md`의 `hooks/on-style-check.js` 섹션. 아래 본문은 의사결정 컨텍스트 보존용이며 일부 세부(훅 인자, 변수 갱신 경로, `contextBlock`)는 실제 구현과 다르다 — 하단 "구현 노트" 참조.
+
 ## 배경
 
-현재 `slave_trainer` 페르소나는 자체 엔진(`tools/engine.js`)에 문체 자가검토 루프를 박아 두고 있다. N턴마다 LLM이 직전 응답들을 self-review하고 결과를 `style_drift_verdict` / `style_warning` 변수로 기록 → 다음 user turn의 `[STATE]` 헤더로 노출되어 다음 응답 톤을 보정하게 만든다.
+설계 당시 `slave_trainer` 페르소나는 자체 엔진(`tools/engine.js`)에 문체 자가검토 루프를 박아 두고 있었다 (마이그레이션으로 engine.js에서 제거 완료). N턴마다 LLM이 직전 응답들을 self-review하고 결과를 `style_drift_verdict` / `style_warning` 변수로 기록 → 다음 user turn의 `[STATE]` 헤더로 노출되어 다음 응답 톤을 보정하게 만든다.
 
-이 구조는 페르소나에 박혀 있어 다른 페르소나(라티스, 향후 RP들)가 재사용할 수 없다. **시스템 공용 기능으로 추출**하는 게 목표.
+이 구조는 페르소나에 박혀 있어 다른 페르소나(라티스, 향후 RP들)가 재사용할 수 없다. **시스템 공용 기능으로 추출**하는 게 목표. (→ 구현 완료)
 
 ## 목표
 
@@ -19,17 +21,20 @@
 
 **위치:** `src/lib/session-instance.ts`
 
-- 응답 턴 카운터를 세션 인스턴스에 추가 (혹은 기존 카운터 활용)
-- 임계(`intervalTurns`, 기본 10) 도달 시 lifecycle hook 호출
+- 카운터 = variables.json의 `__style_check_counter` (코어가 `mutateSessionJsonSync`로 원자 증분, 비-OOC assistant 턴마다 +1; variables.json 읽기 실패 시 해당 턴 스킵). 영속 카운터라 서버 재시작에도 주기 유지
+- `counter % intervalTurns === 0`(기본 10)일 때 lifecycle hook 호출
 - hook 경로: `hooks/on-style-check.js` (페르소나 세션 디렉토리 안)
-- hook 시그니처:
+- hook 시그니처 (실구현 기준 — `runStyleCheckHook` 참조; **동기 함수만** 허용, Promise 반환은 `guardAsyncHookResult`가 거부):
   ```js
-  module.exports = async function ({ variables, data, sessionDir, recentTurns, defaults }) {
-    // defaults: data/style-check/defaults.md 내용 (string)
-    // recentTurns: 직전 N턴의 user/assistant 메시지 슬라이스
+  module.exports = function ({ variables, data, sessionDir, recentTurns, defaults, rules, reviewPromptTemplate, config }) {
+    // defaults: data/style-check/defaults.md 원본 (string)
+    // rules: defaults + 페르소나 style-check-rules.md 머지본
+    // reviewPromptTemplate: data/style-check/review-prompt.md 원본 — {{rules}}/{{priorReport}}/{{olderBlock}}/{{newerBlock}} 토큰을 hook이 직접 치환
+    // config: style-check.json 파싱본
+    // recentTurns: 직전 8개 assistant 응답만 (user 메시지 미포함, slice(-8) 고정)
     return {
-      fireAi?: { prompt, model?, effort?, notify? }, // 백그라운드 자가검토 트리거
-      contextBlock?: string,                          // (선택) 즉시 silent system turn 주입
+      fireAi?: { prompt, model?, effort?, notify?, useSessionContext? }, // 백그라운드 자가검토 트리거
+      // contextBlock — 설계안에만 있고 미구현: runStyleCheckHook은 fireAi만 처리 (반환해도 무시됨)
     };
   };
   ```
@@ -85,7 +90,7 @@ LLM 자가검토 프롬프트에 들어가는 일반 문체 가이드. 페르소
 **결과 변수(공용 스키마):**
 - `style_drift_verdict`: 자가검토 결과 한 줄 요약 (`🎭 문체 정성 평가 — ...`)
 - `style_warning`: 다음 응답에서 즉시 정정해야 할 항목 (`⚠ 문체 경고 — ...`)
-- `style_check_last_fired`: `Day N (turn M)` 마지막 점검 시점
+- `style_check_last_fired`: `Day N (turn M)` 마지막 점검 시점 — ⚠️ 공용 스키마 미채택 (defaults.md는 위 두 변수만 정의; 발화 주기는 코어 `__style_check_counter`가 관리. slave_trainer의 레거시 on-assistant.js 주기 평가만 이 변수를 기록)
 
 ## 페르소나 옵트인 설정
 
@@ -157,9 +162,9 @@ LLM 자가검토 프롬프트에 들어가는 일반 문체 가이드. 페르소
 ## 참고 — 기존 시스템
 
 - 컴팩션 hook: `data/skills/panel-design/references/engine-and-data.md` 참조
-- 코어 hook 실행 위치: `src/lib/session-instance.ts:runCompactionResumeHook()` (라인 685-742 부근)
+- 코어 hook 실행 위치: `src/lib/session-instance.ts` — `runCompactionResumeHook()` / `runStyleCheckHook()` (함수명으로 검색; 라인 번호는 자주 밀림)
 - fire_ai 백그라운드 세션: `src/lib/background-session.ts:spawnBackgroundAI()`
-- 변수 갱신 경로: 백그라운드 세션 → MCP `run_tool` → 페르소나 engine.js → variables.json
+- 변수 갱신 경로: 백그라운드 검토 세션이 `update_variables` MCP 도구를 호출하도록 지시받음 (`data/style-check/defaults.md` "출력 형식" 절 + `review-prompt.md`). ⚠️ 2026-07-07 기준 `update_variables`는 `claude-play-mcp-server.mjs` 등록 도구 목록에 없음 — 검토 LLM이 실제로 변수를 어떻게 영속화하는지 런타임 검증 필요 (라이브 버그 가능성)
 
 ## 변경 영향 파일 (예상)
 
@@ -170,3 +175,13 @@ LLM 자가검토 프롬프트에 들어가는 일반 문체 가이드. 페르소
 - `data/style-check/review-prompt.md` — 신규 (LLM 프롬프트 템플릿)
 - `data/skills/panel-design/references/engine-and-data.md` — hook 시그니처 명세 추가
 - `data/sessions/slave_trainer-*/` — 마이그레이션 (engine.js 정리 + hook/rules 신규)
+
+## 구현 노트 — 설계 대비 실제 (2026-07-07 감사)
+
+위 본문은 설계 시점 스냅샷. 실구현에서 다르거나 본문에 없는 동작:
+
+- **review-prompt.md 템플릿**: `data/style-check/review-prompt.md`가 실존하며 코어가 로드해 hook 인자 `reviewPromptTemplate`로 전달. `{{rules}}` / `{{priorReport}}` / `{{olderBlock}}` / `{{newerBlock}}` 토큰은 **hook이 직접 치환**해 fireAi prompt를 조립한다 (예: slave_trainer `hooks/on-style-check.js`).
+- **페르소나→세션 전파**: 옵트인 파일 3종(`style-check.json`, `hooks/on-style-check.js`, `style-check-rules.md`)을 페르소나 템플릿에 추가하면 기존 세션은 다음 Open 시 additive mirror(`mirrorNewPersonaFiles`, `src/lib/session-manager.ts`)로 받음 — 기존 세션 파일은 덮어쓰지 않으며, 라이브 세션은 닫고 다시 열어야 활성화.
+- **fireAi 폴백**: hook이 `model`/`effort`를 생략하면 style-check.json의 값으로 폴백. `useSessionContext`도 전달 가능 (기본 false=최소 컨텍스트).
+- **hook은 동기 전용**: Promise 반환 시 `guardAsyncHookResult`가 거부 — async hook은 no-op.
+- **OOC/슬래시 턴 제외**: 카운터 증분과 hook 발화는 비-OOC assistant 턴에서만 (`session-instance.ts`의 `if (!isOOC)` 분기).

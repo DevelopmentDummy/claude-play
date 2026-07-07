@@ -4,7 +4,7 @@
 
 ## Server Entry
 
-`server.ts` — Custom HTTP server wrapping Next.js with WebSocket upgrade support. Calls `setupWebSocket()` to attach the WS server on `/ws`. Spawns the standalone TTS server (`tts-server.mjs`) and the GPU Manager (Python child process) on startup, with health-check + auto-restart. Intercepts TTS / voice generation routes so they execute in plain Node context outside the Next.js runtime.
+`server.ts` — Custom HTTP server wrapping Next.js with WebSocket upgrade support. Calls `setupWebSocket()` to attach the WS server on `/ws`. Spawns the standalone TTS server (`tts-server.mjs`) and the GPU Manager (Python child process) on startup, with health-check + auto-restart. Intercepts TTS / voice generation routes so they execute in plain Node context outside the Next.js runtime. TTS is a fully independent HTTP server *by necessity*: `node-edge-tts` depends on the `ws` package and the Next.js runtime interferes with it — both in-process use and a child spawned under the Next runtime failed, so do not fold TTS back into the Next process. Also opt-in auto-spawns ComfyUI itself (`COMFYUI_AUTOSTART=true` + `COMFYUI_DIR`, skipped when the port is already in use) and calls `reapOrphanSubProcs()` on boot to kill orphaned sub-agent processes.
 
 ## GPU Manager (`gpu-manager/`)
 
@@ -12,10 +12,11 @@ Python FastAPI child process (port 3342 by default) for serial GPU task queueing
 
 | File | Role |
 |------|------|
-| `server.py` | FastAPI app with `/health`, `/status`, `/comfyui/generate`, `/tts/synthesize`, `/tts/create-voice` endpoints |
+| `server.py` | FastAPI app with `/health`, `/status`, `/comfyui/generate`, `/tts/synthesize`, `/tts/synthesize-stream`, `/tts/create-voice` endpoints |
 | `queue_manager.py` | Serial asyncio queue — FIFO, one task at a time, per-type timeouts |
 | `comfyui_proxy.py` | Proxies image generation requests to ComfyUI API |
 | `tts_engine.py` | Qwen3-TTS direct inference — on-demand loading, idle timeout, model size switching |
+| `voxcpm_engine.py` | VoxCPM2 TTS inference — second local TTS engine, on-demand loading, persistent torch.compile cache (deps in `requirements-voxcpm.txt`) |
 | `voice_creator.py` | Voice embedding (.pt) generator from design prompt or reference audio |
 
 ## Core Libraries (`src/lib/`)
@@ -24,8 +25,16 @@ Python FastAPI child process (port 3342 by default) for serial GPU task queueing
 
 | File | Role |
 |------|------|
-| `session-manager.ts` | Stateless file-based CRUD for personas, sessions, profiles. Copies persona → session directory. Writes `.claude/settings.json` + `.mcp.json` + `.codex/config.toml` + `.gemini/` + `.kimi/` configs per session. Manages layout config, builder sessions, skill copying, CLAUDE.md + AGENTS.md + GEMINI.md assembly. Bidirectional sync with diff comparison. |
-| `session-instance.ts` | Per-session stateful container — holds active AI process, PanelEngine, chat history, broadcast functions. One instance per open session. Drives panel-action hooks, OOC routing, scene-break parsing, fire-ai dispatch, and system event flushing (events/actions/hint snapshots) before each turn. |
+| `session-manager.ts` | Stateless file-based CRUD for personas, sessions, profiles. Copies persona → session directory. Delegates per-runtime config emission to `runtime-config.ts` (`.claude/settings.json`, `.mcp.json` — also consumed by Kimi, `.codex/config.toml`, `.gemini/` settings, `.agents/mcp_config.json`). Manages layout config, builder sessions, skill copying, CLAUDE.md + AGENTS.md + GEMINI.md assembly. Bidirectional sync with diff comparison. Several concerns are extracted to the Wave-12 split modules below. |
+| `runtime-config.ts` | Per-runtime config file emitter (`.claude/settings.json`, `.mcp.json`, `.codex/config.toml`, `.gemini/settings.json`, `.agents/mcp_config.json` for Antigravity, policy-context.json). `ensureClaudeRuntimeConfig()` rewrites all of them on every session open. |
+| `runtime-instructions.ts` | Per-runtime instruction file writer (AGENTS.md / GEMINI.md etc.) sourced from the session's authoritative CLAUDE.md. |
+| `prompt-assembly.ts` | Service/builder system prompt + guide-file assembly (per-provider primer YAML + shared markdown, Handlebars-compiled). |
+| `session-config-io.ts` | Dir-scoped session/persona config I/O (layout / voice / chat options) with defaults. |
+| `session-state.ts` | `SYSTEM_JSON` SSOT (system JSON files that are not persona data) + atomic `session.json` mutation (`mutateSessionJsonSync`) with Windows-lock retry. |
+| `session-sync-diff.ts` | Read-only persona↔session sync/diff predicates (`fileDiffers()` etc.). |
+| `soft-delete.ts` | Shared soft-delete flow for sessions and builder personas: close live instance → `killAgyForDir()` orphan reap → rename into `data/deleted_*` with Windows-lock retry. |
+| `fs-mirror.ts` | Generic recursive dir copy / additive mirror utilities; skips transient `background-*.log` runtime artifacts. |
+| `session-instance.ts` | Per-session stateful container — holds active AI process, PanelEngine, chat history, broadcast functions. One instance per open session. Drives panel-action hooks, OOC routing, fire-ai dispatch, autoResume spontaneous turns, and system event flushing (events/actions/hint snapshots) before each turn. (Scene-break parsing is client-side — `ChatMessages.tsx`.) |
 | `session-registry.ts` | Registry for active `SessionInstance` objects. `getSessionInstance()`, `openSessionInstance()`, `closeSessionInstance()`. Cleanup with grace period on disconnect. |
 | `session-list.ts` | Provider-side conversation enumeration (Claude / Codex / Gemini / Kimi) for the resume menu. JSONL tail parsing for last-message previews. `listConversationsForSession()`, `relinkConversation()`. |
 | `services.ts` | Compatibility layer — re-exports `SessionManager` and the registry helpers (`getSessionInstance`, `openSessionInstance`, etc). Most call sites should use `getServices()` to grab the global singleton. |
@@ -34,35 +43,48 @@ Python FastAPI child process (port 3342 by default) for serial GPU task queueing
 | `restart-notification.ts` | After a service restart, reconciles active sessions: writes a marker, atomically renames it on consumption, and feeds a silent system message back to the AI so the conversation continues from where it stopped. |
 | `ai-process-factory.ts` | Factory helper that constructs the correct provider process (ClaudeProcess / CodexProcess / etc.) given a model id and options. Used by both main session and sub-agent spawn paths. |
 | `subagent-manifest.ts` | Reads and validates `subagents.json` — manifest schema types, `loadSubAgentManifest()`, cap enforcement (`SUBAGENT_MAX`). |
-| `subagent-instance.ts` | Per-sub stateful wrapper over a provider process (Claude-only in v1). No PanelEngine. Emits messages to `SubAgentManager`; persists `.resume` id for session continuity. |
+| `subagent-instance.ts` | Per-sub stateful wrapper over any provider process (follows the session's provider/model by default; a per-sub `model` in the manifest pins a fixed provider). No PanelEngine. Emits messages to `SubAgentManager`; persists a provider-namespaced `.resume-<provider>` id for continuity. |
 | `subagent-manager.ts` | `SubAgentManager` — owns all `SubAgentInstance` objects for a session. `spawnAll()` on session open, `dispatch(name, task)` for all three dispatch paths, `destroyAll()` on session destroy. |
 | `subagent-registry.ts` | PID registry for sub-agent processes (`data/.runtime/subagent-procs.json`). `reapOrphanSubProcs()` called on server boot to kill survivors, with recycling-safe session-dir verification. |
+| `subagent-transcript.ts` | Per-sub `transcript.jsonl` reader/appender (dispatch/response/report entries) feeding the `subagent:message` WS side-channel and the messenger-style sub-agent modal UI. |
 
 ### AI Process Management
 
 | File | Role |
 |------|------|
-| `ai-provider.ts` | `AIProvider` type (`"claude" \| "codex" \| "gemini" \| "kimi"`), `providerFromModel()` mapping, `parseModelEffort()`, `MODEL_GROUPS` array with model option constants. |
+| `ai-provider.ts` | `AIProvider` type (`"claude" \| "codex" \| "gemini" \| "kimi" \| "antigravity"`), `providerFromModel()` mapping (gemini-* ids transparently route to the Antigravity provider when `NEXT_PUBLIC_DISABLE_GEMINI=true` — the current default), `parseModelEffort()`, `resolveClaudeEffort()`, `MODEL_GROUPS` array with model option constants. `ultracode` is a pseudo-effort, not a real `--effort` value: `resolveClaudeEffort()` translates it to `--effort xhigh` + the `CLAUDE_CODE_WORKFLOWS` env var (which gates the multi-agent Workflow tool, verified in the claude binary) + a standing system-prompt append. |
 | `claude-process.ts` | Spawns `claude -p` subprocess with `--input-format stream-json --output-format stream-json --verbose`. NDJSON line-buffered parser. Emits `message/status/error/sessionId` events. Auto-retries without `--resume` on failed resume. |
-| `codex-process.ts` | Codex CLI integration via `codex app-server` mode (persistent JSON-RPC 2.0 over stdin/stdout). Same EventEmitter interface as ClaudeProcess. Optional external-gateway provider injection via `model_provider` for `external/...` models. |
-| `gemini-process.ts` | Per-turn Gemini CLI spawner. Spawns fresh `gemini` CLI per message with `--resume` for session continuity. NDJSON streaming with delta support. Auto-fallback to fresh spawn if resume fails. |
+| `codex-process.ts` | Codex CLI integration via `codex app-server` mode (persistent JSON-RPC 2.0 over stdin/stdout). Same EventEmitter interface as ClaudeProcess. Optional external-gateway provider injection via `model_provider` for `external/...` models. Spawns with child env `CODEX_HOME` pointed at the session's `.codex/` dir (copying `auth.json` in) — codex reads config **only** from `$CODEX_HOME/config.toml`, never the cwd `.codex/config.toml`. |
+| `gemini-process.ts` | **Vestigial/retired** — Google stopped processing Gemini CLI requests 2026-06-18; kept only for the legacy `NEXT_PUBLIC_DISABLE_GEMINI=false` mode. gemini-* model ids now route to `antigravity-process.ts`. (Was: per-turn `gemini --resume` spawner with fresh-spawn fallback.) |
 | `kimi-process.ts` | Kimi CLI integration via the Kimi `--wire` JSON-RPC protocol. Persistent process with init handshake, message send, stream-delta handling, auto-approval of ApprovalRequest events. Same EventEmitter shape as the others. |
+| `antigravity-process.ts` | Antigravity (`agy.exe`) provider — the de-facto Gemini replacement. Persistent detached agy process plus a polling wrapper over its in-process Language Server (not a persistent stream). Same EventEmitter shape as the others. Details below. |
+| `antigravity-pid-registry.ts` | Persists detached agy.exe PIDs to `data/.runtime/agy-procs.json` (`recordAgyPid()`); `killAgyForDir()` reaps orphans on session/persona delete — detached agy survives dev-server restarts and otherwise blocks the directory rename with EBUSY. |
+
+#### Antigravity runtime notes
+
+- **Spawn — PowerShell `Start-Process` only.** `agy.exe` is a Go bubbletea TUI that needs real Windows console handles (CONIN$/CONOUT$). Every Node `child_process.spawn` combination (detached / windowsHide) fails with `bubbletea: could not open TTY` while exiting code 0 (looks like success). Only `Start-Process -WindowStyle Hidden` via a generated `.ps1` provides a hidden-but-allocated console. Never unify this spawn path with the four pipe-based providers. Non-ASCII cwd needs both a UTF-8 BOM on the `.ps1` and `Set-Location -LiteralPath` (not `Start-Process -WorkingDirectory`, which does wildcard interpretation).
+- **Transport — LS polling, not streaming.** agy hosts an in-process Language Server (ConnectRPC over HTTPS at `/exa.language_server_pb.LanguageServerService/*`, random port discovered from the agy PID). agy auto-creates a cascade from `--prompt-interactive`; the bridge finds it via `GetAllCascadeTrajectories`, sends input with `SendUserCascadeMessage` (`items: [{ text }]`), polls output with `GetCascadeTrajectory` (~700ms), and detects turn end with `WaitForConversationFullyIdle` + a heuristic fallback. Wake-up echoes from async tools are removed by `stripSystemMessageEcho`.
+- **Model keys are dynamic — never hardcode.** agy model ids are `MODEL_PLACEHOLDER_M{N}` strings whose index changes between agy versions (Pro High: 165 in 1.0.2 → 37 in 1.0.5; hardcoding killed cascades with "unknown model key"). `resolveModelKeyDynamic()` re-resolves at every spawn by matching `displayName` from `GetAvailableModels` and passes the full string verbatim.
+- **Debugging**: per-session log `antigravity-stream.log` (spawn failures show up as `agy stdout:` lines).
 
 ### Communication
 
 | File | Role |
 |------|------|
-| `ws-server.ts` | WebSocket server on `/ws?sessionId=X&builder=true/false`. Handles `chat:send`, `session:bind`, `session:leave` messages. `wsBroadcast()` for global broadcasts. 5s grace period cleanup on last client disconnect. |
+| `ws-server.ts` | WebSocket server on `/ws?sessionId=X&builder=true/false`. Handles `chat:send`, `chat:cancel`, `event:queue`, `command:send`, `session:bind`, `session:leave` messages. `wsBroadcast()` for global broadcasts. 5s grace period cleanup on last client disconnect. |
 | `sse-manager.ts` | Server-Sent Events broadcast manager for streaming responses. `addClient()`, `removeClient()`, `broadcast()`. |
 
 ### Image Generation
 
 | File | Role |
 |------|------|
-| `comfyui-client.ts` | ComfyUI integration — image generation. Queues workflows, polls for results, downloads output images to session dir. Routes through GPU Manager when available. |
+| `comfyui-client.ts` | ComfyUI integration — image generation. Queues workflows, polls for results, downloads output images to session dir. Routes through GPU Manager when available. Pure helpers extracted to the three modules below. |
+| `comfyui-graph.ts` | Pure ComfyUI prompt-graph surgery helpers (detailer chain wiring etc.) — no fs/network deps. Extracted from ComfyUIClient. |
+| `comfyui-checkpoint.ts` | Checkpoint resolution + compatibility checks; reads `comfyui-config.json` from session/persona dir. Extracted from ComfyUIClient. |
+| `comfyui-history.ts` | Pure parsers for ComfyUI history/outputs (image/audio filename extraction). Extracted from ComfyUIClient. |
 | `workflow-resolver.ts` | ComfyUI workflow package management. Loads packages, validates `ParamDef` defs, merges prefix/suffix, supports custom `resolver.mjs` plugins. `loadPackage()`, `listPackages()`, `resolveWorkflow()`, `validateParams()`. |
 | `gemini-image.ts` | Gemini image generation via `generativelanguage.googleapis.com` API. Configurable model (`GEMINI_IMAGE_MODEL`). Supports multiple reference images and aspect ratio. |
-| `openai-image.ts` | OpenAI image generation via the metered Responses API `image_generation` tool (model `gpt-5.5`). Reference images are sent as `input_image` (base64 data URL) for editing (`action: edit`). Used only when `OPENAI_IMAGE_BACKEND=api`. |
+| `openai-image.ts` | OpenAI image generation via the metered Responses API `image_generation` tool (orchestration model `gpt-5.5` by default, overridable via `OPENAI_IMAGE_MODEL`; actual renderer `gpt-image-2`, overridable via `OPENAI_IMAGE_TOOL_MODEL`; a misconfig guard treats a `gpt-image-*` value passed to `OPENAI_IMAGE_MODEL` as the renderer). Reference images are sent as `input_image` (base64 data URL) for editing (`action: edit`). Used only when `OPENAI_IMAGE_BACKEND=api`. |
 | `codex-image.ts` | **Default** OpenAI/GPT image backend (`OPENAI_IMAGE_BACKEND=codex`). Drives `codex exec` whose built-in `image_gen` tool renders via the ChatGPT subscription (no per-call cost / no `OPENAI_API_KEY`). Snapshots `$CODEX_HOME/generated_images`, harvests the new `ig_*.png`, copies into the session `images/`. Editing via `codex exec -i <reference>`. Slower (a full agent turn) and bound by the plan's rate limits. |
 
 ### Panel System
@@ -90,13 +112,15 @@ Python FastAPI child process (port 3342 by default) for serial GPU task queueing
 | `auth.ts` | Internal MCP token (`getInternalToken()`, `validateInternalToken()`). Admin auth (`createAuthToken()`, `verifyAuthToken()`, `parseCookieToken()`). |
 | `setup-guard.ts` | Setup completion check. `isSetupComplete()`, `markSetupComplete()`, `shouldRedirectToSetup()`. |
 | `setup-auth.ts` | Middleware checking auth before allowing access to protected routes. |
-| `usage-checker.ts` | Polls Claude / Codex / Gemini usage APIs (per-window utilization, `resets_at`, `timeProgress`) with a 30s in-memory cache. `getClaudeUsage()`, `getCodexUsage()`, `getGeminiUsage()`. |
+| `usage-checker.ts` | Polls Claude / Codex / Gemini(Antigravity) usage APIs (per-window utilization, `resets_at`, `timeProgress`) with a 30s in-memory cache. `getClaudeUsage()`, `getCodexUsage()`, `getGeminiUsage()`, `getAntigravityUsage()` (delegates to the Gemini usage path). |
 
 ### Utilities
 
 | File | Role |
 |------|------|
 | `data-dir.ts` | Resolves `DATA_DIR` env var or defaults to `./data`. Provides `getDataDir()` and `getAppRoot()`. |
+| `endpoints.ts` | Single source of truth for the service's own ports / base URLs (TTS = PORT+1, GPU Manager = PORT+2; default 3340 → 3341/3342). Consumers must use this instead of re-deriving defaults. |
+| `inline-formatter.ts` | Shared inline tokenizer for RP markdown-lite (`*action*` / `**bold**` / `'thought'` / inline code / `$PANEL$`·`$IMAGE$` placeholders) — CommonMark-style delimiter-stack parser, inline-only. |
 | `env-file.ts` | `.env.local` file reader/writer with quote stripping & comment handling. |
 | `fs-retry.ts` | `retryOnWindowsLock<T>()` — exponential backoff for EBUSY/EPERM/ENOTEMPTY errors caused by other Windows processes holding a file. |
 | `color-utils.ts` | Frontend helpers: `hexToRgba()`, `lightenHex()`. |
@@ -104,7 +128,9 @@ Python FastAPI child process (port 3342 by default) for serial GPU task queueing
 
 ## MCP Server
 
-`src/mcp/claude-play-mcp-server.mjs` — Per-session MCP server spawned as a child process by Claude / Codex / Gemini / Kimi. Configured via `.mcp.json` (Claude), `.codex/config.toml` (Codex), `.gemini/` settings (Gemini), or `.kimi/` settings (Kimi) inside the session directory. Authenticates to the Bridge API via the internal `x-bridge-token` header. Helper `withPersona()` injects the active persona / session id into every outgoing request.
+`src/mcp/claude-play-mcp-server.mjs` — Per-session MCP server spawned as a child process by Claude / Codex / Gemini / Kimi / Antigravity. Configured via `.mcp.json` (Claude and Kimi — kimi spawns with `--mcp-config-file <cwd>/.mcp.json`), `.codex/config.toml` (Codex — read via the `CODEX_HOME` repoint at spawn), `.gemini/` settings (Gemini), or `.agents/mcp_config.json` (Antigravity) inside the session directory; all are (re)written by `runtime-config.ts` on every session open, so token rotation self-heals but already-open sessions need a re-open to pick up config changes. Authenticates to the Bridge API via the internal `x-bridge-token` header. Helper `withPersona()` injects the active persona / session id into every outgoing request.
+
+MCP registration is the **only** viable tool channel for the AI processes — "just have the model curl the API" is never an acceptable fallback for a missing-MCP bug: many bridge tools (`fire_ai`, scheduler control, sub-agent dispatch, …) have no standalone REST equivalent, and the optional `ADMIN_PASSWORD` middleware 401s any AI-issued request lacking the internal token that the MCP server supplies.
 
 ### MCP Tools
 

@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 **AI 캐릭터와 몰입형 롤플레이 세션을 즐기는 웹 앱.**
-[Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code), [Codex CLI](https://github.com/openai/codex), [Gemini CLI](https://github.com/google-gemini/gemini-cli)를 브릿지합니다.
+[Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code), [Codex CLI](https://github.com/openai/codex), Kimi CLI, Antigravity(Gemini 모델)를 브릿지합니다.
 
 > [!NOTE]
 > This is a community project and is not affiliated with, endorsed by, or sponsored by Anthropic, OpenAI, or Google.
@@ -15,7 +15,7 @@
 
 Claude Play는 AI 캐릭터 페르소나를 만들고, 대화형 롤플레이 세션을 진행하는 웹 애플리케이션입니다. HP, 인벤토리, 지도 같은 실시간 상태 패널이 AI 응답에 따라 동적으로 업데이트되며, 이미지 생성과 TTS 음성까지 지원합니다.
 
-CLI 기반 AI 런타임(Claude Code, Codex, Gemini)을 서브프로세스로 스폰하고, WebSocket을 통해 브라우저와 실시간 스트리밍으로 연결합니다. 모든 데이터는 파일 기반으로 저장되어 데이터베이스가 필요 없습니다.
+CLI 기반 AI 런타임(Claude Code, Codex, Kimi, Antigravity)을 서브프로세스로 스폰하고, WebSocket을 통해 브라우저와 실시간 스트리밍으로 연결합니다. 모든 데이터는 파일 기반으로 저장되어 데이터베이스가 필요 없습니다.
 
 ## Features
 
@@ -32,9 +32,11 @@ CLI 기반 AI 런타임(Claude Code, Codex, Gemini)을 서브프로세스로 스
 |----------|---------|---------------|
 | Claude Code | `claude -p` | NDJSON streams |
 | Codex | `codex app-server` | JSON-RPC 2.0 over stdin/stdout |
-| Gemini | `gemini --resume` | NDJSON streams |
+| Kimi | `kimi --wire` | JSON-RPC over stdin/stdout |
+| Antigravity | `agy` (background) | ConnectRPC polling — Gemini 모델 제공 |
 
 세션 생성 시 모델을 선택하면, 해당 프로바이더가 세션 수명 동안 고정됩니다.
+(Gemini CLI 텍스트 프로바이더는 은퇴 — `gemini-*` 모델은 Antigravity로 라우팅됩니다. 이미지 생성용 Gemini API는 별개로 지원.)
 
 ### Media
 
@@ -53,7 +55,7 @@ CLI 기반 AI 런타임(Claude Code, Codex, Gemini)을 서브프로세스로 스
 ### Prerequisites
 
 - [Node.js](https://nodejs.org/) 18+
-- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) (또는 [Codex CLI](https://github.com/openai/codex), [Gemini CLI](https://github.com/google-gemini/gemini-cli)) 설치 및 인증 완료
+- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) (또는 [Codex CLI](https://github.com/openai/codex), Kimi CLI, Antigravity CLI) 설치 및 인증 완료
 - Python 3.10+ *(선택 — GPU Manager, 로컬 TTS용)*
 - NVIDIA GPU 8GB+ VRAM *(선택 — ComfyUI, 로컬 TTS용)*
 
@@ -108,7 +110,7 @@ npm run dev
 ## How It Works
 
 ```
-Persona ──clone──▶ Session Dir ──spawn──▶ AI Process (Claude/Codex/Gemini)
+Persona ──clone──▶ Session Dir ──spawn──▶ AI Process (Claude/Codex/Kimi/Antigravity)
                                               │
 Browser ◀──WebSocket──▶ server.ts ◀──NDJSON/JSON-RPC──┘
                             │
@@ -163,11 +165,12 @@ data/                  # 파일 기반 스토리지 (gitignored)
 
 | Document | Contents |
 |----------|----------|
+| [Maintenance Playbook](docs/maintenance-playbook.md) | 유지보수 수칙, 함정, 프로바이더별 디버깅 |
 | [Architecture](docs/architecture.md) | 스택, 서버, GPU Manager, 핵심 라이브러리, MCP |
-| [API Routes](docs/api-routes.md) | 전체 API 라우트 (50+ endpoints) |
-| [Frontend](docs/frontend.md) | 페이지 (5) 및 컴포넌트 (30+) |
+| [API Routes](docs/api-routes.md) | 전체 API 라우트 |
+| [Frontend](docs/frontend.md) | 페이지, 훅, 컴포넌트 |
 | [Data Model](docs/data-model.md) | 파일 기반 데이터 디렉토리 구조 |
-| [Session Lifecycle](docs/session-lifecycle.md) | 세션 라이프사이클, Triple Runtime |
+| [Session Lifecycle](docs/session-lifecycle.md) | 세션 라이프사이클, Penta Runtime, 서브에이전트, fire-ai |
 | [Change Propagation](docs/change-propagation.md) | 변경 시 업데이트 가이드 |
 | [Infrastructure](docs/infrastructure.md) | 컨벤션, 환경변수 전체 목록 |
 

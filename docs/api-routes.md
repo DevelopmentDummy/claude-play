@@ -13,7 +13,7 @@ Optional admin password auth via `ADMIN_PASSWORD` env var. MCP server requests i
 
 | Route | Methods | Purpose |
 |-------|---------|---------|
-| `/api/personas` | GET, POST | List all personas / create new persona |
+| `/api/personas` | GET | List all personas (creation happens via `POST /api/builder/start`) |
 | `/api/personas/import` | POST | Install a persona from a GitHub repo URL |
 | `/api/personas/import/preview` | POST | Inspect a persona repo's metadata (name, description, icon) before import |
 | `/api/personas/[name]` | DELETE | Delete persona (moved to `data/deleted_personas/`) |
@@ -51,10 +51,15 @@ Optional admin password auth via `ADMIN_PASSWORD` env var. MCP server requests i
 | `/api/sessions/[id]/relink` | POST | Tear down live SessionInstance and rewrite session.json's provider conversation id (`{ conversationId }` body) |
 | `/api/sessions/[id]/variables` | PATCH | Patch session variables (supports `?file=` for custom data files) |
 | `/api/sessions/[id]/modals` | POST | Group-aware modal open/close/closeAll (body: `{ action, name?, mode?, except? }`) |
-| `/api/sessions/[id]/events` | POST | Queue event header for next chat message (body: `{ header: string }`) |
+| `/api/sessions/[id]/events` | POST | Queue event header for next chat message (body: `{ header: string, silent?: boolean }`) — `silent` skips the `event:pending` broadcast; `[SUB:name]`-prefixed headers are also mirrored into that sub-agent's transcript |
 | `/api/sessions/[id]/panel-actions` | POST, DELETE | POST: queue a panel action / DELETE: pop the last queued action |
 | `/api/sessions/[id]/panel-actions-meta` | GET | Read the panel-action spec metadata (`panels/_actions.meta.json`) |
-| `/api/sessions/[id]/fire-ai` | POST | Spawn a detached background Claude run for long jobs |
+| `/api/sessions/[id]/fire-ai` | POST | Spawn a detached background AI run (provider derived from `model`; Claude default). Body: `{ prompt, model?, effort?, notify?, autoResume?, onExit? }` — `autoResume` fires a spontaneous turn on completion, `onExit` supports WS broadcast / session-dir script callback |
+| `/api/sessions/[id]/subagents` | GET | List declared sub-agents with live detail (`subAgents.listDetailed()`) |
+| `/api/sessions/[id]/subagents/[name]/dispatch` | POST | Dispatch a task to a sub-agent on the delegate channel (body: `{ task }`; backend of the `bridge_delegate` MCP tool) |
+| `/api/sessions/[id]/subagents/[name]/message` | POST | Operator direct message to a sub-agent (channel `"operator"`, body: `{ text }`) |
+| `/api/sessions/[id]/subagents/[name]/transcript` | GET | Read a sub-agent's transcript tail (`?n=` default 200, max 1000) |
+| `/api/sessions/[id]/tool-answer` | POST | Submit an AskUserQuestion answer to the live session instance (body: `{ toolUseId, answer: { answers } }`) |
 | `/api/sessions/[id]/pipeline-scheduler/start` | POST | Start the per-session pipeline scheduler |
 | `/api/sessions/[id]/pipeline-scheduler/stop` | POST | Stop the per-session pipeline scheduler |
 | `/api/sessions/[id]/persona-images` | GET | List persona images / serve a single image (thumbnail support) |
@@ -66,6 +71,7 @@ Optional admin password auth via `ADMIN_PASSWORD` env var. MCP server requests i
 | `/api/sessions/[id]/options/apply` | POST | Apply options changes to active session |
 | `/api/sessions/[id]/crop-profile` | POST | Crop and save profile image |
 | `/api/sessions/[id]/crop-source` | GET | Serve images from a `character-lora-dataset` source dir for cropping UI |
+| `/api/sessions/[id]/derive-icon` | POST | Fallback 256×256 face icon: crop top-center square from persona portrait `images/girls/{girl_id}.png` → `{girl_id}_icon.png` when the ComfyUI face-detector workflow fails (body: `{ girl_id }`) |
 | `/api/sessions/[id]/voice` | GET, PATCH | Read/update session voice config |
 | `/api/sessions/[id]/tools/[name]` | POST | Execute custom panel tool script |
 
@@ -112,7 +118,7 @@ Optional admin password auth via `ADMIN_PASSWORD` env var. MCP server requests i
 
 | Route | Methods | Purpose |
 |-------|---------|---------|
-| `/api/usage` | GET | Provider token usage (`?provider=claude\|codex\|gemini`) — utilization windows, `resets_at`, time progress (30s cache) |
+| `/api/usage` | GET | Provider token usage (`?provider=claude\|codex\|gemini\|antigravity`) — utilization windows, `resets_at`, time progress (30s cache). `provider=codex` additionally requires `&sessionId=<active codex session>` |
 
 ## Styles
 
