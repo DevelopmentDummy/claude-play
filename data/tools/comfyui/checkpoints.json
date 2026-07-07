@@ -109,6 +109,11 @@
       "loader": "checkpoint_simple",
       "family": "illustrious",
       "notes": "RIN H-eros NSFW Illustrious v3.0 (6.46GB, CivitAI 2096105@3061212). 2026-06-24 도입. Illustrious 베이스 NSFW 머지. v3.0 변경점: 라인아트 선명·정확한 색감(머리/눈/피부)·얼굴 비율 개선·의상/소품 디테일 강화. Trained words 없음. NSFW 컷 후보."
+    },
+    "animayhemPaleRider_v40LongRider.safetensors": {
+      "loader": "checkpoint_simple",
+      "family": "illustrious",
+      "notes": "AniMayhem - Pale Rider v4.0 Long Rider (6.46GB fp16, CivitAI 1984400@3039900). 2026-07-07 도입. Janku v5 + NoobAI + RouWei Illustrious XL + Diving Niji Sketch + Unholy Desire Sinister V5 + Janku 7.77 머지 = 애니메 계열, 저조도/다크씬 강화. Trained words 없음. 작가 권장 세팅: DPM++ 2M / 2M SDE + Karras, steps 30~40, CFG under 5 (또는 Euler a + normal, steps 24, CFG 4.5 이하). 최소 14 steps + CFG 2 (Euler a/normal)로도 준수. 거리 디테일엔 adetailer 권장. 작가는 pos/neg embedding(Lazy Embeddings) 사용 권장."
     }
   }
 }
