@@ -59,3 +59,6 @@ data/.runtime/
 
 # Throwaway local test scripts
 scratch/
+
+# One-off ComfyUI relaunch console dump (manual runs with cwd = repo root)
+comfyui-relaunch.log
