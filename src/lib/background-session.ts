@@ -28,6 +28,11 @@ export interface FireAIOptions {
   model?: string;
   effort?: string;
   notify?: boolean;
+  /** When true, on completion fire a spontaneous response turn as soon as the caller
+   *  session's AI is idle (immediately if idle, else right after the current turn ends).
+   *  Subsumes `notify` (queues + auto-fires). Requires a live session process; falls back
+   *  to disk queue when none. Default false. */
+  autoResume?: boolean;
   callerSessionId?: string;
   /** When true, inject the full persona system prompt (CLAUDE.md, persona.md, worldview).
    *  When false (default), use a minimal task-execution prompt — the spawn focuses on
@@ -119,6 +124,25 @@ function pushCompletionEvent(sessionDir: string, callerSessionId: string, pid: n
   } catch (err) {
     console.error("[background-session] Failed to persist completion event to disk:", err);
   }
+}
+
+/** Auto-resume path for fire_ai(autoResume): hand the completion header to the live
+ *  SessionInstance so it fires a spontaneous turn when idle. Degrades to the disk queue
+ *  (via pushCompletionEvent) when no live instance/process exists — next open surfaces it. */
+function triggerAutoResume(sessionDir: string, callerSessionId: string, pid: number, exitCode: number | null): void {
+  const header = `[BACKGROUND_SESSION_COMPLETE] pid=${pid} exit_code=${exitCode ?? "null"}`;
+  try {
+    const instance = getSessionInstance(callerSessionId);
+    if (instance) {
+      instance.autoResumeTurn(header).catch((err) =>
+        console.error("[background-session] autoResumeTurn failed:", err));
+      return;
+    }
+  } catch (err) {
+    console.error("[background-session] autoResume via instance failed, falling back to disk:", err);
+  }
+  // No live instance/process — degrade to disk queue.
+  pushCompletionEvent(sessionDir, callerSessionId, pid, exitCode);
 }
 
 /** Read the tail of a file safely (returns "" on any error). Used to give onExit scripts
@@ -252,7 +276,7 @@ function runOnExit(
  * whose pid is not exposed on the process object) — does not wait for completion.
  */
 export function spawnBackgroundAI(opts: FireAIOptions): FireAIResult {
-  const { sessionDir, prompt, model, effort, notify, callerSessionId, useSessionContext, onExit } = opts;
+  const { sessionDir, prompt, model, effort, notify, autoResume, callerSessionId, useSessionContext, onExit } = opts;
 
   // Parse model (may carry an embedded effort suffix, e.g. "opus:ultracode"); explicit
   // `effort` wins over the embedded one. Provider is derived from the model (default claude).
@@ -322,7 +346,9 @@ export function spawnBackgroundAI(opts: FireAIOptions): FireAIResult {
     if (onExit && (onExit.broadcast || onExit.script)) {
       runOnExit(onExit, sessionDir, callerSessionId, pid, code, logName);
     }
-    if (notify && callerSessionId) {
+    if (autoResume && callerSessionId) {
+      triggerAutoResume(sessionDir, callerSessionId, pid, code);
+    } else if (notify && callerSessionId) {
       pushCompletionEvent(sessionDir, callerSessionId, pid, code);
     }
     console.log(`[background-session] settled provider=${provider} pid=${pid} code=${code}`);
@@ -357,7 +383,7 @@ export function spawnBackgroundAI(opts: FireAIOptions): FireAIResult {
   activeProcesses.add(proc);
   firedPid = (proc as unknown as ProcCarrier).proc?.pid ?? 0;
 
-  console.log(`[background-session] spawned provider=${provider} pid=${firedPid} model=${effectiveModel || "(default)"} effort=${effectiveEffort || "(default)"} notify=${notify || false}`);
+  console.log(`[background-session] spawned provider=${provider} pid=${firedPid} model=${effectiveModel || "(default)"} effort=${effectiveEffort || "(default)"} notify=${notify || false} autoResume=${autoResume || false}`);
 
   // Safety timeout — kill + treat as error if the turn never completes.
   const timeoutMs = Number(process.env.FIRE_AI_TIMEOUT_MS) || DEFAULT_FIRE_AI_TIMEOUT_MS;
