@@ -110,7 +110,7 @@ export async function POST(req: Request) {
     } else if (resolved.provider === "kimi") {
       svc.sessions.writeKimiInstructions(personaDir, runtimeSystemPrompt);
     }
-    instance.claude.spawn(personaDir, resumeId, resolved.model, runtimeSystemPrompt, resolved.effort);
+    instance.claude.spawn(personaDir, resumeId, resolved.model, runtimeSystemPrompt, resolved.effort, true, "claude-stream.log", resolved.advisor);
   }
 
   // If this builder persona triggered a service restart on the previous boot, deliver the

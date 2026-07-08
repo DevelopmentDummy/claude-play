@@ -63,7 +63,7 @@ export async function POST(
     const sessionDir = sm.getSessionDir(id);
     const resolvedOptions = sm.resolveOptions(sessionDir);
     const savedModel = sm.getSessionModel(id) || "";
-    const { model, effort } = parseModelEffort(savedModel);
+    const { model, effort, advisor } = parseModelEffort(savedModel);
     const provider = providerFromModel(model);
 
     const resumeId = getResumeIdForProvider(sm, id, provider);
@@ -72,7 +72,7 @@ export async function POST(
     const runtimeSystemPrompt = sm.buildServiceSystemPrompt(info.persona, provider, resolvedOptions, profile?.name);
     writeInstructionsForProvider(sm, sessionDir, provider, runtimeSystemPrompt);
     const skipPerms = resolvedOptions.skipPermissions !== false;
-    instance.claude.spawn(sessionDir, resumeId, model || undefined, runtimeSystemPrompt, effort, skipPerms);
+    instance.claude.spawn(sessionDir, resumeId, model || undefined, runtimeSystemPrompt, effort, skipPerms, "claude-stream.log", advisor);
     restarted = true;
   }
 
