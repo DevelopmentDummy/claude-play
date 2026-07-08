@@ -315,6 +315,7 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
           params?.effort,
           params?.skipPermissions,
           params?.logName,
+          params?.advisor,
         );
         return;
       }
