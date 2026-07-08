@@ -30,7 +30,7 @@ export async function POST(
   // rawModel may be saved as "opus:medium" — re-parse if loading from session
   const savedRaw = svc.sessions.getSessionModel(id) || "";
   const effectiveRaw = rawModel || savedRaw;
-  const { model: effectiveModel, effort: effectiveEffort } = parseModelEffort(effectiveRaw);
+  const { model: effectiveModel, effort: effectiveEffort, advisor: effectiveAdvisor } = parseModelEffort(effectiveRaw);
   const finalEffort = effort || effectiveEffort;
   const provider = providerFromModel(effectiveModel);
 
@@ -114,7 +114,7 @@ export async function POST(
     // delivery for codex/gemini/kimi; persona context for antigravity).
     writeInstructionsForProvider(svc.sessions, sessionDir, provider, runtimeSystemPrompt);
     const skipPerms = resolvedOptions.skipPermissions !== false;
-    instance.claude.spawn(sessionDir, resumeId, effectiveModel || undefined, runtimeSystemPrompt, finalEffort, skipPerms);
+    instance.claude.spawn(sessionDir, resumeId, effectiveModel || undefined, runtimeSystemPrompt, finalEffort, skipPerms, "claude-stream.log", effectiveAdvisor);
   }
 
   // Spawn always-on sub-agents declared in subagents.json (session mode only; builder has none).

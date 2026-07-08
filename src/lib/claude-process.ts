@@ -156,7 +156,7 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
   }
 
   // Store spawn parameters for retry on resume failure
-  private lastSpawnParams: { cwd: string; model?: string; appendSystemPrompt?: string; effort?: string; skipPermissions?: boolean; logName?: string } | null = null;
+  private lastSpawnParams: { cwd: string; model?: string; appendSystemPrompt?: string; effort?: string; skipPermissions?: boolean; logName?: string; advisor?: string } | null = null;
 
   /**
    * Spawn claude -p in the given directory.
@@ -165,9 +165,9 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
    * logName is relative to cwd; defaults to "claude-stream.log". Sub-agents pass
    * e.g. "subagents/<name>/sub.log" so each process gets its own log file.
    */
-  spawn(cwd: string, resumeId?: string, model?: string, appendSystemPrompt?: string, effort?: string, skipPermissions = true, logName = "claude-stream.log"): void {
+  spawn(cwd: string, resumeId?: string, model?: string, appendSystemPrompt?: string, effort?: string, skipPermissions = true, logName = "claude-stream.log", advisor?: string): void {
     // Save params for potential retry (without resumeId)
-    this.lastSpawnParams = { cwd, model, appendSystemPrompt, effort, skipPermissions, logName };
+    this.lastSpawnParams = { cwd, model, appendSystemPrompt, effort, skipPermissions, logName, advisor };
     if (this.proc) {
       this.kill();
     }
@@ -204,6 +204,10 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
 
     if (model) {
       args.push("--model", model);
+    }
+
+    if (advisor) {
+      args.push("--advisor", advisor);
     }
 
     if (effortFlag) {
@@ -311,6 +315,7 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
           params?.effort,
           params?.skipPermissions,
           params?.logName,
+          params?.advisor,
         );
         return;
       }
@@ -414,7 +419,7 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
   respawn(): void {
     if (!this.lastSpawnParams) return;
     const p = this.lastSpawnParams;
-    this.spawn(p.cwd, this.lastSessionId || undefined, p.model, p.appendSystemPrompt, p.effort, p.skipPermissions, p.logName);
+    this.spawn(p.cwd, this.lastSessionId || undefined, p.model, p.appendSystemPrompt, p.effort, p.skipPermissions, p.logName, p.advisor);
   }
 
   get running(): boolean {

@@ -16,8 +16,13 @@ const ANTIGRAVITY_MODEL_PREFIXES = ["antigravity-"];
 
 export function providerFromModel(model: string): AIProvider {
   if (!model) return "claude";
-  // Strip effort suffix (e.g. "opus:medium" → "opus")
-  const base = model.split(":")[0].toLowerCase();
+  // Strip advisor suffix first (e.g. "opus:ultracode@fable" → "opus:ultracode"), then effort suffix
+  let rest = model;
+  const at = rest.indexOf("@");
+  if (at !== -1) {
+    rest = rest.slice(0, at);
+  }
+  const base = rest.split(":")[0].toLowerCase();
   if (base.startsWith(EXTERNAL_CODEX_MODEL_PREFIX)) return "codex";
   if (CODEX_MODEL_EXACT.has(base)) return "codex";
   for (const prefix of CODEX_MODEL_PREFIXES) {
@@ -55,15 +60,24 @@ export function normalizeCodexModel(model?: string): string | undefined {
 }
 
 /**
- * Parse a model value that may contain an effort suffix.
- * e.g. "opus:medium" → { model: "opus", effort: "medium" }
- *      "gpt-5.4:high" → { model: "gpt-5.4", effort: "high" }
- *      "sonnet" → { model: "sonnet", effort: undefined }
+ * Parse a model value that may carry an effort suffix and/or an advisor suffix.
+ * Grammar: <model>[:<effort>][@<advisor>]
+ * e.g. "opus:medium"        → { model: "opus", effort: "medium", advisor: undefined }
+ *      "opus:ultracode@fable" → { model: "opus", effort: "ultracode", advisor: "fable" }
+ *      "opus@fable"          → { model: "opus", effort: undefined, advisor: "fable" }
+ * The advisor (`@…`) is split off first so it never contaminates the effort slot.
  */
-export function parseModelEffort(value: string): { model: string; effort: string | undefined } {
-  if (!value) return { model: "", effort: undefined };
-  const parts = value.split(":");
-  return { model: parts[0], effort: parts[1] || undefined };
+export function parseModelEffort(value: string): { model: string; effort: string | undefined; advisor: string | undefined } {
+  if (!value) return { model: "", effort: undefined, advisor: undefined };
+  let rest = value;
+  let advisor: string | undefined;
+  const at = rest.indexOf("@");
+  if (at !== -1) {
+    advisor = rest.slice(at + 1) || undefined;
+    rest = rest.slice(0, at);
+  }
+  const parts = rest.split(":");
+  return { model: parts[0], effort: parts[1] || undefined, advisor };
 }
 
 /**
@@ -133,15 +147,16 @@ const DEFAULT_EFFORTS: Record<AIProvider, string | undefined> = {
 /**
  * Resolve effective model, effort, and combined model string for a provider.
  * Accepts raw model string (e.g. "opus:high", "gpt-5.4", "") and optional provider override.
- * Returns { model, effort, provider, combined } where combined = "model:effort" or just "model".
+ * Returns { model, effort, provider, combined, advisor } where combined = "model[:effort][@advisor]".
  */
 export function resolveBuilderModel(rawModel?: string, providerOverride?: AIProvider) {
-  const { model: parsed, effort: parsedEffort } = parseModelEffort(rawModel || "");
+  const { model: parsed, effort: parsedEffort, advisor } = parseModelEffort(rawModel || "");
   const provider = providerOverride || (parsed ? providerFromModel(parsed) : "claude");
   const model = parsed || DEFAULT_MODELS[provider];
   const effort = parsedEffort || DEFAULT_EFFORTS[provider];
-  const combined = effort ? `${model}:${effort}` : model;
-  return { model, effort, provider, combined };
+  const base = effort ? `${model}:${effort}` : model;
+  const combined = advisor ? `${base}@${advisor}` : base;
+  return { model, effort, provider, combined, advisor };
 }
 
 function buildModelGroups(): ModelGroup[] {
@@ -166,6 +181,10 @@ function buildModelGroups(): ModelGroup[] {
         { value: "claude-fable-5:xhigh", label: "Fable XHigh" },
         { value: "claude-fable-5:max", label: "Fable Max" },
         { value: "claude-fable-5:ultracode", label: "Fable Ultracode" },
+        // Opus 베이스 + Fable advisor 조합 프리셋 (advisor는 claude -p 전용, `--advisor`로 전달).
+        { value: "opus@fable", label: "Opus + Fable advisor" },
+        { value: "opus:high@fable", label: "Opus High + Fable advisor" },
+        { value: "opus:ultracode@fable", label: "Opus Ultracode + Fable advisor" },
       ],
     },
     {

@@ -79,7 +79,7 @@ export async function POST(req: Request) {
   } else if (resolved.provider === "kimi") {
     svc.sessions.writeKimiInstructions(personaDir, runtimeSystemPrompt);
   }
-  instance.claude.spawn(personaDir, undefined, resolved.model, runtimeSystemPrompt, resolved.effort);
+  instance.claude.spawn(personaDir, undefined, resolved.model, runtimeSystemPrompt, resolved.effort, true, "claude-stream.log", resolved.advisor);
   svc.sessions.saveBuilderModel(name, resolved.combined);
 
   const displayName = svc.sessions.getPersonaDisplayName(name);
