@@ -162,7 +162,7 @@ export default function PersonaStartModal({
         aria-modal="true"
         tabIndex={-1}
         aria-label={personaDisplayName}
-        className="relative bg-surface border border-border/70 rounded-2xl w-[520px] max-h-[85vh] flex flex-col shadow-2xl animate-[slideUp_0.25s_ease-out] overflow-hidden"
+        className="relative bg-surface border border-border/70 rounded-2xl w-[520px] max-w-[92vw] max-h-[85vh] flex flex-col shadow-2xl animate-[slideUp_0.25s_ease-out] overflow-hidden"
         onKeyDown={handleKeyDown}
         style={{
           boxShadow: `0 0 80px ${accentColor}15, 0 25px 50px rgba(0,0,0,0.4)`,

@@ -47,7 +47,7 @@ export default function NewPersonaDialog({
         aria-modal="true"
         tabIndex={-1}
         aria-label="New Persona"
-        className="bg-surface backdrop-blur-[16px] border border-border rounded-2xl p-6 px-7 w-[380px] flex flex-col gap-3.5 shadow-lg animate-[slideUp_0.25s_ease-out]">
+        className="bg-surface backdrop-blur-[16px] border border-border rounded-2xl p-6 px-7 w-[380px] max-w-[92vw] flex flex-col gap-3.5 shadow-lg animate-[slideUp_0.25s_ease-out]">
         <h3 className="text-base font-semibold">New Persona</h3>
         <input
           ref={inputRef}

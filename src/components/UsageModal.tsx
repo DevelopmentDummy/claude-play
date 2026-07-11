@@ -142,7 +142,7 @@ export default function UsageModal({ onClose, provider = "claude", sessionId }: 
       className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="w-[380px] max-h-[80vh] overflow-y-auto rounded-xl border border-border/60 bg-surface shadow-[0_8px_32px_rgba(0,0,0,0.5)] p-5">
+      <div className="w-[380px] max-w-[92vw] max-h-[80vh] overflow-y-auto rounded-xl border border-border/60 bg-surface shadow-[0_8px_32px_rgba(0,0,0,0.5)] p-5">
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-semibold text-text">사용량</h2>

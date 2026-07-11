@@ -93,6 +93,21 @@ select::picker-icon { color: var(--text-dim, #999); }
 }
 </style>`;
 
+/**
+ * 좁은 뷰포트(모바일) 방어 CSS — 모든 패널 컨테이너(PanelSlot/ModalPanel/DockPanel) 공용.
+ *
+ * 패널 HTML은 페르소나 저자가 작성하므로 고정 px 폭이 들어올 수 있다.
+ * 이 스타일은 저자 CSS를 덮지 않으면서(저자 <style>이 뒤에 로드되어 우선)
+ * 고정폭 콘텐츠가 페이지 전체를 밀어내는 대신 패널 자체 스크롤로 격리되게 한다.
+ */
+export const PANEL_DEFENSIVE_STYLE = `<style>
+:host { max-width: 100%; overflow-x: auto; overflow-wrap: break-word; }
+img, video, canvas, svg { max-width: 100%; }
+img, video { height: auto; }
+table { max-width: 100%; }
+pre { max-width: 100%; overflow-x: auto; }
+</style>`;
+
 interface PanelSlotProps {
   name: string;
   html: string;
@@ -172,6 +187,7 @@ export default function PanelSlot({ name, html, sessionId, panelData, onSendMess
 
     shadow.innerHTML =
       PANEL_BASE_STYLE +
+      PANEL_DEFENSIVE_STYLE +
       stripPanelActions(html);
 
     // Auto-poll images that haven't loaded yet (deferred generation)

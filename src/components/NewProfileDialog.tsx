@@ -78,7 +78,7 @@ export default function NewProfileDialog({
         aria-modal="true"
         tabIndex={-1}
         aria-label={isEdit ? "Edit Profile" : "New Profile"}
-        className="bg-surface backdrop-blur-[16px] border border-border rounded-2xl p-6 px-7 w-[440px] flex flex-col gap-4 shadow-lg animate-[slideUp_0.25s_ease-out]"
+        className="bg-surface backdrop-blur-[16px] border border-border rounded-2xl p-6 px-7 w-[440px] max-w-[92vw] flex flex-col gap-4 shadow-lg animate-[slideUp_0.25s_ease-out]"
         onKeyDown={handleKeyDown}
       >
         <h3 className="text-lg font-semibold">{isEdit ? "Edit Profile" : "New Player Profile"}</h3>

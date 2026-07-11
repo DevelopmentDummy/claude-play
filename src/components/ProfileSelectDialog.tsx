@@ -45,7 +45,7 @@ export default function ProfileSelectDialog({
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-[8px] flex items-center justify-center z-[100]">
-      <div className="bg-surface backdrop-blur-[16px] border border-border rounded-2xl p-6 px-7 w-[440px] flex flex-col gap-4 shadow-lg animate-[slideUp_0.25s_ease-out]">
+      <div className="bg-surface backdrop-blur-[16px] border border-border rounded-2xl p-6 px-7 w-[440px] max-w-[92vw] flex flex-col gap-4 shadow-lg animate-[slideUp_0.25s_ease-out]">
         <h3 className="text-base font-semibold">
           Start session with {personaDisplayName}
         </h3>

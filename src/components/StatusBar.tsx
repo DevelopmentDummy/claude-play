@@ -53,7 +53,7 @@ interface StatusBarProps {
   onForceInputToggle?: () => void;
 }
 
-const selectClass = `px-2 py-1 rounded-md text-xs text-text-dim bg-transparent border border-border/60 outline-none cursor-pointer appearance-none
+const selectClass = `min-w-0 px-2 py-1 rounded-md text-xs text-text-dim bg-transparent border border-border/60 outline-none cursor-pointer appearance-none
   hover:border-border hover:text-text transition-all duration-fast
   focus:border-accent focus:shadow-[0_0_0_2px_var(--accent-glow)]`;
 
@@ -161,7 +161,7 @@ export default function StatusBar({
           ☰
         </button>
       )}
-      <div className={`flex items-center gap-2 ${showPanelButton ? "" : "ml-auto"}`}>
+      <div className={`flex items-center gap-2 min-w-0 max-w-full ${showPanelButton ? "" : "ml-auto"}`}>
         {/* TTS auto-play toggle */}
         {onAutoPlayToggle !== undefined && (
           <button
@@ -369,7 +369,7 @@ export default function StatusBar({
         <span
           className={`w-2.5 h-2.5 rounded-full shrink-0 ${statusColors[status] || statusColors.disconnected}`}
         />
-        <span className="text-xs text-text-dim">
+        <span className="text-xs text-text-dim whitespace-nowrap">
           {statusLabels[status] || status}
         </span>
       </div>

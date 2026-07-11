@@ -100,24 +100,24 @@ export default function SubAgentChatModal({
     <div className="fixed inset-0 z-[9998] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-[4px]" onClick={onClose} />
       <div
-        className="relative z-[9999] w-full max-w-[900px] h-[80vh] flex rounded-2xl overflow-hidden border border-white/[0.1] shadow-[0_8px_40px_rgba(0,0,0,0.5)]"
+        className="relative z-[9999] w-full max-w-[900px] h-[80vh] flex flex-col md:flex-row rounded-2xl overflow-hidden border border-white/[0.1] shadow-[0_8px_40px_rgba(0,0,0,0.5)]"
         style={{ backgroundColor: "var(--surface, rgb(15,15,26))" }}
       >
-        {/* Sidebar */}
-        <div className="w-[200px] shrink-0 border-r border-white/[0.06] flex flex-col">
-          <div className="px-4 py-3 border-b border-white/[0.06] text-[12px] font-semibold uppercase tracking-wider"
+        {/* Sidebar — 모바일(<md)에서는 상단 가로 칩 스트립으로 전환 */}
+        <div className="w-full md:w-[200px] shrink-0 border-b md:border-b-0 md:border-r border-white/[0.06] flex flex-col">
+          <div className="hidden md:block px-4 py-3 border-b border-white/[0.06] text-[12px] font-semibold uppercase tracking-wider"
                style={{ color: "var(--accent, #b8a0e8)", opacity: 0.8 }}>
             서브에이전트
           </div>
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex md:flex-col md:flex-1 overflow-x-auto md:overflow-x-visible md:overflow-y-auto">
             {subs.length === 0 && (
-              <div className="px-4 py-3 text-xs text-text-dim">등록된 서브가 없습니다.</div>
+              <div className="px-4 py-3 text-xs text-text-dim whitespace-nowrap">등록된 서브가 없습니다.</div>
             )}
             {subs.map((s) => (
               <button
                 key={s.name}
                 onClick={() => onActiveSubChange(s.name)}
-                className={`w-full text-left px-4 py-2.5 text-xs transition-colors ${
+                className={`shrink-0 md:w-full text-left px-4 py-2.5 text-xs transition-colors ${
                   s.name === activeSubName ? "bg-white/[0.06] text-text" : "text-text-dim hover:bg-white/[0.03]"
                 }`}
               >
@@ -125,7 +125,7 @@ export default function SubAgentChatModal({
                   <span className={`w-2 h-2 rounded-full shrink-0 ${s.running ? "bg-success" : "bg-error"}`} />
                   <span className="truncate font-medium">{s.name}</span>
                 </div>
-                <div className="mt-0.5 text-[10px] text-text-dim/70 truncate">{s.provider}{s.model ? ` · ${s.model}` : ""}</div>
+                <div className="hidden md:block mt-0.5 text-[10px] text-text-dim/70 truncate">{s.provider}{s.model ? ` · ${s.model}` : ""}</div>
               </button>
             ))}
           </div>

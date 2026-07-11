@@ -56,7 +56,7 @@ Accessibility conventions (2026-06 a11y wave): modal components share `useFocusT
 
 | Component | Role |
 |-----------|------|
-| `PanelSlot.tsx` | Side panel rendering with Shadow DOM CSS isolation |
+| `PanelSlot.tsx` | Side panel rendering with Shadow DOM CSS isolation. Exports `PANEL_DEFENSIVE_STYLE` — 좁은 뷰포트 방어 CSS(`:host max-width:100%; overflow-x:auto` + img/table/pre clamp). PanelSlot/ModalPanel/DockPanel 세 컨테이너가 공통 주입, 저자 `<style>`이 뒤에 로드되어 우선 |
 | `PanelArea.tsx` | Container managing panel layout (position: right/left/bottom/hidden) |
 | `PanelDrawer.tsx` | Drawer wrapper for panels with open/close state |
 | `PanelResizeHandle.tsx` | Drag handle for resizing panel areas |

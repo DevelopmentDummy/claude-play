@@ -47,6 +47,7 @@ export default function LoginPage() {
         alignItems: "center",
         justifyContent: "center",
         height: "100vh",
+        padding: "16px",
         background: "var(--bg)",
       }}
     >
@@ -63,6 +64,7 @@ export default function LoginPage() {
           border: "1px solid var(--border)",
           boxShadow: "var(--shadow-lg)",
           width: "340px",
+          maxWidth: "100%",
         }}
       >
         <h1
