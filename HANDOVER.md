@@ -66,6 +66,12 @@
 3. **shared tool 패널 watcher**: `data/tools/` watch + SPA 네비게이션 시 frontend `_instances` destroy — templateCache stale 해소 (플레이북 §5.3).
 4. **서브에이전트 role 재주입**: 장기 세션 compaction에서 leading-message 희석 대응 (session-lifecycle v2 한계 ⓐ).
 5. **restart 마커의 `/api/builder/start` 커버리지** (현재 edit/resume 경로만).
+6. **모바일 후속 개선** (2026-07-11 `cc22488`에서 CSS 레벨 quick-win 완료 — 모달 뷰포트 가드·핀치줌 허용·`PANEL_DEFENSIVE_STYLE`·StatusBar min-w-0·SubAgentChatModal 칩 스트립). 남은 항목:
+   - 모바일 상시 상태 패널: 사이드 패널이 드로어 뒤에 숨음 → 컴팩트 상단 스트립 or bottom-sheet peek 검토
+   - dock-bottom을 모바일에서 모달 승격 대신 bottom-sheet로 유지 (`chat page.tsx:866-891`)
+   - TTS audio-unlock 프라이밍 (모바일 브라우저 제스처 제약, `chat page.tsx:209-241`)
+   - WS `visibilitychange` 즉시 재연결 (`useWebSocket.ts` 2초 폴링)
+   - (인프라 결정 필요) TLS/HTTPS → PWA manifest — 외부 접속 필요성 확정 후
 
 ## 8. 이 인수인계에서 새로 생긴 것
 
