@@ -62,3 +62,7 @@ scratch/
 
 # One-off ComfyUI relaunch console dump (manual runs with cwd = repo root)
 comfyui-relaunch.log
+
+# Detached ComfyUI spawn logs (server.ts auto-spawn, cwd = repo root)
+comfyui-detached.log
+comfyui-detached.err.log
