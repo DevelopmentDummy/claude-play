@@ -7,9 +7,10 @@ import { CodexProcess } from "./codex-process";
 
 // ── 공통 인터페이스 (서비스 불문) ──────────────────────────
 export interface UsageWindow {
+  key: string;            // "five_hour" | "weekly_scoped_fable" 등 안정 식별자
   name: string;           // "5시간" | "7일" | "7일 (Sonnet)" 등
   utilization: number;    // 0-100
-  resetsAt: string;       // ISO 8601
+  resetsAt: string;       // ISO 8601 ("" = 리셋 시각 미제공)
   timeProgress: number;   // 0-100
 }
 
@@ -33,15 +34,25 @@ const execFileAsync = promisify(execFile);
 // ── Anthropic raw 응답 타입 ────────────────────────────────
 interface RawWindow {
   utilization: number;
-  resets_at: string;
+  resets_at?: string | null;
+}
+
+// 2026-07 신형 스키마: limits 배열이 1차 소스 (top-level 모델 키는 null로 올 수 있음)
+interface RawLimit {
+  kind: string;
+  group: string;
+  percent: number;
+  resets_at?: string | null;
+  scope?: { model?: { display_name?: string | null } | null } | null;
 }
 
 interface RawUsageResponse {
-  five_hour?: RawWindow;
-  seven_day?: RawWindow;
-  seven_day_sonnet?: RawWindow;
-  seven_day_opus?: RawWindow;
-  seven_day_cowork?: RawWindow;
+  five_hour?: RawWindow | null;
+  seven_day?: RawWindow | null;
+  seven_day_sonnet?: RawWindow | null;
+  seven_day_opus?: RawWindow | null;
+  seven_day_cowork?: RawWindow | null;
+  limits?: RawLimit[] | null;
   extra_usage?: {
     is_enabled: boolean;
     monthly_limit: number;
@@ -68,6 +79,66 @@ function computeTimeProgress(resetsAt: string, durationMs: number): number {
   return Math.round(((now - startTime) / durationMs) * 100);
 }
 
+const HOUR_MS = 60 * 60 * 1000;
+const HOUR5_MS = 5 * HOUR_MS;
+const DAY7_MS = 7 * 24 * HOUR_MS;
+
+/** resets_at이 없는 윈도우는 리셋 시각 미제공("") + 진행률 100으로 처리 */
+function windowFromReset(
+  key: string,
+  name: string,
+  utilization: number,
+  resetsAt: string | null | undefined,
+  durationMs: number
+): UsageWindow {
+  if (!resetsAt) {
+    return { key, name, utilization, resetsAt: "", timeProgress: 100 };
+  }
+  return { key, name, utilization, resetsAt, timeProgress: computeTimeProgress(resetsAt, durationMs) };
+}
+
+/** 신형 limits 배열 → 윈도우 매핑 (session=5시간, weekly_all=7일, weekly_scoped=7일 (모델명)) */
+function windowsFromLimits(limits: RawLimit[]): UsageWindow[] {
+  const windows: UsageWindow[] = [];
+  for (const l of limits) {
+    if (l.percent == null) continue;
+    if (l.group === "session") {
+      windows.push(windowFromReset("five_hour", "5시간", l.percent, l.resets_at, HOUR5_MS));
+    } else if (l.group === "weekly") {
+      if (l.kind === "weekly_all") {
+        windows.push(windowFromReset("seven_day", "7일", l.percent, l.resets_at, DAY7_MS));
+      } else {
+        const model = l.scope?.model?.display_name;
+        if (!model) continue;
+        windows.push(windowFromReset(
+          `weekly_scoped_${model.toLowerCase().replace(/ /g, "_")}`,
+          `7일 (${model})`,
+          l.percent,
+          l.resets_at,
+          DAY7_MS
+        ));
+      }
+    }
+    // 그 외 group(monthly 등 미지 항목)은 표시하지 않음
+  }
+  return windows;
+}
+
+/** Anthropic raw 응답 → 윈도우 목록. limits 배열이 있으면 우선, 없으면 구형 top-level 키 폴백 */
+export function mapClaudeWindows(raw: RawUsageResponse): UsageWindow[] {
+  if (raw.limits?.length) {
+    const windows = windowsFromLimits(raw.limits);
+    if (windows.length) return windows;
+  }
+  const windows: UsageWindow[] = [];
+  for (const [key, meta] of Object.entries(WINDOW_DURATIONS)) {
+    const w = raw[key as keyof RawUsageResponse] as RawWindow | undefined | null;
+    if (!w || w.utilization == null) continue;
+    windows.push(windowFromReset(key, meta.label, w.utilization, w.resets_at, meta.durationMs));
+  }
+  return windows;
+}
+
 function readAccessToken(): string | null {
   try {
     const credPath = path.join(os.homedir(), ".claude", ".credentials.json");
@@ -90,6 +161,24 @@ function setCache(key: string, result: UsageResponse): UsageResponse {
   return result;
 }
 
+// 업스트림 usage API가 응답 없이 매달리면 /api/usage 라우트가 hang 되고,
+// Cloudflare 터널이 520 + HTML 에러 페이지를 대신 반환한다. 그 HTML을
+// 프론트가 JSON으로 파싱하다 "Unexpected token '<'"로 터진다.
+// 타임아웃을 걸어 라우트가 매달리지 않고 즉시 JSON 에러를 돌려주게 한다.
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit = {},
+  timeoutMs = 8000
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function getClaudeUsage(): Promise<UsageResponse> {
   const cached = getCached("claude");
   if (cached) return cached;
@@ -100,7 +189,7 @@ export async function getClaudeUsage(): Promise<UsageResponse> {
   }
 
   try {
-    const res = await fetch("https://api.anthropic.com/api/oauth/usage", {
+    const res = await fetchWithTimeout("https://api.anthropic.com/api/oauth/usage", {
       headers: {
         Authorization: `Bearer ${token}`,
         "anthropic-beta": "oauth-2025-04-20",
@@ -116,19 +205,7 @@ export async function getClaudeUsage(): Promise<UsageResponse> {
 
     const raw: RawUsageResponse = await res.json();
 
-    const windows: UsageWindow[] = [];
-    for (const [key, meta] of Object.entries(WINDOW_DURATIONS)) {
-      const w = raw[key as keyof RawUsageResponse] as RawWindow | undefined | null;
-      if (!w || w.utilization == null) continue;
-      windows.push({
-        name: meta.label,
-        utilization: w.utilization,
-        resetsAt: w.resets_at,
-        timeProgress: computeTimeProgress(w.resets_at, meta.durationMs),
-      });
-    }
-
-    const result: UsageResponse = { provider: "claude", windows };
+    const result: UsageResponse = { provider: "claude", windows: mapClaudeWindows(raw) };
 
     if (raw.extra_usage) {
       result.extraUsage = {
@@ -177,8 +254,8 @@ export async function getCodexUsage(process: CodexProcess): Promise<UsageRespons
     }
 
     const windows: UsageWindow[] = [];
-    for (const [, bucket] of Object.entries(raw.rateLimitsByLimitId)) {
-      const label = bucket.limitName || bucket.limitId;
+    for (const [id, bucket] of Object.entries(raw.rateLimitsByLimitId)) {
+      const base = bucket.limitId || id;
 
       // Primary window (5시간)
       const p = bucket.primary;
@@ -187,6 +264,7 @@ export async function getCodexUsage(process: CodexProcess): Promise<UsageRespons
         const resetsAt = new Date(p.resetsAt * 1000).toISOString();
         const h = Math.round(p.windowDurationMins / 60);
         windows.push({
+          key: `${base}_primary`,
           name: `${h}시간`,
           utilization: p.usedPercent,
           resetsAt,
@@ -201,6 +279,7 @@ export async function getCodexUsage(process: CodexProcess): Promise<UsageRespons
         const resetsAt = new Date(s.resetsAt * 1000).toISOString();
         const d = Math.round(s.windowDurationMins / 60 / 24);
         windows.push({
+          key: `${base}_secondary`,
           name: `${d}일`,
           utilization: s.usedPercent,
           resetsAt,
@@ -258,12 +337,23 @@ function readGeminiProjectId(): string | null {
   }
 }
 
-/** 모델 ID에서 티어를 추출 (flash-lite / flash / pro) */
-function getModelTier(modelId: string): string {
-  if (modelId.includes("flash-lite")) return "Flash Lite";
-  if (modelId.includes("flash")) return "Flash";
-  if (modelId.includes("pro")) return "Pro";
-  return modelId;
+// ── 모델 패밀리 분류 (Gemini/Antigravity 공용 4-패밀리) ────
+type ModelFamily = "flash" | "pro" | "claude" | "gpt";
+const FAMILY_ORDER: ModelFamily[] = ["flash", "pro", "claude", "gpt"];
+const FAMILY_LABELS: Record<ModelFamily, string> = {
+  flash: "Flash",
+  pro: "Pro",
+  claude: "Claude",
+  gpt: "GPT-OSS",
+};
+
+/** claude-/gpt- 접두사 우선, flash-lite는 flash로 통합. 미분류 모델은 표시 제외 */
+function modelFamily(modelId: string): ModelFamily | null {
+  if (modelId.startsWith("claude-")) return "claude";
+  if (modelId.startsWith("gpt-")) return "gpt";
+  if (modelId.includes("flash")) return "flash";
+  if (modelId.includes("pro")) return "pro";
+  return null;
 }
 
 export async function getGeminiUsage(): Promise<UsageResponse> {
@@ -278,7 +368,7 @@ export async function getGeminiUsage(): Promise<UsageResponse> {
   const projectId = readGeminiProjectId();
 
   try {
-    const res = await fetch("https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota", {
+    const res = await fetchWithTimeout("https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -299,29 +389,24 @@ export async function getGeminiUsage(): Promise<UsageResponse> {
       return { provider: "gemini", windows: [], error: "사용량 데이터 없음" };
     }
 
-    // 티어별로 그룹화 (같은 티어는 사용량 공유이므로 하나만 표시)
-    const TIER_ORDER = ["Flash Lite", "Flash", "Pro"];
-    const tierMap = new Map<string, GeminiQuotaBucket>();
+    // 패밀리별로 그룹화 (같은 패밀리는 사용량 공유이므로 하나만 표시)
+    const familyMap = new Map<ModelFamily, GeminiQuotaBucket>();
     for (const b of raw.buckets) {
       if (b.tokenType !== "REQUESTS") continue;
-      const tier = getModelTier(b.modelId);
-      if (!tierMap.has(tier)) {
-        tierMap.set(tier, b);
-      }
+      const family = modelFamily(b.modelId);
+      if (!family || familyMap.has(family)) continue;
+      familyMap.set(family, b);
     }
 
     const windows: UsageWindow[] = [];
     const durationMs = 24 * 60 * 60 * 1000;
 
-    const sortedTiers = [...tierMap.entries()].sort((a, b) => {
-      const ai = TIER_ORDER.indexOf(a[0]);
-      const bi = TIER_ORDER.indexOf(b[0]);
-      return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
-    });
-
-    for (const [tier, b] of sortedTiers) {
+    for (const family of FAMILY_ORDER) {
+      const b = familyMap.get(family);
+      if (!b) continue;
       windows.push({
-        name: tier,
+        key: family,
+        name: FAMILY_LABELS[family],
         utilization: Math.round((1 - b.remainingFraction) * 100),
         resetsAt: b.resetTime,
         timeProgress: computeTimeProgress(b.resetTime, durationMs),
@@ -365,21 +450,12 @@ interface AntigravityModelsResponse {
   models?: Record<string, AntigravityModelInfo>;
 }
 
-type AntigravityFamily = "flash" | "pro" | "claude" | "gpt";
-
-const ANTIGRAVITY_FAMILY_META: Record<AntigravityFamily, { label: string; durationMs: number; order: number }> = {
-  flash: { label: "Flash", durationMs: 5 * 60 * 60 * 1000, order: 0 },
-  pro: { label: "Pro", durationMs: 5 * 60 * 60 * 1000, order: 1 },
-  claude: { label: "Claude", durationMs: 24 * 60 * 60 * 1000, order: 2 },
-  gpt: { label: "GPT-OSS", durationMs: 24 * 60 * 60 * 1000, order: 3 },
-};
-
-function antigravityFamily(modelId: string): AntigravityFamily | null {
-  if (modelId.includes("flash")) return "flash";
-  if (modelId.includes("pro")) return "pro";
-  if (modelId.startsWith("claude-")) return "claude";
-  if (modelId.startsWith("gpt-")) return "gpt";
-  return null;
+// 모델별 리셋 주기가 가변(스프린트~일 단위)이라 now→reset 간격으로 추정.
+// 1시간~24시간 사이로 보정하고, 파싱 실패/과거 시각이면 24시간으로 폴백.
+function estimateWindowDurationMs(resetsAt: string): number {
+  const gap = new Date(resetsAt).getTime() - Date.now();
+  if (!Number.isFinite(gap) || gap <= 0) return 24 * HOUR_MS;
+  return Math.min(Math.max(gap, HOUR_MS), 24 * HOUR_MS);
 }
 
 function pickProjectId(value: unknown): string | null {
@@ -469,7 +545,7 @@ async function fetchAntigravityUsage(token: string): Promise<UsageResponse> {
     "User-Agent": "antigravity",
   };
 
-  const loadRes = await fetch("https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist", {
+  const loadRes = await fetchWithTimeout("https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist", {
     method: "POST",
     headers,
     body: JSON.stringify({
@@ -496,7 +572,7 @@ async function fetchAntigravityUsage(token: string): Promise<UsageResponse> {
     return { provider: "antigravity", windows: [], error: "Antigravity 프로젝트를 찾을 수 없습니다" };
   }
 
-  const modelsRes = await fetch("https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels", {
+  const modelsRes = await fetchWithTimeout("https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels", {
     method: "POST",
     headers,
     body: JSON.stringify({ project }),
@@ -512,13 +588,14 @@ async function fetchAntigravityUsage(token: string): Promise<UsageResponse> {
   }
 
   const raw = await modelsRes.json() as AntigravityModelsResponse;
-  const familyMap = new Map<AntigravityFamily, { remainingFraction: number; resetTime: string }>();
+  // 패밀리별로 remainingFraction이 가장 낮은(가장 많이 소진된) 모델을 대표로 선택 — 보수적 표시
+  const familyMap = new Map<ModelFamily, { remainingFraction: number; resetTime: string }>();
 
   for (const [modelId, model] of Object.entries(raw.models ?? {})) {
     if (model.isInternal || !model.displayName) continue;
     const remainingFraction = model.quotaInfo?.remainingFraction;
     if (typeof remainingFraction !== "number") continue;
-    const family = antigravityFamily(modelId);
+    const family = modelFamily(modelId);
     if (!family) continue;
 
     const resetTime = model.quotaInfo?.resetTime || new Date().toISOString();
@@ -528,17 +605,18 @@ async function fetchAntigravityUsage(token: string): Promise<UsageResponse> {
     }
   }
 
-  const windows = [...familyMap.entries()]
-    .sort((a, b) => ANTIGRAVITY_FAMILY_META[a[0]].order - ANTIGRAVITY_FAMILY_META[b[0]].order)
-    .map(([family, quota]) => {
-      const meta = ANTIGRAVITY_FAMILY_META[family];
-      return {
-        name: meta.label,
-        utilization: Math.round((1 - quota.remainingFraction) * 100),
-        resetsAt: quota.resetTime,
-        timeProgress: computeTimeProgress(quota.resetTime, meta.durationMs),
-      };
+  const windows: UsageWindow[] = [];
+  for (const family of FAMILY_ORDER) {
+    const quota = familyMap.get(family);
+    if (!quota) continue;
+    windows.push({
+      key: family,
+      name: FAMILY_LABELS[family],
+      utilization: Math.round((1 - quota.remainingFraction) * 100),
+      resetsAt: quota.resetTime,
+      timeProgress: computeTimeProgress(quota.resetTime, estimateWindowDurationMs(quota.resetTime)),
     });
+  }
 
   if (!windows.length) {
     return { provider: "antigravity", windows: [], error: "Antigravity 사용량 데이터 없음" };

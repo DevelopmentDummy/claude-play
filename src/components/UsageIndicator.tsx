@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 
 interface UsageWindow {
+  key?: string;
   name: string;
   utilization: number;
   resetsAt: string;
@@ -93,7 +94,11 @@ export default function UsageIndicator({ provider, sessionId, refreshTrigger, on
     if (sessionId) params.set("sessionId", sessionId);
 
     fetch(`/api/usage?${params}`)
-      .then((r) => r.json())
+      .then((r) => {
+        // 200이 아니면(예: 터널 520 HTML 페이지) JSON 파싱하지 말고 에러 처리
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
       .then((d: UsageData) => {
         if (d.error) {
           globalCache.delete(provider);
@@ -132,7 +137,7 @@ export default function UsageIndicator({ provider, sessionId, refreshTrigger, on
       title="사용량 상세 보기"
     >
       {data.windows.map((w) => (
-        <span key={w.name} className="flex items-center gap-0.5">
+        <span key={w.key ?? w.name} className="flex items-center gap-0.5">
           <span className="opacity-60">{shortLabel(w.name, data.provider)}</span>
           <MiniGauge utilization={w.utilization} timeProgress={w.timeProgress} />
         </span>

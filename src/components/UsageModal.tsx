@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 
 interface UsageWindow {
+  key?: string;
   name: string;
   utilization: number;
   resetsAt: string;
@@ -23,7 +24,9 @@ interface UsageData {
 }
 
 function formatRemaining(resetsAt: string): string {
+  if (!resetsAt) return ""; // 리셋 시각 미제공 윈도우
   const diff = new Date(resetsAt).getTime() - Date.now();
+  if (!Number.isFinite(diff)) return "";
   if (diff <= 0) return "리셋 완료";
   const h = Math.floor(diff / 3_600_000);
   const m = Math.floor((diff % 3_600_000) / 60_000);
@@ -131,7 +134,11 @@ export default function UsageModal({ onClose, provider = "claude", sessionId }: 
     if (sessionId) params.set("sessionId", sessionId);
 
     fetch(`/api/usage?${params}`)
-      .then((r) => r.json())
+      .then((r) => {
+        // 200이 아니면(예: 터널 520 HTML 페이지) JSON 파싱하지 말고 에러 처리
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
       .then((d) => setResults([d]))
       .catch(() => setResults([{ provider, windows: [], error: "요청 실패" }]))
       .finally(() => setLoading(false));
@@ -177,7 +184,7 @@ export default function UsageModal({ onClose, provider = "claude", sessionId }: 
             )}
 
             {!data.error && data.windows.map((w) => (
-              <UsageGauge key={`${data.provider}-${w.name}`} window={w} />
+              <UsageGauge key={`${data.provider}-${w.key ?? w.name}`} window={w} />
             ))}
 
             {data.extraUsage?.isEnabled && (
