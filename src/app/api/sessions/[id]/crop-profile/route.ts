@@ -3,6 +3,7 @@ import * as path from "path";
 import * as fs from "fs";
 import sharp from "sharp";
 import { getSessionManager } from "@/lib/services";
+import { getDataDir } from "@/lib/data-dir";
 import { ComfyUIClient } from "@/lib/comfyui-client";
 import { wsBroadcast } from "@/lib/ws-server";
 
@@ -57,7 +58,7 @@ export async function POST(
   const host = process.env.COMFYUI_HOST || "127.0.0.1";
   const port = parseInt(process.env.COMFYUI_PORT || "8188", 10);
   const workflowsDir = path.join(
-    process.cwd(), "data", "tools", "comfyui", "skills", "generate-image", "workflows"
+    getDataDir(), "tools", "comfyui", "skills", "generate-image", "workflows"
   );
   const client = new ComfyUIClient({ host, port }, workflowsDir);
 

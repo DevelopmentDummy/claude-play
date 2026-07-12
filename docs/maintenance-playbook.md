@@ -170,6 +170,13 @@ agy.exe는 Go bubbletea TUI라 Windows CONIN$/CONOUT$ 콘솔 핸들이 필요하
 ### 5.8 TTS는 독립 서버로 남겨둘 것
 `node-edge-tts`의 `ws` 의존성이 Next.js 런타임과 충돌한다 (in-process·child 모두 실패) — 그래서 `tts-server.mjs`가 완전 독립 HTTP 서버(PORT+1)이고 server.ts가 TTS 라우트를 인터셉트해 plain Node 컨텍스트에서 실행한다. Next 프로세스로 되돌리려 하지 말 것. `session-instance.ts`의 TTS 엔진 추출(~220줄)도 평가 후 **의도적으로 보류** — job 클로저가 매 await마다 live `this.*`를 읽어 verbatim-move 검증이 불가능한 설계 수준 리팩터다.
 
+### 5.9 빌드 file tracer가 data/를 삼키지 않게 하라 (경로 리터럴 금지)
+`next build`의 file tracer(@vercel/nft)는 번들된 라우트 코드에서 `path.join(process.cwd(), "data", ...)` 같은 **정적으로 평가 가능한 경로 표현식을 에셋 참조로 간주해 해당 디렉터리를 통째로 걷는다.** data/가 15GB(파일 수백만)라 이것만으로 빌드가 55초→4분대로 폭증했다 (2026-07-12 진단: nft.json에 691만 항목, deleted_sessions만 531만).
+- **방어**: `src/lib/data-dir.ts`의 `DATA_DIR_NAME = Buffer.from([0x64,0x61,0x74,0x61]).toString()` — "data" 리터럴을 런타임 조립해 nft 정적 분석을 차단한다. **이상해 보여도 지우지 말 것.** personas images 라우트의 `IMAGES_SEG`도 동일 방어(부분 글롭 `**/images/*` 차단).
+- **규칙**: 서버 코드에서 데이터 경로는 반드시 `getDataDir()` 경유. `process.cwd()`+`"data"` 리터럴 직접 조합 금지 (2026-07-12에 8개소 일괄 제거).
+- **함정**: `outputFileTracingExcludes`는 결과 필터일 뿐 **디렉터리 워크 비용을 막지 못한다** (2026-05-28 "효과 없음" 실측과 일치). 재발 검사: 빌드 후 `.next/**/*.nft.json`에서 data/ 경로 항목 수 집계 — 라우트당 수 개 이하가 정상.
+- 증상 재발 시 원인 탐색: `grep -rnE 'cwd\(\)[^\n]*data' src` + nft.json에서 어떤 라우트가 대량 항목을 갖는지 확인.
+
 ## 6. 작업 방법론
 
 ### 6.1 대형 파일 분해 규율 (waves 6–12에서 무회귀 검증된 방법)

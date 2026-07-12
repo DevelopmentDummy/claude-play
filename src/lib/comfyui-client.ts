@@ -6,6 +6,7 @@ import {
   validateParams,
   type WorkflowFeatures,
 } from "./workflow-resolver";
+import { getDataDir } from "./data-dir";
 import { getGpuManagerUrl } from "./endpoints";
 import {
   pruneUnavailableLoRAs,
@@ -345,7 +346,7 @@ export class ComfyUIClient {
     // 글로벌 트리거 테이블은 항상 data/tools/comfyui/ 아래에 산다.
     // workflowsDir이 세션 로컬 스킬(data/sessions/.../.claude/skills/...)일 수도 있으므로
     // cwd 기준 절대 경로로 직접 잡는다.
-    const triggersPath = path.join(process.cwd(), "data/tools/comfyui/lora-triggers.json");
+    const triggersPath = path.join(getDataDir(), "tools/comfyui/lora-triggers.json");
     if (!fs.existsSync(triggersPath)) return {};
     try {
       const raw = JSON.parse(fs.readFileSync(triggersPath, "utf-8"));
@@ -459,7 +460,7 @@ export class ComfyUIClient {
       if (baseLoras.length === 0 || nsfwLoras.length === 0) {
         // Fallback to global comfyui-config.json
         try {
-          const globalConfigPath = path.join(process.cwd(), "data/tools/comfyui/comfyui-config.json");
+          const globalConfigPath = path.join(getDataDir(), "tools/comfyui/comfyui-config.json");
           if (fs.existsSync(globalConfigPath)) {
             const globalConfig = JSON.parse(fs.readFileSync(globalConfigPath, "utf-8"));
             const globalPreset = globalConfig.active_preset && globalConfig.presets?.[globalConfig.active_preset];
@@ -843,7 +844,7 @@ export class ComfyUIClient {
     // [DEBUG] dump the prompt sent to ComfyUI for diagnosing missing_node_type errors.
     // Remove once anima-mixed-scene corruption is identified.
     try {
-      const dumpDir = path.join(process.cwd(), "data", "tools", "comfyui", "_debug");
+      const dumpDir = path.join(getDataDir(), "tools", "comfyui", "_debug");
       fs.mkdirSync(dumpDir, { recursive: true });
       const stamp = new Date().toISOString().replace(/[:.]/g, "-");
       const dumpPath = path.join(dumpDir, `prompt_${stamp}_${filename.replace(/[^a-zA-Z0-9._-]/g, "_")}.json`);

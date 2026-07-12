@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import path from "path";
 import fs from "fs";
+import { getDataDir } from "@/lib/data-dir";
 
-const DATA_DIR = path.join(process.cwd(), "data", "personas");
+const DATA_DIR = path.join(getDataDir(), "personas");
 
 // Files/dirs to exclude when cloning a persona
 const EXCLUDE = new Set([

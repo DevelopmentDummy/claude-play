@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import * as path from "path";
 import * as fs from "fs";
 import { getSessionManager } from "@/lib/services";
+import { getDataDir } from "@/lib/data-dir";
 import { ComfyUIClient } from "@/lib/comfyui-client";
 
 export async function POST(req: Request) {
@@ -75,7 +76,7 @@ export async function POST(req: Request) {
     targetDir = sm.getPersonaDir(body.persona);
     // Workflows from the tools directory (source of truth)
     workflowsDir = path.join(
-      process.cwd(), "data", "tools", "comfyui", "skills", "generate-image", "workflows"
+      getDataDir(), "tools", "comfyui", "skills", "generate-image", "workflows"
     );
   } else if (body.sessionId) {
     // Session mode: save to session directory by default.
@@ -96,7 +97,7 @@ export async function POST(req: Request) {
       targetDir = sm.getSessionDir(body.sessionId);
     }
     workflowsDir = path.join(
-      process.cwd(), "data", "tools", "comfyui", "skills", "generate-image", "workflows"
+      getDataDir(), "tools", "comfyui", "skills", "generate-image", "workflows"
     );
   } else {
     return NextResponse.json(
@@ -117,7 +118,7 @@ export async function POST(req: Request) {
     // Try session/persona config, then global fallback
     const configPaths = [
       path.join(targetDir, "comfyui-config.json"),
-      path.join(process.cwd(), "data", "tools", "comfyui", "comfyui-config.json"),
+      path.join(getDataDir(), "tools", "comfyui", "comfyui-config.json"),
     ];
     for (const configPath of configPaths) {
       try {

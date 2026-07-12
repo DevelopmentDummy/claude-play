@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import * as fs from "fs";
 import * as path from "path";
 import { getServices, openSessionInstance, closeSessionInstance } from "@/lib/services";
-import { getAppRoot } from "@/lib/data-dir";
+import { getAppRoot, getDataDir } from "@/lib/data-dir";
 import { resolveBuilderModel } from "@/lib/ai-provider";
 import { getGpuManagerPort } from "@/lib/endpoints";
 
@@ -51,7 +51,7 @@ export async function POST(req: Request) {
 
 
   // Copy builder-only skills
-  const builderSkillsSrc = path.join(process.cwd(), "data", "builder_skills");
+  const builderSkillsSrc = path.join(getDataDir(), "builder_skills");
   if (fs.existsSync(builderSkillsSrc)) {
     const claudeSkillsDir = path.join(personaDir, ".claude", "skills");
     fs.mkdirSync(claudeSkillsDir, { recursive: true });

@@ -2,6 +2,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import type { WorkflowPackageMeta } from "./workflow-resolver";
+import { getDataDir } from "./data-dir";
 
 /** Read comfyui-config.json from session/persona dir if it exists */
 export function readDirConfig(dir: string): { checkpoint?: string; baseLoras?: Array<{ name: string; strength: number }> } {
@@ -31,7 +32,7 @@ export function resolveCheckpoint(availableCheckpoints: string[], checkpointName
 
   // Global config fallback (data/tools/comfyui/comfyui-config.json)
   try {
-    const globalConfigPath = path.join(process.cwd(), "data/tools/comfyui/comfyui-config.json");
+    const globalConfigPath = path.join(getDataDir(), "tools/comfyui/comfyui-config.json");
     if (fs.existsSync(globalConfigPath)) {
       const globalConfig = JSON.parse(fs.readFileSync(globalConfigPath, "utf-8"));
       const globalPreset = globalConfig.active_preset && globalConfig.presets?.[globalConfig.active_preset];
@@ -72,8 +73,8 @@ export function resolveCheckpoint(availableCheckpoints: string[], checkpointName
 
 export function loadCheckpointRegistry(): Record<string, Record<string, string>> {
   // 글로벌 체크포인트 레지스트리는 항상 data/tools/comfyui/checkpoints.json.
-  // workflowsDir이 세션 로컬 스킬일 수도 있으므로 cwd 기준 절대 경로로 잡는다.
-  const registryPath = path.join(process.cwd(), "data/tools/comfyui/checkpoints.json");
+  // workflowsDir이 세션 로컬 스킬일 수도 있으므로 데이터 루트 기준 절대 경로로 잡는다.
+  const registryPath = path.join(getDataDir(), "tools/comfyui/checkpoints.json");
   try {
     const data = JSON.parse(fs.readFileSync(registryPath, "utf-8"));
     return (data.checkpoints || {}) as Record<string, Record<string, string>>;
