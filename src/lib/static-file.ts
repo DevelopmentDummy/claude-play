@@ -16,6 +16,9 @@ export const STATIC_MIME: Record<string, string> = {
   ".wav": "audio/wav",
   ".mp3": "audio/mpeg",
   ".ogg": "audio/ogg",
+  ".mp4": "video/mp4",
+  ".webm": "video/webm",
+  ".vtt": "text/vtt",
 };
 
 /** Content-Type for a file path; defaults to application/octet-stream. */
