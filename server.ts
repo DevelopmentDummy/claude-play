@@ -12,6 +12,8 @@ import { shouldRedirectToSetup } from "./src/lib/setup-guard";
 import { destroyAllBackgroundProcesses } from "./src/lib/background-session";
 import { destroyAllInstances } from "./src/lib/session-registry";
 import { reapOrphanSubProcs } from "./src/lib/subagent-registry";
+import { handleExternalMcpRequest } from "./src/lib/external-mcp/server";
+import { getExternalToken, getExternalTokenPath } from "./src/lib/external-mcp/token";
 
 loadEnvConfig(process.cwd());
 
@@ -458,6 +460,13 @@ app.prepare().then(async () => {
       return;
     }
 
+    // 외부 에이전트용 MCP 엔드포인트 — 자체 토큰 게이트 (ADMIN 쿠키 인증과 무관)
+    if (pathname === "/mcp/external") {
+      const body = req.method === "POST" ? await readJsonBody(req) : undefined;
+      await handleExternalMcpRequest(req, res, body);
+      return;
+    }
+
     // Auth check for intercepted routes
     if (isAuthEnabled()) {
       const isIntercepted = pathname === "/api/chat/tts"
@@ -507,5 +516,7 @@ app.prepare().then(async () => {
 
   server.listen(port, hostname, () => {
     console.log(`> Ready on http://${hostname}:${port}`);
+    getExternalToken();
+    console.log(`[external-mcp] endpoint: http://127.0.0.1:${port}/mcp/external (token: ${getExternalTokenPath()})`);
   });
 });
