@@ -1,0 +1,62 @@
+{
+  "description": "Qwen-Image-Edit 2511 지시 기반 이미지 편집 패키지 — Lightning 4스텝. 입력 이미지 + 자연어 지시로 장면 상태를 편집(키프레임 제작용). reference_image를 주면 image2로 함께 인코딩되어 인물/스타일 일관성 참조로 쓰인다.",
+  "features": {
+    "checkpoint_auto": false,
+    "lora_injection": false,
+    "lora_couple_branches": false,
+    "seed_randomize": false,
+    "trigger_tags": false,
+    "detailer_chain": false
+  },
+  "params": {
+    "input_image": {
+      "node": "6",
+      "field": "image",
+      "type": "string",
+      "required": true,
+      "description": "ComfyUI input 폴더 기준 편집 대상 이미지"
+    },
+    "prompt": {
+      "node": "8",
+      "field": "prompt",
+      "type": "string",
+      "required": true,
+      "description": "편집 지시 (자연어, 영어 권장)"
+    },
+    "reference_image": {
+      "type": "string",
+      "description": "선택 — 인물 일관성 참조 이미지 (image2로 주입, 미지정 시 노드 제거)"
+    },
+    "megapixels": {
+      "node": "7",
+      "field": "megapixels",
+      "type": "number",
+      "default": 1,
+      "description": "작업 해상도 (총 MP)"
+    },
+    "shift": {
+      "node": "3",
+      "field": "shift",
+      "type": "number",
+      "default": 3
+    },
+    "steps": {
+      "node": "11",
+      "field": "steps",
+      "type": "number",
+      "default": 4,
+      "description": "Lightning 4 권장"
+    },
+    "cfg": {
+      "node": "11",
+      "field": "cfg",
+      "type": "number",
+      "default": 1
+    },
+    "seed": {
+      "type": "number",
+      "default": -1,
+      "description": "-1이면 랜덤"
+    }
+  }
+}

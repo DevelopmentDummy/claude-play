@@ -104,9 +104,9 @@
   "10": {
     "class_type": "WanFirstLastFrameToVideo",
     "inputs": {
-      "width": 480,
-      "height": 832,
-      "length": 49,
+      "width": 832,
+      "height": 480,
+      "length": 81,
       "batch_size": 1,
       "positive": [
         "6",
@@ -218,7 +218,7 @@
         "17",
         0
       ],
-      "filename_prefix": "wan_i2v",
+      "filename_prefix": "wan_i2v_real",
       "fps": 16,
       "lossless": false,
       "quality": 92,
@@ -231,7 +231,7 @@
   "15": {
     "class_type": "UpscaleModelLoader",
     "inputs": {
-      "model_name": "4x-AnimeSharp.pth"
+      "model_name": "RealESRGAN_x2plus.pth"
     },
     "_meta": {
       "title": "upscale-model"
@@ -250,21 +250,21 @@
       ]
     },
     "_meta": {
-      "title": "upscale-4x"
+      "title": "upscale-2x"
     }
   },
   "17": {
     "class_type": "ImageScaleBy",
     "inputs": {
       "upscale_method": "lanczos",
-      "scale_by": 0.5,
+      "scale_by": 1,
       "image": [
         "16",
         0
       ]
     },
     "_meta": {
-      "title": "downscale-0.5x"
+      "title": "post-scale"
     }
   },
   "18": {

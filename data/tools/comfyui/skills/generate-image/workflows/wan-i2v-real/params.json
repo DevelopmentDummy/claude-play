@@ -1,5 +1,5 @@
 {
-  "description": "WAN 2.2 i2v 영상 패키지 — 시작 이미지 1장으로 webp 영상 생성. lightning 6step 2-stage(high/low noise MoE) + 4x-AnimeSharp 업스케일(net 2x). end_image를 주면 FLF2V로 임의 끝 프레임 지정(키프레임 체이닝용), loop=true면 끝=시작 닫힌 루프. 모든 모델 자산은 환경 내장.",
+  "description": "WAN 2.2 i2v 영상 베이스 패키지(실사 여행 푸티지용) — wan-i2v와 동일한 lightning 2-stage FLF2V에 실사 특화 RealESRGAN_x2plus 업스케일(net 2x, 832x480→1664x960) 기본 내장. end_image로 키프레임 체이닝. 키프레임-FLF 모션 클립의 기본 패키지.",
   "features": {
     "checkpoint_auto": false,
     "lora_injection": false,
@@ -18,39 +18,39 @@
     },
     "end_image": {
       "type": "string",
-      "description": "선택 — 끝 프레임 파일명(FLF2V). 지정 시 클립이 이 이미지로 수렴(키프레임 체이닝). loop보다 우선."
+      "description": "선택 — 끝 프레임 파일명(FLF2V 키프레임 체이닝). loop보다 우선."
     },
     "prompt": {
       "node": "6",
       "field": "text",
       "type": "string",
       "required": true,
-      "description": "모션 묘사 자연어 프롬프트 (영상은 움직임을 서술)"
+      "description": "모션 묘사 자연어 프롬프트 (2차 동작 포함 권장)"
     },
     "negative_prompt": {
       "node": "7",
       "field": "text",
       "type": "string",
-      "default": "clothed, censored, mosaic, static, still image, abrupt jump, blurry, distorted, deformed, low quality, worst quality, jpeg artifacts, watermark, extra limbs, mutated, bad hands",
+      "default": "jump cut, scene change, teleport, morphing, distorted face, extra limbs, text, watermark, frozen person, motionless person, mannequin, blurry, low quality, worst quality, jpeg artifacts",
       "description": "네거티브 프롬프트"
     },
     "width": {
       "node": "10",
       "field": "width",
       "type": "number",
-      "default": 480
+      "default": 832
     },
     "height": {
       "node": "10",
       "field": "height",
       "type": "number",
-      "default": 832
+      "default": 480
     },
     "length": {
       "node": "10",
       "field": "length",
       "type": "number",
-      "default": 49,
+      "default": 81,
       "description": "프레임 수 (16fps 기준 49f≈3초, 81f≈5초)"
     },
     "fps": {
@@ -59,37 +59,43 @@
       "type": "number",
       "default": 16
     },
+    "upscale_model": {
+      "node": "15",
+      "field": "model_name",
+      "type": "string",
+      "default": "RealESRGAN_x2plus.pth",
+      "description": "업스케일러 모델 (실사 RealESRGAN_x2plus / 애니 4x-AnimeSharp 등)"
+    },
     "upscale_scale": {
       "node": "17",
       "field": "scale_by",
       "type": "number",
-      "default": 0.5,
-      "description": "4x 업스케일 후 다운스케일 배수 (0.5=net 2x)"
+      "default": 1,
+      "description": "업스케일 후 추가 배율 (x2 모델은 1.0, x4 모델은 0.5로 net 2x)"
     },
     "seed": {
       "type": "number",
       "default": -1,
-      "description": "-1이면 랜덤. 두 스테이지에 동일 적용"
+      "description": "-1이면 랜덤. 두 스테이지 동일"
     },
     "steps": {
       "type": "number",
       "default": 6,
-      "description": "lightning 총 step. high/low로 절반씩 분할"
+      "description": "lightning 총 step. high/low 절반 분할"
     },
     "cfg": {
       "type": "number",
-      "default": 1,
-      "description": "lightning은 1.0 권장"
+      "default": 1
     },
     "loop": {
       "type": "boolean",
       "default": false,
-      "description": "true면 FLF2V로 끝=시작 닫힌 루프 생성"
+      "description": "true면 FLF2V 닫힌 루프"
     },
     "upscale": {
       "type": "boolean",
       "default": true,
-      "description": "false면 업스케일 생략하고 native 해상도로 출력"
+      "description": "false면 업스케일 생략(native 출력, 빠른 초벌용)"
     }
   }
 }

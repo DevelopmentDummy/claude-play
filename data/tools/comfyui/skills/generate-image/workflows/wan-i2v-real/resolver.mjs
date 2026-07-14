@@ -21,7 +21,7 @@ export default function resolve(workflow, params, context) {
   if (patched["11"]?.inputs) patched["11"].inputs.cfg = cfg;
   if (patched["12"]?.inputs) patched["12"].inputs.cfg = cfg;
 
-  // end_image — 임의 끝 프레임(FLF2V, 키프레임 체이닝). loop보다 우선.
+  // end_image — 임의 끝 프레임(FLF2V 키프레임 체이닝). loop보다 우선.
   const loop = bool(params.loop, false);
   if (params.end_image) {
     if (patched["18"]?.inputs) patched["18"].inputs.image = String(params.end_image);
