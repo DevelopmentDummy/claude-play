@@ -4,6 +4,8 @@ import * as fs from "fs";
 import { getSessionManager } from "@/lib/services";
 import { getDataDir } from "@/lib/data-dir";
 import { ComfyUIClient } from "@/lib/comfyui-client";
+import { validateInternalToken } from "@/lib/auth";
+import { flattenGeneratedFile, cleanupEmptyImagesDir } from "@/lib/external-mcp/flatten";
 
 export async function POST(req: Request) {
   const sm = getSessionManager();
@@ -20,6 +22,7 @@ export async function POST(req: Request) {
     persona?: string; // For builder: generate directly into persona directory
     sessionId?: string;
     targetScope?: "persona" | "session";
+    outputDir?: string; // 외부 MCP: 절대경로 지정 시 세션/페르소나 대신 이 디렉토리에 저장
   };
 
   if (!body.filename) {
@@ -61,11 +64,31 @@ export async function POST(req: Request) {
     }
   }
 
-  // Determine target directory: active session or persona dir (for builder)
+  // Determine target directory: external outputDir, active session, or persona dir (for builder)
   let targetDir: string;
   let workflowsDir: string;
+  const externalOutputDir = body.outputDir?.trim() || null;
 
-  if (body.persona) {
+  if (externalOutputDir) {
+    // 외부 MCP 전용 — 내부 토큰 인증 요청에서만 허용 (쿠키 인증으로 임의 경로 쓰기 방지)
+    if (!validateInternalToken(req)) {
+      return NextResponse.json(
+        { error: "outputDir requires internal token authentication" },
+        { status: 403 }
+      );
+    }
+    if (!path.isAbsolute(externalOutputDir)) {
+      return NextResponse.json(
+        { error: "outputDir must be an absolute path" },
+        { status: 400 }
+      );
+    }
+    fs.mkdirSync(externalOutputDir, { recursive: true });
+    targetDir = externalOutputDir;
+    workflowsDir = path.join(
+      getDataDir(), "tools", "comfyui", "skills", "generate-image", "workflows"
+    );
+  } else if (body.persona) {
     // Builder mode: save directly to persona directory
     if (!sm.personaExists(body.persona)) {
       return NextResponse.json(
@@ -191,6 +214,23 @@ export async function POST(req: Request) {
       { error: result.error || "Image generation failed" },
       { status: 502 }
     );
+  }
+
+  // 외부 분기: 완료된 파일을 outputDir 직하로 이동하고 절대경로로 응답
+  if (externalOutputDir) {
+    const absMain = flattenGeneratedFile(externalOutputDir, result.filepath || resultPath);
+    const absExtras: Record<string, string> = {};
+    if (result.extraPaths) {
+      for (const [prefix, rel] of Object.entries(result.extraPaths)) {
+        absExtras[prefix] = flattenGeneratedFile(externalOutputDir, rel);
+      }
+    }
+    cleanupEmptyImagesDir(externalOutputDir);
+    return NextResponse.json({
+      status: "success",
+      path: absMain,
+      ...(Object.keys(absExtras).length > 0 ? { extraPaths: absExtras } : {}),
+    });
   }
 
   return NextResponse.json({
