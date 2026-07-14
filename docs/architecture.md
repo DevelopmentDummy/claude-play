@@ -168,3 +168,7 @@ MCP registration is the **only** viable tool channel for the AI processes — "j
 - Image deduplication within single turn (30s window) via `deduplicateImageFilename()`
 - ComfyUI config reading (session-level → global fallback)
 - Background `fire_ai` jobs run independently of the main turn, broadcasting completion notifications. Per-call `onExit` lets the caller pick UI-only (`broadcast`) and/or dynamic-callback (`script`) behaviour; completion delivery to the AI is `notify` (queued for next user turn) or `autoResume` (spontaneous turn when idle — subsumes `notify`)
+
+### External MCP Endpoint
+
+`POST /mcp/external` — 같은 PC의 외부 AI 에이전트용 Streamable HTTP MCP 엔드포인트 (stateless, POST 전용). `server.ts`가 Next.js보다 먼저 가로채므로 ADMIN 미들웨어와 무관하고, 인증은 `x-external-token` 헤더(= `data/.runtime/external-mcp-token`, 서버 시작 시 자동 생성)로만 한다. 구현은 `src/lib/external-mcp/` — `token.ts`(토큰), `registry.ts`(노출 툴 정의, 확장 지점), `server.ts`(transport), `flatten.ts`(outputDir 직하 이동). 노출 툴은 이미지 생성 3종 + ComfyUI 보조 3종이며 `outputDir`(절대경로) 필수. 상세: [external-mcp.md](external-mcp.md), 소비자 셋업: [external-setup-guide.md](external-setup-guide.md) + `scripts/setup-external.mjs`.

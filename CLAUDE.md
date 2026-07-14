@@ -40,6 +40,7 @@ Detailed documentation is split into topic-specific files under `docs/`:
 | [Session Lifecycle](docs/session-lifecycle.md) | Session lifecycle steps, Penta Runtime (Claude/Codex/Gemini/Kimi/Antigravity), sub-agents, fire-ai, scheduler, restart recovery |
 | [Infrastructure](docs/infrastructure.md) | Conventions, all environment variables |
 | [External LLM Routing](docs/external-llm-routing.md) | Codex external gateway / Kimi CLI routing notes |
+| [External MCP](docs/external-mcp.md) | 외부 에이전트용 `/mcp/external` 엔드포인트 (이미지 생성 개방) + [셋업 가이드](docs/external-setup-guide.md) |
 | [Style Check System](docs/style-check-system.md) | Opt-in per-persona style self-review subsystem |
 | [AI Setup Guide](docs/ai-setup-guide.md) | Install flow for AI agents (setup.js / setup-web.js) |
 

@@ -2,6 +2,8 @@
 
 Optional admin password auth via `ADMIN_PASSWORD` env var. MCP server requests include `x-bridge-token` for internal validation.
 
+Next.js 밖에서 `server.ts`가 직접 처리하는 라우트: `/api/chat/tts`, `/api/personas/[name]/voice/generate` (TTS 인터셉트), **`POST /mcp/external`** (외부 에이전트용 Streamable HTTP MCP — `x-external-token` 인증, [external-mcp.md](external-mcp.md)).
+
 ## Authentication
 
 | Route | Methods | Purpose |
@@ -130,13 +132,13 @@ Optional admin password auth via `ADMIN_PASSWORD` env var. MCP server requests i
 
 | Route | Methods | Purpose |
 |-------|---------|---------|
-| `/api/tools/comfyui/generate` | POST | Trigger ComfyUI image generation |
+| `/api/tools/comfyui/generate` | POST | Trigger ComfyUI image generation. `outputDir`(절대경로, 내부 토큰 전용) 지정 시 세션 대신 해당 디렉토리 직하에 저장 — 외부 MCP 경유 |
 | `/api/tools/comfyui/models` | GET | List ComfyUI models |
 | `/api/tools/comfyui/health` | GET | ComfyUI + GPU Manager connectivity status |
 | `/api/tools/comfyui/stt` | POST | Speech-to-text via ComfyUI |
 | `/api/tools/comfyui/update-profile` | POST | Update profile image via ComfyUI |
-| `/api/tools/gemini/generate` | POST | Trigger Gemini image generation |
-| `/api/tools/openai/generate` | POST | Trigger OpenAI image generation |
+| `/api/tools/gemini/generate` | POST | Trigger Gemini image generation. `outputDir`(내부 토큰 전용) 분기는 완료 대기 후 절대경로 응답 |
+| `/api/tools/openai/generate` | POST | Trigger OpenAI image generation. `outputDir`(내부 토큰 전용) 분기는 완료 대기 후 절대경로 응답 |
 
 ## Debug
 
