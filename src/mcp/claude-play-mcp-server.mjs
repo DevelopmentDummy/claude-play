@@ -1359,7 +1359,7 @@ server.registerTool(
       "Fire an independent AI session in the background. " +
       "Runs a one-shot turn on the provider derived from `model` (default: Claude) with " +
       "the session's system prompt and MCP tools. Any provider model id works: opus/sonnet " +
-      "(Claude), gpt-5.4 (Codex), gemini-3.1-pro-preview (Gemini), antigravity-flash " +
+      "(Claude), gpt-5.6-sol (Codex), gemini-3.1-pro-preview (Gemini), antigravity-flash " +
       "(Antigravity), kimi-auto (Kimi). Returns immediately without waiting for completion. " +
       "Use for time-consuming content generation that shouldn't block the conversation.\n" +
       "Exit-time options:\n" +
@@ -1372,7 +1372,7 @@ server.registerTool(
       "{ pid, exitCode, sessionDir, logTail }; may return { broadcast, queueEvent }.",
     inputSchema: {
       prompt: z.string().min(1).describe("The prompt/task to execute in the background session"),
-      model: z.string().optional().describe("Model id — provider is auto-derived (e.g. opus, gpt-5.4, gemini-3.1-pro-preview, antigravity-flash, kimi-auto). Omit for Claude default."),
+      model: z.string().optional().describe("Model id — provider is auto-derived (e.g. opus, gpt-5.6-sol, gemini-3.1-pro-preview, antigravity-flash, kimi-auto). Omit for Claude default."),
       effort: z.string().optional().describe("Reasoning effort: low, medium, high"),
       notify: z.boolean().optional().describe("Send completion event to this session when done (default: false)"),
       autoResume: z.boolean().optional().describe("On completion, auto-fire a response turn when idle (immediately if idle, else right after the current turn). Subsumes notify. Default false."),
@@ -1518,7 +1518,7 @@ server.registerTool(
       "Sub-agents run always-on alongside the main narrator at session time and handle delegated bookkeeping " +
       "(panel variable updates, flow control, lore consistency). By default a sub follows the session's " +
       "provider/model/effort. Optionally pin it to a specific model with `model` (a single id like " +
-      "'gemini-3-flash-preview' or 'gpt-5.4:high'); the provider is inferred from the id and that CLI must be " +
+      "'gemini-3-flash-preview' or 'gpt-5.6-sol:high'); the provider is inferred from the id and that CLI must be " +
       "authenticated. Omit `model` to follow the session.",
     inputSchema: {
       name: z.string().regex(/^[a-z0-9][a-z0-9-]{0,31}$/).describe("Unique sub-agent id (lowercase, dashes)"),
@@ -1528,7 +1528,7 @@ server.registerTool(
       autoTrigger: z.enum(["onAssistantTurn", "none"]).optional().describe("Auto-dispatch every main turn, or 'none' (hook-controlled). Default none."),
       autoTriggerTask: z.string().optional().describe("Default task text when autoTrigger is onAssistantTurn"),
       emitSummary: z.boolean().optional().describe("Sub should call report_to_main when done (default true)"),
-      model: z.string().optional().describe("Optional: pin this sub to a model id (e.g. 'gemini-3-flash-preview', 'gpt-5.4:high', 'opus'). Provider is inferred from the id. Omit to follow the session's provider/model/effort."),
+      model: z.string().optional().describe("Optional: pin this sub to a model id (e.g. 'gemini-3-flash-preview', 'gpt-5.6-sol:high', 'opus'). Provider is inferred from the id. Omit to follow the session's provider/model/effort."),
     },
   },
   async (input) => {

@@ -3,7 +3,7 @@ import * as fs from "fs";
 import * as path from "path";
 import Handlebars from "handlebars";
 import { ensureHandlebarsHelpers } from "./panel-engine";
-import type { AIProvider } from "./ai-provider";
+import { listBaseModelIds, type AIProvider } from "./ai-provider";
 
 const SERVICE_SESSION_GUIDE_FILES_CLAUDE = ["session-primer.yaml", "session-shared.md"] as const;
 const SERVICE_SESSION_GUIDE_FILES_CODEX = ["session-primer-codex.yaml", "session-shared.md"] as const;
@@ -16,7 +16,12 @@ export function getBuilderPrompt(appRoot: string, context: { localTtsAvailable?:
   const promptPath = path.join(appRoot, "builder-prompt.md");
   const source = fs.readFileSync(promptPath, "utf-8");
   const template = Handlebars.compile(source, { noEscape: true });
-  return template(context);
+  // `validModels`는 MODEL_GROUPS에서 파생 — 빌더 프롬프트가 모델 목록을 손으로 들고 있지
+  // 않도록(ai-provider.ts 한 곳만 고치면 선택기와 함께 따라오도록) 주입한다.
+  const validModels = listBaseModelIds()
+    .map((g) => `${g.label} ${g.ids.map((id) => `\`${id}\``).join("·")}`)
+    .join(", ");
+  return template({ validModels, ...context });
 }
 
 export function buildServiceSystemPrompt(appRoot: string, personaName?: string, provider?: AIProvider, options?: Record<string, unknown>, userName?: string): string {

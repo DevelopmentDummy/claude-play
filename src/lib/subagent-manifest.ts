@@ -9,7 +9,7 @@ export const MAX_SUBAGENTS = Number(process.env.SUBAGENT_MAX) > 0
 const NAME_RE = /^[a-z0-9][a-z0-9-]{0,31}$/;
 // v2.1: by default a sub follows the SESSION's provider/model/effort (resolved at spawn time
 // in SubAgentManager.spawnAll). A sub MAY pin itself by setting `model` (a single id, optionally
-// with an effort suffix like "gpt-5.4:high"); validateManifest derives provider via
+// with an effort suffix like "gpt-5.6-sol:high"); validateManifest derives provider via
 // providerFromModel and splits the effort via parseModelEffort into the per-sub fields below.
 // An explicit `provider`/`effort` in the manifest (hand-edit) still takes precedence over derivation.
 // `provider` is always default-filled ("claude"); use `providerExplicit` to detect a real override.

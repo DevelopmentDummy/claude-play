@@ -15,7 +15,7 @@ import ChatOptionsModal from "@/components/ChatOptionsModal";
 import ToastEffect from "@/components/ToastEffect";
 import UsageModal from "@/components/UsageModal";
 import SessionListModal from "@/components/SessionListModal";
-import { AIProvider, providerFromModel } from "@/lib/ai-provider";
+import { AIProvider, providerFromModel, resolveBuilderModel } from "@/lib/ai-provider";
 
 type UsageProvider = Exclude<AIProvider, "kimi">;
 
@@ -132,7 +132,8 @@ export default function BuilderPage() {
 
       const data = await res.json();
       if (data.model) setBuilderModel(data.model);
-      else if (data.provider) setBuilderModel(data.provider === "codex" ? "gpt-5.4:medium" : data.provider === "gemini" ? "gemini-auto" : "opus:medium");
+      // 모델 미지정 응답 → 프로바이더 기본값으로. 하드코딩 대신 ai-provider의 DEFAULT_MODELS/EFFORTS를 따른다.
+      else if (data.provider) setBuilderModel(resolveBuilderModel("", data.provider as AIProvider).combined);
       if (data.displayName) setDisplayName(data.displayName);
 
       // Load chat options schema + persona defaults
