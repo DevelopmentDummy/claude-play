@@ -129,7 +129,7 @@ export interface ModelGroup {
 /** Default model per provider (used when no model is specified) */
 const DEFAULT_MODELS: Record<AIProvider, string> = {
   claude: "opus",
-  codex: "gpt-5.4",
+  codex: "gpt-5.6-sol",
   gemini: "gemini-3.1-pro-preview",
   kimi: "kimi-auto",
   antigravity: "antigravity-flash",
@@ -146,7 +146,7 @@ const DEFAULT_EFFORTS: Record<AIProvider, string | undefined> = {
 
 /**
  * Resolve effective model, effort, and combined model string for a provider.
- * Accepts raw model string (e.g. "opus:high", "gpt-5.4", "") and optional provider override.
+ * Accepts raw model string (e.g. "opus:high", "gpt-5.6-sol", "") and optional provider override.
  * Returns { model, effort, provider, combined, advisor } where combined = "model[:effort][@advisor]".
  */
 export function resolveBuilderModel(rawModel?: string, providerOverride?: AIProvider) {
@@ -191,12 +191,18 @@ function buildModelGroups(): ModelGroup[] {
       label: "Codex",
       provider: "codex",
       options: [
+        // GPT-5.6 (2026-07-09): Sol=플래그십(bare `gpt-5.6` 별칭이 Sol로 라우팅), Terra=균형, Luna=최속·최저가.
+        { value: "gpt-5.6-sol:medium", label: "GPT-5.6 Sol Medium" },
+        { value: "gpt-5.6-sol:high", label: "GPT-5.6 Sol High" },
+        { value: "gpt-5.6-sol:xhigh", label: "GPT-5.6 Sol XHigh" },
+        { value: "gpt-5.6-terra:medium", label: "GPT-5.6 Terra Medium" },
+        { value: "gpt-5.6-terra:high", label: "GPT-5.6 Terra High" },
+        { value: "gpt-5.6-terra:xhigh", label: "GPT-5.6 Terra XHigh" },
+        { value: "gpt-5.6-luna:medium", label: "GPT-5.6 Luna Medium" },
+        { value: "gpt-5.6-luna:high", label: "GPT-5.6 Luna High" },
         { value: "gpt-5.5:medium", label: "GPT-5.5 Medium" },
         { value: "gpt-5.5:high", label: "GPT-5.5 High" },
         { value: "gpt-5.5:xhigh", label: "GPT-5.5 XHigh" },
-        { value: "gpt-5.4:medium", label: "GPT-5.4 Medium" },
-        { value: "gpt-5.4:high", label: "GPT-5.4 High" },
-        { value: "gpt-5.4:xhigh", label: "GPT-5.4 XHigh" },
       ],
     },
     {
@@ -244,3 +250,21 @@ function buildModelGroups(): ModelGroup[] {
 }
 
 export const MODEL_GROUPS: ModelGroup[] = buildModelGroups();
+
+/**
+ * Base model ids per picker group (effort/advisor suffixes stripped, deduped).
+ * Single source for anything that needs to *describe* the valid model ids in prose —
+ * currently the builder meta-prompt's sub-agent `model` catalog (prompt-assembly.ts).
+ * Derived from MODEL_GROUPS so the catalog follows the picker, including the
+ * GEMINI_DISABLED branch (retired Gemini CLI ids never get advertised).
+ */
+export function listBaseModelIds(): { label: string; ids: string[] }[] {
+  return MODEL_GROUPS.map((g) => {
+    const ids: string[] = [];
+    for (const o of g.options) {
+      const { model } = parseModelEffort(o.value);
+      if (model && !ids.includes(model)) ids.push(model);
+    }
+    return { label: g.label, ids };
+  });
+}
