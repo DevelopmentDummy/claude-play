@@ -104,6 +104,8 @@ curl -H "x-bridge-token: anything" http://127.0.0.1:3340/api/service/status
 - **config는 `$CODEX_HOME/config.toml`에서만 읽는다** — cwd의 `.codex/config.toml`은 **읽지 않는다** (codex-cli 0.124.0 검증). 그래서 spawn 시 `CODEX_HOME`을 세션 `.codex/`로 리포인트하고 `~/.codex/auth.json`을 복사해 넣는다 (`codex-process.ts`). 이걸 모르고 "cwd에 config 있으니 되겠지"라고 가정하면 세션 MCP와 model_instructions_file이 **조용히 죽는다** (실제로 몇 주간 발견 못 한 사고).
 - **`-c` 플래그로 TOML 배열 주입 금지**: `shell:true` 하에서 cmd.exe가 TOML 배열 값 내부 따옴표를 벗겨 `expected a sequence` 파스 에러. 스칼라 `-c` 오버라이드(sandbox·model_reasoning_effort·external 게이트웨이 설정)는 현재도 spawn 인자로 사용 중이다 (`codex-process.ts`). 배열이 필요한 per-session 설정(mcp_servers 등)은 언제나 세션 `.codex/config.toml` + CODEX_HOME 리포인트로.
 - 외부 게이트웨이 (`external/` prefix 모델): Responses API 필수 — `wire_api="chat"`은 codex-cli 0.124.0+ 미지원. 상세는 [external-llm-routing.md](external-llm-routing.md).
+- **선택기에 신규 모델을 추가하기 전에 로컬 CLI 버전을 확인할 것.** 모델 지원은 CLI 버전에 묶여 있고, 구버전은 **thread/start·turn/started까지 정상 진행한 뒤** API가 400으로 거절한다 — UI에서는 "스트리밍이 시작됐다가 응답 없음"으로 보인다. 로그 증거는 세션 `claude-stream.log`의 ``Model metadata for `X` not found`` 경고 + ``The 'X' model requires a newer version of Codex``. 2026-07-21 사고: codex-cli 0.124.0에 `gpt-5.6-sol` 추가 → 전 턴 실패. `scripts/check-static.mjs`의 `MIN_CLI_VERSIONS`에 최소 버전을 걸어두면 커밋 전에 WARN으로 잡힌다(모델 추가 시 이 값도 갱신할 것).
+- **`turn/completed`의 결과는 `params.turn` 아래에 중첩된다** (`params.turn.status` / `params.turn.error.message`). 최상위 `params.status`를 읽으면 항상 undefined라 **모든 턴 실패가 조용히 정상 완료로 처리된다** — 위 400 사고에서 사용자에게 아무 에러도 안 보였던 직접 원인(2026-07-21 수정, 회귀 테스트 `src/lib/codex-process.test.mts`). 실패 원인은 `error.message` 안에 JSON *문자열*로 한 겹 더 싸여 있어 `extractCodexErrorMessage()`로 벗겨야 사람이 읽을 수 있다.
 
 ### 4.3 Kimi (`kimi --wire`)
 
