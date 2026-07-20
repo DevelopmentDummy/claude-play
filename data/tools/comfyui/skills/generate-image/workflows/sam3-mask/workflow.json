@@ -1,0 +1,125 @@
+{
+  "1": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": ""
+    },
+    "_meta": {
+      "title": "input-scene"
+    }
+  },
+  "2": {
+    "class_type": "LoadSAM3Model",
+    "inputs": {
+      "model_path": "models/sam3/sam3.pt"
+    },
+    "_meta": {
+      "title": "load-sam3"
+    }
+  },
+  "3": {
+    "class_type": "SAM3CreatePoint",
+    "inputs": {
+      "x": 0.5,
+      "y": 0.5,
+      "is_foreground": true
+    },
+    "_meta": {
+      "title": "hotspot-point"
+    }
+  },
+  "4": {
+    "class_type": "SAM3CombinePoints",
+    "inputs": {
+      "point_1": [
+        "3",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "combine-points"
+    }
+  },
+  "5": {
+    "class_type": "SAM3Segmentation",
+    "inputs": {
+      "sam3_model": [
+        "2",
+        0
+      ],
+      "image": [
+        "1",
+        0
+      ],
+      "positive_points": [
+        "4",
+        0
+      ],
+      "refinement_iterations": 2,
+      "use_multimask": true,
+      "output_best_mask": true,
+      "offload_model": false
+    },
+    "_meta": {
+      "title": "sam3-segment"
+    }
+  },
+  "8": {
+    "class_type": "GrowMaskWithBlur",
+    "inputs": {
+      "mask": [
+        "5",
+        0
+      ],
+      "expand": 1,
+      "incremental_expandrate": 0.0,
+      "tapered_corners": true,
+      "flip_input": false,
+      "blur_radius": 4.0,
+      "lerp_alpha": 1.0,
+      "decay_factor": 1.0,
+      "fill_holes": true
+    },
+    "_meta": {
+      "title": "clean-fill-blur"
+    }
+  },
+  "9": {
+    "class_type": "ThresholdMask",
+    "inputs": {
+      "mask": [
+        "8",
+        0
+      ],
+      "value": 0.5
+    },
+    "_meta": {
+      "title": "rebinarize"
+    }
+  },
+  "6": {
+    "class_type": "MaskToImage",
+    "inputs": {
+      "mask": [
+        "9",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "mask-to-image"
+    }
+  },
+  "7": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "sam3-mask",
+      "images": [
+        "6",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "save-mask"
+    }
+  }
+}

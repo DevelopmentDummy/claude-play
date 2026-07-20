@@ -2,7 +2,7 @@
   "active_preset": "anime",
   "presets": {
     "anime": {
-      "checkpoint": "oneObsession_v21Anime.safetensors",
+      "checkpoint": "rinHErosNSFW_v30.safetensors",
       "default_template": "scene",
       "quality_tags": "masterpiece, best quality, amazing quality, very aesthetic, absurdres, high detail",
       "style_tags": "",

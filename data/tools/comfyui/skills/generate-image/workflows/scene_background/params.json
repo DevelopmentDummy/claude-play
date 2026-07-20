@@ -1,5 +1,5 @@
 {
-  "description": "배경화면 전용 16:9 장면 (1536x864) — scene 패키지와 동일한 디테일러/업스케일 체인, 해상도만 16:9로 조정",
+  "description": "배경화면 전용 16:9 장면 (1536x864) — scene 패키지와 동일한 디테일러/업스케일 체인, 해상도만 16:9로 조정. checkpoint 오버라이드 지원.",
   "compatibility": {
     "requires": {
       "loader": "checkpoint_simple"
@@ -25,6 +25,12 @@
     }
   },
   "params": {
+    "checkpoint": {
+      "node": "1",
+      "field": "ckpt_name",
+      "type": "string",
+      "description": "체크포인트 파일명 오버라이드 (예: dvine_v80.safetensors). 생략 시 comfyui-config.json의 active_preset.checkpoint 사용"
+    },
     "prompt": {
       "node": "2",
       "field": "text",

@@ -1,0 +1,79 @@
+{
+  "description": "SAM3 포인트 기반 세그멘테이션 + 마스크 정제 — 배경 이미지 1장 + 정규화 좌표(x,y) 1점으로 그 지점의 사물/인물 마스크(흰=대상, 검=배경)를 추출하고, 구멍 메우기·경계 스무딩으로 깔끔한 외곽선을 만든다. 디퓨전 없음(수초). 핫스팟 어포던스 아웃라인/글로우용. 핫스팟 중심 = (x+width/2, y+height/2)/100. 포인트는 오브젝트 몸통에 찍을 것(고대비 라벨에 찍으면 라벨만 잡힘).",
+  "compatibility": {
+    "requires": {},
+    "incompatible_message": "sam3-mask는 LoadImage 기반 후처리라 체크포인트나 LoRA가 필요 없습니다."
+  },
+  "features": {
+    "checkpoint_auto": false,
+    "lora_injection": false,
+    "lora_couple_branches": false,
+    "seed_randomize": false,
+    "trigger_tags": false,
+    "detailer_chain": false
+  },
+  "outputs": {
+    "mask": {
+      "node": "7",
+      "description": "정제된 바이너리 마스크 (흰=대상, 검=배경)"
+    }
+  },
+  "params": {
+    "input_image": {
+      "node": "1",
+      "field": "image",
+      "type": "string",
+      "required": true,
+      "description": "ComfyUI input 폴더 기준 파일 경로 (예: bg/desk.png)"
+    },
+    "x": {
+      "node": "3",
+      "field": "x",
+      "type": "number",
+      "required": true,
+      "description": "포인트 X (정규화 0~1). 핫스팟 중심 = (hs.x + hs.width/2)/100"
+    },
+    "y": {
+      "node": "3",
+      "field": "y",
+      "type": "number",
+      "required": true,
+      "description": "포인트 Y (정규화 0~1). 핫스팟 중심 = (hs.y + hs.height/2)/100"
+    },
+    "refinement_iterations": {
+      "node": "5",
+      "field": "refinement_iterations",
+      "type": "number",
+      "default": 2,
+      "description": "SAM 마스크 경계 정제 패스 수 (0~10). 클수록 경계 깔끔하지만 느림"
+    },
+    "use_multimask": {
+      "node": "5",
+      "field": "use_multimask",
+      "type": "boolean",
+      "default": true,
+      "description": "true면 subpart/part/whole 3후보 중 최고점 자동 선택(단일 클릭에 유리)"
+    },
+    "fill_holes": {
+      "node": "8",
+      "field": "fill_holes",
+      "type": "boolean",
+      "default": true,
+      "description": "마스크 내부 구멍 메우기 (책/바인더 등 텍스처로 생긴 구멍 제거)"
+    },
+    "mask_expand": {
+      "node": "8",
+      "field": "expand",
+      "type": "number",
+      "default": 1,
+      "description": "마스크 확장/축소 픽셀(+/-). 아웃라인 여유용 소폭 확장 권장"
+    },
+    "blur_radius": {
+      "node": "8",
+      "field": "blur_radius",
+      "type": "number",
+      "default": 4.0,
+      "description": "경계 스무딩 블러 반경. 클수록 부드럽지만 뭉개짐(재이진화로 크리스프 유지)"
+    }
+  }
+}
