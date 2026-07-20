@@ -361,7 +361,9 @@ function handleMessage(
       const actionHistory = isOOC ? "" : instance.flushActions();
       const jsonLint = instance.buildJsonLint();
       const oocHint = isOOC ? "[OOC 메시지입니다. RP 응답(dialog_response)을 포함하지 마세요. 메타/시스템 수준으로만 응답하세요.]\n" : "";
-      const parts = [oocHint, eventHeaders, jsonLint, hintSnapshot, actionHistory, text].filter(Boolean);
+      // 선택지가 빗나갔을 때만 1줄. 적중이면 빈 문자열이라 프롬프트에 아무것도 붙지 않는다.
+      const choiceMiss = isOOC ? "" : instance.buildChoiceMiss(text);
+      const parts = [oocHint, eventHeaders, jsonLint, hintSnapshot, actionHistory, choiceMiss, text].filter(Boolean);
       instance.sendToAI(parts.join("\n"));
 
       // Broadcast user message to other clients in same session (sender already has it locally)

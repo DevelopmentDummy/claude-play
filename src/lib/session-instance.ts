@@ -225,6 +225,8 @@ export class SessionInstance {
   readonly isBuilder: boolean;
   isOOC = false;
   chatHistory: HistoryMessage[] = [];
+  /** 선택지가 연속으로 빗나간 횟수. 적중 시 0으로 리셋 (buildChoiceMiss 참고). */
+  private _choiceMissStreak = 0;
 
   private _process: AIProcess;
   private _provider: AIProvider;
@@ -669,6 +671,60 @@ export class SessionInstance {
 
   getPendingActions(): ActionRecord[] {
     return this.readPendingActions();
+  }
+
+  /** 직전 턴에 제안한 선택지와 이번 사용자 입력을 대조해, **빗나갔을 때만** 1줄 헤더를 만든다.
+   *  적중(선택지 클릭 = text 원문 그대로 전송)이면 "지금 방식 유지"라는 뜻이라 추가 정보가 0이므로
+   *  빈 문자열을 반환한다 — 잘 맞출수록 프롬프트에 아무것도 얹지 않는 자기소멸 구조.
+   *
+   *  판정을 서버가 하는 이유: 클릭과 직접 입력은 전송 시점에 구분이 불가능하고(같은 평문),
+   *  모델이 직전 choice JSON을 스스로 회상해 문자열 비교하기를 기대하는 건 신뢰할 수 없다.
+   *  chatHistory에는 `<choice>` 원문이 strip 없이 남으므로 서버가 결정적으로 판정할 수 있다. */
+  buildChoiceMiss(text: string): string {
+    const proposed = this.lastProposedChoices();
+    if (proposed.length === 0) return "";
+    const norm = (s: string) => s.replace(/\s+/g, " ").trim();
+    const user = norm(text);
+    if (proposed.some(c => norm(c) === user)) {
+      this._choiceMissStreak = 0;
+      return "";
+    }
+    this._choiceMissStreak += 1;
+    const streak = this._choiceMissStreak > 1 ? ` x${this._choiceMissStreak}` : "";
+    // 각 선택지는 40자로 잘라 헤더 비용을 상한선 안에 묶는다. 실제 사용자 입력은
+    // 바로 아래 원문이 붙으므로 재인용하지 않는다.
+    const list = proposed
+      .map(c => { const n = norm(c); return `"${n.length > 40 ? n.slice(0, 40) + "…" : n}"`; })
+      .join(" / ");
+    return `[CHOICE_MISS${streak}] 직전 제안: ${list}`;
+  }
+
+  /** 마지막 non-OOC assistant 응답의 `<choice>` 블록에서 제안 text 목록을 뽑는다.
+   *  `dry: true`는 메시지를 전송하지 않는 선택지라 적중 대상이 아니므로 제외한다.
+   *  선택지 기능이 꺼져 있으면 블록 자체가 없어 자연히 빈 배열이 된다. */
+  private lastProposedChoices(): string[] {
+    for (let i = this.chatHistory.length - 1; i >= 0; i--) {
+      const m = this.chatHistory[i];
+      if (m.role !== "assistant" || m.ooc) continue;
+      const block = extractChoiceBlock(m.content);
+      if (!block) return [];
+      try {
+        const parsed: unknown = JSON.parse(
+          block.slice(CHOICE_OPEN.length, block.length - CHOICE_CLOSE.length)
+        );
+        if (!Array.isArray(parsed)) return [];
+        return parsed
+          .filter((o): o is { text: string; dry?: boolean } =>
+            !!o && typeof o === "object"
+            && typeof (o as { text?: unknown }).text === "string"
+            && (o as { dry?: unknown }).dry !== true)
+          .map(o => o.text)
+          .filter(Boolean);
+      } catch {
+        return [];
+      }
+    }
+    return [];
   }
 
   buildHintSnapshot(): string {

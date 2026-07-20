@@ -38,6 +38,7 @@
 | 7 | ultracode Workflow 도구 | 헤드리스 빌더 spawn(`claude -p`)의 도구 목록에 Workflow가 실제로 나타나는지 |
 | 8 | fire_ai 멀티 프로바이더 (260cf99) | Claude 외 모델 id로 fire_ai 1회 (예: kimi) → 결과 정상 회수 |
 | 9 | variables.json 원자화 (4a7e128) | 변수를 바꾸는 행동 → 패널 라이브 갱신 확인 — per-file `fs.watch`가 rename-replace를 견디는지 (플레이북 §5.1) |
+| 11 | 선택지 적중 판정 `[CHOICE_MISS]` | **기존 세션은 재-open해야 새 지시문 반영.** (a) 선택지 클릭 → 다음 턴 프롬프트에 헤더 **없음** (b) 직접 입력 → `[CHOICE_MISS] 직전 제안: ...` 1줄 + 다음 선택지가 그 톤·소재로 조정되는지 (c) 연속 빗나감 시 `x2`/`x3` 증가 (d) 헤더 문구가 캐릭터 응답에 누출되지 않는지 |
 | 10 | 외부 MCP 실소비 검증 (feat/external-mcp) | 브릿지 쪽 스모크는 통과(2026-07-15: tools/list·health·generate 직하 저장). 남은 것: **실제 외부 프로젝트**에서 `docs/external-setup-guide.md`대로 셋업 → Claude Code가 `.mcp.json` HTTP 서버로 붙어 `comfyui_health`/`comfyui_generate` 호출. 프로덕션 서버는 재시작해야 엔드포인트 반영 |
 
 ## 5. 사용자 결정 대기

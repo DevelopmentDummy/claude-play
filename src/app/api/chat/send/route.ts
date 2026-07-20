@@ -37,7 +37,9 @@ export async function POST(req: Request) {
   const hintSnapshot = isOOC ? "" : instance.buildHintSnapshot();
   const actionHistory = isOOC ? "" : instance.flushActions();
   const jsonLint = instance.buildJsonLint();
-  const parts = [eventHeaders, jsonLint, hintSnapshot, actionHistory, text].filter(Boolean);
+  // 선택지가 빗나갔을 때만 1줄. 적중이면 빈 문자열이라 프롬프트에 아무것도 붙지 않는다.
+  const choiceMiss = isOOC ? "" : instance.buildChoiceMiss(text);
+  const parts = [eventHeaders, jsonLint, hintSnapshot, actionHistory, choiceMiss, text].filter(Boolean);
   instance.claude.send(parts.join("\n"));
   return NextResponse.json({ ok: true });
 }
