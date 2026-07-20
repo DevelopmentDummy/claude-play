@@ -22,6 +22,7 @@ data/restart.log
 data/restart-build.log
 data/restart-newserver.log
 data/restart-orchestrator.log
+data/server-start.log
 data/tools/comfyui/_debug/
 data/tools/*/panels.removed/
 gpu-manager/__pycache__/
