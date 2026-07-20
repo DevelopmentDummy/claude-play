@@ -55,9 +55,14 @@ interface RawUsageResponse {
   limits?: RawLimit[] | null;
   extra_usage?: {
     is_enabled: boolean;
+    /** 최소 화폐 단위 정수 (decimal_places 참고). USD면 센트. */
     monthly_limit: number;
+    /** 최소 화폐 단위 정수 (decimal_places 참고). USD면 센트. */
     used_credits: number;
     utilization: number | null;
+    currency?: string;
+    /** 소수 자릿수. USD=2 → 위 값들을 100으로 나눠야 실제 금액. 미제공 시 2로 가정. */
+    decimal_places?: number;
   };
 }
 
@@ -208,10 +213,13 @@ export async function getClaudeUsage(): Promise<UsageResponse> {
     const result: UsageResponse = { provider: "claude", windows: mapClaudeWindows(raw) };
 
     if (raw.extra_usage) {
+      // API는 금액을 최소 화폐 단위 정수로 준다 (USD: 14306 = $143.06).
+      // decimal_places를 무시하고 원본을 그대로 표시하면 100배로 부풀려진다.
+      const divisor = 10 ** (raw.extra_usage.decimal_places ?? 2);
       result.extraUsage = {
         isEnabled: raw.extra_usage.is_enabled,
-        monthlyLimit: raw.extra_usage.monthly_limit,
-        usedCredits: raw.extra_usage.used_credits,
+        monthlyLimit: raw.extra_usage.monthly_limit / divisor,
+        usedCredits: raw.extra_usage.used_credits / divisor,
         utilization: raw.extra_usage.utilization,
       };
     }
