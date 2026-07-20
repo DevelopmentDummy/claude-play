@@ -14,6 +14,22 @@ export interface CodexProcessEvents {
 }
 
 /**
+ * Codex reports a failed turn's cause as a JSON *string* inside `error.message`
+ * (e.g. '{"type":"error","status":400,"error":{"message":"…"}}'). Unwrap it so the
+ * UI shows the human-readable reason instead of a serialized blob.
+ */
+function extractCodexErrorMessage(errorInfo: Record<string, unknown> | undefined): string {
+  const raw = errorInfo?.message;
+  if (typeof raw !== "string" || !raw) return "Turn failed";
+  try {
+    const parsed = JSON.parse(raw) as { error?: { message?: string }; message?: string };
+    return parsed?.error?.message || parsed?.message || raw;
+  } catch {
+    return raw;
+  }
+}
+
+/**
  * CodexProcess wraps `codex app-server` as a persistent JSON-RPC 2.0 process.
  *
  * Unlike the old `codex exec` approach (per-turn spawn), app-server stays alive
@@ -568,11 +584,14 @@ export class CodexProcess extends EventEmitter<CodexProcessEvents> {
       }
 
       case "turn/completed": {
-        const status = params.status as string;
+        // app-server nests the outcome under params.turn — reading params.status here
+        // meant every failed turn (bad model / rate limit / expired auth) was reported
+        // to the UI as a normal empty result. Top-level keys kept as a fallback.
+        const turn = params.turn as Record<string, unknown> | undefined;
+        const status = (turn?.status as string) || (params.status as string);
         if (status === "failed") {
-          const errorInfo = params.codexErrorInfo as Record<string, unknown> | undefined;
-          const errorMsg = (errorInfo?.message as string) || "Turn failed";
-          this.emit("error", errorMsg);
+          const errorInfo = (turn?.error ?? params.codexErrorInfo) as Record<string, unknown> | undefined;
+          this.emit("error", extractCodexErrorMessage(errorInfo));
         }
 
         this.emit("message", { type: "result" });

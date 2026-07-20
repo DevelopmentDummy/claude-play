@@ -117,6 +117,26 @@ function checkExistence() {
 // ─────────────────────────────────────────────────────────────
 const PROVIDER_CLIS = ["claude", "codex", "kimi", "agy"];
 
+// 모델 선택기(ai-provider.ts MODEL_GROUPS)가 요구하는 CLI 최소 버전.
+// 선택기에 모델을 추가했는데 로컬 CLI가 그 모델을 모르면 턴이 API 400으로 죽는다
+// (2026-07-21: codex-cli 0.124.0 + gpt-5.6-sol → "requires a newer version of Codex").
+// 여기 걸어두면 그 조합을 커밋 전에 잡는다. WARN 전용 — 이 블록은 절대 error를 내지 않는다.
+const MIN_CLI_VERSIONS = {
+  codex: { min: "0.144.6", why: "GPT-5.6(sol/terra/luna) 지원. 0.124.0은 API가 400으로 거절" },
+};
+
+function parseSemver(s) {
+  const m = /(\d+)\.(\d+)\.(\d+)/.exec(s || "");
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+}
+
+function isOlder(got, min) {
+  for (let i = 0; i < 3; i++) {
+    if (got[i] !== min[i]) return got[i] < min[i];
+  }
+  return false;
+}
+
 function probeProviders() {
   for (const cli of PROVIDER_CLIS) {
     // Windows에서 .cmd shim은 shell:true 필요. 인자는 고정 리터럴이라 안전.
@@ -141,6 +161,15 @@ function probeProviders() {
     }
     const version = (res.stdout || "").trim().split(/\r?\n/)[0];
     okProbes.push({ cli, version });
+
+    const req = MIN_CLI_VERSIONS[cli];
+    if (req) {
+      const got = parseSemver(version);
+      const min = parseSemver(req.min);
+      if (got && min && isOlder(got, min)) {
+        issue("warn", "provider-cli-version", cli, `'${cli}' ${version} < 최소 ${req.min} — ${req.why}`);
+      }
+    }
   }
 }
 const okProbes = []; // { cli, version }
