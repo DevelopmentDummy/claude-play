@@ -288,6 +288,13 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
           console.log("[claude-process] Resume error (will retry):", text);
           return;
         }
+        // Suppress benign informational warnings the CLI prints to stderr for full model
+        // ids (non-alias) — e.g. "Advisor disabled — base model '…' has no advisor rank".
+        // These are not errors; surfacing them as error events leaks warnings into the UI.
+        if (/Advisor disabled|has no advisor rank/i.test(text)) {
+          console.log("[claude-process] Advisor warning (benign):", text);
+          return;
+        }
         this.emit("error", text);
       }
     });
