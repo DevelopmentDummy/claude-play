@@ -128,7 +128,7 @@ export interface ModelGroup {
 
 /** Default model per provider (used when no model is specified) */
 const DEFAULT_MODELS: Record<AIProvider, string> = {
-  claude: "opus",
+  claude: "claude-opus-5[1m]",
   codex: "gpt-5.6-sol",
   gemini: "gemini-3.1-pro-preview",
   kimi: "kimi-auto",
@@ -168,12 +168,14 @@ function buildModelGroups(): ModelGroup[] {
         { value: "sonnet", label: "Sonnet" },
         { value: "sonnet:medium", label: "Sonnet Medium" },
         { value: "sonnet:high", label: "Sonnet High" },
-        { value: "opus", label: "Opus" },
-        { value: "opus:medium", label: "Opus Medium" },
-        { value: "opus:high", label: "Opus High" },
-        { value: "opus:xhigh", label: "Opus XHigh" },
-        { value: "opus:max", label: "Opus Max" },
-        { value: "opus:ultracode", label: "Opus Ultracode" },
+        // Opus 5 (2026-07-25 출시). Opus 4.8 및 xhigh/max effort는 미사용으로 제거(2026-07-25).
+        // "opus" 별칭은 아직 4.8을 가리킬 수 있어 전체 id를 명시. 사용자 선호에 따라
+        // 1M 컨텍스트 변형([1m])만 노출. dated 스냅샷 id는 미공개.
+        // advisor 프리셋은 아직 모델 카탈로그에 advisor rank가 없어(경고 발생) 제외.
+        { value: "claude-opus-5[1m]", label: "Opus 5" },
+        { value: "claude-opus-5[1m]:medium", label: "Opus 5 Medium" },
+        { value: "claude-opus-5[1m]:high", label: "Opus 5 High" },
+        { value: "claude-opus-5[1m]:ultracode", label: "Opus 5 Ultracode" },
         // Fable re-enabled 2026-07-02 (access restored; the "fable" alias still requires the full id).
         { value: "claude-fable-5", label: "Fable" },
         { value: "claude-fable-5:medium", label: "Fable Medium" },
@@ -181,10 +183,6 @@ function buildModelGroups(): ModelGroup[] {
         { value: "claude-fable-5:xhigh", label: "Fable XHigh" },
         { value: "claude-fable-5:max", label: "Fable Max" },
         { value: "claude-fable-5:ultracode", label: "Fable Ultracode" },
-        // Opus 베이스 + Fable advisor 조합 프리셋 (advisor는 claude -p 전용, `--advisor`로 전달).
-        { value: "opus@fable", label: "Opus + Fable advisor" },
-        { value: "opus:high@fable", label: "Opus High + Fable advisor" },
-        { value: "opus:ultracode@fable", label: "Opus Ultracode + Fable advisor" },
       ],
     },
     {
@@ -232,7 +230,7 @@ function buildModelGroups(): ModelGroup[] {
     label: "Gemini (Antigravity)",
     provider: "antigravity" as AIProvider,
     options: [
-      { value: "antigravity-flash", label: "Gemini 3.5 Flash" },
+      { value: "antigravity-flash", label: "Gemini 3.6 Flash" },
       { value: "antigravity-pro", label: "Gemini 3.1 Pro (High)" },
       { value: "antigravity-pro-low", label: "Gemini 3.1 Pro (Low)" },
     ],
