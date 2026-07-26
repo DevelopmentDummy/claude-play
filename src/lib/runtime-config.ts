@@ -4,23 +4,13 @@ import * as path from "path";
 import { getInternalToken } from "./auth";
 import { getApiBase } from "./endpoints";
 
-const CLAUDE_SETTINGS = {
-  permissions: {
-    allow: [
-      "Read",
-      "Write(**)",
-      "Edit(**)",
-      "Bash(cat *)",
-      "Bash(ls *)",
-      "Bash(mkdir *)",
-      "Bash(curl *)",
-      "Bash(bash ./*.sh *)",
-      "Glob",
-      "Grep",
-      "mcp__claude_play__*",
-    ],
-  },
-};
+// 세션/빌더 디렉터리에 쓰는 .claude/settings.json.
+// `permissions.allow` 목록은 의도적으로 비워 둔다 — 세션 디렉터리는 Claude Code의
+// trust dialog를 통과한 적이 없는 신규 워크스페이스라 CLI가 allow 항목을 전부 무시하고
+// "Ignoring N permissions.allow entries: this workspace has not been trusted" 경고만
+// 출력했다. 실제 권한은 spawn 플래그(`--dangerously-skip-permissions` /
+// `--permission-mode acceptEdits`, claude-process.ts)로 부여되므로 목록은 무의미했다.
+const CLAUDE_SETTINGS = {};
 const MCP_CONFIG_FILE = ".mcp.json";
 const CLAUDE_MCP_SERVER_NAME = "claude_play";
 const POLICY_CONTEXT_FILE = "policy-context.json";
