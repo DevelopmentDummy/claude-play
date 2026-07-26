@@ -67,3 +67,6 @@ comfyui-relaunch.log
 # Detached ComfyUI spawn logs (server.ts auto-spawn, cwd = repo root)
 comfyui-detached.log
 comfyui-detached.err.log
+
+# 머신 로컬 git identity (global includeIf가 참조)
+.gitidentity
