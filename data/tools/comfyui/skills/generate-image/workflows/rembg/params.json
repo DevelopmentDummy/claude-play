@@ -1,0 +1,51 @@
+{
+  "description": "Background removal to transparent PNG via ComfyUI-RMBG. model=RMBG-2.0|INSPYRENET|BEN|BEN2, alpha output. Input auto-uploaded from persona/session dir when path contains a slash.",
+  "features": {
+    "checkpoint_auto": false,
+    "lora_injection": false,
+    "seed_randomize": false,
+    "trigger_tags": false,
+    "detailer_chain": false
+  },
+  "params": {
+    "input_image": {
+      "node": "1",
+      "field": "image",
+      "type": "string",
+      "required": true,
+      "description": "persona/session-relative image path (auto-uploaded)"
+    },
+    "model": {
+      "node": "2",
+      "field": "model",
+      "type": "string",
+      "default": "RMBG-2.0",
+      "description": "RMBG-2.0 | INSPYRENET | BEN | BEN2"
+    },
+    "sensitivity": {
+      "node": "2",
+      "field": "sensitivity",
+      "type": "number",
+      "default": 1
+    },
+    "process_res": {
+      "node": "2",
+      "field": "process_res",
+      "type": "number",
+      "default": 1024
+    },
+    "mask_offset": {
+      "node": "2",
+      "field": "mask_offset",
+      "type": "number",
+      "default": 0,
+      "description": "shrink(-)/grow(+) matte edge in px"
+    },
+    "refine_foreground": {
+      "node": "2",
+      "field": "refine_foreground",
+      "type": "boolean",
+      "default": true
+    }
+  }
+}

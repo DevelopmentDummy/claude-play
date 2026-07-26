@@ -1,0 +1,91 @@
+{
+  "description": "저-denoise img2img 클린업 + 매팅 통합 (SpriteGenerator pixelart-i2i 이식). WAN 프레임을 원본 체크포인트로 재그려 디펙트/붕괴 완화 후 RMBG로 투명 PNG 출력. reference_image를 주면 ColorMatch로 팔레트 일관성 유지(프레임 간 드리프트 억제). lora_name 옵션. denoise 낮을수록 WAN 모션 보존(권장 0.3~0.45), 높을수록 붕괴 복구력↑.",
+  "features": {
+    "checkpoint_auto": false,
+    "lora_injection": false,
+    "seed_randomize": false,
+    "trigger_tags": false,
+    "detailer_chain": false
+  },
+  "params": {
+    "input_image": {
+      "node": "12",
+      "field": "image",
+      "type": "string",
+      "required": true,
+      "description": "정리할 프레임(WAN 샘플). persona/session 상대경로면 자동 업로드"
+    },
+    "prompt": {
+      "node": "6",
+      "field": "text",
+      "type": "string",
+      "required": true,
+      "description": "positive — 캐릭터 유지 태그(예: 'chibi mint-green mascot, clean lineart')"
+    },
+    "negative_prompt": {
+      "node": "7",
+      "field": "text",
+      "type": "string"
+    },
+    "checkpoint": {
+      "node": "4",
+      "field": "ckpt_name",
+      "type": "string",
+      "default": "waiIllustriousSDXL_v160.safetensors"
+    },
+    "denoise": {
+      "node": "3",
+      "field": "denoise",
+      "type": "number",
+      "default": 0.4,
+      "description": "0.3~0.45 권장(모션보존) / 붕괴 심하면 0.55+"
+    },
+    "steps": {
+      "node": "3",
+      "field": "steps",
+      "type": "number",
+      "default": 10
+    },
+    "cfg": {
+      "node": "3",
+      "field": "cfg",
+      "type": "number",
+      "default": 7
+    },
+    "blur_radius": {
+      "node": "14",
+      "field": "blur_radius",
+      "type": "number",
+      "default": 1
+    },
+    "colormatch_method": {
+      "node": "16",
+      "field": "method",
+      "type": "string",
+      "default": "mkl"
+    },
+    "colormatch_strength": {
+      "node": "16",
+      "field": "strength",
+      "type": "number",
+      "default": 1
+    },
+    "seed": {
+      "type": "number",
+      "default": -1,
+      "description": "-1이면 랜덤. 한 상태의 프레임들엔 동일 seed 권장(일관성)"
+    },
+    "lora_name": {
+      "type": "string",
+      "description": "선택 — 디테일/스타일 LoRA"
+    },
+    "lora_strength": {
+      "type": "number",
+      "default": 0.8
+    },
+    "reference_image": {
+      "type": "string",
+      "description": "선택 — ColorMatch 팔레트 기준(보통 pose 또는 source). 미지정 시 ColorMatch 노드 제거"
+    }
+  }
+}

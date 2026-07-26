@@ -1,0 +1,54 @@
+{
+  "description": "스프라이트 프레임용 누끼 — RMBG 세그멘테이션 → 알파 이진화 → 경계 소프트 → RGBA PNG. 눈·흰 옷 같은 밝은 영역이 부분 투명해지며 얼룩지는 증상은 RMBG가 내놓는 연속 신뢰도 값을 그대로 알파로 쓰기 때문이다. ThresholdMask로 이진화하는 것만으로 해결된다. 모폴로지 연산은 쓰지 말 것 — close는 팔과 허리 사이, 목 옆 같은 진짜 빈 공간까지 메운다.\n\n⚠ 함정 1: RMBG의 MASK 출력(index 1)은 극성 반전 — invert_output=true 필수(false면 전경 77%).\n⚠ 함정 2: GrowMaskWithBlur의 fill_holes=true는 이 빌드에서 고장 — output0이 전면 빈 마스크, output1이 전면 충만으로 나온다. 패딩 여부와 무관. 사용 금지.\n⚠ 함정 3: AILab_SDMatte는 밝은 불투명 의상을 반투명으로 오인해 몸통에 구멍을 뚫는다(11,216px). 이 용도에 사용 금지.\n\n검증(WAN wf_16, 480x704): threshold 0.5 기준 내부 구멍 87px, 과충전 0px.",
+  "features": {
+    "checkpoint_auto": false,
+    "lora_injection": false,
+    "seed_randomize": false,
+    "trigger_tags": false,
+    "detailer_chain": false
+  },
+  "params": {
+    "input_image": {
+      "node": "1",
+      "field": "image",
+      "type": "string",
+      "required": true,
+      "description": "persona/session 상대경로 (자동 업로드)"
+    },
+    "seg_model": {
+      "node": "2",
+      "field": "model",
+      "type": "string",
+      "default": "RMBG-2.0",
+      "description": "RMBG-2.0 | INSPYRENET | BEN | BEN2"
+    },
+    "seg_res": {
+      "node": "2",
+      "field": "process_res",
+      "type": "number",
+      "default": 1024,
+      "description": "세그멘테이션 처리 해상도"
+    },
+    "threshold": {
+      "node": "3",
+      "field": "value",
+      "type": "number",
+      "default": 0.5,
+      "description": "알파 이진화 기준 0~1. 얼룩이 남으면 올리고, 실루앨이 깎이면 내린다. 0.5 권장"
+    },
+    "mask_expand": {
+      "node": "4",
+      "field": "expand",
+      "type": "number",
+      "default": 0,
+      "description": "알파 팽창(+)/침식(-) px. 헤일로 남으면 -1"
+    },
+    "edge_blur": {
+      "node": "4",
+      "field": "blur_radius",
+      "type": "number",
+      "default": 0.5,
+      "description": "경계 소프트 반경. 1.0 이상이면 실루앨 전체에 후광이 생긴다"
+    }
+  }
+}

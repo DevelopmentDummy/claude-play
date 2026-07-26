@@ -1,0 +1,93 @@
+{
+  "1": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "example.png"
+    },
+    "_meta": {
+      "title": "in"
+    }
+  },
+  "2": {
+    "class_type": "RMBG",
+    "inputs": {
+      "image": [
+        "1",
+        0
+      ],
+      "model": "RMBG-2.0",
+      "sensitivity": 1,
+      "process_res": 1024,
+      "mask_blur": 0,
+      "mask_offset": 0,
+      "invert_output": true,
+      "refine_foreground": false,
+      "background": "Alpha",
+      "background_color": "#222222"
+    },
+    "_meta": {
+      "title": "segment"
+    }
+  },
+  "3": {
+    "class_type": "ThresholdMask",
+    "inputs": {
+      "mask": [
+        "2",
+        1
+      ],
+      "value": 0.5
+    },
+    "_meta": {
+      "title": "binarize"
+    }
+  },
+  "4": {
+    "class_type": "GrowMaskWithBlur",
+    "inputs": {
+      "mask": [
+        "3",
+        0
+      ],
+      "expand": 0,
+      "incremental_expandrate": 0,
+      "tapered_corners": true,
+      "flip_input": false,
+      "blur_radius": 0.5,
+      "lerp_alpha": 1,
+      "decay_factor": 1
+    },
+    "_meta": {
+      "title": "edge"
+    }
+  },
+  "5": {
+    "class_type": "JoinImageWithAlpha",
+    "inputs": {
+      "image": [
+        "1",
+        0
+      ],
+      "alpha": [
+        "4",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "RGBA join"
+    }
+  },
+  "6": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "sprite-matte",
+      "images": [
+        "5",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "save"
+    }
+  }
+}

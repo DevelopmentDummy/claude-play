@@ -1,0 +1,134 @@
+{
+  "1": {
+    "class_type": "LoadImagesFromFolderKJ",
+    "inputs": {
+      "folder": "F:/repositories/comfyui/comfyui_submodule/input/walkseq",
+      "width": -1,
+      "height": -1,
+      "keep_aspect_ratio": "crop",
+      "image_load_cap": 0,
+      "start_index": 0,
+      "include_subfolders": false
+    },
+    "_meta": {
+      "title": "frame seq"
+    }
+  },
+  "2": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "walkseq/f_000.png"
+    },
+    "_meta": {
+      "title": "first frame"
+    }
+  },
+  "3": {
+    "class_type": "RMBG",
+    "inputs": {
+      "image": [
+        "2",
+        0
+      ],
+      "model": "RMBG-2.0",
+      "sensitivity": 1,
+      "process_res": 1024,
+      "mask_blur": 0,
+      "mask_offset": 0,
+      "invert_output": true,
+      "refine_foreground": false,
+      "background": "Alpha",
+      "background_color": "#222222"
+    },
+    "_meta": {
+      "title": "seed segment"
+    }
+  },
+  "4": {
+    "class_type": "ThresholdMask",
+    "inputs": {
+      "mask": [
+        "3",
+        1
+      ],
+      "value": 0.5
+    },
+    "_meta": {
+      "title": "binarize seed"
+    }
+  },
+  "5": {
+    "class_type": "MatAnyone",
+    "inputs": {
+      "src_video": [
+        "1",
+        0
+      ],
+      "mask_frame": 0,
+      "n_warmup": 10,
+      "foreground_MASK": [
+        "4",
+        0
+      ],
+      "max_mem_frames": 5,
+      "use_long_term": false
+    },
+    "_meta": {
+      "title": "MatAnyone propagate"
+    }
+  },
+  "6": {
+    "class_type": "ImageInvert",
+    "inputs": {
+      "image": [
+        "5",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "polarity fix"
+    }
+  },
+  "7": {
+    "class_type": "ImageToMask",
+    "inputs": {
+      "image": [
+        "6",
+        0
+      ],
+      "channel": "red"
+    },
+    "_meta": {
+      "title": "to mask"
+    }
+  },
+  "8": {
+    "class_type": "JoinImageWithAlpha",
+    "inputs": {
+      "image": [
+        "1",
+        0
+      ],
+      "alpha": [
+        "7",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "RGBA join"
+    }
+  },
+  "9": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "sprite-seq/frame",
+      "images": [
+        "8",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "save seq"
+    }
+  }
+}

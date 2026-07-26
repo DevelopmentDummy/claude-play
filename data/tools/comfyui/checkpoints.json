@@ -33,6 +33,21 @@
       "family": "illustrious",
       "notes": "WAI Illustrious SDXL v1.60 (6.94GB)"
     },
+    "NovaPixelILV3.safetensors": {
+      "loader": "checkpoint_simple",
+      "family": "illustrious",
+      "notes": "픽셀아트 전용 Illustrious 체크포인트. 네이티브 도트/스프라이트 출력. Illustrious 계열이라 gemjjang 등 IL LoRA 호환. 2026-07-22 codex_pet_builder 세션에서 젬짱 도트화 위해 등록"
+    },
+    "loxsMixPixmania_PixmaniaV30.safetensors": {
+      "loader": "checkpoint_simple",
+      "family": "illustrious",
+      "notes": "Pixmania V30 — 픽셀아트 머지 체크포인트 (미검증)"
+    },
+    "pixelArtSpriteDiffusion.safetensors": {
+      "loader": "checkpoint_simple",
+      "family": "sd15",
+      "notes": "Pixel Art Sprite Diffusion (SD1.5 계열 추정, IL LoRA 비호환 가능성). 미검증"
+    },
     "dvine_v80.safetensors": {
       "loader": "checkpoint_simple",
       "family": "illustrious"

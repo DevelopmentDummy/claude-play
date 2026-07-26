@@ -1,0 +1,202 @@
+{
+  "3": {
+    "class_type": "KSampler",
+    "inputs": {
+      "seed": 0,
+      "steps": 10,
+      "cfg": 7,
+      "sampler_name": "euler_ancestral",
+      "scheduler": "normal",
+      "denoise": 0.4,
+      "model": [
+        "10",
+        0
+      ],
+      "positive": [
+        "6",
+        0
+      ],
+      "negative": [
+        "7",
+        0
+      ],
+      "latent_image": [
+        "5",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "ksampler-i2i"
+    }
+  },
+  "4": {
+    "class_type": "CheckpointLoaderSimple",
+    "inputs": {
+      "ckpt_name": "waiIllustriousSDXL_v160.safetensors"
+    },
+    "_meta": {
+      "title": "ckpt"
+    }
+  },
+  "5": {
+    "class_type": "VAEEncode",
+    "inputs": {
+      "pixels": [
+        "14",
+        0
+      ],
+      "vae": [
+        "4",
+        2
+      ]
+    },
+    "_meta": {
+      "title": "encode"
+    }
+  },
+  "6": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "",
+      "clip": [
+        "10",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "pos"
+    }
+  },
+  "7": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "blurry, jpeg artifacts, deformed, extra limbs, watermark, text, lowres",
+      "clip": [
+        "10",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "neg"
+    }
+  },
+  "8": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "3",
+        0
+      ],
+      "vae": [
+        "4",
+        2
+      ]
+    },
+    "_meta": {
+      "title": "decode"
+    }
+  },
+  "9": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "i2i_cleanup",
+      "images": [
+        "13",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "save"
+    }
+  },
+  "10": {
+    "class_type": "LoraLoader",
+    "inputs": {
+      "model": [
+        "4",
+        0
+      ],
+      "clip": [
+        "4",
+        1
+      ],
+      "lora_name": "",
+      "strength_model": 0.8,
+      "strength_clip": 0.8
+    },
+    "_meta": {
+      "title": "lora-optional"
+    }
+  },
+  "12": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "example.png"
+    },
+    "_meta": {
+      "title": "input-frame"
+    }
+  },
+  "13": {
+    "class_type": "RMBG",
+    "inputs": {
+      "image": [
+        "16",
+        0
+      ],
+      "model": "RMBG-2.0",
+      "sensitivity": 1,
+      "process_res": 1024,
+      "mask_blur": 0,
+      "mask_offset": 0,
+      "invert_output": false,
+      "refine_foreground": true,
+      "background": "Alpha",
+      "background_color": "#222222"
+    },
+    "_meta": {
+      "title": "rmbg"
+    }
+  },
+  "14": {
+    "class_type": "ImageBlur",
+    "inputs": {
+      "image": [
+        "12",
+        0
+      ],
+      "blur_radius": 1,
+      "sigma": 0.5
+    },
+    "_meta": {
+      "title": "pre-blur"
+    }
+  },
+  "15": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "example.png"
+    },
+    "_meta": {
+      "title": "colormatch-ref-optional"
+    }
+  },
+  "16": {
+    "class_type": "ColorMatch",
+    "inputs": {
+      "image_ref": [
+        "15",
+        0
+      ],
+      "image_target": [
+        "8",
+        0
+      ],
+      "method": "mkl",
+      "strength": 1
+    },
+    "_meta": {
+      "title": "colormatch-optional"
+    }
+  }
+}

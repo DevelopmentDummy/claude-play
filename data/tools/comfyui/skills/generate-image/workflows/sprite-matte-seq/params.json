@@ -1,0 +1,68 @@
+{
+  "description": "프레임 시퀀스 전용 누끼 — MatAnyone(CVPR2025) 메모리 전파 매팅. 첫 프레임만 RMBG+이진화로 시드 마스크를 만들고, 나머지 프레임은 시간축으로 전파한다. 프레임별 독립 처리가 아니므로 깜빡임이 없고, 임계값으로 도려내지 않아도 경계 소프트 알파가 유지된다.\n\n⚠ 함정 1: MatAnyone의 matte 출력은 극성이 반전 — ImageInvert 필수.\n⚠ 함정 2: LoadImagesFromFolderKJ는 image_load_cap과 start_index를 명시적으로 넘겨야 한다(optional로 선언돼 있지만 생략하면 TypeError).\n⚠ 함정 3: RMBG의 MASK 출력도 극성 반전 — invert_output=true 필수.\n\n검증(WAN 걷기 33프레임, 480x704): 프레임간 XOR per-frame 2,086px vs MatAnyone 2,047px(동등), 그러나 소프트 경계는 per-frame 0px vs MatAnyone 2,894px — 즉 깜빡임 증가 없이 경계 품질만 얻음. 이 클립은 배경이 순백이라 난이도가 낮았음 — 복잡한 배경에서 격차 재측 필요.",
+  "features": {
+    "checkpoint_auto": false,
+    "lora_injection": false,
+    "seed_randomize": false,
+    "trigger_tags": false,
+    "detailer_chain": false
+  },
+  "params": {
+    "frame_folder": {
+      "node": "1",
+      "field": "folder",
+      "type": "string",
+      "required": true,
+      "description": "프레임 PNG가 들어있는 절대경로 폴더"
+    },
+    "seed_frame": {
+      "node": "2",
+      "field": "image",
+      "type": "string",
+      "required": true,
+      "description": "시드 마스크를 만들 첫 프레임(ComfyUI input 기준 경로)"
+    },
+    "seg_model": {
+      "node": "3",
+      "field": "model",
+      "type": "string",
+      "default": "RMBG-2.0",
+      "description": "시드 세그멘테이션 모델"
+    },
+    "threshold": {
+      "node": "4",
+      "field": "value",
+      "type": "number",
+      "default": 0.5,
+      "description": "시드 마스크 이진화 기준"
+    },
+    "mask_frame": {
+      "node": "5",
+      "field": "mask_frame",
+      "type": "number",
+      "default": 0,
+      "description": "시드 마스크가 대응하는 프레임 인덱스"
+    },
+    "n_warmup": {
+      "node": "5",
+      "field": "n_warmup",
+      "type": "number",
+      "default": 10,
+      "description": "메모리 워밍 프레임 수. 늘리면 초반 안정↑"
+    },
+    "max_mem_frames": {
+      "node": "5",
+      "field": "max_mem_frames",
+      "type": "number",
+      "default": 5,
+      "description": "메모리 뱅크 길이. 클수록 장기 일관성↑, VRAM↑"
+    },
+    "use_long_term": {
+      "node": "5",
+      "field": "use_long_term",
+      "type": "boolean",
+      "default": false,
+      "description": "긴 시퀀스(100프레임+)에서 true 권장"
+    }
+  }
+}

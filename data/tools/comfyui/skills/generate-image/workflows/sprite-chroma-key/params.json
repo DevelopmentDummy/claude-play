@@ -1,0 +1,61 @@
+{
+  "description": "크로마 배경 프레임 시퀀스 → 투명 RGBA PNG. 색차(color-difference) 키 + 언믹싱 디스필. 스프라이트 누끼의 정답 경로이며, 사후 매팅(RMBG/SDMatte/MatAnyone)보다 정확하고 빠르다.\n\n★ 핵심: 유클리드 거리 키를 쓰지 않는다. 애니 라인아트의 검은 외곽선과 배경의 안티에일리어싱 혼합 픽셀은 키 컴러에서 '멀기' 때문에 거리 키는 그걸 완전 불투명 전경으로 오판하고 어두운 배경색이 테두리에 남는다. 색차 키는 채널 관계(마젠타 = R,B 높고 G 낮음)로 혼합 비율을 복원하므로 밝기와 무관하게 정확하다.\n\n⚠ JoinImageWithAlpha는 받은 MASK를 내부에서 반전시킨다. 그래서 ChromaKeyUnmix의 alpha 출력을 InvertMask를 거쳐 넣어야 한다. 이걸 빼면 전경이 78%로 나오며 배경만 남는다. RMBG 패키지들이 invert_output=true를 쓰는 이유도 같다.\n\n검증(WAN 걷기 33프레임 480x704, 마젠타 배경): 경계 픽셀 1,410 → 7,614개, 경계 마젠타 지표 66.9 → -11.0. 갈색 벨트·흰옷·피부 색 손실 없음.\n\n사전 준비: 시작 프레임을 qwen-edit 패키지로 크로마 단색 배경으로 바꿔둔 뒤 wan-i2v로 시퀀스 생성. WAN은 배경색을 끝까지 유지한다(33프레임 편차 RGB 5 이내).\n\n필요 노드: custom_nodes/ComfyUI-ChromaKeyPro (ChromaKeyUnmix). 외부 의존성 없음.",
+  "features": {
+    "checkpoint_auto": false,
+    "lora_injection": false,
+    "seed_randomize": false,
+    "trigger_tags": false,
+    "detailer_chain": false
+  },
+  "params": {
+    "frame_folder": {
+      "node": "1",
+      "field": "folder",
+      "type": "string",
+      "required": true,
+      "description": "프레임 PNG 폴더 절대경로. 단일 이미지도 폴더에 넣어 사용"
+    },
+    "key_axis": {
+      "node": "2",
+      "field": "key_axis",
+      "type": "string",
+      "default": "magenta (R,B high / G low)",
+      "description": "배경색 축. magenta | green | blue | cyan"
+    },
+    "tolerance": {
+      "node": "2",
+      "field": "tolerance",
+      "type": "number",
+      "default": 0.92,
+      "description": "0.5~1.2. 낮출수록 배경을 공격적으로 제거. 0.92 권장"
+    },
+    "edge_softness": {
+      "node": "2",
+      "field": "edge_softness",
+      "type": "number",
+      "default": 0,
+      "description": "알파 전이 구간 폭. 0 권장"
+    },
+    "unmix": {
+      "node": "2",
+      "field": "unmix",
+      "type": "boolean",
+      "default": true,
+      "description": "경계 픽셀 원래 색 역산. 끄면 테두리에 배경색이 남는다"
+    },
+    "key_color_hex": {
+      "node": "2",
+      "field": "key_color_hex",
+      "type": "string",
+      "default": "",
+      "description": "비우면 네 모서리 자동 샘플링. 수동 예: FF00FF"
+    },
+    "alpha_expand": {
+      "node": "2",
+      "field": "alpha_expand",
+      "type": "number",
+      "default": 0,
+      "description": "알파 확장(+)/침식(-). 잔상이 남으면 -1~-2"
+    }
+  }
+}
