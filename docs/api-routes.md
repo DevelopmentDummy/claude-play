@@ -52,6 +52,7 @@ Next.js 밖에서 `server.ts`가 직접 처리하는 라우트: `/api/chat/tts`,
 | `/api/sessions/[id]/conversations` | GET | List provider-side conversations (jsonl/rollouts) tied to this session folder for the resume menu |
 | `/api/sessions/[id]/relink` | POST | Tear down live SessionInstance and rewrite session.json's provider conversation id (`{ conversationId }` body) |
 | `/api/sessions/[id]/variables` | PATCH | Patch session variables (supports `?file=` for custom data files) |
+| `/api/sessions/[id]/memo` | PATCH | 세션 메모 갱신 — `{memo}`(사용자 수동) / `{autoMemo}`(MCP 자동 요약) / `{memoAuto}`(자동 요약 on/off). `memo`와 `autoMemo` 동시 전송은 400 |
 | `/api/sessions/[id]/modals` | POST | Group-aware modal open/close/closeAll (body: `{ action, name?, mode?, except? }`) |
 | `/api/sessions/[id]/events` | POST | Queue event header for next chat message (body: `{ header: string, silent?: boolean }`) — `silent` skips the `event:pending` broadcast; `[SUB:name]`-prefixed headers are also mirrored into that sub-agent's transcript |
 | `/api/sessions/[id]/panel-actions` | POST, DELETE | POST: queue a panel action / DELETE: pop the last queued action |

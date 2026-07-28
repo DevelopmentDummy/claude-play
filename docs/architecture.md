@@ -137,6 +137,7 @@ MCP registration is the **only** viable tool channel for the AI processes — "j
 | Tool | Purpose |
 |------|---------|
 | `bridge_status` | MCP runtime config (API base, mode, persona, session dir) |
+| `bridge_set_session_memo` | (세션 모드) 세션 상황 한 줄 요약을 `session.json`의 `autoMemo`에 저장 — 로비 카드 표시용. 사용자 수동 `memo`는 덮어쓰지 않음 |
 | `bridge_service_status` | Service-wide status — active sessions, WS clients, schedulers |
 | `bridge_scheduler_inspect` | Inspect pipeline-scheduler state for a session |
 | `bridge_scheduler_stop` | Stop the pipeline scheduler for a session |
