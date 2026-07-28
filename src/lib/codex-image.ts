@@ -11,7 +11,8 @@ import { writeSessionImage } from "./image-fs";
  * (`codex exec`) which is authenticated via a ChatGPT subscription. Codex's
  * built-in `image_gen` tool renders the image (no OPENAI_API_KEY required — it
  * is covered by the subscription) and saves it under
- * `$CODEX_HOME/generated_images/<conversationId>/ig_*.png`. We snapshot that
+ * `$CODEX_HOME/generated_images/<conversationId>/` (filename is `call_<toolCallId>.png`
+ * on codex-cli 0.144.x, `ig_<id>.png` on older builds). We snapshot that
  * directory before the run, then harvest the newly created file and copy it into
  * the session's `images/` directory.
  *
@@ -47,7 +48,13 @@ function codexGeneratedImagesDir(): string {
   return path.join(home, "generated_images");
 }
 
-/** Collect absolute paths of all existing `ig_*.png` files across conversation subdirs. */
+/** Output filenames written by the built-in `image_gen` tool. Older codex builds
+ *  used `ig_<id>.png`; codex-cli 0.144.x switched to `call_<toolCallId>.png`.
+ *  Accept both — the caller only keeps files that are *new* since the pre-spawn
+ *  snapshot, so a wider filter cannot mis-harvest unrelated files. */
+const IG_OUTPUT_RE = /^(?:ig_|call_).+\.png$/i;
+
+/** Collect absolute paths of all existing image_gen output files across conversation subdirs. */
 function listIgImages(root: string): Set<string> {
   const out = new Set<string>();
   let convDirs: string[];
@@ -66,7 +73,7 @@ function listIgImages(root: string): Set<string> {
       continue;
     }
     for (const f of files) {
-      if (f.startsWith("ig_") && f.endsWith(".png")) out.add(path.join(dir, f));
+      if (IG_OUTPUT_RE.test(f)) out.add(path.join(dir, f));
     }
   }
   return out;
@@ -155,7 +162,7 @@ export class CodexImageClient {
       });
 
       // Harvest regardless of exit code — Codex sometimes exits non-zero after a
-      // successful generation, and the ig_*.png can be flushed a few seconds
+      // successful generation, and the output png can be flushed a few seconds
       // after the process closes. Poll for the fresh file across a short grace
       // window instead of scanning exactly once.
       let fresh: string[] = [];
@@ -166,7 +173,7 @@ export class CodexImageClient {
         await new Promise((r) => setTimeout(r, HARVEST_RETRY_DELAY_MS));
       }
       if (fresh.length === 0) {
-        return { success: false, error: exit.err || "Codex produced no image (no new ig_*.png found after grace window)" };
+        return { success: false, error: exit.err || "Codex produced no image (no new ig_*.png / call_*.png found after grace window)" };
       }
       // NOTE: with concurrent generations this newest-new heuristic can mis-assign
       // between simultaneous calls; acceptable for a single-user service.

@@ -81,7 +81,7 @@ How to fix: set `wire_api = "responses"` in your provider config.
 
 GPT 이미지 생성은 채팅 라우팅과 별개의 외부 LLM 경로다. `OPENAI_IMAGE_BACKEND` env가 백엔드를 결정한다 (`src/app/api/tools/openai/generate/route.ts`).
 
-- `codex`(기본): `codex exec` + 내장 `image_gen` 도구로 렌더링. ChatGPT 구독으로 커버되어 건당 과금 없음. `$CODEX_HOME/generated_images/`에 떨어지는 `ig_*.png`를 하베스트해 세션 `images/`로 복사한다 (`src/lib/codex-image.ts`).
+- `codex`(기본): `codex exec` + 내장 `image_gen` 도구로 렌더링. ChatGPT 구독으로 커버되어 건당 과금 없음. `$CODEX_HOME/generated_images/`에 떨어지는 출력 png를 하베스트해 세션 `images/`로 복사한다 (`src/lib/codex-image.ts`). ⚠️ 파일명 규칙은 codex 버전에 따라 다르다 — 0.144.x는 `call_<toolCallId>.png`, 구버전은 `ig_<id>.png`. 하베스터는 둘 다 받는다.
 - `api`: 메터링 OpenAI Responses API 사용. `OPENAI_API_KEY` 필요.
 
 주의: `codex` 경로는 브리지 서버 프로세스의 `CODEX_HOME`이 unset(기본 `~/.codex`)인 것에 의존한다. 세션 spawn은 child env에서만 `CODEX_HOME`을 세션 `.codex`로 리포인트하므로(`src/lib/codex-process.ts`), 서버 env에 `CODEX_HOME`을 설정하지 말 것.
