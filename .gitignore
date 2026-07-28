@@ -70,3 +70,7 @@ comfyui-detached.err.log
 
 # 머신 로컬 git identity (global includeIf가 참조)
 .gitidentity
+
+# Python 바이트코드 (data/skills/*/scripts 등 어디서든)
+__pycache__/
+*.pyc

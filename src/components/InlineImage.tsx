@@ -27,6 +27,33 @@ function imgBackoffMs(retryCount: number): number {
   return Math.min(IMG_RETRY_BASE_MS * Math.pow(1.5, retryCount), IMG_RETRY_CAP_MS);
 }
 
+// `$IMAGE:...$` 토큰은 이미지 전용이 아니다. 영상·오디오 산출물(MMAudio foley,
+// ACE-Step BGM, 사운드가 입혀진 mp4)도 같은 토큰으로 흘러오므로 확장자로 분기해
+// <video>/<audio>로 렌더한다. 서버측 Content-Type은 static-file.ts가 담당한다.
+const VIDEO_RE = /\.(mp4|webm|mov)$/i;
+const AUDIO_RE = /\.(flac|mp3|wav|ogg|m4a)$/i;
+
+type MediaKind = "image" | "video" | "audio";
+
+function mediaKindOf(p: string): MediaKind {
+  const clean = p.split("?")[0];
+  if (VIDEO_RE.test(clean)) return "video";
+  if (AUDIO_RE.test(clean)) return "audio";
+  return "image";
+}
+
+const LOADING_LABEL: Record<MediaKind, string> = {
+  image: "이미지 생성 중...",
+  video: "영상 준비 중...",
+  audio: "오디오 준비 중...",
+};
+
+const ERROR_LABEL: Record<MediaKind, string> = {
+  image: "이미지 로드 실패 — 탭하여 재생성 요청",
+  video: "영상 로드 실패 — 탭하여 재시도",
+  audio: "오디오 로드 실패 — 탭하여 재시도",
+};
+
 function isPersonaPath(imgPath: string): boolean {
   return imgPath.startsWith("persona:") || imgPath.startsWith("persona/");
 }
@@ -76,6 +103,7 @@ function withRetryMarker(url: string, retryCount: number): string {
 }
 
 export default function InlineImage({ sessionId, personaName, path: imgPath, onReady }: InlineImageProps) {
+  const kind = mediaKindOf(imgPath);
   const [state, setState] = useState<ImageState>("loading");
   const [source, setSource] = useState<ImageSource>(isPersonaPath(imgPath) ? "persona" : "session");
   const [showModal, setShowModal] = useState(false);
@@ -179,7 +207,7 @@ export default function InlineImage({ sessionId, personaName, path: imgPath, onR
     return (
       <div className="inline-flex items-center gap-2 bg-[#1a1a2e] rounded-lg px-3 py-2 my-1">
         <div className="w-4 h-4 border-2 border-[#8888a0] border-t-transparent rounded-full animate-spin" />
-        <span className="text-[#8888a0] text-sm">이미지 생성 중...</span>
+        <span className="text-[#8888a0] text-sm">{LOADING_LABEL[kind]}</span>
       </div>
     );
   }
@@ -189,14 +217,14 @@ export default function InlineImage({ sessionId, personaName, path: imgPath, onR
       <button
         type="button"
         className="appearance-none border-0 text-left inline-flex items-center gap-2 bg-[#2a1a1a] rounded-lg px-3 py-2 my-1 cursor-pointer hover:bg-[#3a2a2a] transition-colors"
-        aria-label="이미지 로드 실패 — 탭하여 재생성 요청"
+        aria-label={ERROR_LABEL[kind]}
         onClick={async () => {
           setState("loading");
           // Try to ask the AI to regenerate this missing image. If we have sessionId,
           // queue an event header pointing at the missing filename — the AI will see
           // this on its next turn and can re-issue the generate_image call. Then
           // restart polling in case the file does eventually appear via some other path.
-          if (sessionId) {
+          if (sessionId && kind === "image") {
             const filename = imgPath.startsWith("images/") ? imgPath.slice("images/".length) : imgPath;
             try {
               await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/events`, {
@@ -211,7 +239,7 @@ export default function InlineImage({ sessionId, personaName, path: imgPath, onR
           setRetryKey((k) => k + 1);
         }}
       >
-        <span className="text-[#a08888] text-sm">이미지 로드 실패 — 탭하여 재생성 요청</span>
+        <span className="text-[#a08888] text-sm">{ERROR_LABEL[kind]}</span>
       </button>
     );
   }
@@ -237,6 +265,34 @@ export default function InlineImage({ sessionId, personaName, path: imgPath, onR
       setImgRetryCount((c) => c + 1);
     }, delay);
   };
+
+  if (kind === "video") {
+    return (
+      <video
+        src={src}
+        controls
+        loop
+        playsInline
+        preload="metadata"
+        className="max-w-full rounded-lg max-h-[600px] block my-2"
+        onLoadedData={handleImageLoad}
+        onError={handleImageError}
+      />
+    );
+  }
+
+  if (kind === "audio") {
+    return (
+      <audio
+        src={src}
+        controls
+        preload="metadata"
+        className="w-full max-w-[420px] block my-2"
+        onLoadedData={handleImageLoad}
+        onError={handleImageError}
+      />
+    );
+  }
 
   return (
     <>

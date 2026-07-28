@@ -16,8 +16,11 @@ export const STATIC_MIME: Record<string, string> = {
   ".wav": "audio/wav",
   ".mp3": "audio/mpeg",
   ".ogg": "audio/ogg",
+  ".flac": "audio/flac",
+  ".m4a": "audio/mp4",
   ".mp4": "video/mp4",
   ".webm": "video/webm",
+  ".mov": "video/quicktime",
   ".vtt": "text/vtt",
 };
 
