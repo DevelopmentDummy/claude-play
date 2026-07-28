@@ -354,6 +354,32 @@ server.registerTool(
 );
 
 server.registerTool(
+  "bridge_set_session_memo",
+  {
+    description:
+      "Save a one-line memo describing the current state of this session. Shown on the lobby session card so the user can tell sessions of the same persona apart. Keep it under 25 characters, in the user's language, and describe the situation — not the last line of dialogue. This never overwrites the user's own manual memo.",
+    inputSchema: {
+      memo: z.string(),
+    },
+  },
+  async ({ memo }) => {
+    if (mode !== "session" || !sessionId) {
+      return fail(new Error("bridge_set_session_memo is only available in session mode"));
+    }
+    try {
+      const data = await requestJson(
+        "PATCH",
+        `/api/sessions/${encodeURIComponent(sessionId)}/memo`,
+        { autoMemo: pickString(memo) || "" }
+      );
+      return ok(data);
+    } catch (error) {
+      return fail(error);
+    }
+  }
+);
+
+server.registerTool(
   "bridge_service_status",
   {
     description: "Show Claude Play service status including active sessions, client counts, and scheduler state.",

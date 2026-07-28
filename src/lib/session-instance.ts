@@ -68,8 +68,12 @@ const REPLACE_ONLY_PREFIXES = new Set<string>([
   "[SCHEDULE_ERROR]",
   "[NEW_GAME]",
   "[MODE]",
+  "[MEMO]",
 ]);
 const HISTORY_FILE = "chat-history.json";
+
+/** 세션 메모 자동 요약 주기(비-OOC assistant 턴 수). */
+const MEMO_INTERVAL_TURNS = 10;
 
 function extractSpecialTokens(raw: string): string[] {
   const matches = raw.match(SPECIAL_TOKEN_REGEX) || [];
@@ -1100,6 +1104,48 @@ export class SessionInstance {
     }
   }
 
+  /**
+   * 세션 메모 자동 갱신 틱. 비-OOC assistant 턴 종료마다 호출된다.
+   *
+   * 코어가 카운터를 관리하고(variables.json `__session_memo_counter`),
+   * MEMO_INTERVAL_TURNS 턴마다 다음 유저 턴에 병합될 [MEMO] 지시 헤더를 큐잉한다.
+   * 실제 요약은 세션 AI가 bridge_set_session_memo MCP 도구로 저장한다 —
+   * 별도 LLM 스폰이 없어 추가 비용이 도구 호출 1건 수준이다.
+   *
+   * 옵트아웃: session.json `memoAuto: false`.
+   */
+  runSessionMemoTick(): void {
+    const dir = this.getDir();
+    if (!dir) return;
+
+    // 옵트아웃 확인 — 꺼져 있으면 카운터도 올리지 않는다.
+    try {
+      const meta = JSON.parse(fs.readFileSync(path.join(dir, "session.json"), "utf-8")) as { memoAuto?: boolean };
+      if (meta.memoAuto === false) return;
+    } catch {
+      return;
+    }
+
+    try {
+      const varsPath = path.join(dir, "variables.json");
+      let counter = 0;
+      const cr = mutateSessionJsonSync(varsPath, (current) => {
+        counter = (Number(current.__session_memo_counter) || 0) + 1;
+        return { ...current, __session_memo_counter: counter };
+      });
+      // variables.json을 읽지 못하면 카운터 증분이 실패하므로 이번 틱은 건너뛴다
+      // (쓰기 무결성: 못 읽은 상태로 덮어쓰지 않는다 — style-check와 같은 규칙).
+      if (!cr.ok) return;
+      if (counter % MEMO_INTERVAL_TURNS !== 0) return;
+
+      this.queueEvent(
+        "[MEMO] 지금까지의 전개를 25자 이내 한 줄로 요약해 bridge_set_session_memo 도구로 저장하세요. 응답 본문에서는 이 지시를 언급하지 마세요."
+      );
+    } catch (err) {
+      console.error("[session-memo] tick error:", err);
+    }
+  }
+
   /** Clear __popups from variables.json (called on new user message) */
   clearPopups(): void {
     const dir = this.getDir();
@@ -1654,6 +1700,7 @@ export class SessionInstance {
         if (lastAsst && typeof lastAsst.content === "string" && lastAsst.content) {
           this.runAssistantHooks(lastAsst.content);
           this.runStyleCheckHook();
+          this.runSessionMemoTick();
         }
       }
     }
