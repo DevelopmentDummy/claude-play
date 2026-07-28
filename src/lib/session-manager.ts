@@ -14,6 +14,7 @@ import { getPort } from "./endpoints";
 import { ensureClaudeRuntimeConfig as ensureClaudeRuntimeConfigImpl } from "./runtime-config";
 import { AIProvider, providerFromModel } from "./ai-provider";
 import { SYSTEM_JSON, mutateSessionJsonSync } from "./session-state";
+import { clampMemo, extractLastUserPreview } from "./session-memo";
 import { fileDiffers, personaSkillsDiffer, dirDiffers, toolsDiffer, variablesDiffer, stripAssembledSections, liveInstructionsDiffer, getCustomDataFiles } from "./session-sync-diff";
 import { copyDirRecursive, mirrorAdditive } from "./fs-mirror";
 import {
@@ -109,6 +110,12 @@ export interface SessionInfo {
   model?: string;
   profileSlug?: string;
   lastActivity?: number;
+  memo?: string;
+  autoMemo?: string;
+  autoMemoAt?: string;
+  memoAuto?: boolean;
+  /** 메모가 하나도 없을 때 카드에 띄울 최근 유저 발화 1줄. */
+  memoFallback?: string;
 }
 
 export interface DataFileInfo {
@@ -162,6 +169,14 @@ interface SessionMeta {
   antigravityCascadeId?: string;
   profileSlug?: string;
   model?: string;
+  /** 사용자가 직접 쓴 메모. 자동 갱신이 절대 덮어쓰지 않는다. */
+  memo?: string;
+  /** 세션 AI가 주기적으로 갱신하는 한 줄 요약. */
+  autoMemo?: string;
+  /** autoMemo 갱신 시각(ISO). */
+  autoMemoAt?: string;
+  /** 자동 요약 옵트아웃. 미설정 = 켜짐. */
+  memoAuto?: boolean;
 }
 
 interface BuilderMeta {
@@ -745,9 +760,14 @@ export class SessionManager {
           // Use chat-history.json mtime as last activity time, fall back to createdAt
           const historyPath = path.join(dir, d.name, "chat-history.json");
           let lastActivity = new Date(meta.createdAt).getTime();
+          let memoFallback: string | undefined;
           try {
             if (fs.existsSync(historyPath)) {
               lastActivity = fs.statSync(historyPath).mtimeMs;
+              // 메모가 둘 다 없을 때만 폴백 프리뷰를 계산한다(불필요한 파일 읽기 회피).
+              if (!meta.memo && !meta.autoMemo) {
+                memoFallback = extractLastUserPreview(fs.readFileSync(historyPath, "utf-8"));
+              }
             }
           } catch { /* ignore */ }
           acc.push({
@@ -756,6 +776,7 @@ export class SessionManager {
             displayName: this.getPersonaDisplayName(meta.persona),
             ...(hasIcon ? { hasIcon: true } : {}),
             ...(meta.model ? { model: meta.model } : {}),
+            ...(memoFallback ? { memoFallback } : {}),
             lastActivity,
           });
         } catch { /* ignore */ }
@@ -851,6 +872,49 @@ export class SessionManager {
 
   /** Get saved Antigravity cascade ID for resume */
   getAntigravityCascadeId(id: string): string | undefined { return this.readSessionMeta(id)?.antigravityCascadeId; }
+
+  /** 사용자가 쓴 메모를 저장한다. 빈 문자열이면 필드를 지운다. */
+  setSessionMemo(id: string, memo: string): void {
+    const value = clampMemo(memo);
+    this.patchSessionMeta(id, (m) => {
+      if (value) m.memo = value;
+      else delete m.memo;
+    });
+  }
+
+  /** 세션 AI가 쓴 자동 요약을 저장한다. 수동 memo는 건드리지 않는다. */
+  setSessionAutoMemo(id: string, text: string): void {
+    const value = clampMemo(text);
+    this.patchSessionMeta(id, (m) => {
+      if (value) {
+        m.autoMemo = value;
+        m.autoMemoAt = new Date().toISOString();
+      } else {
+        delete m.autoMemo;
+        delete m.autoMemoAt;
+      }
+    });
+  }
+
+  /** 자동 요약 on/off. */
+  setSessionMemoAuto(id: string, enabled: boolean): void {
+    this.patchSessionMeta(id, (m) => {
+      if (enabled) delete m.memoAuto;
+      else m.memoAuto = false;
+    });
+  }
+
+  /** 메모 관련 필드만 읽어 반환한다(라우트 응답용). */
+  getSessionMemoState(id: string): { memo?: string; autoMemo?: string; autoMemoAt?: string; memoAuto?: boolean } {
+    const meta = this.readSessionMeta(id);
+    if (!meta) return {};
+    return {
+      ...(meta.memo ? { memo: meta.memo } : {}),
+      ...(meta.autoMemo ? { autoMemo: meta.autoMemo } : {}),
+      ...(meta.autoMemoAt ? { autoMemoAt: meta.autoMemoAt } : {}),
+      ...(meta.memoAuto === false ? { memoAuto: false } : {}),
+    };
+  }
 
   /** Sync updated files from persona to session (panels, variables, opening, layout, skills) */
   /** Full sync — syncs all elements from persona to session */
