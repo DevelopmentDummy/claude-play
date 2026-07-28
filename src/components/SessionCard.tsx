@@ -20,6 +20,13 @@ interface SessionCardProps {
   hasIcon?: boolean;
   model?: string;
   personaIndex?: number;
+  /** 사용자가 직접 쓴 메모 */
+  memo?: string;
+  /** 세션 AI가 갱신한 자동 요약 */
+  autoMemo?: string;
+  /** 메모가 둘 다 없을 때 쓰는 최근 발화 프리뷰 */
+  memoFallback?: string;
+  onMemoSave: (memo: string) => Promise<boolean>;
   onOpen: () => void;
   onDelete: () => void;
 }
@@ -63,15 +70,43 @@ export default function SessionCard({
   hasIcon,
   model,
   personaIndex = 0,
+  memo,
+  autoMemo,
+  memoFallback,
+  onMemoSave,
   onOpen,
   onDelete,
 }: SessionCardProps) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
   }, []);
+
+  useEffect(() => {
+    if (editing) inputRef.current?.focus();
+  }, [editing]);
+
+  // 표시 우선순위: 수동 메모 → AI 자동 메모 → 최근 발화 프리뷰
+  const shownMemo = memo || autoMemo || memoFallback || "";
+  const isManual = !!memo;
+
+  const startEdit = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setDraft(memo || "");
+    setEditing(true);
+  };
+
+  const commit = async () => {
+    const next = draft.trim();
+    setEditing(false);
+    if (next === (memo || "")) return;
+    await onMemoSave(next);
+  };
 
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -130,7 +165,51 @@ export default function SessionCard({
             </span>
           ) : null}
         </div>
+
+        {editing ? (
+          <input
+            ref={inputRef}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onClick={(e) => e.stopPropagation()}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.nativeEvent.isComposing) return;
+              if (e.key === "Enter") { e.preventDefault(); commit(); }
+              if (e.key === "Escape") { e.preventDefault(); setEditing(false); }
+            }}
+            maxLength={200}
+            placeholder="메모 입력…"
+            className="mt-1 w-full bg-transparent border-b outline-none
+              text-[10px] text-text placeholder:text-text-mute/60 py-0.5"
+            style={{ borderColor: "var(--plum-hairline)" }}
+          />
+        ) : shownMemo ? (
+          <div
+            title={shownMemo}
+            className={`text-[10px] mt-1 truncate ${
+              isManual ? "text-text-dim border-l pl-1.5" : "text-text-mute italic"
+            }`}
+            style={isManual ? { borderColor: "var(--plum-hairline)" } : undefined}
+          >
+            {shownMemo}
+          </div>
+        ) : null}
       </div>
+
+      {!confirmDelete && (
+        <button
+          onClick={startEdit}
+          aria-label="메모 편집"
+          title="메모 편집"
+          className="absolute top-1.5 right-8 w-6 h-6 flex items-center justify-center rounded-md cursor-pointer
+            text-[11px] text-text-dim/40 opacity-0 md:group-hover:opacity-100
+            hover:text-text hover:bg-white/5 transition-all duration-fast"
+        >
+          ✎
+        </button>
+      )}
 
       <button
         onClick={handleDelete}

@@ -47,6 +47,9 @@ interface Session {
   lastActivity?: number;
   hasIcon?: boolean;
   model?: string;
+  memo?: string;
+  autoMemo?: string;
+  memoFallback?: string;
 }
 
 interface ProfileOption {
@@ -206,6 +209,22 @@ export default function LobbyPage() {
     }
   };
 
+  const saveMemo = useCallback(async (id: string, memo: string): Promise<boolean> => {
+    const res = await fetch(`/api/sessions/${encodeURIComponent(id)}/memo`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ memo }),
+    });
+    if (!res.ok) {
+      showToast("메모 저장에 실패했습니다");
+      return false;
+    }
+    const data = await res.json();
+    // 낙관적 갱신 — 로비 전체 재조회는 하지 않는다.
+    setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, memo: data.memo } : s)));
+    return true;
+  }, []);
+
   const startBuilder = (name: string, model?: string) => {
     const params = new URLSearchParams({ mode: "new" });
     if (model) params.set("model", model);
@@ -317,6 +336,10 @@ export default function LobbyPage() {
                 lastActivity={s.lastActivity}
                 hasIcon={s.hasIcon}
                 model={s.model}
+                memo={s.memo}
+                autoMemo={s.autoMemo}
+                memoFallback={s.memoFallback}
+                onMemoSave={(memo) => saveMemo(s.id, memo)}
                 personaIndex={personaIndexMap.get(s.persona) ?? 0}
                 onOpen={() => {
                   router.push(`/chat/${encodeURIComponent(s.id)}`);
