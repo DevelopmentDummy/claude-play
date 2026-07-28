@@ -51,6 +51,9 @@ interface StatusBarProps {
   /** Force chat input visible */
   forceInput?: boolean;
   onForceInputToggle?: () => void;
+  /** 세션 메모(수동). 헤더 칩으로 표시·편집한다. */
+  memo?: string;
+  onMemoSave?: (memo: string) => Promise<boolean>;
 }
 
 const selectClass = `min-w-0 px-2 py-1 rounded-md text-xs text-text-dim bg-transparent border border-border/60 outline-none cursor-pointer appearance-none
@@ -101,8 +104,12 @@ export default function StatusBar({
   sessionId,
   forceInput,
   onForceInputToggle,
+  memo,
+  onMemoSave,
 }: StatusBarProps) {
   const [debugOpen, setDebugOpen] = useState(false);
+  const [memoEditing, setMemoEditing] = useState(false);
+  const [memoDraft, setMemoDraft] = useState("");
   const debugBtnRef = useRef<HTMLButtonElement>(null);
   const debugMenuRef = useRef<HTMLDivElement>(null);
   const [debugPos, setDebugPos] = useState<{ x: number; y: number } | null>(null);
@@ -151,6 +158,40 @@ export default function StatusBar({
         &larr;
       </button>
       <span className="font-medium text-[13px] min-w-0 truncate">{title}</span>
+      {onMemoSave && (
+        memoEditing ? (
+          <input
+            autoFocus
+            value={memoDraft}
+            onChange={(e) => setMemoDraft(e.target.value)}
+            onBlur={async () => {
+              setMemoEditing(false);
+              if (memoDraft.trim() !== (memo || "")) await onMemoSave(memoDraft.trim());
+            }}
+            onKeyDown={(e) => {
+              if (e.nativeEvent.isComposing) return;
+              if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); }
+              if (e.key === "Escape") { e.preventDefault(); setMemoDraft(memo || ""); setMemoEditing(false); }
+            }}
+            maxLength={200}
+            placeholder="메모…"
+            className="hidden sm:block min-w-0 w-[180px] px-2 py-0.5 rounded-md text-[11px] text-text
+              bg-transparent border border-border/60 outline-none focus:border-accent"
+          />
+        ) : (
+          <button
+            onClick={() => { setMemoDraft(memo || ""); setMemoEditing(true); }}
+            title={memo || "세션 메모 추가"}
+            aria-label="세션 메모"
+            className="hidden sm:flex items-center gap-1 min-w-0 max-w-[200px] px-1.5 py-0.5 rounded-md
+              text-[11px] text-text-mute border border-transparent cursor-pointer
+              hover:border-border/60 hover:text-text-dim transition-all duration-fast"
+          >
+            <span className="shrink-0">✎</span>
+            {memo && <span className="truncate">{memo}</span>}
+          </button>
+        )
+      )}
       {showPanelButton && onPanelToggle && (
         <button
           onClick={onPanelToggle}

@@ -73,6 +73,7 @@ export default function ChatPage() {
   const [sharedPlacements, setSharedPlacements] = useState<Record<string, "modal" | "modal-dismissible" | "full-screen" | "dock" | "dock-left" | "dock-right" | "dock-bottom">>({});
   const [layout, setLayout] = useState<LayoutConfig | null>(null);
   const [title, setTitle] = useState("");
+  const [memo, setMemo] = useState("");
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [wsEnabled, setWsEnabled] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -662,6 +663,7 @@ export default function ChatPage() {
 
       const data = await res.json();
       setTitle(data.displayName || data.title || data.persona);
+      setMemo(typeof data.memo === "string" ? data.memo : "");
       setLayout(data.layout);
       if (data.model) setCurrentModel(data.model);
       if (data.provider) setCurrentProvider(data.provider);
@@ -1080,10 +1082,24 @@ export default function ChatPage() {
     }
   }, [sendMessage, sessionId]);
 
+  const handleMemoSave = useCallback(async (next: string): Promise<boolean> => {
+    const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/memo`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ memo: next }),
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    setMemo(typeof data.memo === "string" ? data.memo : "");
+    return true;
+  }, [sessionId]);
+
   return (
     <div className="flex flex-col h-screen">
       <StatusBar
         title={title}
+        memo={memo}
+        onMemoSave={handleMemoSave}
         status={status}
         isBuilderMode={false}
         onBack={handleBack}
