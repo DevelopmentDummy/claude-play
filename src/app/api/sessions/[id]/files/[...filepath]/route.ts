@@ -3,7 +3,6 @@ import { getServices } from "@/lib/services";
 import { mimeForPath, resolveInside } from "@/lib/static-file";
 import * as path from "path";
 import * as fs from "fs";
-import { Readable } from "stream";
 import sharp from "sharp";
 
 const THUMB_IMAGE_RE = /\.(png|jpe?g|webp|gif)$/i;
@@ -36,9 +35,71 @@ function parseRange(header: string | null, size: number): { start: number; end: 
   return { start, end: Math.min(end, size - 1) };
 }
 
-/** node ReadStream → web ReadableStream (NextResponse body용) */
-function toWebStream(nodeStream: fs.ReadStream): ReadableStream<Uint8Array> {
-  return Readable.toWeb(nodeStream) as ReadableStream<Uint8Array>;
+/**
+ * 파일 구간을 web ReadableStream으로 흘린다.
+ *
+ * `Readable.toWeb()`를 쓰면 클라이언트가 중간에 연결을 끊었을 때(사파리는 탐색·버퍼링
+ * 과정에서 range 요청을 수시로 중단한다) 이미 닫힌 controller에 enqueue를 시도해
+ * `ERR_INVALID_STATE: Controller is already closed`가 uncaughtException으로 터진다.
+ * 그래서 직접 구성하고, 닫힘/중단 시 node 스트림을 확실히 destroy한다.
+ */
+function fileStream(
+  filePath: string,
+  opts: { start?: number; end?: number },
+  signal: AbortSignal | null
+): ReadableStream<Uint8Array> {
+  const node = fs.createReadStream(filePath, opts);
+  let done = false;
+
+  const finish = () => {
+    done = true;
+    if (!node.destroyed) node.destroy();
+  };
+
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      node.on("data", (chunk) => {
+        if (done) return;
+        try {
+          controller.enqueue(new Uint8Array(chunk as Buffer));
+        } catch {
+          // 소비자가 이미 사라진 경우 — 조용히 정리한다
+          finish();
+          return;
+        }
+        if (controller.desiredSize !== null && controller.desiredSize <= 0) node.pause();
+      });
+      node.on("end", () => {
+        if (done) return;
+        done = true;
+        try {
+          controller.close();
+        } catch {
+          /* 이미 닫힘 */
+        }
+      });
+      node.on("error", (err) => {
+        if (done) return;
+        done = true;
+        try {
+          controller.error(err);
+        } catch {
+          /* 이미 닫힘 */
+        }
+        if (!node.destroyed) node.destroy();
+      });
+      if (signal) {
+        if (signal.aborted) finish();
+        else signal.addEventListener("abort", finish, { once: true });
+      }
+    },
+    pull() {
+      if (!done) node.resume();
+    },
+    cancel() {
+      finish();
+    },
+  });
 }
 
 export async function GET(
@@ -119,8 +180,8 @@ export async function GET(
         });
       }
       const chunkSize = range.end - range.start + 1;
-      const stream = fs.createReadStream(resolved, { start: range.start, end: range.end });
-      return new NextResponse(toWebStream(stream), {
+      const stream = fileStream(resolved, { start: range.start, end: range.end }, req.signal ?? null);
+      return new NextResponse(stream, {
         status: 206,
         headers: {
           "Content-Type": contentType,
@@ -132,8 +193,8 @@ export async function GET(
       });
     }
 
-    const stream = fs.createReadStream(resolved);
-    return new NextResponse(toWebStream(stream), {
+    const stream = fileStream(resolved, {}, req.signal ?? null);
+    return new NextResponse(stream, {
       headers: {
         "Content-Type": contentType,
         "Content-Length": String(size),
