@@ -1,0 +1,195 @@
+{
+  "6": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "MiniMax_H3_FL2VA_pruned_nvfp4.safetensors",
+      "weight_dtype": "default"
+    }
+  },
+  "9": {
+    "class_type": "BasicScheduler",
+    "inputs": {
+      "model": [
+        "6",
+        0
+      ],
+      "scheduler": "simple",
+      "steps": 20,
+      "denoise": 1
+    }
+  },
+  "10": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "14",
+        0
+      ],
+      "vae": [
+        "11",
+        0
+      ]
+    }
+  },
+  "11": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "minimax_h3_video_vae_int8_convrot.safetensors"
+    }
+  },
+  "13": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+      "type": "minimax",
+      "device": "default"
+    }
+  },
+  "14": {
+    "class_type": "SamplerCustomAdvanced",
+    "inputs": {
+      "noise": [
+        "15",
+        0
+      ],
+      "guider": [
+        "16",
+        0
+      ],
+      "sampler": [
+        "17",
+        0
+      ],
+      "sigmas": [
+        "9",
+        0
+      ],
+      "latent_image": [
+        "104",
+        1
+      ]
+    }
+  },
+  "15": {
+    "class_type": "RandomNoise",
+    "inputs": {
+      "noise_seed": 556589502035082
+    }
+  },
+  "16": {
+    "class_type": "BasicGuider",
+    "inputs": {
+      "model": [
+        "6",
+        0
+      ],
+      "conditioning": [
+        "104",
+        0
+      ]
+    }
+  },
+  "17": {
+    "class_type": "KSamplerSelect",
+    "inputs": {
+      "sampler_name": "res_multistep"
+    }
+  },
+  "23": {
+    "class_type": "VAEDecodeAudio",
+    "inputs": {
+      "samples": [
+        "14",
+        0
+      ],
+      "vae": [
+        "24",
+        0
+      ]
+    }
+  },
+  "24": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
+    }
+  },
+  "25": {
+    "class_type": "NormalizeAudioLoudness",
+    "inputs": {
+      "audio": [
+        "23",
+        0
+      ],
+      "lufs": -16
+    }
+  },
+  "30": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "example.png",
+      "upload": "image"
+    }
+  },
+  "31": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": [
+        "30",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "width": 1152,
+      "height": 640,
+      "crop": "center"
+    }
+  },
+  "91": {
+    "class_type": "CreateVideo",
+    "inputs": {
+      "images": [
+        "10",
+        0
+      ],
+      "audio": [
+        "25",
+        0
+      ],
+      "fps": 24,
+      "bit_depth": 8
+    }
+  },
+  "92": {
+    "class_type": "SaveVideo",
+    "inputs": {
+      "video": [
+        "91",
+        0
+      ],
+      "filename_prefix": "video/minimax_h3",
+      "format": "auto",
+      "codec": "auto"
+    }
+  },
+  "104": {
+    "class_type": "MiniMaxH3ImageToVideo",
+    "inputs": {
+      "clip": [
+        "13",
+        0
+      ],
+      "vae": [
+        "11",
+        0
+      ],
+      "prompt": "2D-animated Japanese anime, hand-inked line art, flat cel-shading — preserve the exact line weight, character design and flat cel shading in every shot. No 3D rendering, no photorealism.\n\n[Shot 1] A girl walks toward the camera down a sunlit alley, waves at the lens, then leans in and grins. She stays close to the camera and fills the frame the whole time. The girl (S1), a bright energetic teenage voice, says: <d>[Korean] 얘들아, 나 드디어 도착했어!</d> Camera: Static Shot at slow speed with small amplitude.\n\nSoundscape: Loud outdoor tone — sneakers scuffing on stone pavement, tourists chattering, seagulls crying overhead, a light breeze.\n\nMusic: A bright ukulele strum with hand claps from 0s, cutting off cleanly on the final frame.",
+      "width": 1152,
+      "height": 640,
+      "length": 362,
+      "first_frame": [
+        "31",
+        0
+      ]
+    }
+  }
+}
