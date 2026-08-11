@@ -3,9 +3,43 @@ import { getServices } from "@/lib/services";
 import { mimeForPath, resolveInside } from "@/lib/static-file";
 import * as path from "path";
 import * as fs from "fs";
+import { Readable } from "stream";
 import sharp from "sharp";
 
 const THUMB_IMAGE_RE = /\.(png|jpe?g|webp|gif)$/i;
+// WebKit(사파리 맥/iOS)은 <video>/<audio>에 대해 바이트 범위 요청을 전제로 한다.
+// 206 Partial Content를 못 받으면 재생 자체를 거부하므로 미디어는 반드시 Range를 지원해야 한다.
+const MEDIA_RE = /\.(mp4|webm|mov|mp3|m4a|wav|ogg|flac)$/i;
+
+/** "bytes=start-end" 파싱. 유효하지 않으면 null. */
+function parseRange(header: string | null, size: number): { start: number; end: number } | null {
+  if (!header) return null;
+  const m = /^bytes=(\d*)-(\d*)$/.exec(header.trim());
+  if (!m) return null;
+  const [, rawStart, rawEnd] = m;
+  if (rawStart === "" && rawEnd === "") return null;
+
+  let start: number;
+  let end: number;
+  if (rawStart === "") {
+    // suffix range: 마지막 N바이트
+    const suffix = parseInt(rawEnd, 10);
+    if (!Number.isFinite(suffix) || suffix <= 0) return null;
+    start = Math.max(0, size - suffix);
+    end = size - 1;
+  } else {
+    start = parseInt(rawStart, 10);
+    end = rawEnd === "" ? size - 1 : parseInt(rawEnd, 10);
+  }
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+  if (start > end || start >= size) return null;
+  return { start, end: Math.min(end, size - 1) };
+}
+
+/** node ReadStream → web ReadableStream (NextResponse body용) */
+function toWebStream(nodeStream: fs.ReadStream): ReadableStream<Uint8Array> {
+  return Readable.toWeb(nodeStream) as ReadableStream<Uint8Array>;
+}
 
 export async function GET(
   req: Request,
@@ -67,10 +101,53 @@ export async function GET(
     }
   }
 
+  const stat = fs.statSync(resolved);
+  const size = stat.size;
+  const isMedia = MEDIA_RE.test(resolved);
+
+  // 미디어는 Range/206을 지원하고 스트리밍으로 흘린다.
+  if (isMedia) {
+    const cacheControl = "private, max-age=3600";
+    const rangeHeader = req.headers.get("range");
+
+    if (rangeHeader) {
+      const range = parseRange(rangeHeader, size);
+      if (!range) {
+        return new NextResponse(null, {
+          status: 416,
+          headers: { "Content-Range": `bytes */${size}`, "Accept-Ranges": "bytes" },
+        });
+      }
+      const chunkSize = range.end - range.start + 1;
+      const stream = fs.createReadStream(resolved, { start: range.start, end: range.end });
+      return new NextResponse(toWebStream(stream), {
+        status: 206,
+        headers: {
+          "Content-Type": contentType,
+          "Content-Length": String(chunkSize),
+          "Content-Range": `bytes ${range.start}-${range.end}/${size}`,
+          "Accept-Ranges": "bytes",
+          "Cache-Control": cacheControl,
+        },
+      });
+    }
+
+    const stream = fs.createReadStream(resolved);
+    return new NextResponse(toWebStream(stream), {
+      headers: {
+        "Content-Type": contentType,
+        "Content-Length": String(size),
+        "Accept-Ranges": "bytes",
+        "Cache-Control": cacheControl,
+      },
+    });
+  }
+
   const data = fs.readFileSync(resolved);
   return new NextResponse(data, {
     headers: {
       "Content-Type": contentType,
+      "Content-Length": String(size),
       "Cache-Control": "no-store, max-age=0",
     },
   });
@@ -100,12 +177,16 @@ export async function HEAD(
   }
 
   const contentType = mimeForPath(resolved);
+  const size = fs.statSync(resolved).size;
+  const isMedia = MEDIA_RE.test(resolved);
 
   return new NextResponse(null, {
     status: 200,
     headers: {
       "Content-Type": contentType,
-      "Cache-Control": "no-store, max-age=0",
+      "Content-Length": String(size),
+      ...(isMedia ? { "Accept-Ranges": "bytes" } : {}),
+      "Cache-Control": isMedia ? "private, max-age=3600" : "no-store, max-age=0",
     },
   });
 }
