@@ -2,7 +2,7 @@
   "1": {
     "class_type": "LoadImagesFromFolderKJ",
     "inputs": {
-      "folder": "F:/repositories/comfyui/comfyui_submodule/input/walkseq",
+      "folder": "F:/repositories/comfyui/input/walkseq",
       "width": -1,
       "height": -1,
       "keep_aspect_ratio": "crop",
