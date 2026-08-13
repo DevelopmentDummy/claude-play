@@ -31,6 +31,66 @@ function ts() {
   return new Date().toISOString();
 }
 
+/**
+ * `.env*` 파일에 정의된 키 이름만 수집한다 (값은 파싱하지 않음).
+ *
+ * 이 오케스트레이터는 구 서버 → MCP → API 라우트 체인을 통해 spawn되므로
+ * 구 서버의 process.env를 그대로 상속받는다. dotenv/@next/env의
+ * loadEnvConfig는 이미 존재하는 env var를 덮어쓰지 않기 때문에,
+ * 상속된 값을 그대로 넘기면 `.env.local` 수정이 재시작으로 영원히
+ * 반영되지 않는다. spawn 시 이 키들을 제거해 새 프로세스가 파일에서
+ * 다시 읽도록 강제한다.
+ */
+function collectEnvFileKeys() {
+  const files = [
+    ".env",
+    ".env.local",
+    ".env.development",
+    ".env.development.local",
+    ".env.production",
+    ".env.production.local",
+  ];
+  const keys = new Set();
+  for (const f of files) {
+    let text;
+    try {
+      text = fs.readFileSync(path.join(ROOT, f), "utf8");
+    } catch {
+      continue;
+    }
+    for (const line of text.split(/\r?\n/)) {
+      const m = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/.exec(line);
+      if (m) keys.add(m[1]);
+    }
+  }
+  return keys;
+}
+
+/**
+ * 상속 env에서 `.env*` 유래 키를 걷어낸 사본을 만든다.
+ *
+ * `__NEXT_PROCESSED_ENV`도 반드시 함께 지워야 한다. @next/env의 processEnv()는
+ * 이 플래그가 이미 서 있으면 `.env*` 파일을 읽어 loadedEnvFiles에는 채우면서도
+ * process.env에는 단 하나도 반영하지 않고 즉시 반환한다. 키만 지우고 이 플래그를
+ * 남겨두면 값이 복구되지 않고 통째로 사라진다.
+ */
+function spawnEnv(extra = {}) {
+  const keys = collectEnvFileKeys();
+  keys.add("__NEXT_PROCESSED_ENV");
+  const env = { ...process.env };
+  const stripped = [];
+  for (const k of keys) {
+    if (k in env) {
+      delete env[k];
+      stripped.push(k);
+    }
+  }
+  if (stripped.length) {
+    log(`stripped ${stripped.length} env keys from spawn env: ${stripped.join(", ")}`);
+  }
+  return { ...env, ...extra };
+}
+
 function log(line) {
   const formatted = `[${ts()}] ${line}\n`;
   try {
@@ -139,7 +199,7 @@ function runBuild() {
     try {
       child = spawn(isWin ? "npm.cmd" : "npm", ["run", "build"], {
         cwd: ROOT,
-        env: { ...process.env, NODE_OPTIONS: "" },
+        env: spawnEnv({ NODE_OPTIONS: "" }),
         stdio: ["ignore", outFd, errFd],
         windowsHide: true,
         shell: isWin,
@@ -208,7 +268,7 @@ function spawnNewServer(mode) {
       // and /c exits cleanly once npm finishes.
       child = spawn("cmd", ["/c", "start", "/B", "cmd", "/c", "npm.cmd", "run", script], {
         cwd: ROOT,
-        env: { ...process.env, NODE_OPTIONS: "" },
+        env: spawnEnv({ NODE_OPTIONS: "" }),
         detached: true,
         stdio: ["ignore", outFd, errFd],
         windowsHide: true,
@@ -216,7 +276,7 @@ function spawnNewServer(mode) {
     } else {
       child = spawn("npm", ["run", script], {
         cwd: ROOT,
-        env: { ...process.env, NODE_OPTIONS: "" },
+        env: spawnEnv({ NODE_OPTIONS: "" }),
         detached: true,
         stdio: ["ignore", outFd, errFd],
         windowsHide: true,
