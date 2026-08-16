@@ -34,7 +34,7 @@ node setup-web.js
 `setup-web.js`가 종료되면 사용자에게 다음을 안내하세요:
 
 - `start.bat`을 더블클릭하거나 `npm run start`로 서버를 시작할 수 있습니다.
-  - `start.bat`은 서버 시작 외에 ComfyUI 서브모듈이 설치되어 있으면(`comfyui_submodule/main.py` + venv) `start-comfyui.bat`으로 ComfyUI도 자동 실행합니다.
+  - ComfyUI는 `.env.local`에 `COMFYUI_DIR`을 설정하고 `COMFYUI_AUTOSTART=true`로 두면 `server.ts`가 함께 띄웁니다(`start.bat`이 따로 실행하지 않습니다). 해당 포트가 이미 LISTENING이면 스폰을 건너뛰고 기존 인스턴스를 재사용합니다.
 - 개발 모드: `npm run dev`
 
 ## 주의사항

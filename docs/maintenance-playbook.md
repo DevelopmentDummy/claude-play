@@ -69,7 +69,7 @@ curl -H "x-bridge-token: anything" http://127.0.0.1:3340/api/service/status
 3. **PS 5.1 BOM**: 철칙 #5. 복구는 node로 선두 `﻿` 제거 후 재기록.
 4. **파일 잠금**: 다른 프로세스가 파일을 쥐고 있으면 EBUSY/EPERM/ENOTEMPTY — `src/lib/fs-retry.ts`의 `retryOnWindowsLock<T>()`이 지수 백오프로 흡수한다. 스킬 복사, sync, 페르소나 삭제 경로에 이미 적용됨. 새 파일 조작 코드에도 적용할 것.
 5. **미러/퍼블리시 경로는 `*.tmp`(원자적 쓰기 임시파일)와 `background-*.log`를 skip해야 한다** (fs-mirror가 후자는 이미 skip).
-6. **Blackwell GPU (RTX 50xx, sm_120)**: `setup.js`의 cudaTag 매핑이 cu124에서 멈춰 있어 50시리즈는 cu126+(권장 cu130) 수동 설치 필요. comfy_kitchen 최적화 백엔드는 cu130 미만에서 비활성. 이 머신: RTX 5070 Ti, ComfyUI는 `f:\repositories\comfyui\comfyui_submodule\` 자체 venv(torch 2.12.0+cu130).
+6. **Blackwell GPU (RTX 50xx, sm_120)**: `setup.js`의 cudaTag 매핑이 cu124에서 멈춰 있어 50시리즈는 cu126+(권장 cu130) 수동 설치 필요. comfy_kitchen 최적화 백엔드는 cu130 미만에서 비활성. 이 머신: RTX 5070 Ti, ComfyUI는 `F:\repositories\comfyui\` 자체 venv(torch 2.12.0+cu130). 서브모듈(`comfyui_submodule/`)이 아니라 저장소 밖 독립 설치이고, 경로는 `.env.local`의 `COMFYUI_DIR` 하나로만 관리한다(`COMFYUI_AUTOSTART=true`라 `server.ts`가 기동).
 
 ## 3. 흔한 증상 → 첫 확인 지점
 
