@@ -34,6 +34,22 @@ export default function resolve(workflow, params, context) {
       systemPrefix:
         "You are an illustrator composing a polished anime image with elegant shading, clean structure, and strong visual appeal. <Prompt Start> ",
     },
+    anima_29b: {
+      matches: ["anima29b_v10.safetensors", "anima29b"],
+      qualityMap: {
+        plain: "best quality, highres",
+        standard: "masterpiece, best quality, amazing quality, highres, absurdres",
+        polished: "masterpiece, best quality, amazing quality, very aesthetic, highres, absurdres, high detail",
+      },
+      sampler: "euler",
+      scheduler: "sgm_uniform",
+      cfgByPreset: { plain: 4.0, standard: 3.8, polished: 3.5 },
+      shiftByPreset: { plain: 2.8, standard: 3.0, polished: 3.1 },
+      stepsByPreset: { plain: 28, standard: 36, polished: 50 },
+      extraMeta: "",
+      systemPrefix:
+        "You are an assistant designed to generate superior images with the superior degree of image-text alignment based on textual prompts or user prompts. <Prompt Start> ",
+    },
     pornmaster: {
       matches: ["pornmasteranima", "pornmaster"],
       qualityMap: {

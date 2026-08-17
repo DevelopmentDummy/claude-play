@@ -1,7 +1,9 @@
 {
-  "description": "Anima 계열 혼합형 장면 패키지 — UNET/CLIP/VAE 분리 로드 + 4-Detailer + 4x Upscale",
+  "description": "배경화면 전용 16:9 Anima 장면 (1536x864) — anima-mixed-scene과 동일한 UNET/CLIP/디테일러/업스케일 체인, 해상도만 16:9로 조정. 인물+배경 풀씬용.",
   "compatibility": {
-    "requires": { "loader": "unet_only" },
+    "requires": {
+      "loader": "unet_only"
+    },
     "incompatible_message": "anima-mixed-scene은 UNET/CLIP 분리 로드 체크포인트만 지원합니다. 단일 세이프텐서 체크포인트는 'scene' 또는 'portrait' 패키지를 사용하세요."
   },
   "features": {
@@ -49,13 +51,13 @@
       "node": "6",
       "field": "width",
       "type": "number",
-      "default": 1024
+      "default": 1536
     },
     "height": {
       "node": "6",
       "field": "height",
       "type": "number",
-      "default": 1024
+      "default": 864
     },
     "steps": {
       "node": "8",
