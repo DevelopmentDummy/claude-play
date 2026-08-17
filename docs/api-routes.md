@@ -20,7 +20,7 @@ Next.js 밖에서 `server.ts`가 직접 처리하는 라우트: `/api/chat/tts`,
 | `/api/personas/import/preview` | POST | Inspect a persona repo's metadata (name, description, icon) before import |
 | `/api/personas/[name]` | DELETE | Delete persona (moved to `data/deleted_personas/`) |
 | `/api/personas/[name]/check-update` | POST | Compare local commit against remote for installed personas |
-| `/api/personas/[name]/clone` | GET, POST | GET: name availability check / POST: duplicate persona under a new name |
+| `/api/personas/[name]/clone` | GET, POST | GET: name availability check / POST: duplicate persona under a new name (복제본의 `persona.md` 첫 줄 = 표시 이름에 ` (복제본)` 마커를 덧붙인다) |
 | `/api/personas/[name]/publish` | POST | Push persona dir to a GitHub repo |
 | `/api/personas/[name]/file` | GET, PUT | Read/write individual persona files |
 | `/api/personas/[name]/overview` | GET | Full persona overview (files, panels, skills, data) |

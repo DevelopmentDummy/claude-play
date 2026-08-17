@@ -74,3 +74,6 @@ comfyui-detached.err.log
 # Python 바이트코드 (data/skills/*/scripts 등 어디서든)
 __pycache__/
 *.pyc
+
+# One-off ComfyUI relaunch stderr dump (manual runs with cwd = repo root)
+comfyui-relaunch.err.log

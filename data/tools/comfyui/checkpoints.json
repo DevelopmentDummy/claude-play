@@ -97,6 +97,21 @@
       "family": "anima",
       "notes": "BoleromixAnima v0.21 (3.90GB fp16, CivitAI 2575161@2960574). Anima 베이스 머지. gemma_3_12B 인코더 + qwen_image VAE 페어. 2026-06-04 도입."
     },
+    "tekitoMix_v31.safetensors": {
+      "loader": "unet_only",
+      "family": "anima",
+      "notes": "Tekito-Mix v3.1 (3.90GB, CivitAI 2639779@3147432). Anima 베이스. 트리거 워드 없음. 2026-08-01 도입 — 프로파일 미정이라 resolver auto 시 cat_tower 폴백 적용됨."
+    },
+    "tekito29_previewV1.safetensors": {
+      "loader": "unet_only",
+      "family": "anima",
+      "notes": "Tekito-2.9 preview-v1 (5.44GB bf16, CivitAI 2855522@3225019 fileId=3107109). tekitoMix 계열을 Anima-2.9B(40블록 확장) 베이스로 옮긴 퍼블릭 베타. 트리거 워드 없음. ⚠️ ComfyUI 0.32.0 코어는 num_blocks를 28로 하드코딩하므로 custom_nodes/ComfyUI-Anima-2.9B 필수 (설치 완료, 기동 로그의 [Anima 2.9B Patch] 확인). 워크플로는 anima-mixed-scene(세로) / anima-background(16:9 풀씬). 2026-08-15 도입."
+    },
+    "theAWondermix_v1.safetensors": {
+      "loader": "unet_only",
+      "family": "anima",
+      "notes": "The A WonderMix V1 (3.89GB, CivitAI 2785173@3137946). Anima **Turbo** 베이스 — 작가 워크플로 기준 steps 12 / cfg 1.0 / euler_ancestral+normal, 이후 latent 1.5x hires(denoise 0.5). 전용 텍스트 인코더 theAWondermix_v1_txt.safetensors 동봉(0.6B급, qwen_3_06b_base 자리 대체). VAE는 qwen_image_vae 공용. 작가 자평 약점: 복잡한 씬 구성, 배경 blur, 발 묘사, 눈 아티팩트, 세피아/뮤트/ligne claire 계열 스타일 부족. 강점은 맑은 발색 + 둥근 얼굴선. 2026-08-03 도입 + A/B 검증 완료 → anima-mixed-scene resolver에 wondermix 프로파일 등록(steps 12 / cfg 1.0 / euler_ancestral+normal 확정). 작가가 약점으로 꼽은 '배경 blur'는 12스텝 세팅 탓이 아니라 모델 자체 특성이며, 36스텝으로 올려도 유의미한 개선이 없음을 확인했다. cfg 1.0에서는 negative prompt가 무효다."
+    },
     "bismuthIllustrious_v70.safetensors": {
       "loader": "checkpoint_simple",
       "family": "illustrious"

@@ -48,11 +48,14 @@ function codexGeneratedImagesDir(): string {
   return path.join(home, "generated_images");
 }
 
-/** Output filenames written by the built-in `image_gen` tool. Older codex builds
- *  used `ig_<id>.png`; codex-cli 0.144.x switched to `call_<toolCallId>.png`.
- *  Accept both — the caller only keeps files that are *new* since the pre-spawn
- *  snapshot, so a wider filter cannot mis-harvest unrelated files. */
-const IG_OUTPUT_RE = /^(?:ig_|call_).+\.png$/i;
+/** Output filenames written by the built-in `image_gen` tool. The naming has
+ *  churned across builds — `ig_<id>.png` (old), `call_<toolCallId>.png`
+ *  (0.144.0-ish), `exec-<uuid>.png` (0.144.6). Every rename silently broke
+ *  harvesting ("Codex produced no image") even though the file was sitting right
+ *  there, so stop enumerating prefixes: take any .png under a conversation dir.
+ *  Safe because the caller only keeps files that are *new* since the pre-spawn
+ *  snapshot, and this tree holds nothing but image_gen output. */
+const IG_OUTPUT_RE = /\.png$/i;
 
 /** Collect absolute paths of all existing image_gen output files across conversation subdirs. */
 function listIgImages(root: string): Set<string> {
@@ -173,7 +176,7 @@ export class CodexImageClient {
         await new Promise((r) => setTimeout(r, HARVEST_RETRY_DELAY_MS));
       }
       if (fresh.length === 0) {
-        return { success: false, error: exit.err || "Codex produced no image (no new ig_*.png / call_*.png found after grace window)" };
+        return { success: false, error: exit.err || `Codex produced no image (no new .png under ${genRoot} after grace window)` };
       }
       // NOTE: with concurrent generations this newest-new heuristic can mis-assign
       // between simultaneous calls; acceptable for a single-user service.
