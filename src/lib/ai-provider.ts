@@ -230,7 +230,7 @@ function buildModelGroups(): ModelGroup[] {
     label: "Gemini (Antigravity)",
     provider: "antigravity" as AIProvider,
     options: [
-      { value: "antigravity-flash", label: "Gemini 3.6 Flash" },
+      { value: "antigravity-flash", label: "Gemini 3.7 Flash" },
       { value: "antigravity-pro", label: "Gemini 3.1 Pro (High)" },
       { value: "antigravity-pro-low", label: "Gemini 3.1 Pro (Low)" },
     ],
