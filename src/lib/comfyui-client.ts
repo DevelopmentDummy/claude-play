@@ -21,7 +21,15 @@ import {
   type DetailerModuleTemplate,
 } from "./comfyui-graph";
 import { extractAudioFilenames, extractOutputFilenames, extractTextOutputs } from "./comfyui-history";
-import { readDirConfig, resolveCheckpoint, validateCheckpointCompatibility } from "./comfyui-checkpoint";
+import {
+  findActiveCheckpointName,
+  loadCheckpointRegistry,
+  readDirConfig,
+  readDirConfigRaw,
+  resolveCheckpoint,
+  selectBaseLorasForFamily,
+  validateCheckpointCompatibility,
+} from "./comfyui-checkpoint";
 
 /** Sanitize a relative file path: preserve subdirectories but prevent traversal */
 function safePath(filePath: string): string {
@@ -60,6 +68,12 @@ interface GenerateResult {
   filepath?: string;
   extraPaths?: Record<string, string>;
   error?: string;
+  /** 실제로 제출된 그래프에서 읽어낸 값들 — 호출자가 "의도"가 아니라 "현실"을 볼 수 있게 한다. */
+  checkpoint?: string;
+  appliedLoras?: Array<{ name: string; strength: number }>;
+  /** 요청했지만 그래프에 남지 않은 LoRA (파일 없음 등으로 pruning) */
+  missingLoras?: string[];
+  warnings?: string[];
 }
 
 interface TranscribeResult {
@@ -84,6 +98,9 @@ export class ComfyUIClient {
   private config: ComfyUIConfig;
   private workflowsDir: string;
   private availableModelsCache: { checkpoints: string[]; loras: string[] } | null = null;
+
+  /** 마지막 buildPrompt에서 모인 구성 경고 (family 불일치 등). 응답으로 올려 보낸다. */
+  private lastBuildWarnings: string[] = [];
 
   constructor(config: ComfyUIConfig, workflowsDir: string) {
     this.config = config;
@@ -378,6 +395,8 @@ export class ComfyUIClient {
     lorasLeft?: Array<{ name: string; strength: number }>,
     lorasRight?: Array<{ name: string; strength: number }>
   ): Promise<object> {
+    this.lastBuildWarnings = [];
+
     // === Phase 1: Package Load ===
     const pkg = loadPackage(this.workflowsDir, workflowName);
     const features: WorkflowFeatures = pkg.meta.features || {
@@ -443,10 +462,19 @@ export class ComfyUIClient {
         const list = preset?.nsfwLoras ?? (cfg as Record<string, unknown>).nsfwLoras;
         return Array.isArray(list) ? list as Array<{ name: string; strength: number }> : [];
       };
+      // 그래프에 실제로 물린 체크포인트의 family를 먼저 확정한다 — baseLoras 선택의 기준.
+      const ckptRegistry = loadCheckpointRegistry();
+      const graphCkpt = findActiveCheckpointName(prompt);
+      const graphFamily = graphCkpt ? ckptRegistry[graphCkpt]?.family : undefined;
+
       if (sessionDir) {
-        const dirConfig = readDirConfig(sessionDir);
-        if (dirConfig.baseLoras && dirConfig.baseLoras.length > 0) {
-          baseLoras = dirConfig.baseLoras;
+        const picked = selectBaseLorasForFamily(readDirConfigRaw(sessionDir), graphFamily, ckptRegistry);
+        if (picked.warning) {
+          console.warn(`[comfyui] ${picked.warning}`);
+          this.lastBuildWarnings.push(picked.warning);
+        }
+        if (picked.baseLoras.length > 0) {
+          baseLoras = picked.baseLoras;
         }
         // Try to read nsfwLoras from session/persona config
         try {
@@ -463,11 +491,16 @@ export class ComfyUIClient {
           const globalConfigPath = path.join(getDataDir(), "tools/comfyui/comfyui-config.json");
           if (fs.existsSync(globalConfigPath)) {
             const globalConfig = JSON.parse(fs.readFileSync(globalConfigPath, "utf-8"));
-            const globalPreset = globalConfig.active_preset && globalConfig.presets?.[globalConfig.active_preset];
-            const globalLoras = globalPreset?.baseLoras || globalConfig.baseLoras;
-            if (baseLoras.length === 0 && Array.isArray(globalLoras) && globalLoras.length > 0) {
-              baseLoras = globalLoras;
-              console.log(`[comfyui] Using ${baseLoras.length} base LoRAs from global comfyui-config.json (no override in session/persona)`);
+            if (baseLoras.length === 0) {
+              const pickedGlobal = selectBaseLorasForFamily(globalConfig, graphFamily, ckptRegistry);
+              if (pickedGlobal.warning) {
+                console.warn(`[comfyui] (global) ${pickedGlobal.warning}`);
+                this.lastBuildWarnings.push(`(global) ${pickedGlobal.warning}`);
+              }
+              if (pickedGlobal.baseLoras.length > 0) {
+                baseLoras = pickedGlobal.baseLoras;
+                console.log(`[comfyui] Using ${baseLoras.length} base LoRAs from global comfyui-config.json preset '${pickedGlobal.presetName}' (no override in session/persona)`);
+              }
             }
             if (nsfwLoras.length === 0) {
               nsfwLoras = readNsfwLorasFromConfig(globalConfig);
@@ -720,11 +753,12 @@ export class ComfyUIClient {
     promptId: string,
     filename: string,
     sessionDir: string,
-    extraFiles?: Record<string, string>
+    extraFiles?: Record<string, string>,
+    timeoutMs?: number
   ): Promise<GenerateResult> {
     // Image generation rarely finishes in <10s — wait before first poll to avoid
     // hammering ComfyUI (and exhausting ephemeral ports).
-    const history = await this.pollHistory(promptId, 120_000, {
+    const history = await this.pollHistory(promptId, timeoutMs ?? ComfyUIClient.timeoutBudget(filename).pollMs, {
       initialWaitMs: 10_000,
     });
     if (!history) {
@@ -754,6 +788,52 @@ export class ComfyUIClient {
   }
 
   /** Download output files from ComfyUI history and save to session dir */
+  /**
+   * 출력 확장자로 대기 예산을 가른다. 영상 워크플로(MiniMax H3 / WAN i2v 등)는
+   * 한 판이 36분~수 시간이라 이미지 기준 타임아웃(프록시 10분 / poll 2분)에 반드시
+   * 걸린다 — 그 순간 프록시가 취소를 쏘고 API는 실패로 보고하지만 ComfyUI 잡은
+   * 계속 돌아, "실패했는데 GPU는 점유 중"인 최악의 상태가 된다.
+   */
+  /** 제출 그래프에서 체크포인트·LoRA 체인을 읽어 호출자에게 돌려줄 리포트를 만든다. */
+  static describeGraph(
+    prompt: Record<string, unknown>,
+    warnings: string[] = []
+  ): { checkpoint?: string; appliedLoras: Array<{ name: string; strength: number }>; warnings?: string[] } {
+    const appliedLoras: Array<{ name: string; strength: number }> = [];
+    let checkpoint: string | undefined;
+    for (const node of Object.values(prompt)) {
+      const n = node as { class_type?: string; inputs?: Record<string, unknown> };
+      const inputs = n?.inputs;
+      if (!inputs) continue;
+      if (!checkpoint && n.class_type === "CheckpointLoaderSimple" && typeof inputs.ckpt_name === "string") {
+        checkpoint = inputs.ckpt_name;
+      } else if (!checkpoint && n.class_type === "UNETLoader" && typeof inputs.unet_name === "string") {
+        checkpoint = inputs.unet_name;
+      } else if (
+        typeof n.class_type === "string" &&
+        n.class_type.startsWith("LoraLoader") &&
+        typeof inputs.lora_name === "string"
+      ) {
+        appliedLoras.push({
+          name: inputs.lora_name,
+          strength: typeof inputs.strength_model === "number" ? inputs.strength_model : 1,
+        });
+      }
+    }
+    return {
+      ...(checkpoint ? { checkpoint } : {}),
+      appliedLoras,
+      ...(warnings.length > 0 ? { warnings: [...warnings] } : {}),
+    };
+  }
+
+  static timeoutBudget(filename: string): { proxyMs: number; fetchMs: number; pollMs: number } {
+    const isVideo = /\.(mp4|webm|mkv|mov|gif)$/i.test(filename);
+    return isVideo
+      ? { proxyMs: 3_600_000, fetchMs: 3_900_000, pollMs: 3_600_000 }
+      : { proxyMs: 600_000, fetchMs: 1_800_000, pollMs: 120_000 };
+  }
+
   private async downloadResults(
     history: Record<string, unknown>,
     filename: string,
@@ -854,20 +934,28 @@ export class ComfyUIClient {
       console.warn(`[comfyui-debug] Failed to dump prompt: ${(e as Error).message}`);
     }
 
+    // 제출 직전 그래프가 유일한 진실이다. base/dynamic/couple/raw 어느 경로로 들어왔든
+    // 여기서 읽으면 실제 적용분이 나온다.
+    const graphReport = ComfyUIClient.describeGraph(prompt, this.lastBuildWarnings);
+
     const useGpuManager = await this.gpuManagerAvailable();
+    const budget = ComfyUIClient.timeoutBudget(filename);
+    const withReport = (r: GenerateResult): GenerateResult =>
+      r.success ? { ...r, ...graphReport } : r;
 
     if (useGpuManager) {
       // No retry (attempts: 1) — GPU Manager has its own queue and error handling.
       // Retrying would duplicate the request in the queue.
-      // Generous timeout (30 min) to account for queue wait + processing time.
+      // 프록시 데드라인(payload.timeout)과 그것을 감싸는 fetch 타임아웃은 반드시
+      // 쌍으로 움직여야 한다. 하나만 올리면 벽의 위치만 옮기는 셈이다.
       const res = await this.fetchWithRetry(
         `${this.gpuManagerUrl}/comfyui/generate`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt, timeout: 600_000 }),
+          body: JSON.stringify({ prompt, timeout: budget.proxyMs }),
         },
-        { attempts: 1, timeoutMs: 1_800_000 },
+        { attempts: 1, timeoutMs: budget.fetchMs },
       );
 
       if (!res.ok) {
@@ -876,13 +964,15 @@ export class ComfyUIClient {
       }
 
       const data = await res.json() as { prompt_id: string; history: Record<string, unknown> };
-      return this.downloadResults(data.history, filename, sessionDir, extraFiles);
+      return withReport(await this.downloadResults(data.history, filename, sessionDir, extraFiles));
     } else {
       const handle = await this.submitToQueue(prompt);
       if ("error" in handle) {
         return { success: false, error: handle.error };
       }
-      return this.waitAndDownload(handle.promptId, filename, sessionDir, extraFiles);
+      return withReport(
+        await this.waitAndDownload(handle.promptId, filename, sessionDir, extraFiles, budget.pollMs)
+      );
     }
   }
 
@@ -904,7 +994,14 @@ export class ComfyUIClient {
   async generate(req: GenerateRequest): Promise<GenerateResult> {
     try {
       const prompt = await this.buildPrompt(req.workflow, req.params, req.sessionDir, req.loras, req.loras_left, req.loras_right) as Record<string, unknown>;
-      return this.submitAndWait(prompt, req.filename, req.sessionDir, req.extraFiles);
+      const result = await this.submitAndWait(prompt, req.filename, req.sessionDir, req.extraFiles);
+      // 요청한 dynamic LoRA 중 그래프에 남지 않은 것(파일 없음 등으로 pruning)을 드러낸다.
+      if (result.success && req.loras?.length) {
+        const applied = new Set((result.appliedLoras || []).map(l => l.name));
+        const missing = req.loras.map(l => l.name).filter(n => !applied.has(n));
+        if (missing.length > 0) result.missingLoras = missing;
+      }
+      return result;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return { success: false, error: message };

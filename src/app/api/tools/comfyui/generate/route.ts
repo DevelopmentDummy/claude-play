@@ -237,5 +237,10 @@ export async function POST(req: Request) {
     status: "success",
     path: result.filepath || resultPath,
     ...(result.extraPaths ? { extraPaths: result.extraPaths } : {}),
+    // 실제 제출 그래프에서 읽은 값 — 호출자(MCP/AI)가 의도가 아닌 현실을 보게 한다.
+    ...(result.checkpoint ? { checkpoint: result.checkpoint } : {}),
+    ...(result.appliedLoras ? { appliedLoras: result.appliedLoras } : {}),
+    ...(result.missingLoras ? { missingLoras: result.missingLoras } : {}),
+    ...(result.warnings ? { warnings: result.warnings } : {}),
   });
 }

@@ -727,10 +727,14 @@ server.registerTool(
       const filename = deduplicateImageFilename(pickString(input.filename) || `comfyui_${Date.now()}.png`);
       const params = { ...(input.params || {}) };
 
-      if (explicitPrompt) {
-        params.prompt = buildComfyPrompt(explicitPrompt, useDefaults);
-      } else if (typeof params.prompt === "string") {
+      // `params.prompt`가 명시되면 그것이 이긴다. top-level `input.prompt`는
+      // prompt-only 레거시 모드를 위한 폴백이다.
+      // (과거엔 반대였다 — top-level이 params.prompt를 덮어써서, 워크플로 패키지에
+      //  제대로 써 넣은 프롬프트가 스키마 채우기용 더미 한 줄로 조용히 교체됐다.)
+      if (typeof params.prompt === "string" && params.prompt.trim()) {
         params.prompt = buildComfyPrompt(params.prompt, useDefaults);
+      } else if (explicitPrompt) {
+        params.prompt = buildComfyPrompt(explicitPrompt, useDefaults);
       }
 
       if (!params.negative_prompt) {
@@ -741,9 +745,10 @@ server.registerTool(
         params.seed = input.seed;
       }
 
-      if (!input.raw && (!params.prompt || typeof params.prompt !== "string" || !params.prompt.trim())) {
-        throw new Error("Missing prompt. Provide input.prompt or params.prompt for workflow/template mode.");
-      }
+      // 프롬프트 필수 여부는 워크플로 패키지마다 다르다 (anima-mixed-scene은
+      // subject_tags/scene_prompt를 쓰고 `prompt` 파라미터가 없다). 여기서 일괄로
+      // 막지 말고 서버 Phase-1 `buildPrompt` → `validateParams`가 판정하게 둔다
+      // (누락 시 400 "Parameter validation failed: Required parameter ...").
 
       const payload = withPersona(
         input.raw

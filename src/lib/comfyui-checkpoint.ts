@@ -24,6 +24,96 @@ export function readDirConfig(dir: string): { checkpoint?: string; baseLoras?: A
   return {};
 }
 
+/** Raw comfyui-config.json contents for a session/persona dir (null if absent/invalid) */
+export function readDirConfigRaw(dir: string): Record<string, unknown> | null {
+  const configPath = path.join(dir, "comfyui-config.json");
+  if (!fs.existsSync(configPath)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(configPath, "utf-8")) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+/** Checkpoint/UNET name actually wired into a built graph */
+export function findActiveCheckpointName(prompt: Record<string, unknown>): string | undefined {
+  for (const node of Object.values(prompt)) {
+    const n = node as { class_type?: string; inputs?: Record<string, unknown> };
+    if (n?.class_type === "CheckpointLoaderSimple" && typeof n.inputs?.ckpt_name === "string") {
+      return n.inputs.ckpt_name;
+    }
+    if (n?.class_type === "UNETLoader" && typeof n.inputs?.unet_name === "string") {
+      return n.inputs.unet_name;
+    }
+  }
+  return undefined;
+}
+
+type BaseLoraList = Array<{ name: string; strength: number }>;
+
+/**
+ * baseLoras를 그래프의 체크포인트 family에 맞춰 고른다.
+ *
+ * 배경: `active_preset`은 전역 스위치 하나뿐이라, Illustrious 프리셋이 활성인 채로
+ * Anima 워크플로를 돌리면 Illustrious 전용 base LoRA가 Anima UNET 위에 얹혔다
+ * (2026-08-17 실측 — 파이프라인이 달라 결과가 조용히 오염된다).
+ *
+ * 규칙:
+ *  - 같은 config 안에 그래프 family와 일치하는 프리셋이 있으면 그걸 쓴다.
+ *  - 없고, 활성 프리셋의 family가 그래프와 **명시적으로 다르면** 주입을 건너뛰고 경고한다.
+ *  - 한쪽이라도 family를 모르면(레지스트리 미등록 등) 기존 동작을 유지한다 —
+ *    unknown을 불일치로 처리하면 미등록 체크포인트에서 base가 전부 사라진다.
+ */
+export function selectBaseLorasForFamily(
+  config: Record<string, unknown> | null,
+  graphFamily: string | undefined,
+  registry: Record<string, Record<string, string>>
+): { baseLoras: BaseLoraList; presetName?: string; warning?: string } {
+  if (!config) return { baseLoras: [] };
+  const presets = config.presets as Record<string, Record<string, unknown>> | undefined;
+  const activeName = typeof config.active_preset === "string" ? config.active_preset : undefined;
+  const activePreset = activeName ? presets?.[activeName] : undefined;
+
+  const listOf = (p: Record<string, unknown> | undefined): BaseLoraList => {
+    const list = p?.baseLoras ?? (config as Record<string, unknown>).baseLoras;
+    return Array.isArray(list) ? (list as BaseLoraList) : [];
+  };
+  const familyOf = (p: Record<string, unknown> | undefined): string | undefined => {
+    const ckpt = typeof p?.checkpoint === "string" ? p.checkpoint : undefined;
+    return ckpt ? registry[ckpt]?.family : undefined;
+  };
+
+  const activeFamily = familyOf(activePreset);
+  if (!graphFamily || !activeFamily || activeFamily === graphFamily) {
+    return { baseLoras: listOf(activePreset), presetName: activeName };
+  }
+
+  // 활성 프리셋이 family 불일치 — 같은 config에서 맞는 프리셋을 찾는다.
+  for (const [name, preset] of Object.entries(presets || {})) {
+    if (name === activeName) continue;
+    if (familyOf(preset) === graphFamily) {
+      const list = listOf(preset);
+      if (list.length > 0) {
+        return {
+          baseLoras: list,
+          presetName: name,
+          warning:
+            `active_preset '${activeName}'(${activeFamily})는 이 워크플로의 family '${graphFamily}'와 달라 ` +
+            `'${name}' 프리셋의 baseLoras를 대신 사용했습니다.`,
+        };
+      }
+    }
+  }
+
+  return {
+    baseLoras: [],
+    warning:
+      `active_preset '${activeName}'의 baseLoras는 family '${activeFamily}'용이라 ` +
+      `family '${graphFamily}' 워크플로에 주입하지 않았습니다. ` +
+      `comfyui-config.json에 '${graphFamily}' 계열 프리셋을 추가하세요.`,
+  };
+}
+
 /** Resolve the best available checkpoint name */
 export function resolveCheckpoint(availableCheckpoints: string[], checkpointName: string, sessionDir?: string): string {
   // Priority: 1) comfyui-config.json in session/persona dir, 2) global comfyui-config.json,
