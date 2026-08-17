@@ -37,6 +37,20 @@ function copyRecursive(src: string, dest: string) {
   }
 }
 
+/** 복제본임을 알 수 있도록 persona.md 첫 줄(표시 이름)에 마커를 덧붙인다. */
+function markAsClone(destDir: string) {
+  const personaMd = path.join(destDir, "persona.md");
+  if (!fs.existsSync(personaMd)) return;
+  const content = fs.readFileSync(personaMd, "utf-8");
+  const nlIndex = content.indexOf("\n");
+  const rawFirst = nlIndex === -1 ? content : content.slice(0, nlIndex);
+  const rest = nlIndex === -1 ? "" : content.slice(nlIndex);
+  const eol = rawFirst.endsWith("\r") ? "\r" : "";
+  const firstLine = eol ? rawFirst.slice(0, -1) : rawFirst;
+  if (!firstLine.trim()) return; // 빈 첫 줄이면 폴더명이 표시 이름 — 손대지 않음
+  fs.writeFileSync(personaMd, `${firstLine.trimEnd()} (복제본)${eol}${rest}`, "utf-8");
+}
+
 /** POST: clone persona to new folder name */
 export async function POST(
   req: NextRequest,
@@ -68,6 +82,7 @@ export async function POST(
 
   try {
     copyRecursive(srcDir, destDir);
+    markAsClone(destDir);
     return NextResponse.json({ ok: true, name: trimmed });
   } catch (err) {
     // Cleanup on failure
