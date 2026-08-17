@@ -11,10 +11,10 @@ import { writeSessionImage } from "./image-fs";
  * (`codex exec`) which is authenticated via a ChatGPT subscription. Codex's
  * built-in `image_gen` tool renders the image (no OPENAI_API_KEY required — it
  * is covered by the subscription) and saves it under
- * `$CODEX_HOME/generated_images/<conversationId>/` (filename is `call_<toolCallId>.png`
- * on codex-cli 0.144.x, `ig_<id>.png` on older builds). We snapshot that
- * directory before the run, then harvest the newly created file and copy it into
- * the session's `images/` directory.
+ * `$CODEX_HOME/generated_images/<conversationId>/`. The filename scheme has
+ * changed with nearly every codex-cli release (see `IG_OUTPUT_RE` below), so we
+ * snapshot that directory before the run and harvest whatever .png appeared
+ * since, then copy it into the session's `images/` directory.
  *
  * Trade-offs vs the direct API (see callers): slower (a full agent turn) and
  * counts against the ChatGPT plan's rate limits rather than per-call billing.
