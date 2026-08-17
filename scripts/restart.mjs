@@ -253,6 +253,20 @@ function spawnNewServer(mode) {
   const outFd = fs.openSync(NEW_SERVER_LOG, "a");
   const errFd = fs.openSync(NEW_SERVER_LOG, "a");
 
+  // ⚠️ NODE_ENV는 반드시 mode에 맞춰 강제한다.
+  //
+  // `npm run start`는 `set NODE_ENV=production`으로 시작하는데, 그 값이 서버 →
+  // MCP 자식 → restart 오케스트레이터 → 새 서버로 계속 상속된다. 그래서 한 번
+  // 프로덕션으로 띄운 뒤에는 `npm run dev`로 재시작해도 `server.ts`의
+  // `const dev = NODE_ENV !== "production"`이 false가 되어 **프로덕션 모드로 뜬다**.
+  // 증상: Next가 hot reload를 하지 않고 빌드된 .next만 서빙 → `src/` 수정이
+  // 재빌드 전까지 반영되지 않는다("스테일 캐시"로 오진하기 쉽다).
+  // `.env*` 유래 키를 걷어내는 spawnEnv()는 NODE_ENV를 건드리지 않으므로 여기서 처리한다.
+  const childEnv = spawnEnv({ NODE_OPTIONS: "" });
+  if (script === "dev") delete childEnv.NODE_ENV;
+  else childEnv.NODE_ENV = "production";
+  log(`spawn env NODE_ENV=${childEnv.NODE_ENV ?? "(unset — dev)"}`);
+
   // On Windows, npm.cmd is a batch wrapper that requires cmd.exe. Use `shell: true`
   // so spawn invokes it through cmd.exe and inherits proper handle propagation.
   // Wrap with `cmd /c start /B` to break PPID tree (parent orchestrator may also
@@ -268,7 +282,7 @@ function spawnNewServer(mode) {
       // and /c exits cleanly once npm finishes.
       child = spawn("cmd", ["/c", "start", "/B", "cmd", "/c", "npm.cmd", "run", script], {
         cwd: ROOT,
-        env: spawnEnv({ NODE_OPTIONS: "" }),
+        env: childEnv,
         detached: true,
         stdio: ["ignore", outFd, errFd],
         windowsHide: true,
@@ -276,7 +290,7 @@ function spawnNewServer(mode) {
     } else {
       child = spawn("npm", ["run", script], {
         cwd: ROOT,
-        env: spawnEnv({ NODE_OPTIONS: "" }),
+        env: childEnv,
         detached: true,
         stdio: ["ignore", outFd, errFd],
         windowsHide: true,
