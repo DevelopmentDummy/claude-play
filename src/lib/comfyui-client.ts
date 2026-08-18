@@ -539,15 +539,19 @@ export class ComfyUIClient {
     }
 
     // 4e: seed_randomize
+    // 필드명을 "seed"로 하드코딩하면 안 된다 — MiniMax H3는 RandomNoise 노드의
+    // `noise_seed`를 쓰는데, 그 경우 -1(랜덤 요청)이 그대로 제출되어 ComfyUI가
+    // `value_smaller_than_min`으로 400을 뱉는다(= seed를 명시하지 않은 모든 H3 호출 실패).
+    // 파라미터 정의의 field를 그대로 읽되, seed 계열 필드만 대상으로 한다.
     if (features.seed_randomize) {
       for (const [, paramDef] of Object.entries(pkg.meta.params)) {
-        if (paramDef.field === "seed") {
-          const node = prompt[paramDef.node] as Record<string, unknown> | undefined;
-          if (!node) continue;
-          const inputs = node.inputs as Record<string, unknown>;
-          if (inputs && inputs.seed === -1) {
-            inputs.seed = Math.floor(Math.random() * 2 ** 32);
-          }
+        const field = paramDef.field;
+        if (!field || !/seed/i.test(field)) continue;
+        const node = prompt[paramDef.node] as Record<string, unknown> | undefined;
+        if (!node) continue;
+        const inputs = node.inputs as Record<string, unknown>;
+        if (inputs && inputs[field] === -1) {
+          inputs[field] = Math.floor(Math.random() * 2 ** 32);
         }
       }
     }
