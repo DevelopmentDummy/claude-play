@@ -184,6 +184,7 @@ Node의 전역 `fetch`(undici)는 `headersTimeout` 기본값이 **300초 고정*
 - **영향받는 홉 3개** (전부 `node:http`로 전환됨 — `src/lib/long-http.ts`): ① `comfyui-client`의 GPU Manager `/comfyui/generate` (렌더 완료까지 붙잡는 블로킹 프록시) ② `external-mcp/registry.ts`의 `bridgeFetch` ③ `src/mcp/claude-play-mcp-server.mjs`의 `requestJson`.
 - **왜 조용했나**: 이미지는 300초 안에 끝나서 안 걸렸고, 영상(12~40분)은 그동안 8188 직결 스크립트로만 돌렸다. `timeoutBudget()`이 88881ae에서 예산을 60분으로 올렸지만 그 값은 GPU Manager 경로에서 **죽은 코드**였다 — 벽은 undici 쪽에 있었다. 내부 MCP `async` 경로에서는 렌더가 멀쩡히 도는 중에 "생성 실패" 이벤트가 세션에 꽂히는 **가짜 실패**로 나타났다.
 - **규칙**: 수 분 이상 걸릴 수 있는 로컬 요청은 `longRequest()`를 쓴다. 새 홉을 추가할 때 전역 `fetch`를 그대로 복사하지 말 것.
+- **동반 함정 (같은 날 실경로 스모크에서 발견)**: `seed_randomize` 기능은 파라미터 정의의 `field`를 읽어 seed 계열 필드만 랜덤화한다. 예전에는 `field === "seed"`로 하드코딩돼 있어, RandomNoise 노드의 `noise_seed`를 쓰는 MiniMax H3 패키지는 기본값 -1이 그대로 제출되어 `value_smaller_than_min`(400)으로 **seed 미지정 호출이 전부 실패**했다. wan/zimage 계열은 resolver.mjs가 -1을 자체 랜덤화해 무증상이었다 — 새 영상 패키지를 추가하면 seed 경로가 코어와 resolver 중 어디에 있는지 확인할 것.
 - **대기 예산 판정**: `ComfyUIClient.timeoutBudget(filename, prompt)` — 제출 그래프에 영상 출력 노드(`SaveVideo`/`CreateVideo`/`SaveAnimatedWEBP`/`VHS_*`)가 있으면 영상 예산(60분), 없으면 이미지 예산. 확장자는 fallback이다 (SaveAnimatedWEBP 영상이 `.webp`라 확장자만 믿으면 이미지 예산에 걸린다).
 
 ## 6. 작업 방법론
