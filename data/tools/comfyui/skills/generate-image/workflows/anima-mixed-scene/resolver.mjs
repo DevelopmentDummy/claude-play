@@ -149,6 +149,44 @@ export default function resolve(workflow, params, context) {
       systemPrefix:
         "You are an illustrator composing a polished anime image with elegant shading, clean structure, and strong visual appeal. <Prompt Start> ",
     },
+    anima_turbo: {
+      // circlestone-labs 공식 anima-turbo-v1.0 (2026-07-08 배포). 증류판.
+      // 제작자 권장: CFG 1 / 8~12 step. cat_tower 기본값(cfg 3.8 / 36step)으로 돌리면 망가진다.
+      // ⚠️ cfg 1.0 구간에서는 negative prompt가 사실상 무효다 (wondermix와 동일).
+      matches: ["anima-turbo-v1.0.safetensors", "anima-turbo", "anima_turbo"],
+      qualityMap: {
+        plain: "best quality",
+        standard: "masterpiece, best quality, amazing quality, aesthetic",
+        polished: "masterpiece, best quality, amazing quality, very aesthetic, absurdres, high detail",
+      },
+      sampler: "euler",
+      scheduler: "normal",
+      cfgByPreset: { plain: 1.0, standard: 1.0, polished: 1.2 },
+      shiftByPreset: { plain: 2.9, standard: 3.0, polished: 3.1 },
+      stepsByPreset: { plain: 8, standard: 10, polished: 12 },
+      extraMeta: "",
+      systemPrefix:
+        "You are an illustrator composing a polished anime image with elegant shading, clean structure, and strong visual appeal. <Prompt Start> ",
+    },
+    anima_aesthetic: {
+      // circlestone-labs 공식 anima-aesthetic-v1.1 (2026-07-13). 미학 파인튜닝.
+      // ⚠️ Aesthetic 계열에는 score_* 태그를 넣지 마라 (과최적화 — 제작자 명시).
+      // 기본 샘플러 er_sde(선예)가 공식 권장, euler_ancestral은 부드러운 대안.
+      matches: ["anima-aesthetic-v1.1.safetensors", "anima-aesthetic", "anima_aesthetic"],
+      qualityMap: {
+        plain: "best quality",
+        standard: "masterpiece, best quality, aesthetic",
+        polished: "masterpiece, best quality, very aesthetic, absurdres, high detail",
+      },
+      sampler: "er_sde",
+      scheduler: "normal",
+      cfgByPreset: { plain: 3.6, standard: 4.2, polished: 4.5 },
+      shiftByPreset: { plain: 2.9, standard: 3.0, polished: 3.1 },
+      stepsByPreset: { plain: 28, standard: 34, polished: 40 },
+      extraMeta: "",
+      systemPrefix:
+        "You are an illustrator composing a polished anime image with elegant shading, clean structure, and strong visual appeal. <Prompt Start> ",
+    },
   };
 
   const clean = (value) => String(value ?? "").trim();

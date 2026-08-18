@@ -149,6 +149,16 @@
     "rIllustrmix_realV14.safetensors": {
       "loader": "checkpoint_simple",
       "family": "illustrious"
+    },
+    "anima-turbo-v1.0.safetensors": {
+      "loader": "unet_only",
+      "family": "anima",
+      "notes": "circlestone-labs 공식 Anima Turbo v1.0 (2026-07-08, 3.90GB fp16). 증류판 — CFG 1 / 8~12 step. resolver 프로파일 anima_turbo 등록. cfg 1 구간에서 negative prompt 무효."
+    },
+    "anima-aesthetic-v1.1.safetensors": {
+      "loader": "unet_only",
+      "family": "anima",
+      "notes": "circlestone-labs 공식 Anima Aesthetic v1.1 (2026-07-13, 3.90GB fp16). 미학 파인튜닝 최신. score_* 태그 사용 금지(과최적화). resolver 프로파일 anima_aesthetic 등록."
     }
   }
 }
