@@ -151,6 +151,13 @@ export const EXTERNAL_TOOLS: ExternalToolDef[] = [
       // 판정한다 — MCP 클라이언트의 유휴 타임아웃(HTTP 기본 5분)에 걸리지 않기 위한 경로다.
       if (input.async === true) {
         const predicted = path.join(outputDir, filename);
+        // 이전 실행이 남긴 에러 마커를 먼저 지운다 — 남아 있으면 이번 렌더가 성공해도
+        // 폴링하는 호출자가 실패로 오판한다. 산출물 자체는 지우지 않는다(실패 시 손실 방지).
+        try {
+          fs.rmSync(`${predicted}.error.txt`, { force: true });
+        } catch {
+          /* 무시 */
+        }
         bridgeFetch("POST", "/api/tools/comfyui/generate", payload).catch((err: unknown) => {
           const message = err instanceof Error ? err.message : String(err);
           console.error(`[external-mcp] async comfyui_generate failed for ${filename}: ${message}`);
