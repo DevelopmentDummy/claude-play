@@ -8,6 +8,7 @@ import {
 } from "./workflow-resolver";
 import { getDataDir } from "./data-dir";
 import { getGpuManagerUrl } from "./endpoints";
+import { longRequest } from "./long-http";
 import {
   pruneUnavailableLoRAs,
   collectActiveLoRAs,
@@ -827,8 +828,34 @@ export class ComfyUIClient {
     };
   }
 
-  static timeoutBudget(filename: string): { proxyMs: number; fetchMs: number; pollMs: number } {
-    const isVideo = /\.(mp4|webm|mkv|mov|gif)$/i.test(filename);
+  /** 그래프에 영상 출력 노드가 있는지 — 확장자보다 신뢰할 수 있는 판정 기준. */
+  private static isVideoGraph(prompt?: Record<string, unknown>): boolean {
+    if (!prompt) return false;
+    for (const node of Object.values(prompt)) {
+      const cls = (node as { class_type?: string })?.class_type;
+      if (typeof cls !== "string") continue;
+      if (
+        cls === "SaveVideo" ||
+        cls === "CreateVideo" ||
+        cls === "SaveAnimatedWEBP" ||
+        cls === "SaveAnimatedPNG" ||
+        cls.startsWith("VHS_")
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  static timeoutBudget(
+    filename: string,
+    prompt?: Record<string, unknown>
+  ): { proxyMs: number; fetchMs: number; pollMs: number } {
+    // 그래프 판정이 1차. 확장자는 그래프를 모르는 호출 경로를 위한 fallback이다.
+    // 확장자만 믿으면 SaveAnimatedWEBP(.webp) 영상이 이미지 예산(poll 2분)을 받아
+    // 반드시 타임아웃한다 — 외부 호출자가 파일명을 어떻게 짓든 안전해야 한다.
+    const isVideo =
+      ComfyUIClient.isVideoGraph(prompt) || /\.(mp4|webm|mkv|mov|gif)$/i.test(filename);
     return isVideo
       ? { proxyMs: 3_600_000, fetchMs: 3_900_000, pollMs: 3_600_000 }
       : { proxyMs: 600_000, fetchMs: 1_800_000, pollMs: 120_000 };
@@ -939,31 +966,31 @@ export class ComfyUIClient {
     const graphReport = ComfyUIClient.describeGraph(prompt, this.lastBuildWarnings);
 
     const useGpuManager = await this.gpuManagerAvailable();
-    const budget = ComfyUIClient.timeoutBudget(filename);
+    const budget = ComfyUIClient.timeoutBudget(filename, prompt);
     const withReport = (r: GenerateResult): GenerateResult =>
       r.success ? { ...r, ...graphReport } : r;
 
     if (useGpuManager) {
-      // No retry (attempts: 1) — GPU Manager has its own queue and error handling.
-      // Retrying would duplicate the request in the queue.
-      // 프록시 데드라인(payload.timeout)과 그것을 감싸는 fetch 타임아웃은 반드시
+      // 재시도 없음 — GPU Manager가 자체 큐/에러 처리를 가지므로 재전송하면 큐에 중복된다.
+      // 프록시 데드라인(payload.timeout)과 그것을 감싸는 클라이언트 타임아웃은 반드시
       // 쌍으로 움직여야 한다. 하나만 올리면 벽의 위치만 옮기는 셈이다.
-      const res = await this.fetchWithRetry(
-        `${this.gpuManagerUrl}/comfyui/generate`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt, timeout: budget.proxyMs }),
-        },
-        { attempts: 1, timeoutMs: budget.fetchMs },
-      );
+      //
+      // ⚠️ 여기서 전역 fetch를 쓰면 안 된다. 이 엔드포인트는 렌더가 끝나야 응답 헤더를
+      //    보내는 블로킹 프록시인데, undici의 headersTimeout(300초)은 AbortSignal
+      //    타임아웃으로 연장되지 않아 예산과 무관하게 약 305초에 UND_ERR_HEADERS_TIMEOUT으로
+      //    끊긴다(= 영상은 무조건 실패, GPU는 계속 점유). node:http 경로로 우회한다.
+      const res = await longRequest(`${this.gpuManagerUrl}/comfyui/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt, timeout: budget.proxyMs }),
+        timeoutMs: budget.fetchMs,
+      });
 
       if (!res.ok) {
-        const errText = await res.text();
-        return { success: false, error: `GPU Manager error: ${errText}` };
+        return { success: false, error: `GPU Manager error: ${res.text}` };
       }
 
-      const data = await res.json() as { prompt_id: string; history: Record<string, unknown> };
+      const data = JSON.parse(res.text) as { prompt_id: string; history: Record<string, unknown> };
       return withReport(await this.downloadResults(data.history, filename, sessionDir, extraFiles));
     } else {
       const handle = await this.submitToQueue(prompt);

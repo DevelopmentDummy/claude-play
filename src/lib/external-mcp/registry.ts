@@ -4,6 +4,7 @@ import * as z from "zod/v4";
 import { getApiBase } from "@/lib/endpoints";
 import { getInternalToken } from "@/lib/auth";
 import { getDataDir } from "@/lib/data-dir";
+import { longRequest } from "@/lib/long-http";
 
 /**
  * 외부 MCP(/mcp/external)에 노출하는 툴 레지스트리.
@@ -20,8 +21,16 @@ export interface ExternalToolDef {
 const COMFY_DEFAULT_NEGATIVE =
   "bad quality, worst quality, worst detail, sketch, censored, watermark, signature, extra fingers, mutated hands, bad anatomy";
 
+/**
+ * 브릿지 내부 API 호출.
+ *
+ * ⚠️ 전역 fetch가 아니라 node:http(longRequest)를 쓴다. 영상 워크플로는 한 판이
+ *    12~40분이고 /api/tools/comfyui/generate는 완료될 때까지 응답 헤더를 보내지 않는데,
+ *    undici는 headersTimeout 300초에서 UND_ERR_HEADERS_TIMEOUT으로 끊어버린다
+ *    (AbortSignal 타임아웃으로 연장 불가). 자세한 배경은 long-http.ts 주석 참조.
+ */
 async function bridgeFetch(method: "GET" | "POST", route: string, payload?: unknown): Promise<unknown> {
-  const res = await fetch(`${getApiBase()}${route}`, {
+  const res = await longRequest(`${getApiBase()}${route}`, {
     method,
     headers: {
       "Content-Type": "application/json",
@@ -29,7 +38,7 @@ async function bridgeFetch(method: "GET" | "POST", route: string, payload?: unkn
     },
     ...(payload !== undefined ? { body: JSON.stringify(payload) } : {}),
   });
-  const text = await res.text();
+  const text = res.text;
   let data: unknown;
   try {
     data = JSON.parse(text);
@@ -85,17 +94,30 @@ export const EXTERNAL_TOOLS: ExternalToolDef[] = [
   {
     name: "comfyui_generate",
     description:
-      "Generate an image via the bridge's ComfyUI workflow packages. Synchronous — returns when the file is written. " +
-      "The image is saved directly under outputDir (absolute path) and the absolute file path is returned. " +
-      "Use comfyui_workflow(list) to discover available workflow packages and their params.",
+      "Generate an image OR a video via the bridge's ComfyUI workflow packages. " +
+      "Synchronous by default — returns when the file is written. " +
+      "The output is saved directly under outputDir (absolute path) and the absolute file path is returned. " +
+      "Use comfyui_workflow(list) to discover available workflow packages and their params. " +
+      "VIDEO: video packages (minimax-h3-video, wan-i2v, ...) take 1-40 minutes per clip. " +
+      "Pass async=true so the call returns immediately, then poll the local filesystem for the output file " +
+      "(a <filename>.error.txt appears next to it if the render fails). " +
+      "Match the filename extension to the package output format (.mp4 for SaveVideo packages, " +
+      ".webp for SaveAnimatedWEBP packages) so the file is playable.",
     inputSchema: {
-      outputDir: z.string().describe("Absolute directory path where the generated image is saved"),
+      outputDir: z.string().describe("Absolute directory path where the generated file is saved"),
       prompt: z.string().optional().describe("Positive prompt (shorthand for params.prompt)"),
       workflow: z.string().optional().describe("Workflow package name (default: active preset's default template)"),
       negative_prompt: z.string().optional(),
       seed: z.number().int().optional(),
       params: z.record(z.string(), z.unknown()).optional().describe("Raw workflow params passed through to the package"),
-      filename: z.string().optional().describe("Filename only, e.g. foo.png (default: comfyui_<ts>.png)"),
+      filename: z.string().optional().describe("Filename only, e.g. foo.png / clip01.mp4 (default: comfyui_<ts>.png)"),
+      async: z
+        .boolean()
+        .optional()
+        .describe(
+          "Fire-and-forget mode for long renders (video). Returns { status: 'queued', path } immediately; " +
+          "the caller polls for the file. On failure a <filename>.error.txt is written next to it."
+        ),
       loras: lorasShape,
       loras_left: lorasShape,
       loras_right: lorasShape,
@@ -105,22 +127,46 @@ export const EXTERNAL_TOOLS: ExternalToolDef[] = [
       const params: Record<string, unknown> = {
         ...(input.params && typeof input.params === "object" ? (input.params as Record<string, unknown>) : {}),
       };
+      // params.prompt가 우선 — 워크플로 패키지에 맞춰 제대로 써 넣은 프롬프트가
+      // 스키마 채우기용 top-level 한 줄로 덮이는 사고를 막는다.
       const prompt = str(input.prompt);
-      if (prompt) params.prompt = prompt;
+      if (prompt && typeof params.prompt !== "string") params.prompt = prompt;
       if (!params.negative_prompt) params.negative_prompt = str(input.negative_prompt) || COMFY_DEFAULT_NEGATIVE;
       if (typeof input.seed === "number" && Number.isFinite(input.seed)) params.seed = input.seed;
-      if (typeof params.prompt !== "string" || !params.prompt.trim()) {
-        throw new Error("prompt (or params.prompt) is required");
-      }
-      return bridgeFetch("POST", "/api/tools/comfyui/generate", {
+      // prompt 필수 가드는 두지 않는다 — prompt 파라미터 자체가 없는 패키지
+      // (zimage-to-video의 base_prompt/motion_prompt, anima-mixed-scene의 subject_tags 등)를
+      // 오탐으로 막는다. 필수 여부는 서버측 validateParams가 400 + 누락 파라미터명으로 알려준다.
+      const filename = str(input.filename) || `comfyui_${Date.now()}.png`;
+      const payload = {
         outputDir,
         workflow: str(input.workflow) || readDefaultWorkflow(),
         params,
-        filename: str(input.filename) || `comfyui_${Date.now()}.png`,
+        filename,
         loras: input.loras,
         loras_left: input.loras_left,
         loras_right: input.loras_right,
-      });
+      };
+
+      // 장시간 렌더(영상)용 fire-and-forget. 호출자는 outputDir에 파일이 생기는 것으로 완료를
+      // 판정한다 — MCP 클라이언트의 유휴 타임아웃(HTTP 기본 5분)에 걸리지 않기 위한 경로다.
+      if (input.async === true) {
+        const predicted = path.join(outputDir, filename);
+        bridgeFetch("POST", "/api/tools/comfyui/generate", payload).catch((err: unknown) => {
+          const message = err instanceof Error ? err.message : String(err);
+          console.error(`[external-mcp] async comfyui_generate failed for ${filename}: ${message}`);
+          try {
+            fs.mkdirSync(path.dirname(predicted), { recursive: true });
+            fs.writeFileSync(`${predicted}.error.txt`, `${new Date().toISOString()}
+${message}
+`, "utf-8");
+          } catch {
+            /* 에러 파일 기록 실패는 무시 — 서버 로그에는 이미 남았다 */
+          }
+        });
+        return { status: "queued", path: predicted, async: true };
+      }
+
+      return bridgeFetch("POST", "/api/tools/comfyui/generate", payload);
     },
   },
   {

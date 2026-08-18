@@ -179,6 +179,13 @@ agy.exe는 Go bubbletea TUI라 Windows CONIN$/CONOUT$ 콘솔 핸들이 필요하
 - **함정**: `outputFileTracingExcludes`는 결과 필터일 뿐 **디렉터리 워크 비용을 막지 못한다** (2026-05-28 "효과 없음" 실측과 일치). 재발 검사: 빌드 후 `.next/**/*.nft.json`에서 data/ 경로 항목 수 집계 — 라우트당 수 개 이하가 정상.
 - 증상 재발 시 원인 탐색: `grep -rnE 'cwd\(\)[^\n]*data' src` + nft.json에서 어떤 라우트가 대량 항목을 갖는지 확인.
 
+### 5.10 장시간 요청에 전역 fetch를 쓰지 마라 (undici 305초 절벽)
+Node의 전역 `fetch`(undici)는 `headersTimeout` 기본값이 **300초 고정**이고, `AbortSignal`로 준 타임아웃은 이 값을 **연장하지 못한다**. 응답 헤더를 작업 완료 시점에야 보내는 블로킹 엔드포인트를 호출하면 예산을 얼마로 주든 약 305초에 `TypeError: fetch failed (UND_ERR_HEADERS_TIMEOUT)`으로 끊긴다 (2026-08-18 Node 22.19 실측: 310초 지연 응답 → 305.6초에 실패).
+- **영향받는 홉 3개** (전부 `node:http`로 전환됨 — `src/lib/long-http.ts`): ① `comfyui-client`의 GPU Manager `/comfyui/generate` (렌더 완료까지 붙잡는 블로킹 프록시) ② `external-mcp/registry.ts`의 `bridgeFetch` ③ `src/mcp/claude-play-mcp-server.mjs`의 `requestJson`.
+- **왜 조용했나**: 이미지는 300초 안에 끝나서 안 걸렸고, 영상(12~40분)은 그동안 8188 직결 스크립트로만 돌렸다. `timeoutBudget()`이 88881ae에서 예산을 60분으로 올렸지만 그 값은 GPU Manager 경로에서 **죽은 코드**였다 — 벽은 undici 쪽에 있었다. 내부 MCP `async` 경로에서는 렌더가 멀쩡히 도는 중에 "생성 실패" 이벤트가 세션에 꽂히는 **가짜 실패**로 나타났다.
+- **규칙**: 수 분 이상 걸릴 수 있는 로컬 요청은 `longRequest()`를 쓴다. 새 홉을 추가할 때 전역 `fetch`를 그대로 복사하지 말 것.
+- **대기 예산 판정**: `ComfyUIClient.timeoutBudget(filename, prompt)` — 제출 그래프에 영상 출력 노드(`SaveVideo`/`CreateVideo`/`SaveAnimatedWEBP`/`VHS_*`)가 있으면 영상 예산(60분), 없으면 이미지 예산. 확장자는 fallback이다 (SaveAnimatedWEBP 영상이 `.webp`라 확장자만 믿으면 이미지 예산에 걸린다).
+
 ## 6. 작업 방법론
 
 ### 6.1 대형 파일 분해 규율 (waves 6–12에서 무회귀 검증된 방법)
