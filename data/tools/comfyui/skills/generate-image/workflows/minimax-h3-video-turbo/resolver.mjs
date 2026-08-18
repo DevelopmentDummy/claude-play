@@ -1,4 +1,4 @@
-// minimax-h3-video resolver
+// minimax-h3-video-turbo resolver
 // first_frame / last_frame 파라미터 유무에 따라 t2v / i2v / FLF2V(키프레임 보간)를 자동 분기한다.
 //
 // last_frame을 함께 주면 클립이 그 이미지로 수렴한다(FLF2V). 시작 프레임만 주고 15초를
@@ -39,6 +39,10 @@ export default function resolve(workflow, params, context) {
     delete wf["32"];
     delete wf["33"];
   }
+
+  // Turbo LoRA 옵션
+  if (typeof params?.turbo_strength === 'number' && wf['200']) wf['200'].inputs.strength = params.turbo_strength;
+  if (typeof params?.turbo_low_vram === 'boolean' && wf['200']) wf['200'].inputs.low_vram = params.turbo_low_vram;
 
   return wf;
 }

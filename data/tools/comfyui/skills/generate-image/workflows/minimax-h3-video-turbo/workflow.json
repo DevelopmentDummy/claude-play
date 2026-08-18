@@ -10,11 +10,11 @@
     "class_type": "BasicScheduler",
     "inputs": {
       "model": [
-        "6",
+        "200",
         0
       ],
       "scheduler": "simple",
-      "steps": 20,
+      "steps": 8,
       "denoise": 1
     }
   },
@@ -80,7 +80,7 @@
     "class_type": "BasicGuider",
     "inputs": {
       "model": [
-        "6",
+        "200",
         0
       ],
       "conditioning": [
@@ -90,9 +90,10 @@
     }
   },
   "17": {
-    "class_type": "KSamplerSelect",
-    "inputs": {
-      "sampler_name": "res_multistep"
+    "class_type": "MiniMaxH3TurboSampler",
+    "inputs": {},
+    "_meta": {
+      "title": "H3 Turbo Sampler"
     }
   },
   "23": {
@@ -216,6 +217,21 @@
         "31",
         0
       ]
+    }
+  },
+  "200": {
+    "class_type": "MiniMaxH3TurboLoRA",
+    "inputs": {
+      "model": [
+        "6",
+        0
+      ],
+      "lora_name": "minimax_h3_turbo_v4_step600_ema.safetensors",
+      "strength": 1,
+      "low_vram": false
+    },
+    "_meta": {
+      "title": "H3 Turbo LoRA"
     }
   }
 }
