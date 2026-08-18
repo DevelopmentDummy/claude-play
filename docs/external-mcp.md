@@ -73,4 +73,8 @@
 - 소비자 셋업: [external-setup-guide.md](external-setup-guide.md) — 대상 프로젝트 AI 세션에게 그대로 건네면 된다.
 - 스모크: 브릿지 서버 기동 후 `node scripts/smoke-external-mcp.mjs` (tools/list + health), `--generate <절대경로>`로 실제 생성까지.
 - 2026-07-15 라이브 검증 완료: dev:lite 서버에서 tools 6종 나열, comfyui_health connected, comfyui_generate로 outputDir 직하 저장 확인.
-- 2026-08-18 영상 지원 추가(스킬팩 11종, `async` 옵션, node:http 전송). **라이브 스모크 미실행** — 실제 검증에는 ComfyUI 기동 + 수십 분 렌더가 필요하다.
+- 2026-08-18 영상 지원 추가(스킬팩 11종, `async` 옵션, node:http 전송). **라이브 스모크 통과**:
+  · `zimage-to-video` → webp 85초 / `minimax-h3-video-turbo` 5초물 → h264+aac mp4 70초
+  · **1152×640 15.08초 H3 Turbo → 1271초(21분) 완주** — 305초 절벽을 4배 넘겨 실경로 검증(GPU Manager 내부까지 포함)
+  · 합성 대조: 310초 지연 응답에 대해 전역 fetch 305.6초 실패 vs `longRequest` 310.0초 성공
+  · 워크플로 목록에 영상 패키지 5종 노출 + `get` 조회, async 실패 시 `.error.txt` 전달 동작 확인

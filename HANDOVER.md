@@ -48,7 +48,7 @@
 
 - 커밋 6개: undici 305초 절벽(long-http.ts 신설 + 3홉 전환) / 내부 MCP requestJson 전환 / 외부 스킬팩 6→11종 / async 에러 마커 정리 / `seed_randomize` noise_seed 버그 / playbook §5.10.
 - **머지 범위 주의**: 이 브랜치는 `fix/comfyui-lora-family-visibility`에서 분기했다. `git log main..HEAD` 기준 부모 브랜치의 미머지 커밋 4개(88881ae, 7170264, 472ea50, 49bd4c6)가 함께 들어간다.
-- 라이브 검증 완료: 외부 MCP async 영상 2종(zimage-to-video webp 85초, H3 Turbo mp4+aac 70초), 셋업 스크립트 11종 복사, 영상 패키지 5종 노출, longRequest 310초 통과(fetch 대조군 305.6초 실패).
+- 라이브 검증 완료: 외부 MCP async 영상 3판 — zimage-to-video webp 85초 / H3 Turbo 5초물 mp4+aac 70초 / **H3 Turbo 1152×640 15초물 1271초(21분) 완주**(305초 절벽 실경로 통과). 셋업 스크립트 11종 복사, 영상 패키지 5종 노출, longRequest 310초 통과(fetch 대조군 305.6초 실패).
 - **머지 전 필요**: `npm run build` (프로덕션 서버가 `.next/`를 서빙 중이면 금지), pre-merge-checklist.
 - **머지 후 필요**: 기존 세션은 내부 MCP 수정 반영에 **재-open**, 프로덕션 서버는 재시작.
 
