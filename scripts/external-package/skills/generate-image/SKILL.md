@@ -8,6 +8,8 @@ description: claude-play-bridge MCP 서버로 이미지를 생성한다. 기본 
 같은 PC에서 실행 중인 Claude Play 브릿지의 이미지 생성 기능을 MCP로 사용한다.
 브릿지 서버가 켜져 있어야 한다 (기본 포트 {{PORT}}).
 
+**영상(동영상/클립)을 만들 때는 이 스킬이 아니라 `generate-video` 스킬을 쓴다.**
+
 ## 도구 요약
 
 | 도구 | 용도 |

@@ -20,7 +20,7 @@
 
 | 툴 | 동작 | 비고 |
 |---|---|---|
-| `comfyui_generate` | 워크플로 패키지 기반 생성 (동기) | `outputDir` 필수. `workflow` 생략 시 활성 프리셋 기본 템플릿 |
+| `comfyui_generate` | 워크플로 패키지 기반 **이미지·영상** 생성 (기본 동기) | `outputDir` 필수. `workflow` 생략 시 활성 프리셋 기본 템플릿. `async: true`면 즉시 `{status:"queued", path}` 반환 후 파일로 완료 판정(영상용) |
 | `generate_image_openai` | GPT 이미지 (Codex 구독 백엔드 기본) | 완료 대기 후 응답 |
 | `generate_image_gemini` | Gemini 이미지 | 완료 대기 후 응답 |
 | `comfyui_health` | ComfyUI/GPU Manager 상태 | `/api/tools/comfyui/health` 프록시 |
@@ -31,7 +31,17 @@
 
 - 모든 생성 툴은 `outputDir`(절대경로) 필수. 결과 파일은 **outputDir 직하**에 저장되고 응답 `path`는 절대경로.
 - 내부 클라이언트는 `{dir}/images/`에 쓰므로, 외부 분기는 완료 후 `src/lib/external-mcp/flatten.ts`로 직하 이동 + 빈 `images/` 정리.
-- 세션 전용 개념(`$IMAGE:...$` 토큰, targetScope, async 폴링)은 외부 응답에 없다.
+- 세션 전용 개념(`$IMAGE:...$` 토큰, targetScope)은 외부 응답에 없다.
+- `async: true`(영상용)는 예외적으로 지원한다. 응답은 즉시 `{status:"queued", path}`이고, 완료 판정은 **호출자가 로컬 파일을 확인**해서 한다. 실패하면 `<path>.error.txt`에 사유가 기록된다 — 외부 소비자는 세션 이벤트 채널이 없으므로 실패를 파일로 전달한다.
+
+### 장시간 렌더 (영상)
+
+영상 워크플로는 한 판이 12~40분이다. 이 경로에는 두 종류의 벽이 있다.
+
+1. **서버 내부 홉** — `registry.ts`의 `bridgeFetch`와 `comfyui-client`의 GPU Manager 호출은 전역 `fetch`를 쓰면 안 된다. undici의 `headersTimeout`(300초 고정, AbortSignal로 연장 불가) 때문에 예산과 무관하게 약 305초에 `UND_ERR_HEADERS_TIMEOUT`으로 끊긴다. 두 곳 모두 `src/lib/long-http.ts`(node:http)를 쓴다.
+2. **소비자 클라이언트** — Claude Code의 HTTP MCP 유휴 타임아웃(기본 5분)은 `.mcp.json`의 `timeout`으로 늘릴 수 없다. 그래서 영상은 `async: true` + 파일 폴링이 정답이고, `generate-video` 스킬이 그 절차를 담고 있다.
+
+대기 예산 자체는 `ComfyUIClient.timeoutBudget(filename, prompt)`가 정한다. **제출 그래프에 영상 출력 노드(`SaveVideo`/`CreateVideo`/`SaveAnimatedWEBP`/`VHS_*`)가 있으면 영상 예산**(프록시·폴 60분), 없으면 이미지 예산. 확장자는 그래프를 모르는 호출 경로를 위한 fallback이다.
 
 ## 구현 구조
 
@@ -63,3 +73,4 @@
 - 소비자 셋업: [external-setup-guide.md](external-setup-guide.md) — 대상 프로젝트 AI 세션에게 그대로 건네면 된다.
 - 스모크: 브릿지 서버 기동 후 `node scripts/smoke-external-mcp.mjs` (tools/list + health), `--generate <절대경로>`로 실제 생성까지.
 - 2026-07-15 라이브 검증 완료: dev:lite 서버에서 tools 6종 나열, comfyui_health connected, comfyui_generate로 outputDir 직하 저장 확인.
+- 2026-08-18 영상 지원 추가(스킬팩 11종, `async` 옵션, node:http 전송). **라이브 스모크 미실행** — 실제 검증에는 ComfyUI 기동 + 수십 분 렌더가 필요하다.

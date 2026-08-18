@@ -57,20 +57,53 @@ mcpConfig.mcpServers["claude-play-bridge"] = {
   type: "http",
   url: `http://127.0.0.1:${port}/mcp/external`,
   headers: { "x-external-token": token },
+  // 영상 워크플로는 한 판이 수십 분이다. 동기 호출용 상한을 넉넉히 준다.
+  // (클라이언트 유휴 타임아웃은 이 값으로 늘릴 수 없으므로, 장시간 렌더는
+  //  generate-video 스킬이 안내하는 async + 파일 폴링으로 처리한다.)
+  timeout: 3_600_000,
 };
 fs.writeFileSync(mcpJsonPath, JSON.stringify(mcpConfig, null, 2) + "\n", "utf-8");
 console.log(`✓ .mcp.json: claude-play-bridge → http://127.0.0.1:${port}/mcp/external`);
 
 // ── 스킬 복사 ──
+// 로컬 파이프라인 스킬(ComfyUI 8188 직결)에 붙는 경고 배너.
+// 원본은 이 레포의 페르소나 작업 환경을 전제로 쓰였으므로, 외부 사본에서는
+// "기본 경로는 브릿지 MCP"라는 계약과 경로 예시의 한계를 먼저 알려야 한다.
+const LOCAL_PIPELINE_BANNER = `
+> **⚠️ 외부 프로젝트 사본** — 이 문서는 같은 PC의 ComfyUI(\`127.0.0.1:8188\`)를 직접 다루는
+> **로컬 파이프라인 스킬**이다. 영상 한 편을 만드는 일반 경로는 \`generate-video\` 스킬
+> (브릿지 MCP 경유)이 먼저다. 이 문서는 그 경로로 처리되지 않는 것 — 세그먼트 체이닝,
+> 사운드 레이어링, 프롬프트·연출 노하우 — 을 다룰 때 참고한다.
+> 본문의 파일 경로·프로젝트 디렉터리·스크립트 예시는 **원본 개발 환경 기준**이므로
+> 이 프로젝트에 맞게 바꿔 읽어라.
+`;
+
 const CURATED_SKILLS = [
   { name: "generate-image", src: path.join(repoRoot, "scripts", "external-package", "skills", "generate-image") },
+  { name: "generate-video", src: path.join(repoRoot, "scripts", "external-package", "skills", "generate-video") },
   ...["generate-image-gemini", "manage-workflows", "civitai-search", "lora-lab", "workflow-research"].map((n) => ({
     name: n,
     src: path.join(repoRoot, "data", "tools", "comfyui", "skills", n),
   })),
+  // 영상 노하우 스킬 — 실행은 8188 직결이라 배너를 주입해 계약을 명시한다.
+  ...["minimax-h3", "h3-longtake", "long-video-chaining", "video-sound-design"].map((n) => ({
+    name: n,
+    src: path.join(repoRoot, "data", "skills", n),
+    banner: LOCAL_PIPELINE_BANNER,
+  })),
 ];
 
-function copySkill(src, dest) {
+/** frontmatter를 닫는 두 번째 `---` 바로 뒤에 배너를 끼운다 (스킬 파싱을 깨지 않도록). */
+function injectBanner(content, banner) {
+  if (!banner || !content.startsWith("---")) return content;
+  const end = content.indexOf("\n---", 3);
+  if (end === -1) return content;
+  const cut = content.indexOf("\n", end + 1) + 1;
+  if (cut <= 0) return content;
+  return content.slice(0, cut) + banner + content.slice(cut);
+}
+
+function copySkill(src, dest, banner) {
   fs.mkdirSync(dest, { recursive: true });
   for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
     const s = path.join(src, entry.name);
@@ -81,6 +114,7 @@ function copySkill(src, dest) {
       let content = fs.readFileSync(s, "utf-8");
       content = content.replace(/\{\{PORT\}\}/g, port);
       content = content.replace(/mcp__claude_play__/g, "mcp__claude-play-bridge__");
+      if (entry.name === "SKILL.md") content = injectBanner(content, banner);
       fs.writeFileSync(d, content, "utf-8");
     } else {
       fs.copyFileSync(s, d);
@@ -96,7 +130,7 @@ for (const skill of CURATED_SKILLS) {
     missing.push(skill.name);
     continue;
   }
-  copySkill(skill.src, path.join(skillsDest, skill.name));
+  copySkill(skill.src, path.join(skillsDest, skill.name), skill.banner);
   copied.push(skill.name);
 }
 console.log(`✓ 스킬 복사 (${copied.length}): ${copied.join(", ")}`);
