@@ -42,6 +42,16 @@
 | 12 | 세션 메모 자동 갱신 (2026-07-29) | **기존 세션은 재-open해야 MCP 도구 반영.** 비-OOC 턴 10회 진행 후 ① 다음 유저 턴에 `[MEMO]` 헤더 병합 ② AI가 `bridge_set_session_memo` 호출 ③ 로비 카드에 `autoMemo`가 흐린 이탤릭으로 표시 ④ 수동 `memo`가 있는 세션은 수동 값 그대로 유지 ⑤ 헤더 문구가 캐릭터 응답에 누출되지 않는지. 옵트아웃은 `session.json`에 `"memoAuto": false` 후 재확인 |
 | 10 | 외부 MCP 실소비 검증 (feat/external-mcp) | 브릿지 쪽 스모크는 통과(2026-07-15: tools/list·health·generate 직하 저장). 남은 것: **실제 외부 프로젝트**에서 `docs/external-setup-guide.md`대로 셋업 → Claude Code가 `.mcp.json` HTTP 서버로 붙어 `comfyui_health`/`comfyui_generate` 호출. 프로덕션 서버는 재시작해야 엔드포인트 반영 |
 
+## 4-B. 미머지 브랜치: `feat/external-video-skills` (2026-08-18)
+
+외부 셋업 스킬팩에 영상 생성을 추가하다가, MCP 경유 영상 생성 자체가 구조적으로 깨져 있던 것을 함께 고친 브랜치. **머지는 사용자 결정 대기.**
+
+- 커밋 6개: undici 305초 절벽(long-http.ts 신설 + 3홉 전환) / 내부 MCP requestJson 전환 / 외부 스킬팩 6→11종 / async 에러 마커 정리 / `seed_randomize` noise_seed 버그 / playbook §5.10.
+- **머지 범위 주의**: 이 브랜치는 `fix/comfyui-lora-family-visibility`에서 분기했다. `git log main..HEAD` 기준 부모 브랜치의 미머지 커밋 4개(88881ae, 7170264, 472ea50, 49bd4c6)가 함께 들어간다.
+- 라이브 검증 완료: 외부 MCP async 영상 2종(zimage-to-video webp 85초, H3 Turbo mp4+aac 70초), 셋업 스크립트 11종 복사, 영상 패키지 5종 노출, longRequest 310초 통과(fetch 대조군 305.6초 실패).
+- **머지 전 필요**: `npm run build` (프로덕션 서버가 `.next/`를 서빙 중이면 금지), pre-merge-checklist.
+- **머지 후 필요**: 기존 세션은 내부 MCP 수정 반영에 **재-open**, 프로덕션 서버는 재시작.
+
 ## 5. 사용자 결정 대기
 
 1. **soft-delete 누적**: `data/deleted_sessions` **163개 / 4.47GB** (2026-06-06의 52개/2.4GB에서 3배). 복구 지향 설계라 자율 정리 금지 — 보존 기간/정책 결정 필요. `data/deleted_personas`는 24개/0.13GB.
