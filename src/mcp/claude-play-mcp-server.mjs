@@ -2,6 +2,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import fs from "node:fs";
+import http from "node:http";
+import https from "node:https";
 import path from "node:path";
 import * as z from "zod/v4";
 
@@ -312,19 +314,67 @@ function assessPolicyRequest(request, context) {
   };
 }
 
+/**
+ * 브릿지 API 호출 (node:http).
+ *
+ * ⚠️ 전역 fetch를 쓰면 안 된다. undici의 headersTimeout은 300초 고정이고 AbortSignal로
+ *    연장되지 않으므로, 완료 시점에야 응답 헤더를 보내는 장시간 라우트
+ *    (/api/tools/comfyui/generate — 영상 한 판 12~40분)를 부르면 약 305초에
+ *    UND_ERR_HEADERS_TIMEOUT으로 끊긴다. 그 결과 async 모드에서는 렌더가 멀쩡히
+ *    도는 중에 "생성 실패" 이벤트가 세션에 꽂히는 가짜 실패가 발생했다.
+ *    node:http는 이 절벽이 없고 소켓 유휴 타임아웃만 적용된다.
+ */
+const REQUEST_IDLE_TIMEOUT_MS = 3_900_000; // 65분 — 영상 렌더 예산(comfyui-client)과 짝
+
+function httpRequestText(method, url, headers, body) {
+  const parsed = new URL(url);
+  const transport = parsed.protocol === "https:" ? https : http;
+  return new Promise((resolve, reject) => {
+    const req = transport.request(
+      {
+        protocol: parsed.protocol,
+        hostname: parsed.hostname,
+        port: parsed.port || (parsed.protocol === "https:" ? 443 : 80),
+        path: `${parsed.pathname}${parsed.search}`,
+        method,
+        headers: {
+          ...headers,
+          ...(body !== undefined ? { "Content-Length": Buffer.byteLength(body).toString() } : {}),
+        },
+      },
+      (res) => {
+        const chunks = [];
+        res.on("data", (chunk) => chunks.push(chunk));
+        res.on("end", () => {
+          const status = res.statusCode ?? 0;
+          resolve({ status, ok: status >= 200 && status < 300, text: Buffer.concat(chunks).toString("utf-8") });
+        });
+        res.on("error", reject);
+      }
+    );
+    req.setTimeout(REQUEST_IDLE_TIMEOUT_MS, () => {
+      req.destroy(new Error(`Request timed out after ${REQUEST_IDLE_TIMEOUT_MS}ms: ${method} ${url}`));
+    });
+    req.on("error", reject);
+    if (body !== undefined) req.write(body);
+    req.end();
+  });
+}
+
 async function requestJson(method, route, payload) {
   const url = `${apiBase}${route}`;
   const headers = { "Content-Type": "application/json" };
   if (authToken) {
     headers["x-bridge-token"] = authToken;
   }
-  const response = await fetch(url, {
+  const response = await httpRequestText(
     method,
+    url,
     headers,
-    ...(payload ? { body: JSON.stringify(payload) } : {}),
-  });
+    payload ? JSON.stringify(payload) : undefined
+  );
 
-  const text = await response.text();
+  const text = response.text;
   let data;
   try {
     data = text ? JSON.parse(text) : {};
