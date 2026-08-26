@@ -6,8 +6,27 @@ import { wsBroadcast } from "./ws-server";
 import { stopPipelineScheduler } from "./pipeline-scheduler";
 
 /** Grace period before destroying an instance after last client disconnects.
- *  10 minutes — long enough for mobile reconnects on unstable connections. */
-const CLEANUP_GRACE_MS = 10 * 60 * 1000;
+ *  기본 6시간 — 모바일에서 브라우저를 닫았다 반나절 안에 돌아와도 세션이 살아있게 한다.
+ *  세션을 즉시 끝내고 싶으면 UI의 "세션 종료"(POST /api/sessions/[id]/close)를 쓴다.
+ *  `SESSION_CLEANUP_GRACE_MS` 로 조절: 밀리초 값, 또는 0/음수/"never" 는 자동 정리 비활성
+ *  (수동 종료 전까지 CLI 프로세스가 계속 살아있음). */
+const DEFAULT_CLEANUP_GRACE_MS = 6 * 60 * 60 * 1000;
+
+function resolveCleanupGraceMs(): number | null {
+  const raw = (process.env.SESSION_CLEANUP_GRACE_MS || "").trim();
+  if (!raw) return DEFAULT_CLEANUP_GRACE_MS;
+  if (raw.toLowerCase() === "never") return null;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) {
+    console.warn(`[registry] Invalid SESSION_CLEANUP_GRACE_MS=${raw} — falling back to default`);
+    return DEFAULT_CLEANUP_GRACE_MS;
+  }
+  // 0/음수 = 자동 정리 없음. setTimeout 은 ~24.8일에서 오버플로하므로 상한을 건다.
+  if (parsed <= 0) return null;
+  return Math.min(parsed, 2_147_483_647);
+}
+
+const CLEANUP_GRACE_MS = resolveCleanupGraceMs();
 
 interface SessionRegistry {
   instances: Map<string, SessionInstance>;
@@ -96,6 +115,7 @@ export function closeSessionInstance(id: string): void {
 export function scheduleSessionCleanup(id: string): void {
   const reg = getRegistryState();
   cancelSessionCleanup(id);
+  if (CLEANUP_GRACE_MS === null) return; // 자동 정리 비활성 — 수동 종료만
   const timer = setTimeout(() => {
     reg.cleanupTimers.delete(id);
     closeSessionInstance(id);

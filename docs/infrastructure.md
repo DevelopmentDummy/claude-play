@@ -29,6 +29,7 @@
 | `DATA_DIR` | `./data` | Data directory path |
 | `ADMIN_PASSWORD` | (none) | Admin login password. If not set, authentication is disabled |
 | `NODE_ENV` | `development` | Node environment |
+| `SESSION_CLEANUP_GRACE_MS` | `21600000` (6시간) | 마지막 WebSocket 클라이언트가 끊긴 뒤 SessionInstance(AI 프로세스)를 정리하기까지의 유예. `0`/음수/`never` 는 자동 정리를 끄고 수동 종료(`POST /api/sessions/[id]/close`)만 남긴다. 상한은 `setTimeout` 한계인 `2147483647`(~24.8일) |
 
 ### ComfyUI Integration
 

@@ -50,6 +50,7 @@ Next.js 밖에서 `server.ts`가 직접 처리하는 라우트: `/api/chat/tts`,
 | `/api/sessions/[id]/open` | POST | Open session (spawn AI process, start panels) |
 | `/api/sessions/[id]/sync` | GET, POST | GET: diff (`?direction=reverse`); POST: selective sync with `direction` + `variablesMode` |
 | `/api/sessions/[id]/conversations` | GET | List provider-side conversations (jsonl/rollouts) tied to this session folder for the resume menu |
+| `/api/sessions/[id]/close` | POST | 수동 세션 종료 — 유예 시간을 기다리지 않고 live SessionInstance(AI 프로세스·PanelEngine·스케줄러)를 즉시 정리. 대화 기록은 보존되어 다음 `open` 때 resume |
 | `/api/sessions/[id]/relink` | POST | Tear down live SessionInstance and rewrite session.json's provider conversation id (`{ conversationId }` body) |
 | `/api/sessions/[id]/variables` | PATCH | Patch session variables (supports `?file=` for custom data files) |
 | `/api/sessions/[id]/memo` | PATCH | 세션 메모 갱신 — `{memo}`(사용자 수동) / `{autoMemo}`(MCP 자동 요약) / `{memoAuto}`(자동 요약 on/off). `memo`와 `autoMemo` 동시 전송은 400 |

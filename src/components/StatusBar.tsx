@@ -36,6 +36,8 @@ interface StatusBarProps {
   onSessionList?: () => void;
   /** Sub-agent chat modal */
   onSubAgents?: () => void;
+  /** 세션 수동 종료 — CLI 프로세스를 즉시 내린다 */
+  onCloseSession?: () => void;
   /** Names of sub-agents currently working a task — drives the ambient activity indicator. */
   busySubNames?: string[];
   /** Version snapshot (builder mode) */
@@ -95,6 +97,7 @@ export default function StatusBar({
   onContext,
   onSessionList,
   onSubAgents,
+  onCloseSession,
   busySubNames,
   onVersionSave,
   onVersionHistory,
@@ -146,7 +149,7 @@ export default function StatusBar({
     disconnected: "Disconnected",
   };
 
-  const hasDebugItems = onUsage || onCompact || onContext || onReinit || (!isBuilderMode && onSync) || onForceInputToggle || onSessionList || onSubAgents;
+  const hasDebugItems = onUsage || onCompact || onContext || onReinit || (!isBuilderMode && onSync) || onForceInputToggle || onSessionList || onSubAgents || onCloseSession;
 
   return (
     <header className="flex flex-wrap items-center gap-2 px-4 py-2 bg-surface backdrop-blur-[16px] border-b border-border shrink-0">
@@ -363,6 +366,17 @@ export default function StatusBar({
                   >
                     Reconnect
                   </button>
+                )}
+                {onCloseSession && (
+                  <>
+                    <div className="my-1 border-t border-border/40" />
+                    <button
+                      onClick={() => { onCloseSession(); setDebugOpen(false); }}
+                      className={`${menuBtnClass} text-red-400 hover:text-red-300 hover:bg-red-500/10`}
+                    >
+                      세션 종료
+                    </button>
+                  </>
                 )}
               </div>,
               document.body

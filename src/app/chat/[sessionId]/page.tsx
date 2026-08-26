@@ -737,6 +737,22 @@ export default function ChatPage() {
     router.push("/");
   }, [router, resetLayout, wsSend]);
 
+  // 수동 세션 종료 — grace period 를 기다리지 않고 CLI 프로세스를 즉시 내린다.
+  // 뒤로가기(handleBack)는 세션을 살려둔 채 나가는 것이고, 이쪽은 명시적 종료다.
+  const handleCloseSession = useCallback(async () => {
+    if (!window.confirm("세션을 종료할까요?\n\nAI 프로세스가 즉시 종료됩니다. 대화 기록은 남으며 다시 열면 이어집니다.")) {
+      return;
+    }
+    wsSend("session:leave");
+    try {
+      await fetch(`/api/sessions/${sessionId}/close`, { method: "POST" });
+    } catch {
+      // 종료 요청이 실패해도 로비로는 나간다 — grace period 가 결국 정리한다.
+    }
+    resetLayout();
+    router.push("/");
+  }, [router, resetLayout, wsSend, sessionId]);
+
   const handleModelChange = useCallback(async (model: string) => {
     setCurrentModel(model);
     setStatus("disconnected");
@@ -1113,6 +1129,7 @@ export default function ChatPage() {
         onContext={currentProvider === "claude" ? handleContext : undefined}
         onSync={() => setSyncModalOpen(true)}
         onSessionList={() => setSessionListOpen(true)}
+        onCloseSession={handleCloseSession}
         autoPlay={autoPlay}
         onAutoPlayToggle={handleAutoPlayToggle}
         voiceChat={voiceChat}
