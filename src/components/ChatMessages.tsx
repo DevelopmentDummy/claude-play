@@ -203,6 +203,21 @@ function extractDialogResponseLive(raw: string): string {
   return tokens.length > 0 ? tokens.join("\n") : "";
 }
 
+/** 미디어/패널 노드용 위치 비의존 key 발급기.
+ *  텍스트 노드는 위치 기반 key로 충분하지만, InlineImage/InlinePanel은 remount 비용이
+ *  크다(HEAD 폴링 재개, shadow innerHTML 재설정 = 이미지 재요청). OOC 토글처럼 본문
+ *  표시 문자열이 바뀌면 세그먼트 분할이 달라져 위치 key가 전부 밀리므로, 이 둘만
+ *  "경로/이름 + 해당 메시지 내 n번째 등장" 으로 키잉해 재사용되게 한다. */
+function makeMediaKeyer(): (kind: string, id: string) => string {
+  const counts = new Map<string, number>();
+  return (kind, id) => {
+    const k = `${kind}:${id}`;
+    const n = counts.get(k) ?? 0;
+    counts.set(k, n + 1);
+    return `${k}:${n}`;
+  };
+}
+
 function renderInline(
   text: string,
   keyPrefix: string,
@@ -210,6 +225,7 @@ function renderInline(
   panels?: PanelInfo[],
   onMediaReady?: () => void,
   personaName?: string,
+  mediaKey: (kind: string, id: string) => string = makeMediaKeyer(),
 ): React.ReactNode[] {
   const tokens = tokenize(text);
 
@@ -265,7 +281,9 @@ function renderInline(
         if (!panels) break;
         const panel = panels.find((p) => p.name === tok.name);
         if (panel) {
-          nodes.push(<InlinePanel key={key} html={panel.html} sessionId={sessionId} />);
+          nodes.push(
+            <InlinePanel key={mediaKey("panel", tok.name)} html={panel.html} sessionId={sessionId} />
+          );
         }
         break;
       }
@@ -273,7 +291,7 @@ function renderInline(
         if (!sessionId && !personaName) break;
         nodes.push(
           <InlineImage
-            key={key}
+            key={mediaKey("media", tok.path)}
             sessionId={sessionId}
             personaName={personaName}
             path={tok.path}
@@ -311,6 +329,8 @@ function renderMarkdown(
   const SCENE_BREAK_RE = /\s*<\/?\s*(?:scene_break|break)\s*\/?>\s*/gi;
   const segments = text.split(SCENE_BREAK_RE);
   const nodes: React.ReactNode[] = [];
+  // 메시지 1건 렌더 전체에서 공유 — 같은 이미지가 여러 세그먼트에 나와도 key가 겹치지 않는다.
+  const mediaKey = makeMediaKeyer();
 
   segments.forEach((segment, segIdx) => {
     if (segIdx > 0) {
@@ -333,7 +353,7 @@ function renderMarkdown(
           </pre>
         );
       } else {
-        nodes.push(...renderInline(part, partKey, sessionId, panels, onMediaReady, personaName));
+        nodes.push(...renderInline(part, partKey, sessionId, panels, onMediaReady, personaName, mediaKey));
       }
     });
   });

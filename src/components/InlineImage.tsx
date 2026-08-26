@@ -102,10 +102,27 @@ function withRetryMarker(url: string, retryCount: number): string {
   return `${url}${sep}r=${retryCount}`;
 }
 
+/** 이미 존재가 확인된 미디어의 (경로 → 확정 source) 모듈 레벨 캐시.
+ *  InlineImage는 마운트마다 HEAD 폴링(`cache: "no-store"`)을 돌린다. OOC 토글처럼
+ *  메시지 본문 표시가 바뀌면 마크다운 트리가 재생성되며 컴포넌트가 remount되는데,
+ *  그때마다 "이미지 생성 중..." 스피너로 돌아갔다가 전 이미지를 다시 요청하는 게
+ *  체감상 "전체 화면 새로 로딩"의 정체였다. 한 번 ready로 확정된 경로는 캐시에서
+ *  즉시 복원하고 폴링을 건너뛴다. 파일이 나중에 사라지면 <img> onError 경로가
+ *  캐시를 무효화하고 정상 재폴링으로 떨어진다. */
+const readyCache = new Map<string, ImageSource>();
+
+function readyCacheKey(imgPath: string, sessionId?: string, personaName?: string): string {
+  return `${sessionId || ""}|${personaName || ""}|${imgPath}`;
+}
+
 export default function InlineImage({ sessionId, personaName, path: imgPath, onReady }: InlineImageProps) {
   const kind = mediaKindOf(imgPath);
-  const [state, setState] = useState<ImageState>("loading");
-  const [source, setSource] = useState<ImageSource>(isPersonaPath(imgPath) ? "persona" : "session");
+  const ck = readyCacheKey(imgPath, sessionId, personaName);
+  const cachedSource = readyCache.get(ck);
+  const [state, setState] = useState<ImageState>(cachedSource ? "ready" : "loading");
+  const [source, setSource] = useState<ImageSource>(
+    cachedSource ?? (isPersonaPath(imgPath) ? "persona" : "session")
+  );
   const [showModal, setShowModal] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
   // `<img>` GET retry counter — survives across renders, drives src cache-buster.
@@ -117,16 +134,20 @@ export default function InlineImage({ sessionId, personaName, path: imgPath, onR
   const readyNotifiedRef = useRef(false);
 
   useEffect(() => {
-    setSource(isPersonaPath(imgPath) ? "persona" : "session");
-    setState("loading");
+    const cached = readyCache.get(ck);
+    setSource(cached ?? (isPersonaPath(imgPath) ? "persona" : "session"));
+    setState(cached ? "ready" : "loading");
     setImgRetryCount(0);
     if (imgRetryTimerRef.current) {
       clearTimeout(imgRetryTimerRef.current);
       imgRetryTimerRef.current = null;
     }
-  }, [imgPath]);
+  }, [ck, imgPath]);
 
   useEffect(() => {
+    // 이미 존재가 확인된 경로 — 폴링 없이 캐시된 source로 바로 렌더한다.
+    if (readyCache.has(ck)) return;
+
     let cancelled = false;
     pollCountRef.current = 0;
     readyNotifiedRef.current = false;
@@ -175,6 +196,7 @@ export default function InlineImage({ sessionId, personaName, path: imgPath, onR
       const winner = results.find((r) => r.ok);
       if (winner) {
         // Lock the source that responded so the <img> uses the right URL.
+        readyCache.set(ck, winner.src);
         setSource(winner.src);
         setState("ready");
         return;
@@ -195,7 +217,7 @@ export default function InlineImage({ sessionId, personaName, path: imgPath, onR
       cancelled = true;
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [sessionId, personaName, imgPath, retryKey]);
+  }, [ck, sessionId, personaName, imgPath, retryKey]);
 
   useEffect(() => {
     return () => {
@@ -219,6 +241,7 @@ export default function InlineImage({ sessionId, personaName, path: imgPath, onR
         className="appearance-none border-0 text-left inline-flex items-center gap-2 bg-[#2a1a1a] rounded-lg px-3 py-2 my-1 cursor-pointer hover:bg-[#3a2a2a] transition-colors"
         aria-label={ERROR_LABEL[kind]}
         onClick={async () => {
+          readyCache.delete(ck);
           setState("loading");
           // Try to ask the AI to regenerate this missing image. If we have sessionId,
           // queue an event header pointing at the missing filename — the AI will see
@@ -257,6 +280,7 @@ export default function InlineImage({ sessionId, personaName, path: imgPath, onR
   const handleImageError = () => {
     if (imgRetryTimerRef.current) clearTimeout(imgRetryTimerRef.current);
     if (imgRetryCount >= MAX_IMG_RETRIES) {
+      readyCache.delete(ck);
       setState("error");
       return;
     }

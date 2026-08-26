@@ -9,6 +9,14 @@ const THUMB_IMAGE_RE = /\.(png|jpe?g|webp|gif)$/i;
 // WebKit(사파리 맥/iOS)은 <video>/<audio>에 대해 바이트 범위 요청을 전제로 한다.
 // 206 Partial Content를 못 받으면 재생 자체를 거부하므로 미디어는 반드시 Range를 지원해야 한다.
 const MEDIA_RE = /\.(mp4|webm|mov|mp3|m4a|wav|ogg|flac)$/i;
+// 채팅 인라인 이미지. 같은 파일명으로 재생성되는 흐름이 있어 장기 캐시는 위험하지만,
+// ETag 재검증을 붙이면 재마운트 때 304(바디 0바이트)로 끝난다.
+const IMAGE_RE = /\.(png|jpe?g|webp|gif|bmp|svg)$/i;
+
+/** size+mtime 기반 약한 ETag. 파일이 바뀌면 값이 바뀌므로 재생성 즉시 반영된다. */
+function fileEtag(stat: fs.Stats): string {
+  return `W/"${stat.size.toString(16)}-${Math.floor(stat.mtimeMs).toString(16)}"`;
+}
 
 /** "bytes=start-end" 파싱. 유효하지 않으면 null. */
 function parseRange(header: string | null, size: number): { start: number; end: number } | null {
@@ -200,6 +208,26 @@ export async function GET(
         "Content-Length": String(size),
         "Accept-Ranges": "bytes",
         "Cache-Control": cacheControl,
+      },
+    });
+  }
+
+  if (IMAGE_RE.test(resolved)) {
+    const etag = fileEtag(stat);
+    const cacheHeaders = {
+      "Cache-Control": "private, max-age=0, must-revalidate",
+      ETag: etag,
+      "Last-Modified": new Date(stat.mtimeMs).toUTCString(),
+    };
+    if (req.headers.get("if-none-match") === etag) {
+      return new NextResponse(null, { status: 304, headers: cacheHeaders });
+    }
+    const data = fs.readFileSync(resolved);
+    return new NextResponse(data, {
+      headers: {
+        "Content-Type": contentType,
+        "Content-Length": String(size),
+        ...cacheHeaders,
       },
     });
   }
