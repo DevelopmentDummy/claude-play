@@ -15,7 +15,7 @@
 
 - **로컬 브랜치는 `main` + `feat/antigravity-ruleset-persistence` 2개뿐.** 머지 완료된 로컬 브랜치 16개와 워크트리 1개를 이날 전부 제거했다(전부 main에 포함돼 있어 커밋 유실 없음). `feat/openai-image-codex-backend`만 원격 추적 브랜치가 뒤처져 있어 `-D`가 필요했고, tip `12f3f40`이 main의 조상임을 확인 후 삭제했다.
 - **워크트리 0개** — `.claude/worktrees/`는 비어 있다. 앞으로도 제거는 반드시 `git worktree remove`로 (수동 rm은 `.git/worktrees` 메타데이터를 남긴다).
-- **원격에 남은 stale 브랜치 3개** (전부 main의 조상 = 삭제 안전, 사용자 승인 후 `git push origin --delete`): `feat/openai-image-codex-backend`, `fix/askuserquestion-card-lifecycle`, `fix/comfyui-lora-family-visibility`.
+- **원격도 `main` 하나뿐.** stale 브랜치 3개(`feat/openai-image-codex-backend`, `fix/askuserquestion-card-lifecycle`, `fix/comfyui-lora-family-visibility`)는 과거 작업 중 푸시해뒀다가 머지 후 방치된 것으로, 전부 main의 조상임을 확인하고 같은 날 원격에서 삭제했다. 앞으로 브랜치를 푸시했다면 머지 직후 `git push origin --delete`까지 하는 것을 기본으로.
 
 ## 3. ⚠️ 유일한 미머지 브랜치: `feat/antigravity-ruleset-persistence`
 
