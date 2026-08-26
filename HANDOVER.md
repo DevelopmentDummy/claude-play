@@ -11,10 +11,11 @@
 - src 코드에 TODO/FIXME 마커 **0개** — 미해결 항목은 전부 이 문서와 docs/에 있다.
 - `npm run verify` 통과, 프로덕션 서버는 `a730ccc` 빌드로 재기동됨(2026-08-26 10:06).
 
-## 2. 브랜치·워크트리 정리 후보 (안전, 사용자 승인 후 실행)
+## 2. 브랜치·워크트리 (2026-08-26 정리 완료)
 
-- **머지 완료 → `git branch -d` 가능** (2026-08-26 `git branch --merged main` 실측, 15개): `chore/code-quality-loop`, `chore/comfyui-path-cleanup`, `chore/comfyui-workflow-updates`, `claude/oauth-session-expiration-2a2d87`, `docs/minimax-h3-video-skills`, `feat/agy-mcp-and-image-gating`, `feat/gpt-5.6-models`, `feat/openai-image-codex-backend`, `feat/persona-subagent-orchestration`, `fix/askuserquestion-card-lifecycle`, `fix/codex-turn-failure-surfacing`, `fix/comfyui-lora-family-visibility`, `fix/profile-thumbnail-downscale`, `fix/restart-env-propagation`, `fix/session-files-range-support`. (`feat/external-video-skills`는 2026-08-26 삭제 완료.)
-- **워크트리 1개**: `.claude/worktrees/oauth-session-expiration-2a2d87` — `11eb0d7` detached, main에 포함됨. 제거는 반드시 `git worktree remove`로 (수동 rm은 `.git/worktrees` 메타데이터를 남긴다). 이전에 적혀 있던 stale 워크트리 3개(`amazing-dirac`/`confident-brattain`/`cranky-kirch`)는 이미 사라졌다.
+- **로컬 브랜치는 `main` + `feat/antigravity-ruleset-persistence` 2개뿐.** 머지 완료된 로컬 브랜치 16개와 워크트리 1개를 이날 전부 제거했다(전부 main에 포함돼 있어 커밋 유실 없음). `feat/openai-image-codex-backend`만 원격 추적 브랜치가 뒤처져 있어 `-D`가 필요했고, tip `12f3f40`이 main의 조상임을 확인 후 삭제했다.
+- **워크트리 0개** — `.claude/worktrees/`는 비어 있다. 앞으로도 제거는 반드시 `git worktree remove`로 (수동 rm은 `.git/worktrees` 메타데이터를 남긴다).
+- **원격에 남은 stale 브랜치 3개** (전부 main의 조상 = 삭제 안전, 사용자 승인 후 `git push origin --delete`): `feat/openai-image-codex-backend`, `fix/askuserquestion-card-lifecycle`, `fix/comfyui-lora-family-visibility`.
 
 ## 3. ⚠️ 유일한 미머지 브랜치: `feat/antigravity-ruleset-persistence`
 
