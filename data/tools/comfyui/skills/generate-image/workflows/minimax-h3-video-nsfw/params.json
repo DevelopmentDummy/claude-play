@@ -1,8 +1,8 @@
 {
-  "description": "MiniMax H3 (Hailuo 3.0) 영상 패키지 — 33B omni-modal DiT. 비디오와 오디오(대사·효과음·BGM)가 한 번에 생성된다. NVFP4 양자화(11.67GB)로 16GB Blackwell 단독 구동. 기본값은 2026-08-10 실측으로 확정된 1152x640 / L362(15.08초) / 25스텝 조합이며 약 36분 소요. first_frame을 주면 i2v로, 생략하면 t2v로 동작한다(resolver가 자동 분기). 프롬프트는 반드시 4단 필드 구조로 쓰고, 대사는 <d>[Language] ...</d> 태그로 감싼다. 한국어 대사 검증 완료.",
+  "description": "MiniMax H3 I2V NSFW 실험 패키지 — minimax-h3-video 단일 패스 25스텝 기준에 NaughtyTimes v2 pruned rank128을 model-only로 주입. 현재 pruned NVFP4 FL2VA와 호환. 기본 강도 0.35, 권장 0.3~0.5.",
   "features": {
     "checkpoint_auto": false,
-    "lora_injection": false,
+    "lora_injection": true,
     "lora_couple_branches": false,
     "seed_randomize": true,
     "trigger_tags": false,
@@ -91,6 +91,20 @@
     "last_frame": {
       "type": "string",
       "description": "선택 — 끝 프레임 파일명(ComfyUI input 기준). 지정하면 FLF2V로 동작해 클립이 이 이미지로 수렴한다. 15초 후반부 드리프트 억제 + 체이닝 이음새 고정용. 비우면 노드가 제거된다."
+    },
+    "lora_name": {
+      "node": "105",
+      "field": "lora_name",
+      "type": "string",
+      "default": "NaughtyTimes_pruned_r128_v2.safetensors",
+      "description": "MiniMax H3 pruned 계열 NSFW LoRA"
+    },
+    "lora_strength": {
+      "node": "105",
+      "field": "strength_model",
+      "type": "number",
+      "default": 0.35,
+      "description": "NaughtyTimes v2 강도. 0.3~0.5 권장, 0.5 초과는 과조리 위험."
     }
   },
   "benchmarks": {

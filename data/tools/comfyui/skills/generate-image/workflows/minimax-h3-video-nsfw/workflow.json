@@ -10,7 +10,7 @@
     "class_type": "BasicScheduler",
     "inputs": {
       "model": [
-        "6",
+        "105",
         0
       ],
       "scheduler": "simple",
@@ -80,7 +80,7 @@
     "class_type": "BasicGuider",
     "inputs": {
       "model": [
-        "6",
+        "105",
         0
       ],
       "conditioning": [
@@ -216,6 +216,20 @@
         "31",
         0
       ]
+    }
+  },
+  "105": {
+    "class_type": "LoraLoaderModelOnly",
+    "inputs": {
+      "model": [
+        "6",
+        0
+      ],
+      "lora_name": "NaughtyTimes_pruned_r128_v2.safetensors",
+      "strength_model": 0.35
+    },
+    "_meta": {
+      "title": "NaughtyTimes H3 v2 (model only)"
     }
   }
 }

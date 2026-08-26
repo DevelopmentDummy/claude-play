@@ -1,5 +1,5 @@
 {
-  "description": "MiniMax H3 (Hailuo 3.0) 영상 패키지 — 33B omni-modal DiT. 비디오와 오디오(대사·효과음·BGM)가 한 번에 생성된다. NVFP4 양자화(11.67GB)로 16GB Blackwell 단독 구동. 기본값은 2026-08-10 실측으로 확정된 1152x640 / L362(15.08초) / 25스텝 조합이며 약 36분 소요. first_frame을 주면 i2v로, 생략하면 t2v로 동작한다(resolver가 자동 분기). 프롬프트는 반드시 4단 필드 구조로 쓰고, 대사는 <d>[Language] ...</d> 태그로 감싼다. 한국어 대사 검증 완료.",
+  "description": "MiniMax H3 2-pass 레이턴트 업스케일 패키지. 1차 25스텝 저해상도 생성 후 AV latent를 분리하고, 비디오 latent와 conditioning을 1.5배 확대한 뒤 H3 전용 재노이즈·audio sigma shift와 최신 audio-shape-matched 수동 시그마 곡선으로 2차 정제한다. 기본값은 576x832 / L124(약 5.17초) → 약 864x1248 출력.",
   "features": {
     "checkpoint_auto": false,
     "lora_injection": false,
@@ -7,7 +7,8 @@
     "seed_randomize": true,
     "trigger_tags": false,
     "detailer_chain": false,
-    "native_audio": true
+    "native_audio": true,
+    "latent_upscale": true
   },
   "params": {
     "prompt": {
@@ -26,21 +27,21 @@
       "node": "104",
       "field": "width",
       "type": "number",
-      "default": 1152,
+      "default": 576,
       "description": "32의 배수. 실측 상한선: 1152x640이 15초물의 실용 최대치. 1344x768은 5초까지만 쓰고 15초는 금지(오프로딩이 개입해 약 3시간)."
     },
     "height": {
       "node": "104",
       "field": "height",
       "type": "number",
-      "default": 640,
+      "default": 832,
       "description": "32의 배수"
     },
     "length": {
       "node": "104",
       "field": "length",
       "type": "number",
-      "default": 362,
+      "default": 124,
       "description": "24fps 기준 프레임 수. 그리드 17k+5로 올림 스냅. 훈련 범위 124(5.17초)~362(15.08초). 362 초과는 미검증. 15초까지는 체이닝 없이 한 방에 뽑는 것이 정답이다."
     },
     "seed": {
@@ -54,7 +55,7 @@
       "field": "steps",
       "type": "number",
       "default": 25,
-      "description": "25가 현재 최종 품질 기준선. 사용자가 20보다 25를 선호해 기본값으로 상향. Turbo 4스텝은 품질 불합격."
+      "description": "1차 샘플 스텝. 사용자 선호 품질 기준 25."
     },
     "sampler_name": {
       "node": "17",
@@ -91,6 +92,42 @@
     "last_frame": {
       "type": "string",
       "description": "선택 — 끝 프레임 파일명(ComfyUI input 기준). 지정하면 FLF2V로 동작해 클립이 이 이미지로 수렴한다. 15초 후반부 드리프트 억제 + 체이닝 이음새 고정용. 비우면 노드가 제거된다."
+    },
+    "scale_by": {
+      "type": "number",
+      "default": 1.5,
+      "description": "비디오 latent와 H3 conditioning에 동시에 적용하는 공간 확대 배율. 기본 1.5."
+    },
+    "upscale_method": {
+      "type": "string",
+      "default": "bilinear",
+      "description": "두 upscale 노드에 동시에 적용. 공개 권장 시작점 bilinear."
+    },
+    "pass2_seed": {
+      "node": "129",
+      "field": "noise_seed",
+      "type": "number",
+      "default": -1,
+      "description": "2차 재노이즈 시드."
+    },
+    "shift_video": {
+      "node": "137",
+      "field": "shift_video",
+      "type": "number",
+      "default": 12
+    },
+    "shift_audio": {
+      "node": "137",
+      "field": "shift_audio",
+      "type": "number",
+      "default": 3
+    },
+    "pass2_sigmas": {
+      "node": "130",
+      "field": "sigmas",
+      "type": "string",
+      "default": "0.9864, 0.9740, 0.9587, 0.9400, 0.9158, 0.8845, 0.8406, 0.7774, 0.6744, 0.4856, 0.0000",
+      "description": "최신 공식 예제의 audio-shape-matched 2차 수동 시그마 곡선. BasicScheduler 15/0.4는 왜곡을 유발해 사용 금지."
     }
   },
   "benchmarks": {
@@ -150,7 +187,11 @@
   },
   "requirements": {
     "comfyui": ">=0.31.0",
-    "reason": "int8_convrot VAE 지원(bbda8364)과 H3 VAE 최적화(2a68ce33)가 여기서 들어왔다. 0.30.x에서는 int8_convrot VAE가 검은 화면으로 디코드된다."
-  },
-  "experimental_note": "2-pass latent upscale는 첫 프레임·배경 구조 손상 및 H3 VAE decode 이슈로 보류. 최종 출력은 이 단일 패스 패키지를 사용."
+    "reason": "int8_convrot VAE 지원(bbda8364)과 H3 VAE 최적화(2a68ce33)가 여기서 들어왔다. 0.30.x에서는 int8_convrot VAE가 검은 화면으로 디코드된다.",
+    "custom_nodes": [
+      "h3-latent-upscaler"
+    ],
+    "custom_nodes_restart_required": true,
+    "custom_nodes_commit": "a5ed6e9"
+  }
 }

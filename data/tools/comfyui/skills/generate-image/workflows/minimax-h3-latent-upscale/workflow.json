@@ -22,7 +22,7 @@
     "class_type": "VAEDecode",
     "inputs": {
       "samples": [
-        "14",
+        "134",
         0
       ],
       "vae": [
@@ -99,7 +99,7 @@
     "class_type": "VAEDecodeAudio",
     "inputs": {
       "samples": [
-        "14",
+        "134",
         0
       ],
       "vae": [
@@ -209,13 +209,164 @@
         0
       ],
       "prompt": "2D-animated Japanese anime, hand-inked line art, flat cel-shading — preserve the exact line weight, character design and flat cel shading in every shot. No 3D rendering, no photorealism.\n\n[Shot 1] A girl walks toward the camera down a sunlit alley, waves at the lens, then leans in and grins. She stays close to the camera and fills the frame the whole time. The girl (S1), a bright energetic teenage voice, says: <d>[Korean] 얘들아, 나 드디어 도착했어!</d> Camera: Static Shot at slow speed with small amplitude.\n\nSoundscape: Loud outdoor tone — sneakers scuffing on stone pavement, tourists chattering, seagulls crying overhead, a light breeze.\n\nMusic: A bright ukulele strum with hand claps from 0s, cutting off cleanly on the final frame.",
-      "width": 1152,
-      "height": 640,
-      "length": 362,
+      "width": 576,
+      "height": 832,
+      "length": 124,
       "first_frame": [
         "31",
         0
       ]
+    }
+  },
+  "125": {
+    "class_type": "LTXVSeparateAVLatent",
+    "inputs": {
+      "av_latent": [
+        "14",
+        0
+      ]
+    }
+  },
+  "126": {
+    "class_type": "MiniMaxH3LatentUpscale",
+    "inputs": {
+      "samples": [
+        "125",
+        0
+      ],
+      "scale_by": 1.5,
+      "upscale_method": "bilinear"
+    }
+  },
+  "127": {
+    "class_type": "LTXVConcatAVLatent",
+    "inputs": {
+      "video_latent": [
+        "131",
+        0
+      ],
+      "audio_latent": [
+        "136",
+        0
+      ]
+    }
+  },
+  "128": {
+    "class_type": "MiniMaxH3ConditioningUpscale",
+    "inputs": {
+      "conditioning": [
+        "104",
+        0
+      ],
+      "scale_by": 1.5,
+      "upscale_method": "bilinear"
+    }
+  },
+  "129": {
+    "class_type": "RandomNoise",
+    "inputs": {
+      "noise_seed": 556589502035082
+    }
+  },
+  "130": {
+    "class_type": "ManualSigmas",
+    "inputs": {
+      "sigmas": "0.9864, 0.9740, 0.9587, 0.9400, 0.9158, 0.8845, 0.8406, 0.7774, 0.6744, 0.4856, 0.0000"
+    }
+  },
+  "131": {
+    "class_type": "MiniMaxH3AddNoise",
+    "inputs": {
+      "model": [
+        "6",
+        0
+      ],
+      "noise": [
+        "129",
+        0
+      ],
+      "sigmas": [
+        "130",
+        0
+      ],
+      "latent_image": [
+        "126",
+        0
+      ]
+    }
+  },
+  "132": {
+    "class_type": "DisableNoise",
+    "inputs": {}
+  },
+  "133": {
+    "class_type": "BasicGuider",
+    "inputs": {
+      "model": [
+        "6",
+        0
+      ],
+      "conditioning": [
+        "128",
+        0
+      ]
+    }
+  },
+  "134": {
+    "class_type": "SamplerCustomAdvanced",
+    "inputs": {
+      "noise": [
+        "132",
+        0
+      ],
+      "guider": [
+        "133",
+        0
+      ],
+      "sampler": [
+        "17",
+        0
+      ],
+      "sigmas": [
+        "130",
+        0
+      ],
+      "latent_image": [
+        "127",
+        0
+      ]
+    }
+  },
+  "136": {
+    "class_type": "MiniMaxH3AddNoise",
+    "inputs": {
+      "model": [
+        "6",
+        0
+      ],
+      "noise": [
+        "129",
+        0
+      ],
+      "sigmas": [
+        "137",
+        0
+      ],
+      "latent_image": [
+        "125",
+        1
+      ]
+    }
+  },
+  "137": {
+    "class_type": "MiniMaxH3ShiftSigmas",
+    "inputs": {
+      "sigmas": [
+        "130",
+        0
+      ],
+      "shift_video": 12,
+      "shift_audio": 3
     }
   }
 }
