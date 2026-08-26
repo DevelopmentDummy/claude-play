@@ -4,16 +4,17 @@
 > 이 문서는 **시점 스냅샷**이다 — 리포의 현재 상태·미완료 작업·보류된 결정을 기록한다. 항목을 처리하면 이 문서에서 지우거나 완료 표시할 것.
 > 작업 수칙·함정·디버깅 절차는 [docs/maintenance-playbook.md](docs/maintenance-playbook.md), 커밋 전 절차는 [docs/pre-merge-checklist.md](docs/pre-merge-checklist.md) 참고.
 
-## 1. 리포 상태 (2026-07-07 기준)
+## 1. 리포 상태 (2026-08-26 기준)
 
-- `main` == `origin/main` — 미푸시 커밋 없음. 과거 메모리/노트의 "미푸시" 언급은 전부 옛말.
+- `main` == `origin/main` (`a730ccc`) — 미푸시 커밋 없음.
 - 워킹 트리 클린 (이 인수인계 커밋 제외).
 - src 코드에 TODO/FIXME 마커 **0개** — 미해결 항목은 전부 이 문서와 docs/에 있다.
+- `npm run verify` 통과, 프로덕션 서버는 `a730ccc` 빌드로 재기동됨(2026-08-26 10:06).
 
 ## 2. 브랜치·워크트리 정리 후보 (안전, 사용자 승인 후 실행)
 
-- **머지 완료 → `git branch -d` 가능**: `chore/code-quality-loop`, `claude/confident-brattain`, `feat/agy-mcp-and-image-gating`, `feat/openai-image-codex-backend`, `feat/persona-subagent-orchestration`, `fix/askuserquestion-card-lifecycle`, `fix/profile-thumbnail-downscale`
-- **stale 워크트리 3개** (`.claude/worktrees/` — 2026-03 시점, 전부 머지됨): `amazing-dirac`, `confident-brattain`, `cranky-kirch`. 제거는 반드시 `git worktree remove`로 (수동 rm은 `.git/worktrees` 메타데이터를 남긴다). 워크트리가 잠근 브랜치 `claude/amazing-dirac`, `claude/cranky-kirch`는 워크트리 제거 후 삭제 가능.
+- **머지 완료 → `git branch -d` 가능** (2026-08-26 `git branch --merged main` 실측, 15개): `chore/code-quality-loop`, `chore/comfyui-path-cleanup`, `chore/comfyui-workflow-updates`, `claude/oauth-session-expiration-2a2d87`, `docs/minimax-h3-video-skills`, `feat/agy-mcp-and-image-gating`, `feat/gpt-5.6-models`, `feat/openai-image-codex-backend`, `feat/persona-subagent-orchestration`, `fix/askuserquestion-card-lifecycle`, `fix/codex-turn-failure-surfacing`, `fix/comfyui-lora-family-visibility`, `fix/profile-thumbnail-downscale`, `fix/restart-env-propagation`, `fix/session-files-range-support`. (`feat/external-video-skills`는 2026-08-26 삭제 완료.)
+- **워크트리 1개**: `.claude/worktrees/oauth-session-expiration-2a2d87` — `11eb0d7` detached, main에 포함됨. 제거는 반드시 `git worktree remove`로 (수동 rm은 `.git/worktrees` 메타데이터를 남긴다). 이전에 적혀 있던 stale 워크트리 3개(`amazing-dirac`/`confident-brattain`/`cranky-kirch`)는 이미 사라졌다.
 
 ## 3. ⚠️ 유일한 미머지 브랜치: `feat/antigravity-ruleset-persistence`
 
@@ -41,16 +42,10 @@
 | 11 | 선택지 적중 판정 `[CHOICE_MISS]` | **기존 세션은 재-open해야 새 지시문 반영.** (a) 선택지 클릭 → 다음 턴 프롬프트에 헤더 **없음** (b) 직접 입력 → `[CHOICE_MISS] 직전 제안: ...` 1줄 + 다음 선택지가 그 톤·소재로 조정되는지 (c) 연속 빗나감 시 `x2`/`x3` 증가 (d) 헤더 문구가 캐릭터 응답에 누출되지 않는지 |
 | 12 | 세션 메모 자동 갱신 (2026-07-29) | **기존 세션은 재-open해야 MCP 도구 반영.** 비-OOC 턴 10회 진행 후 ① 다음 유저 턴에 `[MEMO]` 헤더 병합 ② AI가 `bridge_set_session_memo` 호출 ③ 로비 카드에 `autoMemo`가 흐린 이탤릭으로 표시 ④ 수동 `memo`가 있는 세션은 수동 값 그대로 유지 ⑤ 헤더 문구가 캐릭터 응답에 누출되지 않는지. 옵트아웃은 `session.json`에 `"memoAuto": false` 후 재확인 |
 | 10 | 외부 MCP 실소비 검증 (feat/external-mcp) | 브릿지 쪽 스모크는 통과(2026-07-15: tools/list·health·generate 직하 저장). 남은 것: **실제 외부 프로젝트**에서 `docs/external-setup-guide.md`대로 셋업 → Claude Code가 `.mcp.json` HTTP 서버로 붙어 `comfyui_health`/`comfyui_generate` 호출. 프로덕션 서버는 재시작해야 엔드포인트 반영 |
-
-## 4-B. 미머지 브랜치: `feat/external-video-skills` (2026-08-18)
-
-외부 셋업 스킬팩에 영상 생성을 추가하다가, MCP 경유 영상 생성 자체가 구조적으로 깨져 있던 것을 함께 고친 브랜치. **머지는 사용자 결정 대기.**
-
-- 커밋 6개: undici 305초 절벽(long-http.ts 신설 + 3홉 전환) / 내부 MCP requestJson 전환 / 외부 스킬팩 6→11종 / async 에러 마커 정리 / `seed_randomize` noise_seed 버그 / playbook §5.10.
-- **머지 범위 주의**: 이 브랜치는 `fix/comfyui-lora-family-visibility`에서 분기했다. `git log main..HEAD` 기준 부모 브랜치의 미머지 커밋 4개(88881ae, 7170264, 472ea50, 49bd4c6)가 함께 들어간다.
-- 라이브 검증 완료: 외부 MCP async 영상 3판 — zimage-to-video webp 85초 / H3 Turbo 5초물 mp4+aac 70초 / **H3 Turbo 1152×640 15초물 1271초(21분) 완주**(305초 절벽 실경로 통과). 셋업 스크립트 11종 복사, 영상 패키지 5종 노출, longRequest 310초 통과(fetch 대조군 305.6초 실패).
-- **머지 전 필요**: `npm run build` (프로덕션 서버가 `.next/`를 서빙 중이면 금지), pre-merge-checklist.
-- **머지 후 필요**: 기존 세션은 내부 MCP 수정 반영에 **재-open**, 프로덕션 서버는 재시작.
+| 13 | 세션 수명 6시간 + 수동 종료 (c3ecf75) | 재시작·라우트/빌드 반영은 확인됨(close 200, traversal 400, 청크에 216e5, smoke 5 pass). 남은 것: **실제 세션에서** (a) ☰ → "세션 종료" → confirm → CLI 프로세스가 실제로 내려가는지(`/api/service/status`의 `activeInstances` 감소) (b) 모바일에서 브라우저 닫고 10분 이상 뒤 재접속 → 세션이 살아있는지 (c) 파이프라인 스케줄러는 의도대로 끊김 즉시 정지하고 재접속으로 되살아나지 **않는지** |
+| 14 | 인라인 이미지 재로딩 제거 (a730ccc) | OOC 토글을 반복해도 이미지가 스피너로 되돌아가지 않고 재요청이 없는지(DevTools Network 304 또는 요청 없음). 이미지가 실제로 삭제된 경우엔 종전대로 에러 카드로 떨어지는지 |
+| 15 | H3 영상 25스텝 기본값 (a9bc5ba) | 다음 영상 생성 1회 — steps=25로 나가는지, 소요 시간이 20스텝 대비 수용 가능한지. 신규 패키지 `minimax-h3-latent-upscale`/`-video-nsfw`는 실험 상태 |
+| 16 | 영상 스킬 MCP 수정 반영 (구 §4-B) | 브랜치 자체는 main 머지·푸시 완료(라이브 검증 끝남). 남은 것: **기존 세션은 재-open**해야 내부 MCP 수정이 반영된다 |
 
 ## 5. 사용자 결정 대기
 
