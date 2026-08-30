@@ -338,12 +338,16 @@ function handleMessage(
         const actionHistory = instance.flushActions();
         const jsonLint = instance.buildJsonLint();
         const parts = [eventHeaders, jsonLint, hintSnapshot, actionHistory, text].filter(Boolean);
-        instance.sendToAI(parts.join("\n"));
+        // 턴 중 개입이면 프로바이더별 steer 경로로 (신규 턴 시작이 아님)
+        if (instance.isBusy()) instance.steerAI(parts.join("\n"));
+        else instance.sendToAI(parts.join("\n"));
         break;
       }
 
       const isOOC = text.startsWith("OOC:");
-      instance.isOOC = isOOC;
+      // 턴 중 개입(interject)일 때는 진행 중인 턴의 OOC 라벨을 뒤집지 않는다 —
+      // instance.isOOC는 턴 종료 시 assistant 메시지 라벨/상태 처리 분기에 쓰인다.
+      if (!instance.isBusy()) instance.isOOC = isOOC;
       if (!isOOC) {
         instance.clearPopups();
       }
@@ -364,7 +368,9 @@ function handleMessage(
       // 선택지가 빗나갔을 때만 1줄. 적중이면 빈 문자열이라 프롬프트에 아무것도 붙지 않는다.
       const choiceMiss = isOOC ? "" : instance.buildChoiceMiss(text);
       const parts = [oocHint, eventHeaders, jsonLint, hintSnapshot, actionHistory, choiceMiss, text].filter(Boolean);
-      instance.sendToAI(parts.join("\n"));
+      // 턴 중 개입이면 프로바이더별 steer 경로로 (신규 턴 시작이 아님)
+      if (instance.isBusy()) instance.steerAI(parts.join("\n"));
+      else instance.sendToAI(parts.join("\n"));
 
       // Broadcast user message to other clients in same session (sender already has it locally)
       wsBroadcast("chat:user", { text, isOOC }, { sessionId: client.sessionId, exclude: client });

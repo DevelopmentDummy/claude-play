@@ -40,6 +40,7 @@ export default function BuilderPage() {
     setStatus,
     setError,
     prepareSend,
+    prepareInterject,
     handleClaudeMessage,
     handleToolAnswered,
     handleCancelled,
@@ -108,6 +109,19 @@ export default function BuilderPage() {
       sendChat(text);
     },
     [prepareSend, sendChat]
+  );
+
+  /** 빌더는 턴 중 개입 상시 허용 — 스트리밍 중이면 누적 상태를 유지한 채 밀어넣는다. */
+  const handleSend = useCallback(
+    (text: string) => {
+      if (isStreaming) {
+        prepareInterject(text);
+        sendChat(text);
+        return;
+      }
+      sendMessage(text);
+    },
+    [isStreaming, prepareInterject, sendChat, sendMessage]
   );
 
   // Initialize builder on mount — ref prevents Strict Mode double-call
@@ -305,9 +319,10 @@ export default function BuilderPage() {
             onAnswerSubmitted={() => setStreamingManually(true)}
           />
           <ChatInput
-            disabled={isStreaming}
+            // 빌더 세션은 턴 중 개입을 항상 허용한다 (토글 없음)
+            disabled={false}
             isStreaming={isStreaming}
-            onSend={sendMessage}
+            onSend={handleSend}
             onCancel={sendCancel}
             voiceChat={voiceChat}
             usageProvider={usageProvider}

@@ -142,6 +142,10 @@ interface ChatInputProps {
   autoplayActive?: boolean;
   /** Toggle autoplay on/off */
   onAutoplayToggle?: () => void;
+  /** 턴 중 개입(interject) 허용 여부 — true면 스트리밍 중에도 Send가 살아있다 */
+  interjectActive?: boolean;
+  /** 개입 토글 (미지정이면 토글 칩 자체를 렌더하지 않는다 — 빌더는 상시 허용) */
+  onInterjectToggle?: () => void;
   /** Currently selected steering preset name */
   steeringPresetName?: string | null;
   /** Open steering preset editor */
@@ -153,7 +157,7 @@ interface ChatInputProps {
   onUsageClick?: () => void;
 }
 
-function ChatInput({ disabled, isStreaming, onSend, onCancel, sessionId, choices, pendingEvents, showOOC, onOOCToggle, voiceChat, ttsPlaying, autoSendDelay = 3000, autoplayActive, onAutoplayToggle, steeringPresetName, onSteeringEdit, usageProvider, usageSessionId, usageRefreshTrigger, onUsageClick }: ChatInputProps) {
+function ChatInput({ disabled, isStreaming, onSend, onCancel, sessionId, choices, pendingEvents, showOOC, onOOCToggle, voiceChat, ttsPlaying, autoSendDelay = 3000, autoplayActive, onAutoplayToggle, interjectActive, onInterjectToggle, steeringPresetName, onSteeringEdit, usageProvider, usageSessionId, usageRefreshTrigger, onUsageClick }: ChatInputProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [oocMode, setOocMode] = useState(false);
   const [choiceBusy, setChoiceBusy] = useState(false);
@@ -777,14 +781,16 @@ function ChatInput({ disabled, isStreaming, onSend, onCancel, sessionId, choices
           onCompositionEnd={() => { composingRef.current = false; }}
           autoFocus
         />
-        {isStreaming && onCancel ? (
+        {isStreaming && onCancel && (
           <button
             onClick={onCancel}
             className="px-5 py-2.5 border border-error/60 rounded-xl bg-error/15 text-error cursor-pointer text-sm font-medium shrink-0 transition-all duration-fast hover:bg-error/25 hover:-translate-y-px"
           >
             Stop
           </button>
-        ) : (
+        )}
+        {/* 개입 허용(=스트리밍 중에도 disabled=false)이면 Stop과 Send를 함께 노출 */}
+        {!(isStreaming && disabled) && (
           <button
             disabled={disabled}
             onClick={handleSend}
@@ -833,7 +839,24 @@ function ChatInput({ disabled, isStreaming, onSend, onCancel, sessionId, choices
         </div>
         {/* Steering preset (right) */}
         <div className="flex items-center gap-2">
-          <span className="text-[11px] text-text-dim/50">스티어링:</span>
+          {onInterjectToggle && (
+            <button
+              type="button"
+              aria-pressed={!!interjectActive}
+              onClick={onInterjectToggle}
+              title={interjectActive
+                ? "턴 중 개입 켜짐 — AI가 응답하는 도중에도 메시지를 보낼 수 있습니다"
+                : "턴 중 개입 꺼짐 — AI 응답이 끝난 뒤에만 입력할 수 있습니다"}
+              className={`text-[11px] px-2 py-0.5 rounded-full border transition-colors ${
+                interjectActive
+                  ? "border-blue-500/50 text-blue-400/90 bg-blue-500/10"
+                  : "border-border/40 text-text-dim/50 hover:text-text-dim/80 hover:border-border/60"
+              }`}
+            >
+              턴 중 개입 {interjectActive ? "ON" : "OFF"}
+            </button>
+          )}
+          <span className="text-[11px] text-text-dim/50">오토 메시지:</span>
           <button
             onClick={onSteeringEdit}
             className={`text-[11px] truncate max-w-[200px] transition-colors ${

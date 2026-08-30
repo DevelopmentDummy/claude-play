@@ -247,6 +247,12 @@ export class KimiProcess extends EventEmitter<KimiProcessEvents> {
     this.sendRequestNoWait("prompt", { user_input: text });
   }
 
+  /** 턴 중 개입 — Kimi wire에는 전용 steer RPC가 없어 일반 prompt로 폴백한다.
+   *  (턴 중 prompt 처리 동작은 미검증 — 큐잉/에러 여부 확인 필요.) */
+  steer(text: string): void {
+    this.send(text);
+  }
+
   sendToolResult(_toolUseId: string, _content: string): void {
     console.warn(`[${this.constructor.name}] sendToolResult not implemented — AskUserQuestion is Claude-only for now`);
   }

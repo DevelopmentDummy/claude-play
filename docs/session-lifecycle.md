@@ -22,6 +22,12 @@
   - **턴 종료 감지**: primary = agy의 명시적 `WaitForConversationFullyIdle` RPC(`{conversationId: cascadeId}`)와 휴리스틱 폴백(IDLE grace 틱 + trajectory-stable 5틱; ERROR 종료 분기는 stable 3틱으로 단축)의 race. 턴 종료 후에는 `startIdleWatch()`가 4초 간격 경폴링으로 async 도구(ComfyUI 이미지/영상) 완료 wake-up 턴을 라이브 emit — 결과에 `spontaneous:true` 태깅, 15분/연속 실패 3회 상한, `ANTIGRAVITY_IDLE_WATCH=false`로 opt-out (`antigravity-process.ts`)
   - **빈 턴 silent retry (agy 전용)**: 턴 결과가 빈 턴(세그먼트 0+도구 0)·메타-only·도구호출 누출이면 `SessionInstance`가 `[system]` nudge를 `_silentRetry`로 1회 재전송 (`silentRetryDone` — 유저 입력마다 리셋, 입력당 최대 1회; spontaneous idle-watch 턴은 제외). 로그에 보이는 유령 `[system]` nudge의 정체
   - **GEMINI.md 자동 로드 안 함**: agy는 지시문을 **primer**(첫 USER_INPUT)로만 전달받으며 cascade 히스토리에 남아 resume에도 유지됨 — 진행 중 세션의 GEMINI.md 수정은 사실상 no-op. primer는 `MAX_PRIMER_CHARS`(28000자, Windows 커맨드라인 32767자 한계) truncation 주의
+- **턴 중 개입(interject/steer)**: AI 턴이 진행 중일 때 사용자가 보낸 메시지는 `SessionInstance.steerAI()` → 프로바이더별 `steer()`로 라우팅된다(`isBusy()`로 분기, ws-server·REST `/api/chat/send` 공통). 신규 턴을 시작하지 않으므로 `_pendingTurn`/턴 경계는 유지된다.
+  - **Claude**: 일반 send와 동일 경로(stream-json stdin push)
+  - **Codex**: 네이티브 `turn/steer` RPC — `{threadId, expectedTurnId, input}`. `expectedTurnId`는 필수 전제조건이라 그 사이 턴이 끝나면 실패 → `turn/start`로 폴백(타임아웃은 전달 여부 불명이라 폴백하지 않음). codex-cli 0.148.0 라이브 검증: 개입 메시지는 **같은 턴 안에서** 현재 응답 뒤에 소비됨(turn/completed 1회)
+  - **Antigravity**: `SendUserCascadeMessage`만 호출(폴루프 teardown·pre-send baseline 스냅샷·startPollLoop 재시작 없음 — 하면 진행 중 턴이 종료 처리된다). agy가 queued user input step으로 쌓아 현재 step 뒤에 소비(`SendAllQueuedMessages`/`DeleteQueuedUserInputStep` RPC 존재). 큐잉 step은 role=user라 `emitNewChunks`가 걸러 에코되지 않음. ⚠️ 라이브 미검증 — 안 먹으면 `SendAllQueuedMessages` 명시 호출이 1차 시도
+  - **Gemini/Kimi**: 전용 경로 없음 — 일반 send 폴백(미검증)
+  - UI: RP 채팅은 하단 바 `턴 중 개입` 토글(localStorage `bridge_interject_enabled`, 기본 OFF), 빌더 세션은 상시 허용
 - 모두 동일한 EventEmitter interface (`message/status/error/sessionId`)
 - Instruction files: `CLAUDE.md` (Claude) + `AGENTS.md` (Codex/Kimi — Kimi CLI는 작업 디렉토리의 AGENTS.md를 로드하며, spawn마다 `writeKimiInstructions`가 CLAUDE.md+런타임 프롬프트 병합본으로 AGENTS.md를 덮어씀) + `GEMINI.md` (Gemini/Antigravity — 단 agy는 자동 로드하지 않음, 위 Antigravity 항목 참조) — 세션 생성 시 동일 컨텐츠로 병렬 생성 (CLAUDE.md가 병합의 authoritative source)
 - MCP config: `.mcp.json` (Claude·Kimi — Kimi는 동일 파일을 `--mcp-config-file`로 명시 전달, `.kimi/`는 skills·agent yaml 전용) + `.codex/config.toml` (Codex — 위 CODEX_HOME 리포인트로 로드됨) + `.gemini/` (Gemini) + `.agents/mcp_config.json` (Antigravity)

@@ -371,6 +371,12 @@ export class ClaudeProcess extends EventEmitter<ClaudeProcessEvents> {
     this.emit("status", "streaming");
   }
 
+  /** 턴 중 개입 — Claude CLI는 stream-json stdin으로 들어온 user 메시지를
+   *  진행 중인 턴에 그대로 전달한다. 일반 send와 경로가 같다. */
+  steer(text: string): void {
+    this.send(text);
+  }
+
   /** Send a tool_result block back to Claude — completes a pending tool_use turn.
    *  Used for AskUserQuestion (and any future bridge-side interactive tools). */
   sendToolResult(toolUseId: string, content: string): void {

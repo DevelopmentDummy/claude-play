@@ -47,6 +47,7 @@
 | 14 | 인라인 이미지 재로딩 제거 (a730ccc) | OOC 토글을 반복해도 이미지가 스피너로 되돌아가지 않고 재요청이 없는지(DevTools Network 304 또는 요청 없음). 이미지가 실제로 삭제된 경우엔 종전대로 에러 카드로 떨어지는지 |
 | 15 | H3 영상 25스텝 기본값 (a9bc5ba) | 다음 영상 생성 1회 — steps=25로 나가는지, 소요 시간이 20스텝 대비 수용 가능한지. 신규 패키지 `minimax-h3-latent-upscale`/`-video-nsfw`는 실험 상태 |
 | 16 | 영상 스킬 MCP 수정 반영 (구 §4-B) | 브랜치 자체는 main 머지·푸시 완료(라이브 검증 끝남). 남은 것: **기존 세션은 재-open**해야 내부 MCP 수정이 반영된다 |
+| 17 | 턴 중 개입(interject/steer) | 토글 ON → AI 응답 중 메시지 전송. (a) Claude 세션: 라이브 버블 위에 유저 메시지가 끼워지고 스트리밍이 끊기지 않는지, 재로드 후 순서 일치 (b) **agy 세션: 미검증 — queued user input이 실제로 소비되는지**, 안 되면 `SendAllQueuedMessages` 명시 호출 추가 (c) codex 세션: `codex-stream.log`에 `[steer]` 라인 + 같은 턴에서 소비 (프로토콜 자체는 app-server 프로브로 검증 완료) (d) 빌더(상시 ON) 각 프로바이더 (e) Kimi는 폴백 send — 큐잉/에러 여부 확인 |
 
 ## 5. 사용자 결정 대기
 

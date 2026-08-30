@@ -31,6 +31,9 @@ import { buildAutoplayMessage, calculateAutoplayDelay, getSelectedPreset, type S
 import { getPanelActionRegistry, destroyPanelActionRegistry, parsePanelActions, parsePanelMeta } from "@/lib/panel-action-registry";
 import { AIProvider } from "@/lib/ai-provider";
 
+/** 턴 중 개입(AI 응답 중 메시지 전송) 허용 여부 — 전역 localStorage 토글 */
+const INTERJECT_KEY = "bridge_interject_enabled";
+
 interface Panel {
   name: string;
   html: string;
@@ -49,6 +52,7 @@ export default function ChatPage() {
     setStatus,
     setError,
     prepareSend,
+    prepareInterject,
     handleClaudeMessage,
     handleToolAnswered,
     handleCancelled,
@@ -115,6 +119,9 @@ export default function ChatPage() {
   const autoplayOnRef = useRef(false);
   const [steeringPreset, setSteeringPreset] = useState<SteeringPreset | null>(null);
   const [steeringModalOpen, setSteeringModalOpen] = useState(false);
+  const [interjectOn, setInterjectOn] = useState(false);
+  // sendMessage(useCallback)가 최신 스트리밍 여부를 보기 위한 ref
+  const isStreamingRef = useRef(false);
   const [forceInput, setForceInput] = useState(false);
   const [showUsage, setShowUsage] = useState(false);
   const autoplayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -125,6 +132,15 @@ export default function ChatPage() {
   // Load steering preset from localStorage on mount
   useEffect(() => {
     setSteeringPreset(getSelectedPreset());
+    setInterjectOn(localStorage.getItem(INTERJECT_KEY) === "1");
+  }, []);
+
+  const handleInterjectToggle = useCallback(() => {
+    setInterjectOn((prev) => {
+      const next = !prev;
+      localStorage.setItem(INTERJECT_KEY, next ? "1" : "0");
+      return next;
+    });
   }, []);
 
   /**
@@ -606,6 +622,12 @@ export default function ChatPage() {
         return;
       }
       if (text.startsWith("OOC:")) setShowOOC(true);
+      // 턴 중 개입: 진행 중인 스트리밍을 유지한 채 사용자 메시지만 밀어넣는다.
+      if (isStreamingRef.current) {
+        prepareInterject(text);
+        sendChat(text);
+        return;
+      }
       if (!text.startsWith("OOC:")) {
         setPopupQueue([]);
         // Clear popup flags so panel scripts don't get stuck queuing
@@ -618,7 +640,7 @@ export default function ChatPage() {
       prepareSend(text);
       sendChat(text);
     },
-    [prepareSend, sendChat, setStreamingManually, queueAvailableHeader]
+    [prepareSend, prepareInterject, sendChat, setStreamingManually, queueAvailableHeader]
   );
 
   const handleCancel = useCallback(() => {
@@ -992,6 +1014,7 @@ export default function ChatPage() {
   const prevTtsPlayingForAutoRef = useRef(false);
 
   useEffect(() => {
+    isStreamingRef.current = isStreaming;
     (window as unknown as Record<string, unknown>).__bridgeIsStreaming = isStreaming;
     window.dispatchEvent(new CustomEvent("__bridge_streaming_change", { detail: isStreaming }));
     // Fire bridge events on transitions
@@ -1212,7 +1235,7 @@ export default function ChatPage() {
             }}
           >
             <ChatInput
-              disabled={isStreaming || status === "compacting"}
+              disabled={(isStreaming && !interjectOn) || status === "compacting"}
               isStreaming={isStreaming}
               onSend={sendMessage}
               onCancel={handleCancel}
@@ -1226,6 +1249,8 @@ export default function ChatPage() {
               autoSendDelay={typeof chatOptions.autoSendDelay === "number" ? chatOptions.autoSendDelay : undefined}
               autoplayActive={autoplayOn}
               onAutoplayToggle={handleAutoplayToggle}
+              interjectActive={interjectOn}
+              onInterjectToggle={handleInterjectToggle}
               steeringPresetName={steeringPreset?.name}
               onSteeringEdit={() => setSteeringModalOpen(true)}
               usageProvider={currentProvider === "kimi" ? undefined : currentProvider}

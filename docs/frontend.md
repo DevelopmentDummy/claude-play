@@ -8,7 +8,7 @@
 | `/login` | `login/page.tsx` | Admin login page (shown when `ADMIN_PASSWORD` is set) |
 | `/setup` | `setup/page.tsx` | First-run setup wizard (admin password, ComfyUI, Gemini, Civitai, TTS config) |
 | `/builder/[name]` | `builder/[name]/page.tsx` | Persona builder UI with usage indicator + session resume menu |
-| `/chat/[sessionId]` | `chat/[sessionId]/page.tsx` | Main session chat UI with panels, usage modal, options modal, steering presets |
+| `/chat/[sessionId]` | `chat/[sessionId]/page.tsx` | Main session chat UI with panels, usage modal, options modal, steering presets, 턴 중 개입 토글(localStorage `bridge_interject_enabled`) |
 
 ## Hooks (`src/hooks/`)
 
@@ -16,7 +16,7 @@
 |------|------|
 | `useWebSocket.ts` | Manages the `/ws` connection lifecycle (bind/leave, reconnect) |
 | `useSSE.ts` | Subscribes to Server-Sent Events for streamed turns |
-| `useChat.ts` | High-level chat state — send, history pagination (loadHistory/loadMore), per-message OOC toggle, streaming message assembly, tool-answer/cancel handling |
+| `useChat.ts` | High-level chat state — send, history pagination (loadHistory/loadMore), per-message OOC toggle, streaming message assembly, tool-answer/cancel handling, `prepareInterject`(턴 중 개입 — 누적 ref를 리셋하지 않고 라이브 버블 바로 위에 사용자 메시지 삽입) |
 | `useLayout.ts` | Reads/writes layout config: panel-area position (right/left/bottom/hidden) and per-panel placement (left/right/modal/modal-dismissible/full-screen/dock/dock-left/dock-right/dock-bottom) |
 | `useIsMobile.ts` | Mobile breakpoint detector (drives compact UI variants) |
 | `useFocusTrap.ts` | Traps Tab focus inside modal dialogs (a11y); shared by the modal components |
@@ -31,7 +31,7 @@ Accessibility conventions (2026-06 a11y wave): modal components share `useFocusT
 | Component | Role |
 |-----------|------|
 | `ChatMessages.tsx` | Message rendering with `<dialog_response>` extraction, scene-break (❖❖❖), inline images/panels, infinite scroll; dock panels float over messages (sticky overlay) instead of reserving a band |
-| `ChatInput.tsx` | Message input with OOC mode toggle, `*` insert button, voice-chat mode (STT auto-start/auto-send), autoplay toggle + steering-preset entry, choice buttons, embedded `UsageIndicator` |
+| `ChatInput.tsx` | Message input with OOC mode toggle, `*` insert button, voice-chat mode (STT auto-start/auto-send), autoplay toggle + steering-preset entry, 턴 중 개입 토글(ON이면 스트리밍 중에도 Send/Stop 동시 노출), choice buttons, embedded `UsageIndicator` |
 | `InteractiveQuestionCard.tsx` | Renders AskUserQuestion tool calls as interactive answer cards (choice buttons + freeform input); answers POST to `/api/sessions/[id]/tool-answer` and are relayed as plain user messages (headless `claude -p` auto-rejects the tool), synced via `tool:answered` WS event |
 | `ToolBlock.tsx` | Collapsible tool invocation display showing tool name and details |
 | `InlineImage.tsx` | Image component with polling support and error handling for lazy-loaded images |
