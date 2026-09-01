@@ -61,6 +61,7 @@
 8. **🐛 `update_variables` 유령 MCP 도구 (2026-07-07 감사에서 발견)**: `builder-prompt.md`(2곳)·`panel-spec.md:1198`·`data/style-check/defaults.md`·`review-prompt.md`가 검토/세션 LLM에게 `update_variables` MCP 호출을 지시하지만, `claude-play-mcp-server.mjs`에 그런 도구는 **등록돼 있지 않다**. style-check의 `style_drift_verdict`/`style_warning`이 실제로 영속화되는지 라이브 검증 필요 — 안 되면 도구를 실제로 추가하거나 프롬프트 4곳을 실존 경로(`run_tool` 등)로 고쳐야 한다 (프롬프트 수정은 RP 동작 변경이라 사용자 확인 필요).
 9. **slave_trainer 레거시 이중 style-check**: 페르소나 `hooks/on-assistant.js`에 자체 주기 드리프트 평가(10턴, style-drift-report.md 기록)가 남아 신규 on-style-check lifecycle(12턴)과 공존 — 둘 다 발화하면 백그라운드 검토 비용 2배. 레거시 블록 제거는 페르소나 데이터 수정이라 사용자 승인 필요.
 10. **lint:persona 상존 finding**: 라이브 페르소나 23개에서 284 error / 90 warning (legacy choice 스키마, inline runTool 등 — 대부분 탐정·에이미 등 구세대 페르소나). 유저 데이터라 자율 수정 금지 — 마이그레이션 여부/우선순위 결정 필요. 이 때문에 `npm run verify`에서 lint:persona는 의도적으로 제외돼 있다.
+11. **npm audit 11건 (2026-09-02, `--omit=dev`)**: `next` 15.5.18(→15.5.25, DoS/SSRF), `ws` 8.20.0(→8.21.3, 메모리 노출/DoS), `postcss`, `nanoid`, `fast-uri`, `ip-address`, `hono`(MCP SDK 경유), `qs`, `body-parser` — 전부 semver 범위 내 `npm audit fix`로 해결 가능. `sharp` 0.34.5→0.35.x는 **major**라 별도 검토. 프로덕션 서버가 `node_modules`를 로드 중이라 갱신은 재기동 직전에 실행할 것(`npm audit fix` → `npm run verify` → `node scripts/restart.mjs`). `npm outdated` 상 major 대기: next 16, tailwind 4, typescript 7, uuid 14, @types/node 26 — 전부 보류(마이그레이션 비용 > 이득).
 
 ## 6. 의도적으로 하지 않은 것 (재평가 조건 포함)
 

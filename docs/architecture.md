@@ -125,6 +125,13 @@ Python FastAPI child process (port 3342 by default) for serial GPU task queueing
 | `fs-retry.ts` | `retryOnWindowsLock<T>()` — exponential backoff for EBUSY/EPERM/ENOTEMPTY errors caused by other Windows processes holding a file. |
 | `static-file.ts` | Disk file serving shared by the image/media routes: `STATIC_MIME`/`mimeForPath()`, `resolveInside()` (traversal guard), `parseRange()` + `fileStream()` (abort-safe `createReadStream` → web `ReadableStream`) and `fileResponseWithRange()` — streams a file with `Accept-Ranges`/`Content-Length`, honours `Range` (206 / 416). Required because WebKit refuses `<video>`/`<audio>` playback without 206 and `NextResponse(buffer)` emits chunked responses with no length. |
 | `color-utils.ts` | Frontend helpers: `hexToRgba()`, `lightenHex()`. |
+| `path-safety.ts` | `isUnsafePathSegment()` — shared guard for API routes that turn a session id / persona name path segment into a filesystem path (rejects empty, separators, traversal). |
+| `image-fs.ts` | Image I/O shared by the image-generation backends: `refImageMime()`, `safeImagePath()`, `writeSessionImage()` (writes into the session images dir). |
+| `long-http.ts` | `longRequest()` — raw `http` client for multi-minute local requests (ComfyUI render, external MCP). Global `fetch`/undici caps header wait at 300s regardless of `AbortSignal`; see playbook §5.10. |
+| `modal-merge.ts` | Pure modal-state logic for `__modals`: `readModalGroups()` (layout.json → modalGroups, BOM-tolerant), `applyModalChange()`, `closeAllModals()`. Tested by `modal-merge.test.ts`. |
+| `panel-action-spec.ts` | Dependency-free `ActionSpec` type + `formatActionSpecLine()` shared by the client registry (`panel-action-registry.ts`) and the server reader (`panel-actions-meta.ts`). |
+| `respawn-helpers.ts` | `getResumeIdForProvider()` / `writeInstructionsForProvider()` — single definition of "which saved id resumes this provider" and which instruction file it reads, shared by the open/sync/options respawn paths. |
+| `session-memo.ts` | Pure session-memo helpers: `MEMO_MAX_LEN`, `clampMemo()`, `extractLastUserPreview()` (strips `[MEMO]`/`[TIME]` event-header lines). |
 | `autoplay.ts` | Autoplay & Steering Preset management stored in localStorage. `SteeringPreset` interface, `loadPresets()`, `savePresets()`. |
 
 ## MCP Server
