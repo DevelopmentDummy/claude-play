@@ -159,6 +159,34 @@
       "loader": "unet_only",
       "family": "anima",
       "notes": "circlestone-labs 공식 Anima Aesthetic v1.1 (2026-07-13, 3.90GB fp16). 미학 파인튜닝 최신. score_* 태그 사용 금지(과최적화). resolver 프로파일 anima_aesthetic 등록."
+    },
+    "MiniMax_H3_FL2VA_pruned_nvfp4.safetensors": {
+      "loader": "unet_only",
+      "family": "minimax_h3",
+      "notes": "MiniMax H3 (Hailuo 3.0) 33B omni-modal DiT, NVFP4 pruned. 영상+오디오 동시 생성. 전용 CLIP(qwen3vl)/VAE(video+audio) 필요. SDXL/Illustrious LoRA와 호환 불가."
+    },
+    "minimax_h3_ref2va_pruned_w4a8_mixed.safetensors": {
+      "loader": "unet_only",
+      "family": "minimax_h3",
+      "notes": "MiniMax H3 ref2va (reference-to-video+audio) w4a8 mixed. MiniMaxH3ReferenceToVideo 노드 전용 — FL2VA와 컨디셔닝 방식이 다르다."
+    },
+    "wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors": {
+      "loader": "unet_only",
+      "family": "wan22",
+      "notes": "WAN 2.2 i2v 14B high-noise fp8. MoE 2-stage의 high 측."
+    },
+    "wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors": {
+      "loader": "unet_only",
+      "family": "wan22",
+      "notes": "WAN 2.2 i2v 14B low-noise fp8. MoE 2-stage의 low 측."
+    },
+    "wan2.2_i2v_high_noise_14B_nvfp4_mixed.safetensors": {
+      "loader": "unet_only",
+      "family": "wan22"
+    },
+    "wan2.2_i2v_low_noise_14B_nvfp4_mixed.safetensors": {
+      "loader": "unet_only",
+      "family": "wan22"
     }
   }
 }

@@ -1,7 +1,9 @@
 {
-  "description": "Anima 계열 혼합형 장면 패키지 — UNET/CLIP/VAE 분리 로드 + 4-Detailer + 4x Upscale",
+  "description": "Anima 계열 혼합형 장면 패키지 — UNET/CLIP/VAE 분리 로드 + 선택형 Turbo LoRA + 4-Detailer + 4x Upscale",
   "compatibility": {
-    "requires": { "loader": "unet_only" },
+    "requires": {
+      "loader": "unet_only"
+    },
     "incompatible_message": "anima-mixed-scene은 UNET/CLIP 분리 로드 체크포인트만 지원합니다. 단일 세이프텐서 체크포인트는 'scene' 또는 'portrait' 패키지를 사용하세요."
   },
   "features": {
@@ -145,6 +147,25 @@
       "type": "boolean",
       "default": true,
       "description": "Enable/disable anus detailer"
+    },
+    "speed_mode": {
+      "type": "string",
+      "default": "quality",
+      "description": "quality | turbo. turbo는 Turbo-ANIMA-v2.9, Euler/normal, 12 steps, CFG 1을 기본 적용"
+    },
+    "turbo_lora": {
+      "node": "11",
+      "field": "lora_name",
+      "type": "string",
+      "default": "Turbo-ANIMA-v2.9.safetensors",
+      "description": "speed_mode=turbo에서 사용할 Anima Turbo LoRA"
+    },
+    "turbo_strength": {
+      "node": "11",
+      "field": "strength_model",
+      "type": "number",
+      "default": 0,
+      "description": "직접 지정 시 speed_mode 기본 강도보다 우선"
     }
   }
 }

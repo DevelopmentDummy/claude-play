@@ -97,5 +97,12 @@
       "default": true,
       "description": "false면 업스케일 생략(native 출력, 빠른 초벌용)"
     }
+  },
+  "compatibility": {
+    "requires": {
+      "loader": "unet_only",
+      "family": "wan22"
+    },
+    "incompatible_message": "이 패키지는 wan22 계열 전용입니다. 다른 family의 LoRA/체크포인트를 섞으면 가중치가 조용히 오염됩니다."
   }
 }

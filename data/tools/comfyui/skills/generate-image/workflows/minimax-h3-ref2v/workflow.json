@@ -2,7 +2,7 @@
   "6": {
     "class_type": "UNETLoader",
     "inputs": {
-      "unet_name": "MiniMax_H3_FL2VA_pruned_nvfp4.safetensors",
+      "unet_name": "minimax_h3_ref2va_pruned_w4a8_mixed.safetensors",
       "weight_dtype": "default"
     }
   },
@@ -10,7 +10,7 @@
     "class_type": "BasicScheduler",
     "inputs": {
       "model": [
-        "105",
+        "6",
         0
       ],
       "scheduler": "simple",
@@ -80,7 +80,7 @@
     "class_type": "BasicGuider",
     "inputs": {
       "model": [
-        "105",
+        "6",
         0
       ],
       "conditioning": [
@@ -131,43 +131,11 @@
       "upload": "image"
     }
   },
-  "31": {
-    "class_type": "ImageScale",
-    "inputs": {
-      "image": [
-        "30",
-        0
-      ],
-      "upscale_method": "lanczos",
-      "width": 1152,
-      "height": 640,
-      "crop": "center"
-    }
-  },
   "32": {
     "class_type": "LoadImage",
     "inputs": {
-      "image": "",
+      "image": "example.png",
       "upload": "image"
-    },
-    "_meta": {
-      "title": "last frame"
-    }
-  },
-  "33": {
-    "class_type": "ImageScale",
-    "inputs": {
-      "image": [
-        "32",
-        0
-      ],
-      "upscale_method": "lanczos",
-      "width": 832,
-      "height": 480,
-      "crop": "center"
-    },
-    "_meta": {
-      "title": "last frame scale"
     }
   },
   "91": {
@@ -198,7 +166,10 @@
     }
   },
   "104": {
-    "class_type": "MiniMaxH3ImageToVideo",
+    "class_type": "MiniMaxH3ReferenceToVideo",
+    "_meta": {
+      "title": "MiniMax H3 Reference to Video (ref2va)"
+    },
     "inputs": {
       "clip": [
         "13",
@@ -208,28 +179,19 @@
         "11",
         0
       ],
-      "prompt": "2D-animated Japanese anime, hand-inked line art, flat cel-shading — preserve the exact line weight, character design and flat cel shading in every shot. No 3D rendering, no photorealism.\n\n[Shot 1] A girl walks toward the camera down a sunlit alley, waves at the lens, then leans in and grins. She stays close to the camera and fills the frame the whole time. The girl (S1), a bright energetic teenage voice, says: <d>[Korean] 얘들아, 나 드디어 도착했어!</d> Camera: Static Shot at slow speed with small amplitude.\n\nSoundscape: Loud outdoor tone — sneakers scuffing on stone pavement, tourists chattering, seagulls crying overhead, a light breeze.\n\nMusic: A bright ukulele strum with hand claps from 0s, cutting off cleanly on the final frame.",
-      "width": 1152,
-      "height": 640,
-      "length": 362,
-      "first_frame": [
-        "31",
-        0
-      ]
-    }
-  },
-  "105": {
-    "class_type": "LoraLoaderModelOnly",
-    "inputs": {
-      "model": [
-        "6",
+      "audio_vae": [
+        "24",
         0
       ],
-      "lora_name": "NaughtyTimes_pruned_r128_v2.safetensors",
-      "strength_model": 0.35
-    },
-    "_meta": {
-      "title": "NaughtyTimes H3 v2 (model only)"
+      "prompt": "",
+      "width": 1344,
+      "height": 768,
+      "length": 124,
+      "ref_image_size": "match",
+      "ref_images.ref_image_0": [
+        "30",
+        0
+      ]
     }
   }
 }

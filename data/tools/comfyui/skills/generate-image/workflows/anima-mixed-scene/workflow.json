@@ -70,7 +70,7 @@
     "class_type": "ModelSamplingAuraFlow",
     "inputs": {
       "model": [
-        "1",
+        "11",
         0
       ],
       "shift": 3
@@ -136,6 +136,20 @@
     },
     "_meta": {
       "title": "save"
+    }
+  },
+  "11": {
+    "class_type": "LoraLoaderModelOnly",
+    "inputs": {
+      "model": [
+        "1",
+        0
+      ],
+      "lora_name": "Turbo-ANIMA-v2.9.safetensors",
+      "strength_model": 0
+    },
+    "_meta": {
+      "title": "optional-turbo-lora"
     }
   },
   "30": {

@@ -25,6 +25,7 @@ data/restart-orchestrator.log
 data/server-start.log
 data/tools/comfyui/_debug/
 data/tools/*/panels.removed/
+data/tools/*/skills/*/workflows.removed/
 gpu-manager/__pycache__/
 gpu-manager/venv/
 comfyui_submodule/venv/
