@@ -123,6 +123,7 @@ Python FastAPI child process (port 3342 by default) for serial GPU task queueing
 | `inline-formatter.ts` | Shared inline tokenizer for RP markdown-lite (`*action*` / `**bold**` / `'thought'` / inline code / `$PANEL$`·`$IMAGE$` placeholders) — CommonMark-style delimiter-stack parser, inline-only. |
 | `env-file.ts` | `.env.local` file reader/writer with quote stripping & comment handling. |
 | `fs-retry.ts` | `retryOnWindowsLock<T>()` — exponential backoff for EBUSY/EPERM/ENOTEMPTY errors caused by other Windows processes holding a file. |
+| `static-file.ts` | Disk file serving shared by the image/media routes: `STATIC_MIME`/`mimeForPath()`, `resolveInside()` (traversal guard), `parseRange()` + `fileStream()` (abort-safe `createReadStream` → web `ReadableStream`) and `fileResponseWithRange()` — streams a file with `Accept-Ranges`/`Content-Length`, honours `Range` (206 / 416). Required because WebKit refuses `<video>`/`<audio>` playback without 206 and `NextResponse(buffer)` emits chunked responses with no length. |
 | `color-utils.ts` | Frontend helpers: `hexToRgba()`, `lightenHex()`. |
 | `autoplay.ts` | Autoplay & Steering Preset management stored in localStorage. `SteeringPreset` interface, `loadPresets()`, `savePresets()`. |
 
