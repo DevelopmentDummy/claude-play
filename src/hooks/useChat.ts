@@ -460,6 +460,17 @@ export function useChat(rawSessionId?: string) {
   /** Handle cancellation: finalize partial text and reset streaming state */
   const handleCancelled = useCallback(() => {
     flushAssistantText();
+    // 서버는 cancel 뒤 result를 보내지 않으므로(finishAssistantTurn 미경유) 여기서
+    // live를 지워야 한다. 남겨두면 취소된 버블이 스트리밍 표시로 고정되고, 다음
+    // 전송의 addUserMessage가 그 버블을 진행 중으로 오인해 앞에 끼워 넣은 뒤
+    // 새 턴의 delta가 취소된 부분 텍스트를 덮어쓴다.
+    setMessages((prev) => {
+      const last = prev[prev.length - 1];
+      if (last && last.role === "assistant" && last.live) {
+        return [...prev.slice(0, -1), { ...last, live: undefined }];
+      }
+      return prev;
+    });
     rawAssistantTextRef.current = "";
     displayAssistantTextRef.current = "";
     carryAssistantTextRef.current = "";
