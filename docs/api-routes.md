@@ -24,7 +24,7 @@ Next.js 밖에서 `server.ts`가 직접 처리하는 라우트: `/api/chat/tts`,
 | `/api/personas/[name]/publish` | POST | Push persona dir to a GitHub repo |
 | `/api/personas/[name]/file` | GET, PUT | Read/write individual persona files |
 | `/api/personas/[name]/overview` | GET | Full persona overview (files, panels, skills, data) |
-| `/api/personas/[name]/images` | GET | Serve persona images |
+| `/api/personas/[name]/images` | GET | Serve persona images (streams via `static-file.ts`; Range/206 for video/audio) |
 | `/api/personas/[name]/options` | GET, PUT | Read/write persona options |
 | `/api/personas/[name]/versions` | GET, POST, PUT | Version history — list, create snapshot, restore |
 | `/api/personas/[name]/voice` | GET, PUT | Read/write voice.json config |
@@ -66,9 +66,9 @@ Next.js 밖에서 `server.ts`가 직접 처리하는 라우트: `/api/chat/tts`,
 | `/api/sessions/[id]/tool-answer` | POST | Submit an AskUserQuestion answer to the live session instance (body: `{ toolUseId, answer: { answers } }`) |
 | `/api/sessions/[id]/pipeline-scheduler/start` | POST | Start the per-session pipeline scheduler |
 | `/api/sessions/[id]/pipeline-scheduler/stop` | POST | Stop the per-session pipeline scheduler |
-| `/api/sessions/[id]/persona-images` | GET | List persona images / serve a single image (thumbnail support) |
+| `/api/sessions/[id]/persona-images` | GET | List persona images / serve a single image (thumbnail support; Range/206 for video/audio) |
 | `/api/sessions/[id]/files` | GET, HEAD | Serve session files (images, etc.) |
-| `/api/sessions/[id]/files/[...filepath]` | GET, HEAD | Serve session files (nested path) |
+| `/api/sessions/[id]/files/[...filepath]` | GET, HEAD | Serve session files (nested path). Media → streamed with Range/206; images → weak ETag/304; `?thumb=N` webp thumbnails |
 | `/api/sessions/[id]/images` | GET | List session images |
 | `/api/sessions/[id]/layout` | PATCH | Update session layout config |
 | `/api/sessions/[id]/options` | GET, PUT | Read/write session options |

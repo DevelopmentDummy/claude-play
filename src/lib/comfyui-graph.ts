@@ -448,13 +448,9 @@ export function processDetailerChain(
     params.speed_mode.trim().toLowerCase() === "turbo";
 
   // Helper: read param value, falling back to param spec's default (for non-node params
-  // like `detailer_face_denoise` that don't appear in workflow nodes). Turbo workflows
-  // skip the four optional detailers unless the caller explicitly opts one back in.
+  // like `detailer_face_denoise` that don't appear in workflow nodes).
   const getParam = (key: string): unknown => {
     if (params[key] !== undefined) return params[key];
-    if (turboDetailersDefaultOff && /^detailer_(face|hand|pussy|anus)$/.test(key)) {
-      return false;
-    }
     return paramDefs?.[key]?.default;
   };
   if (!modules || Object.keys(modules).length === 0) return;
@@ -506,6 +502,8 @@ export function processDetailerChain(
   for (const moduleId of moduleOrder) {
     if (!modules[moduleId]) continue;
     const paramKey = `detailer_${moduleId}`;
+    // Turbo workflows skip the optional detailers unless the caller explicitly opts one back in.
+    if (turboDetailersDefaultOff && params[paramKey] === undefined) continue;
     if (getParam(paramKey) === false) continue;
     enabledModules.push({ id: moduleId, template: modules[moduleId] });
   }

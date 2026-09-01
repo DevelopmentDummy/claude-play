@@ -16,7 +16,7 @@
 |------|------|
 | `useWebSocket.ts` | Manages the `/ws` connection lifecycle (bind/leave, reconnect) |
 | `useSSE.ts` | Subscribes to Server-Sent Events for streamed turns |
-| `useChat.ts` | High-level chat state — send, history pagination (loadHistory/loadMore), per-message OOC toggle, streaming message assembly, tool-answer/cancel handling, `prepareInterject`(턴 중 개입 — 누적 ref를 리셋하지 않고 라이브 버블 바로 위에 사용자 메시지 삽입) |
+| `useChat.ts` | High-level chat state — send, history pagination (loadHistory/loadMore), per-message OOC toggle, streaming message assembly, tool-answer/cancel handling, `prepareInterject`(턴 중 개입 — 누적 ref를 리셋하지 않음; `addUserMessage`가 꼬리에 live stream 버블이 있으면 그 바로 위에 사용자 메시지를 삽입하므로 로컬 개입과 다른 클라이언트의 `chat:user` 브로드캐스트가 같은 순서 규칙을 탄다; `handleCancelled`는 live를 지워 취소 버블이 이 규칙에 걸리지 않게 한다) |
 | `useLayout.ts` | Reads/writes layout config: panel-area position (right/left/bottom/hidden) and per-panel placement (left/right/modal/modal-dismissible/full-screen/dock/dock-left/dock-right/dock-bottom) |
 | `useIsMobile.ts` | Mobile breakpoint detector (drives compact UI variants) |
 | `useFocusTrap.ts` | Traps Tab focus inside modal dialogs (a11y); shared by the modal components |

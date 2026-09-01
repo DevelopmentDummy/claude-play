@@ -38,8 +38,10 @@ export async function GET(
   }
 
   const contentType = mimeForPath(safeName);
-  const data = fs.readFileSync(filePath);
-
-  // 영상/오디오는 Range(206)가 있어야 <video>가 길이를 알고 탐색할 수 있다.
-  return fileResponseWithRange(data, contentType, req.headers.get("range"));
+  // 영상/오디오는 Range(206)가 있어야 <video>가 길이를 알고 탐색할 수 있다 — 스트리밍 서빙.
+  return fileResponseWithRange(filePath, {
+    contentType,
+    rangeHeader: req.headers.get("range"),
+    signal: req.signal ?? null,
+  });
 }

@@ -4,12 +4,12 @@
 > 이 문서는 **시점 스냅샷**이다 — 리포의 현재 상태·미완료 작업·보류된 결정을 기록한다. 항목을 처리하면 이 문서에서 지우거나 완료 표시할 것.
 > 작업 수칙·함정·디버깅 절차는 [docs/maintenance-playbook.md](docs/maintenance-playbook.md), 커밋 전 절차는 [docs/pre-merge-checklist.md](docs/pre-merge-checklist.md) 참고.
 
-## 1. 리포 상태 (2026-08-26 기준)
+## 1. 리포 상태 (2026-09-02 기준)
 
-- `main` == `origin/main` (`a730ccc`) — 미푸시 커밋 없음.
-- 워킹 트리 클린 (이 인수인계 커밋 제외).
+- `main` == `origin/main` (`8ac1d62`) — 미푸시 커밋 없음. 정비 브랜치 `chore/maintenance-2026-09-02`가 main 위에 있다(머지 결정은 사용자).
+- 워킹 트리 클린.
 - src 코드에 TODO/FIXME 마커 **0개** — 미해결 항목은 전부 이 문서와 docs/에 있다.
-- `npm run verify` 통과, 프로덕션 서버는 `a730ccc` 빌드로 재기동됨(2026-08-26 10:06).
+- `npm run verify` 통과(2026-09-02). 프로덕션 서버(`npm run start`, 2026-09-01 18:16 기동)가 어느 빌드를 서빙 중인지는 확인하지 않았다 — 최소 `a730ccc` 이상.
 
 ## 2. 브랜치·워크트리 (2026-08-26 정리 완료)
 
@@ -47,7 +47,7 @@
 | 14 | 인라인 이미지 재로딩 제거 (a730ccc) | OOC 토글을 반복해도 이미지가 스피너로 되돌아가지 않고 재요청이 없는지(DevTools Network 304 또는 요청 없음). 이미지가 실제로 삭제된 경우엔 종전대로 에러 카드로 떨어지는지 |
 | 15 | H3 영상 25스텝 기본값 (a9bc5ba) | 다음 영상 생성 1회 — steps=25로 나가는지, 소요 시간이 20스텝 대비 수용 가능한지. 신규 패키지 `minimax-h3-latent-upscale`/`-video-nsfw`는 실험 상태 |
 | 16 | 영상 스킬 MCP 수정 반영 (구 §4-B) | 브랜치 자체는 main 머지·푸시 완료(라이브 검증 끝남). 남은 것: **기존 세션은 재-open**해야 내부 MCP 수정이 반영된다 |
-| 17 | 턴 중 개입(interject/steer) | 토글 ON → AI 응답 중 메시지 전송. (a) Claude 세션: 라이브 버블 위에 유저 메시지가 끼워지고 스트리밍이 끊기지 않는지, 재로드 후 순서 일치 (b) **agy 세션: 미검증 — queued user input이 실제로 소비되는지**, 안 되면 `SendAllQueuedMessages` 명시 호출 추가 (c) codex 세션: `codex-stream.log`에 `[steer]` 라인 + 같은 턴에서 소비 (프로토콜 자체는 app-server 프로브로 검증 완료) (d) 빌더(상시 ON) 각 프로바이더 (e) Kimi는 폴백 send — 큐잉/에러 여부 확인 |
+| 17 | 턴 중 개입(interject/steer) | 토글 ON → AI 응답 중 메시지 전송. (a) Claude 세션: 라이브 버블 위에 유저 메시지가 끼워지고 스트리밍이 끊기지 않는지, 재로드 후 순서 일치 — **두 클라이언트(데스크톱+폰) 동시 접속 시 비-발신 클라이언트에서도** 라이브 버블 위에 끼워지고 두 번째 stream 버블이 생기지 않는지(2026-09-02 `addUserMessage` 수정, 라이브 스모크 미실행); **취소(Stop) 후 재전송** 시 유저 메시지가 취소된 버블 *뒤*에 오고 취소 버블의 부분 텍스트가 보존되는지(`handleCancelled`가 live를 지우도록 수정) (b) **agy 세션: 미검증 — queued user input이 실제로 소비되는지**, 안 되면 `SendAllQueuedMessages` 명시 호출 추가; 추가 리스크(2026-09-02 리뷰): 큐잉된 user step이 turn 중 trajectory에 붙으면 `emitNewChunks`가 `lastSeenMessageCount`/tail baseline을 그 user step으로 옮겨 진행 중이던 assistant step의 잔여 delta가 유실될 수 있다 — `antigravity-stream.log`에서 `steer: queued` 직후 RUNNING 상태로 step 수가 늘어나는지 확인, 늘어나면 tail-delta를 마지막 assistant step 기준으로 바꿔야 한다 (c) codex 세션: `codex-stream.log`에 `[steer]` 라인 + 같은 턴에서 소비 (프로토콜 자체는 app-server 프로브로 검증 완료) (d) 빌더(상시 ON) 각 프로바이더 (e) Kimi는 폴백 send — 큐잉/에러 여부 확인 |
 
 ## 5. 사용자 결정 대기
 
@@ -61,6 +61,7 @@
 8. **🐛 `update_variables` 유령 MCP 도구 (2026-07-07 감사에서 발견)**: `builder-prompt.md`(2곳)·`panel-spec.md:1198`·`data/style-check/defaults.md`·`review-prompt.md`가 검토/세션 LLM에게 `update_variables` MCP 호출을 지시하지만, `claude-play-mcp-server.mjs`에 그런 도구는 **등록돼 있지 않다**. style-check의 `style_drift_verdict`/`style_warning`이 실제로 영속화되는지 라이브 검증 필요 — 안 되면 도구를 실제로 추가하거나 프롬프트 4곳을 실존 경로(`run_tool` 등)로 고쳐야 한다 (프롬프트 수정은 RP 동작 변경이라 사용자 확인 필요).
 9. **slave_trainer 레거시 이중 style-check**: 페르소나 `hooks/on-assistant.js`에 자체 주기 드리프트 평가(10턴, style-drift-report.md 기록)가 남아 신규 on-style-check lifecycle(12턴)과 공존 — 둘 다 발화하면 백그라운드 검토 비용 2배. 레거시 블록 제거는 페르소나 데이터 수정이라 사용자 승인 필요.
 10. **lint:persona 상존 finding**: 라이브 페르소나 23개에서 284 error / 90 warning (legacy choice 스키마, inline runTool 등 — 대부분 탐정·에이미 등 구세대 페르소나). 유저 데이터라 자율 수정 금지 — 마이그레이션 여부/우선순위 결정 필요. 이 때문에 `npm run verify`에서 lint:persona는 의도적으로 제외돼 있다.
+11. **npm audit 11건 (2026-09-02, `--omit=dev`)**: `next` 15.5.18(→15.5.25, DoS/SSRF), `ws` 8.20.0(→8.21.3, 메모리 노출/DoS), `postcss`, `nanoid`, `fast-uri`, `ip-address`, `hono`(MCP SDK 경유), `qs`, `body-parser` — 전부 semver 범위 내 `npm audit fix`로 해결 가능. `sharp` 0.34.5→0.35.x는 **major**라 별도 검토. 프로덕션 서버가 `node_modules`를 로드 중이라 갱신은 재기동 직전에 실행할 것(`npm audit fix` → `npm run verify` → `node scripts/restart.mjs`). `npm outdated` 상 major 대기: next 16, tailwind 4, typescript 7, uuid 14, @types/node 26 — 전부 보류(마이그레이션 비용 > 이득).
 
 ## 6. 의도적으로 하지 않은 것 (재평가 조건 포함)
 

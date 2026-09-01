@@ -18,98 +18,6 @@ function fileEtag(stat: fs.Stats): string {
   return `W/"${stat.size.toString(16)}-${Math.floor(stat.mtimeMs).toString(16)}"`;
 }
 
-/** "bytes=start-end" 파싱. 유효하지 않으면 null. */
-function parseRange(header: string | null, size: number): { start: number; end: number } | null {
-  if (!header) return null;
-  const m = /^bytes=(\d*)-(\d*)$/.exec(header.trim());
-  if (!m) return null;
-  const [, rawStart, rawEnd] = m;
-  if (rawStart === "" && rawEnd === "") return null;
-
-  let start: number;
-  let end: number;
-  if (rawStart === "") {
-    // suffix range: 마지막 N바이트
-    const suffix = parseInt(rawEnd, 10);
-    if (!Number.isFinite(suffix) || suffix <= 0) return null;
-    start = Math.max(0, size - suffix);
-    end = size - 1;
-  } else {
-    start = parseInt(rawStart, 10);
-    end = rawEnd === "" ? size - 1 : parseInt(rawEnd, 10);
-  }
-  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
-  if (start > end || start >= size) return null;
-  return { start, end: Math.min(end, size - 1) };
-}
-
-/**
- * 파일 구간을 web ReadableStream으로 흘린다.
- *
- * `Readable.toWeb()`를 쓰면 클라이언트가 중간에 연결을 끊었을 때(사파리는 탐색·버퍼링
- * 과정에서 range 요청을 수시로 중단한다) 이미 닫힌 controller에 enqueue를 시도해
- * `ERR_INVALID_STATE: Controller is already closed`가 uncaughtException으로 터진다.
- * 그래서 직접 구성하고, 닫힘/중단 시 node 스트림을 확실히 destroy한다.
- */
-function fileStream(
-  filePath: string,
-  opts: { start?: number; end?: number },
-  signal: AbortSignal | null
-): ReadableStream<Uint8Array> {
-  const node = fs.createReadStream(filePath, opts);
-  let done = false;
-
-  const finish = () => {
-    done = true;
-    if (!node.destroyed) node.destroy();
-  };
-
-  return new ReadableStream<Uint8Array>({
-    start(controller) {
-      node.on("data", (chunk) => {
-        if (done) return;
-        try {
-          controller.enqueue(new Uint8Array(chunk as Buffer));
-        } catch {
-          // 소비자가 이미 사라진 경우 — 조용히 정리한다
-          finish();
-          return;
-        }
-        if (controller.desiredSize !== null && controller.desiredSize <= 0) node.pause();
-      });
-      node.on("end", () => {
-        if (done) return;
-        done = true;
-        try {
-          controller.close();
-        } catch {
-          /* 이미 닫힘 */
-        }
-      });
-      node.on("error", (err) => {
-        if (done) return;
-        done = true;
-        try {
-          controller.error(err);
-        } catch {
-          /* 이미 닫힘 */
-        }
-        if (!node.destroyed) node.destroy();
-      });
-      if (signal) {
-        if (signal.aborted) finish();
-        else signal.addEventListener("abort", finish, { once: true });
-      }
-    },
-    pull() {
-      if (!done) node.resume();
-    },
-    cancel() {
-      finish();
-    },
-  });
-}
-
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string; filepath: string[] }> }
@@ -174,41 +82,13 @@ export async function GET(
   const size = stat.size;
   const isMedia = MEDIA_RE.test(resolved);
 
-  // 미디어는 Range/206을 지원하고 스트리밍으로 흘린다.
+  // 미디어는 Range/206을 지원하고 스트리밍으로 흘린다 (static-file.ts).
   if (isMedia) {
-    const cacheControl = "private, max-age=3600";
-    const rangeHeader = req.headers.get("range");
-
-    if (rangeHeader) {
-      const range = parseRange(rangeHeader, size);
-      if (!range) {
-        return new NextResponse(null, {
-          status: 416,
-          headers: { "Content-Range": `bytes */${size}`, "Accept-Ranges": "bytes" },
-        });
-      }
-      const chunkSize = range.end - range.start + 1;
-      const stream = fileStream(resolved, { start: range.start, end: range.end }, req.signal ?? null);
-      return new NextResponse(stream, {
-        status: 206,
-        headers: {
-          "Content-Type": contentType,
-          "Content-Length": String(chunkSize),
-          "Content-Range": `bytes ${range.start}-${range.end}/${size}`,
-          "Accept-Ranges": "bytes",
-          "Cache-Control": cacheControl,
-        },
-      });
-    }
-
-    const stream = fileStream(resolved, {}, req.signal ?? null);
-    return new NextResponse(stream, {
-      headers: {
-        "Content-Type": contentType,
-        "Content-Length": String(size),
-        "Accept-Ranges": "bytes",
-        "Cache-Control": cacheControl,
-      },
+    return fileResponseWithRange(resolved, {
+      contentType,
+      rangeHeader: req.headers.get("range"),
+      signal: req.signal ?? null,
+      cacheControl: "private, max-age=3600",
     });
   }
 
@@ -232,9 +112,15 @@ export async function GET(
     });
   }
 
+  // 미디어·이미지 외(.vtt 등) 폴백 — Range 불필요.
   const data = fs.readFileSync(resolved);
-  // 영상/오디오는 Range(206)가 있어야 <video>가 길이를 알고 탐색할 수 있다.
-  return fileResponseWithRange(data, contentType, req.headers.get("range"), "no-store, max-age=0");
+  return new NextResponse(data, {
+    headers: {
+      "Content-Type": contentType,
+      "Content-Length": String(size),
+      "Cache-Control": "no-store, max-age=0",
+    },
+  });
 }
 
 export async function HEAD(

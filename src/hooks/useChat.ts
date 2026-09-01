@@ -120,9 +120,22 @@ export function useChat(rawSessionId?: string) {
   const loadedOffsetRef = useRef(0);
   const oocRef = useRef(false);
 
+  /** 사용자 메시지를 추가한다. AI 턴이 진행 중(live stream 버블이 꼬리에 있음)이면
+   *  그 버블 바로 위에 끼워 넣는다 — 라이브 버블은 `prev[prev.length-1]`
+   *  (upsertAssistantMessage의 타깃)로 남아야 delta 파이프라인이 깨지지 않는다.
+   *  로컬 개입(prepareInterject)과 다른 클라이언트의 개입 브로드캐스트(`chat:user`)가
+   *  같은 규칙을 타야 두 클라이언트의 순서가 일치하고, 꼬리 append로 인한
+   *  두 번째 stream 버블 생성(앞 버블이 live로 고아화)을 막는다. */
   const addUserMessage = useCallback((text: string, ooc?: boolean) => {
     const id = `user-${++msgIdRef.current}`;
-    setMessages((prev) => [...prev, { id, renderKey: id, role: "user", content: text, ooc: ooc || undefined }]);
+    const userMsg: ChatMessage = { id, renderKey: id, role: "user", content: text, ooc: ooc || undefined };
+    setMessages((prev) => {
+      const last = prev[prev.length - 1];
+      if (last && last.role === "assistant" && last.live && last.id.startsWith("stream-")) {
+        return [...prev.slice(0, -1), userMsg, last];
+      }
+      return [...prev, userMsg];
+    });
   }, []);
 
   const upsertAssistantMessage = useCallback((content: string) => {
@@ -410,31 +423,19 @@ export function useChat(rawSessionId?: string) {
   );
 
   /** 개입(interject): AI 턴이 진행 중일 때 사용자 메시지를 밀어넣는다.
-   *  prepareSend와 달리 스트리밍 누적 ref를 건드리지 않는다 — 라이브 버블은
-   *  `prev[prev.length-1]`(upsertAssistantMessage의 타깃)로 남아야 delta
-   *  파이프라인이 깨지지 않으므로 사용자 메시지를 그 바로 위에 끼워 넣는다.
-   *  서버는 send 시점에 user를 history에 쓰고 assistant는 턴 종료에 쓰므로
-   *  이 순서가 재로드 후 순서와도 일치한다. */
+   *  prepareSend와 달리 스트리밍 누적 ref를 건드리지 않는다 — 라이브 버블 앞
+   *  삽입은 addUserMessage가 처리한다. 서버는 send 시점에 user를 history에 쓰고
+   *  assistant는 턴 종료에 쓰므로 이 순서가 재로드 후 순서와도 일치한다. */
   const prepareInterject = useCallback((text: string) => {
-    const isOOC = text.startsWith("OOC:");
-    const id = `user-${++msgIdRef.current}`;
-    const userMsg: ChatMessage = { id, renderKey: id, role: "user", content: text, ooc: isOOC || undefined };
-    setMessages((prev) => {
-      const last = prev[prev.length - 1];
-      if (last && last.role === "assistant" && last.id.startsWith("stream-")) {
-        return [...prev.slice(0, -1), userMsg, last];
-      }
-      return [...prev, userMsg];
-    });
+    addUserMessage(text, text.startsWith("OOC:"));
     setError(null);
-  }, []);
+  }, [addUserMessage]);
 
-  /** Send via REST (legacy fallback, used by builder) */
+  /** Send via REST (legacy fallback, used by builder). 개입은 WS 경로
+   *  (prepareInterject + sendChat)만 쓴다 — 여기서는 새 턴 시작만 다룬다. */
   const sendMessage = useCallback(
-    async (text: string, opts?: { interject?: boolean }) => {
-      const interject = !!opts?.interject;
-      if (interject) prepareInterject(text);
-      else prepareSend(text);
+    async (text: string) => {
+      prepareSend(text);
       try {
         await fetch("/api/chat/send", {
           method: "POST",
@@ -443,8 +444,6 @@ export function useChat(rawSessionId?: string) {
         });
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to send");
-        // 개입 실패는 진행 중인 턴을 건드리지 않는다 — 누적 ref/스트리밍 상태 유지.
-        if (interject) return;
         rawAssistantTextRef.current = "";
         displayAssistantTextRef.current = "";
         carryAssistantTextRef.current = "";
@@ -455,12 +454,23 @@ export function useChat(rawSessionId?: string) {
         setIsStreaming(false);
       }
     },
-    [prepareSend, prepareInterject, sessionId]
+    [prepareSend, sessionId]
   );
 
   /** Handle cancellation: finalize partial text and reset streaming state */
   const handleCancelled = useCallback(() => {
     flushAssistantText();
+    // 서버는 cancel 뒤 result를 보내지 않으므로(finishAssistantTurn 미경유) 여기서
+    // live를 지워야 한다. 남겨두면 취소된 버블이 스트리밍 표시로 고정되고, 다음
+    // 전송의 addUserMessage가 그 버블을 진행 중으로 오인해 앞에 끼워 넣은 뒤
+    // 새 턴의 delta가 취소된 부분 텍스트를 덮어쓴다.
+    setMessages((prev) => {
+      const last = prev[prev.length - 1];
+      if (last && last.role === "assistant" && last.live) {
+        return [...prev.slice(0, -1), { ...last, live: undefined }];
+      }
+      return prev;
+    });
     rawAssistantTextRef.current = "";
     displayAssistantTextRef.current = "";
     carryAssistantTextRef.current = "";
