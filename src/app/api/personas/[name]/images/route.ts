@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServices } from "@/lib/services";
-import { mimeForPath } from "@/lib/static-file";
+import { mimeForPath, fileResponseWithRange } from "@/lib/static-file";
 import * as path from "path";
 import * as fs from "fs";
 
@@ -40,10 +40,6 @@ export async function GET(
   const contentType = mimeForPath(safeName);
   const data = fs.readFileSync(filePath);
 
-  return new NextResponse(data, {
-    headers: {
-      "Content-Type": contentType,
-      "Cache-Control": "public, max-age=60",
-    },
-  });
+  // 영상/오디오는 Range(206)가 있어야 <video>가 길이를 알고 탐색할 수 있다.
+  return fileResponseWithRange(data, contentType, req.headers.get("range"));
 }

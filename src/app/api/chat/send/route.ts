@@ -29,7 +29,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "AI process not ready after 15s" }, { status: 503 });
   }
 
-  instance.isOOC = isOOC;
+  // 턴 중 개입(interject)이면 진행 중인 턴의 OOC 라벨을 유지 (ws-server와 동일 규칙)
+  if (!instance.isBusy()) instance.isOOC = isOOC;
   instance.addUserToHistory(text, isOOC);
 
   // Flush pending event headers and prepend to AI message
@@ -40,6 +41,8 @@ export async function POST(req: Request) {
   // 선택지가 빗나갔을 때만 1줄. 적중이면 빈 문자열이라 프롬프트에 아무것도 붙지 않는다.
   const choiceMiss = isOOC ? "" : instance.buildChoiceMiss(text);
   const parts = [eventHeaders, jsonLint, hintSnapshot, actionHistory, choiceMiss, text].filter(Boolean);
-  instance.claude.send(parts.join("\n"));
+  // 턴 중 개입이면 steer, 아니면 신규 턴 (ws-server와 동일 규칙)
+  if (instance.isBusy()) instance.steerAI(parts.join("\n"));
+  else instance.sendToAI(parts.join("\n"));
   return NextResponse.json({ ok: true });
 }

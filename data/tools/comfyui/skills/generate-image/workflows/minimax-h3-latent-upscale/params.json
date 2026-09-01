@@ -193,5 +193,12 @@
     ],
     "custom_nodes_restart_required": true,
     "custom_nodes_commit": "a5ed6e9"
+  },
+  "compatibility": {
+    "requires": {
+      "loader": "unet_only",
+      "family": "minimax_h3"
+    },
+    "incompatible_message": "이 패키지는 minimax_h3 계열 전용입니다. 다른 family의 LoRA/체크포인트를 섞으면 가중치가 조용히 오염됩니다."
   }
 }

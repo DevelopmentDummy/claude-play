@@ -730,7 +730,9 @@ node lora-cheatsheets/build-manifest.mjs
 }
 ```
 
-- 기본값: 모두 `true` (전부 활성)
+- `speed_mode: "turbo"`인 요청은 네 플래그를 생략하면 모든 디테일러가 기본 비활성화된다.
+- Turbo에서도 `detailer_face: true`처럼 명시한 모듈은 선택적으로 다시 활성화할 수 있다.
+- `quality` 및 `speed_mode`가 없는 기존 요청은 각 패키지의 `params.json` 기본값을 그대로 따른다.
 - `false`로 설정한 모듈은 노드 자체가 주입되지 않음 (denoise 0이 아니라 완전 제거)
 
 ### 사용 시나리오
@@ -739,8 +741,9 @@ node lora-cheatsheets/build-manifest.mjs
 |------|------|------|
 | 이라마치오/펠라치오 | `detailer_face: false` | face detailer가 입 주변 penis를 지움 |
 | 핸드잡/손 위주 장면 | `detailer_hand: false` | hand detailer가 손+penis 영역을 덮어씀 |
-| 일반 장면 (기본) | 전부 true | 모든 디테일러 활성 |
-| 빠른 테스트 | 전부 false | 디테일러 스킵으로 생성 시간 단축 |
+| 일반 quality 장면 (기본) | 전부 true | 모든 디테일러 활성 |
+| Turbo 장면 (기본) | 플래그 생략 | 모든 디테일러를 자동 스킵하여 생성 시간 단축 |
+| Turbo 선택 보정 | 필요한 모듈만 true | 고정 비용을 필요한 부위에만 사용 |
 
 ### 런타임 동작
 

@@ -409,10 +409,32 @@ export function useChat(rawSessionId?: string) {
     [addUserMessage]
   );
 
+  /** 개입(interject): AI 턴이 진행 중일 때 사용자 메시지를 밀어넣는다.
+   *  prepareSend와 달리 스트리밍 누적 ref를 건드리지 않는다 — 라이브 버블은
+   *  `prev[prev.length-1]`(upsertAssistantMessage의 타깃)로 남아야 delta
+   *  파이프라인이 깨지지 않으므로 사용자 메시지를 그 바로 위에 끼워 넣는다.
+   *  서버는 send 시점에 user를 history에 쓰고 assistant는 턴 종료에 쓰므로
+   *  이 순서가 재로드 후 순서와도 일치한다. */
+  const prepareInterject = useCallback((text: string) => {
+    const isOOC = text.startsWith("OOC:");
+    const id = `user-${++msgIdRef.current}`;
+    const userMsg: ChatMessage = { id, renderKey: id, role: "user", content: text, ooc: isOOC || undefined };
+    setMessages((prev) => {
+      const last = prev[prev.length - 1];
+      if (last && last.role === "assistant" && last.id.startsWith("stream-")) {
+        return [...prev.slice(0, -1), userMsg, last];
+      }
+      return [...prev, userMsg];
+    });
+    setError(null);
+  }, []);
+
   /** Send via REST (legacy fallback, used by builder) */
   const sendMessage = useCallback(
-    async (text: string) => {
-      prepareSend(text);
+    async (text: string, opts?: { interject?: boolean }) => {
+      const interject = !!opts?.interject;
+      if (interject) prepareInterject(text);
+      else prepareSend(text);
       try {
         await fetch("/api/chat/send", {
           method: "POST",
@@ -420,6 +442,9 @@ export function useChat(rawSessionId?: string) {
           body: JSON.stringify({ text, sessionId }),
         });
       } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to send");
+        // 개입 실패는 진행 중인 턴을 건드리지 않는다 — 누적 ref/스트리밍 상태 유지.
+        if (interject) return;
         rawAssistantTextRef.current = "";
         displayAssistantTextRef.current = "";
         carryAssistantTextRef.current = "";
@@ -427,11 +452,10 @@ export function useChat(rawSessionId?: string) {
         toolsRef.current = [];
         seenToolKeysRef.current.clear();
         sawTextDeltaRef.current = false;
-        setError(err instanceof Error ? err.message : "Failed to send");
         setIsStreaming(false);
       }
     },
-    [prepareSend, sessionId]
+    [prepareSend, prepareInterject, sessionId]
   );
 
   /** Handle cancellation: finalize partial text and reset streaming state */
@@ -578,6 +602,7 @@ export function useChat(rawSessionId?: string) {
     setStatus,
     setError,
     prepareSend,
+    prepareInterject,
     sendMessage,
     handleClaudeMessage,
     handleToolAnswered,

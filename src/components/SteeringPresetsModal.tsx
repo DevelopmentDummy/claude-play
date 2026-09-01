@@ -136,7 +136,7 @@ export default function SteeringPresetsModal({ open, onClose, onPresetChange }: 
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <div className="flex items-center gap-2">
-            <h2 className="text-base font-semibold text-text">스티어링 프리셋</h2>
+            <h2 className="text-base font-semibold text-text">오토 메시지 프리셋</h2>
             <span className="text-xs text-text-dim/60 tabular-nums">{presets.length}</span>
           </div>
           <div className="flex items-center gap-1">

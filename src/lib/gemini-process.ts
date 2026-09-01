@@ -145,6 +145,11 @@ export class GeminiProcess extends EventEmitter<GeminiProcessEvents> {
     this.emit("status", "connected");
   }
 
+  /** 턴 중 개입 — Gemini CLI는 은퇴(vestigial)라 일반 send로 폴백한다. */
+  steer(text: string): void {
+    this.send(text);
+  }
+
   /**
    * Send a user message. On first call (no resume), spawns gemini with -p "text".
    * On subsequent calls, kills the current process and respawns with --resume.

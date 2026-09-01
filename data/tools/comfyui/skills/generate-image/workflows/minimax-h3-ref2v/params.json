@@ -1,8 +1,8 @@
 {
-  "description": "MiniMax H3 I2V NSFW 실험 패키지 — minimax-h3-video 단일 패스 25스텝 기준에 NaughtyTimes v2 pruned rank128을 model-only로 주입. 현재 pruned NVFP4 FL2VA와 호환. 기본 강도 0.35, 권장 0.3~0.5.",
+  "description": "MiniMax H3 ref2va 패키지 — 레퍼런스 이미지를 <Picture N>으로 제시해 정체성/스타일만 가져오고 구도는 프롬프트가 정한다. 첫 프레임을 고정하는 i2v(minimax-h3-video)와 다르다. 전용 UNET minimax_h3_ref2va_pruned_w4a8_mixed 사용. 레퍼런스는 사전 크롭하지 않으며 노드가 종횡비를 보존한 채 축소한다. ref_image_size=max면 짧은변 2048px로 정체성 충실도 최상이지만 몇 배 느려진다.",
   "features": {
     "checkpoint_auto": false,
-    "lora_injection": true,
+    "lora_injection": false,
     "lora_couple_branches": false,
     "seed_randomize": true,
     "trigger_tags": false,
@@ -15,25 +15,20 @@
       "field": "prompt",
       "type": "string",
       "required": true,
-      "description": "⭐ 4단 필드 구조로 써라. 한 덩어리 문장으로 쓰면 품질이 눈에 띄게 떨어진다.\n\n① 매체 선언(첫 문단): '2D-animated Japanese anime, hand-inked line art, flat cel-shading' 처럼 평범한 말로 매체를 선언하고, 유지할 것을 이름으로 지목한다('preserve the exact line weight, character design...'). 부정 지시도 여기('no 3D rendering, no photorealism, no outfit change').\n\n② [Shot N] 시각 서술 + 카메라: 첫 샷은 타임스탬프 없이 [Shot 1]. 이후는 '[Shot 2] At 00:05.200, hard cut to ...'. 타임스탬프는 프레임 단위로 지켜진다(실측 오차 0.3초 이내). 카메라는 서술문에 녹이지 말고 샷 끝에 'Camera: <무브> at <속도> speed with <크기> amplitude' 로 분리. 무브 크기는 샷의 목적으로 정하라 — 근접 연기는 Static/느린 Push In + 거리 고정 문구('stays close to the camera', 'fills the frame'), 풍경 리빌은 Pan/Arc large. 컷이 바뀌면 의상을 다시 해석하므로 샷마다 의상 태그를 반복 명시하라.\n\n③ Soundscape: 앰비언스와 폴리를 별도 문단으로. 구체적이고 크게 주문할수록 잘 나온다. 무음이면 N/A.\n\n④ Music: 악기명 + 타임스탬프('A low drone enters at 0s; strings join at 3s'). 시작 지시는 잘 먹고 감쇠 지시는 약하다. 없으면 N/A.\n\n⑤ 대사: <d>[Korean] 대사 내용</d> — 태그 안에는 언어 태그와 발화 내용만, 화자 ID (S1)/(S2)와 목소리 묘사는 태그 밖에 둔다. 한국어·영어 모두 검증 완료. 대사를 안 쓰면 모델이 어느 언어도 아닌 웅얼거림을 만들어낸다.\n\n⚠️ 못 하는 것: 정확한 개수 지정('exactly three')과 개체별 역할 부여('두 번째 것만 잡아라')는 실패한다. 반대로 텍스트/판서 렌더링, 좌우 소품 배치, 다중 인물 속성 결합, 소품 상호작용은 신뢰할 수 있다."
-    },
-    "first_frame": {
-      "type": "string",
-      "required": false,
-      "description": "i2v용 첫 프레임 이미지 파일명(ComfyUI input 디렉토리 기준). 생략하면 resolver가 LoadImage/ImageScale 노드를 제거하고 t2v로 전환한다. 지정하면 width/height에 맞춰 자동 리스케일된다. i2v에서 오디오 레벨이 떨어지는 현상은 NormalizeAudioLoudness가 흡수하므로 신경 쓰지 않아도 된다."
+      "description": "⭐ minimax-h3-video와 동일한 4단 필드 구조. 추가로 레퍼런스를 <Picture 1> / <Picture 2>로 **본문에서 반드시 지목**해야 반영된다(예: \"Use <Picture 1> as the character reference\"). 지목하지 않으면 레퍼런스가 약하게만 먹는다."
     },
     "width": {
       "node": "104",
       "field": "width",
       "type": "number",
-      "default": 1152,
+      "default": 1344,
       "description": "32의 배수. 실측 상한선: 1152x640이 15초물의 실용 최대치. 1344x768은 5초까지만 쓰고 15초는 금지(오프로딩이 개입해 약 3시간)."
     },
     "height": {
       "node": "104",
       "field": "height",
       "type": "number",
-      "default": 640,
+      "default": 768,
       "description": "32의 배수"
     },
     "length": {
@@ -88,23 +83,17 @@
       "type": "string",
       "default": "video/minimax_h3"
     },
-    "last_frame": {
-      "type": "string",
-      "description": "선택 — 끝 프레임 파일명(ComfyUI input 기준). 지정하면 FLF2V로 동작해 클립이 이 이미지로 수렴한다. 15초 후반부 드리프트 억제 + 체이닝 이음새 고정용. 비우면 노드가 제거된다."
+    "ref_images": {
+      "type": "array",
+      "required": true,
+      "description": "레퍼런스 이미지 파일명(ComfyUI input 디렉토리 기준). 문자열 1개 또는 배열, 최대 2장. 프롬프트에서는 1-based로 <Picture 1>, <Picture 2>로 지목한다."
     },
-    "lora_name": {
-      "node": "105",
-      "field": "lora_name",
+    "ref_image_size": {
+      "node": "104",
+      "field": "ref_image_size",
       "type": "string",
-      "default": "NaughtyTimes_pruned_r128_v2.safetensors",
-      "description": "MiniMax H3 pruned 계열 NSFW LoRA"
-    },
-    "lora_strength": {
-      "node": "105",
-      "field": "strength_model",
-      "type": "number",
-      "default": 0.35,
-      "description": "NaughtyTimes v2 강도. 0.3~0.5 권장, 0.5 초과는 과조리 위험."
+      "default": "match",
+      "description": "match=생성 픽셀 면적에 맞춰 축소(빠름) / max=짧은변 2048px(정체성 최상, 수배 느림). 레퍼런스 토큰이 매 스텝을 타고 흐른다."
     }
   },
   "benchmarks": {
@@ -166,5 +155,12 @@
     "comfyui": ">=0.31.0",
     "reason": "int8_convrot VAE 지원(bbda8364)과 H3 VAE 최적화(2a68ce33)가 여기서 들어왔다. 0.30.x에서는 int8_convrot VAE가 검은 화면으로 디코드된다."
   },
-  "experimental_note": "2-pass latent upscale는 첫 프레임·배경 구조 손상 및 H3 VAE decode 이슈로 보류. 최종 출력은 이 단일 패스 패키지를 사용."
+  "experimental_note": "2-pass latent upscale는 첫 프레임·배경 구조 손상 및 H3 VAE decode 이슈로 보류. 최종 출력은 이 단일 패스 패키지를 사용.",
+  "compatibility": {
+    "requires": {
+      "loader": "unet_only",
+      "family": "minimax_h3"
+    },
+    "incompatible_message": "이 패키지는 minimax_h3 계열 전용입니다. 다른 family의 LoRA/체크포인트를 섞으면 가중치가 조용히 오염됩니다."
+  }
 }

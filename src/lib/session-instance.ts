@@ -556,6 +556,14 @@ export class SessionInstance {
     this.claude.send(text);
   }
 
+  /** 턴 중 개입 — 진행 중인 턴에 사용자 메시지를 주입한다.
+   *  _pendingTurn은 이미 true이므로 건드리지 않는다(턴 경계는 그대로 유지).
+   *  프로바이더별 경로: Claude=stdin, Codex=turn/steer, Antigravity=queued user
+   *  message, Gemini/Kimi=일반 send 폴백. */
+  steerAI(text: string): void {
+    void this.claude.steer(text);
+  }
+
   /** 백그라운드 완료(fire_ai autoResume) 시 자발적 응답 턴을 발동한다.
    *  완료 헤더를 큐에 넣고 현재 턴 드레인을 기다린 뒤, 처리할 이벤트가 남아 있으면
    *  고정 지속지시문 + 이벤트로 새 턴을 연다. 유저 턴이나 다른 auto-resume이 큐를

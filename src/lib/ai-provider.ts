@@ -177,6 +177,13 @@ function buildModelGroups(): ModelGroup[] {
         { value: "claude-opus-5[1m]:high", label: "Opus 5 High" },
         { value: "claude-opus-5[1m]:ultracode", label: "Opus 5 Ultracode" },
         // Fable re-enabled 2026-07-02 (access restored; the "fable" alias still requires the full id).
+        // Fable 5.1 (2026-09-02 출시, CLI 2.1.257 카탈로그 확인). 이전 세대 Fable 5도 유지.
+        { value: "claude-fable-5-1", label: "Fable 5.1" },
+        { value: "claude-fable-5-1:medium", label: "Fable 5.1 Medium" },
+        { value: "claude-fable-5-1:high", label: "Fable 5.1 High" },
+        { value: "claude-fable-5-1:xhigh", label: "Fable 5.1 XHigh" },
+        { value: "claude-fable-5-1:max", label: "Fable 5.1 Max" },
+        { value: "claude-fable-5-1:ultracode", label: "Fable 5.1 Ultracode" },
         { value: "claude-fable-5", label: "Fable" },
         { value: "claude-fable-5:medium", label: "Fable Medium" },
         { value: "claude-fable-5:high", label: "Fable High" },

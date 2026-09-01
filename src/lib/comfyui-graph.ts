@@ -443,10 +443,18 @@ export function processDetailerChain(
   modules: Record<string, DetailerModuleTemplate>,
   paramDefs?: Record<string, { default?: unknown }>
 ): void {
+  const turboDetailersDefaultOff =
+    typeof params.speed_mode === "string" &&
+    params.speed_mode.trim().toLowerCase() === "turbo";
+
   // Helper: read param value, falling back to param spec's default (for non-node params
-  // like `detailer_face_denoise` that don't appear in workflow nodes).
+  // like `detailer_face_denoise` that don't appear in workflow nodes). Turbo workflows
+  // skip the four optional detailers unless the caller explicitly opts one back in.
   const getParam = (key: string): unknown => {
     if (params[key] !== undefined) return params[key];
+    if (turboDetailersDefaultOff && /^detailer_(face|hand|pussy|anus)$/.test(key)) {
+      return false;
+    }
     return paramDefs?.[key]?.default;
   };
   if (!modules || Object.keys(modules).length === 0) return;

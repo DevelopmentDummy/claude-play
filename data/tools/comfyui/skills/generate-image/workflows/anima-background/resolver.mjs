@@ -222,5 +222,36 @@ export default function resolve(workflow, params, context) {
     patched["7"].inputs.shift = profile.shiftByPreset.standard;
   }
 
+  const speedModeRaw = clean(params.speed_mode || "quality").toLowerCase();
+  const speedMode = speedModeRaw === "turbo" ? "turbo" : "quality";
+  const turboNode = patched["11"];
+  if (!turboNode?.inputs) {
+    throw new Error("anima-background expects node 11 for optional Turbo LoRA");
+  }
+
+  if (speedMode === "turbo") {
+    if (params.turbo_lora === undefined || params.turbo_lora === null) {
+      turboNode.inputs.lora_name = "Turbo-ANIMA-v2.9.safetensors";
+    }
+    if (params.turbo_strength === undefined || params.turbo_strength === null) {
+      turboNode.inputs.strength_model = 1.0;
+    }
+    if (params.steps === undefined || params.steps === null) {
+      patched["8"].inputs.steps = 12;
+    }
+    if (params.cfg === undefined || params.cfg === null) {
+      patched["8"].inputs.cfg = 1.0;
+    }
+    if (params.sampler_name === undefined || params.sampler_name === null) {
+      patched["8"].inputs.sampler_name = "euler";
+    }
+    if (params.scheduler === undefined || params.scheduler === null) {
+      patched["8"].inputs.scheduler = "normal";
+    }
+    patched["7"].inputs.shift = 3.0;
+  } else if (params.turbo_strength === undefined || params.turbo_strength === null) {
+    turboNode.inputs.strength_model = 0.0;
+  }
+
   return patched;
 }

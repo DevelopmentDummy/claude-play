@@ -303,6 +303,37 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
     });
   }
 
+  /** 턴 중 개입 — 진행 중인 cascade에 사용자 메시지를 큐잉한다.
+   *  send()와 달리 poll loop teardown / pre-send baseline 스냅샷 / startPollLoop
+   *  재시작을 하지 않는다 — 그걸 하면 진행 중인 턴이 종료 처리되어버린다.
+   *  agy는 실행 중 도착한 user message를 queued user input step으로 쌓았다가
+   *  현재 step 뒤에 소비한다(binary RPC: SendAllQueuedMessages /
+   *  DeleteQueuedUserInputStep). 큐잉된 step은 role=user라 emitNewChunks가
+   *  걸러내므로 사용자 메시지가 assistant로 에코되지 않는다. */
+  steer(text: string): void {
+    void (async () => {
+      if (this.initPromise) await this.initPromise;
+      if (!this.lsPort || !this.cascadeId) {
+        this.emit("error", "AntigravityProcess not initialized — steer ignored");
+        return;
+      }
+      const plannerConfig: Record<string, unknown> = {
+        plannerTypeConfig: { conversational: {} },
+      };
+      if (this.modelKey != null) {
+        plannerConfig.requestedModel = { model: this.modelKey };
+      }
+      await this.rpc("SendUserCascadeMessage", {
+        cascadeId: this.cascadeId,
+        items: [{ text }],
+        cascadeConfig: { plannerConfig },
+      });
+      this.writeLog(`steer: queued user message (${text.length} chars) into running cascade`);
+    })().catch(err => {
+      this.emit("error", `steer failed: ${err}`);
+    });
+  }
+
   sendToolResult(_toolUseId: string, _content: string): void {
     this.writeLog("sendToolResult not implemented — AskUserQuestion is Claude-only for now");
   }

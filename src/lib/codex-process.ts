@@ -44,6 +44,9 @@ export class CodexProcess extends EventEmitter<CodexProcessEvents> {
 
   private cwd = "";
   private threadId: string | null = null;
+  /** 진행 중인 turn의 id — `turn/steer`의 expectedTurnId 전제조건에 필요.
+   *  turn/started에서 채우고 turn/completed에서 비운다. */
+  private activeTurnId: string | null = null;
   private model: string | undefined;
   private effort: string | undefined;
 
@@ -358,6 +361,39 @@ export class CodexProcess extends EventEmitter<CodexProcessEvents> {
     }
   }
 
+  /** 턴 중 개입 — codex app-server의 네이티브 `turn/steer`로 진행 중인 turn에 주입한다.
+   *  (codex-cli 0.148.0 스키마 확인: TurnSteerParams{threadId, expectedTurnId, input}.)
+   *  expectedTurnId는 필수 전제조건이라 그 사이 turn이 끝나면 요청이 실패한다 —
+   *  그 경우 메시지가 유실되지 않도록 일반 turn/start(send)로 폴백한다. */
+  async steer(text: string): Promise<void> {
+    if (!this.proc || !this.initialized || !this.threadId || !this.activeTurnId) {
+      await this.send(text);
+      return;
+    }
+    const expectedTurnId = this.activeTurnId;
+    try {
+      await this.sendRequest("turn/steer", {
+        threadId: this.threadId,
+        expectedTurnId,
+        input: [{ type: "text", text }],
+      });
+      if (this.logStream) {
+        this.logStream.write(`[steer] turn=${expectedTurnId} prompt: ${text.substring(0, 100)}
+`);
+      }
+    } catch (err) {
+      // 타임아웃은 "전달 여부 불명"이라 재전송하면 중복이 된다 — 폴백하지 않는다.
+      if (String(err).includes("timed out")) {
+        this.emit("error", `turn/steer timed out — 개입 메시지가 전달되지 않았을 수 있습니다`);
+        return;
+      }
+      // turn 종료 레이스(expectedTurnId mismatch) 등 — 전달 안 된 것이므로 새 turn으로.
+      if (this.logStream) this.logStream.write(`[steer] failed (${err}) — falling back to turn/start
+`);
+      await this.send(text);
+    }
+  }
+
   sendToolResult(_toolUseId: string, _content: string): void {
     console.warn(`[${this.constructor.name}] sendToolResult not implemented — AskUserQuestion is Claude-only for now`);
   }
@@ -502,9 +538,12 @@ export class CodexProcess extends EventEmitter<CodexProcessEvents> {
     const params = (msg.params || {}) as Record<string, unknown>;
 
     switch (method) {
-      case "turn/started":
+      case "turn/started": {
+        const turn = params.turn as Record<string, unknown> | undefined;
+        this.activeTurnId = typeof turn?.id === "string" ? turn.id : null;
         this.emit("status", "streaming");
         break;
+      }
 
       case "item/agentMessage/delta": {
         const delta = params.delta as string;
@@ -588,6 +627,7 @@ export class CodexProcess extends EventEmitter<CodexProcessEvents> {
         // meant every failed turn (bad model / rate limit / expired auth) was reported
         // to the UI as a normal empty result. Top-level keys kept as a fallback.
         const turn = params.turn as Record<string, unknown> | undefined;
+        this.activeTurnId = null;
         const status = (turn?.status as string) || (params.status as string);
         if (status === "failed") {
           const errorInfo = (turn?.error ?? params.codexErrorInfo) as Record<string, unknown> | undefined;

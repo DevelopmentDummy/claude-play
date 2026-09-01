@@ -20,7 +20,7 @@
     "first_frame": {
       "type": "string",
       "required": false,
-      "description": "i2v용 첫 프레임 이미지 파일명(ComfyUI input 디렉토리 기준). 생략하면 resolver가 LoadImage/ImageScale 노드를 제거하고 t2v로 전환한다. 지정하면 width/height에 맞춰 자동 리스케일된다. i2v에서 오디오 레벨이 떨어지는 현상은 NormalizeAudioLoudness가 흡수하므로 신경 쓰지 않아도 된다."
+      "description": "i2v용 첫 프레임 이미지 파일명(ComfyUI input 디렉토리 기준). 생략하면 resolver가 LoadImage/ImageScale 노드를 제거하고 t2v로 전환한다. 지정하면 width/height에 맞춰 자동 리스케일된다. i2v에서 오디오 레벨이 떨어지는 현상은 NormalizeAudioLoudness가 흡수하므로 신경 쓰지 않아도 된다.\n\n⚠️ i2v 시작 프레임은 **출력 해상도와 같은 종횡비로 만들어 넣어라.** 이 노드 앞의 ImageScale은 crop:center라, 비율이 다르면 원본을 잘라낸다(실측: 1216x832(1.46) → 1152x640(1.80)에서 세로 19% 손실 → 모델이 잘린 조각으로 자세를 재해석). 비율을 못 맞추겠으면 crop을 하지 않는 minimax-h3-ref2v를 써라. 또한 해상도는 실측 검증된 값(1152x640)을 벗어나지 마라 — 1152x768 같은 임의 조합에서 형태가 눌리는 사례가 있었다(2026-08-27)."
     },
     "width": {
       "node": "104",
@@ -152,5 +152,12 @@
     "comfyui": ">=0.31.0",
     "reason": "int8_convrot VAE 지원(bbda8364)과 H3 VAE 최적화(2a68ce33)가 여기서 들어왔다. 0.30.x에서는 int8_convrot VAE가 검은 화면으로 디코드된다."
   },
-  "experimental_note": "2-pass latent upscale는 첫 프레임·배경 구조 손상 및 H3 VAE decode 이슈로 보류. 최종 출력은 이 단일 패스 패키지를 사용."
+  "experimental_note": "2-pass latent upscale는 첫 프레임·배경 구조 손상 및 H3 VAE decode 이슈로 보류. 최종 출력은 이 단일 패스 패키지를 사용.",
+  "compatibility": {
+    "requires": {
+      "loader": "unet_only",
+      "family": "minimax_h3"
+    },
+    "incompatible_message": "이 패키지는 minimax_h3 계열 전용입니다. 다른 family의 LoRA/체크포인트를 섞으면 가중치가 조용히 오염됩니다."
+  }
 }

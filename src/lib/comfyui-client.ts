@@ -464,11 +464,30 @@ export class ComfyUIClient {
         return Array.isArray(list) ? list as Array<{ name: string; strength: number }> : [];
       };
       // 그래프에 실제로 물린 체크포인트의 family를 먼저 확정한다 — baseLoras 선택의 기준.
+      //
+      // 우선순위: 패키지가 선언한 compatibility.requires.family > 체크포인트 레지스트리 조회.
+      // 레지스트리 조회만으로는 미등록 모델에서 family가 조용히 undefined가 되고,
+      // 그 상태에서 selectBaseLorasForFamily가 fail-open으로 주입해 버린다
+      // (2026-08-27 실측 — Illustrious base LoRA 3종이 MiniMax H3 UNET/CLIP에 얹혀
+      //  영상이 붕괴했다. 오디오 브랜치만 멀쩡해 발견이 늦었다).
       const ckptRegistry = loadCheckpointRegistry();
       const graphCkpt = findActiveCheckpointName(prompt);
-      const graphFamily = graphCkpt ? ckptRegistry[graphCkpt]?.family : undefined;
+      const declaredFamily = pkg.meta.compatibility?.requires?.family;
+      const graphFamily = declaredFamily ?? (graphCkpt ? ckptRegistry[graphCkpt]?.family : undefined);
 
-      if (sessionDir) {
+      // fail-closed: family를 끝내 알 수 없으면 base/nsfw LoRA를 주입하지 않는다.
+      // base가 빠지는 건 눈에 보이는 열화지만, family 불일치 주입은 조용히 오염된다.
+      if (!graphFamily) {
+        const warning =
+          `이 워크플로의 family를 확정할 수 없어 base/nsfw LoRA 자동 주입을 건너뜁니다` +
+          (graphCkpt ? ` (체크포인트 '${graphCkpt}' 미등록)` : "") +
+          `. params.json에 compatibility.requires.family를 선언하거나 ` +
+          `data/tools/comfyui/checkpoints.json에 해당 체크포인트를 등록하세요.`;
+        console.warn(`[comfyui] ${warning}`);
+        this.lastBuildWarnings.push(warning);
+      }
+
+      if (graphFamily && sessionDir) {
         const picked = selectBaseLorasForFamily(readDirConfigRaw(sessionDir), graphFamily, ckptRegistry);
         if (picked.warning) {
           console.warn(`[comfyui] ${picked.warning}`);
@@ -486,7 +505,7 @@ export class ComfyUIClient {
           }
         } catch { /* ignore */ }
       }
-      if (baseLoras.length === 0 || nsfwLoras.length === 0) {
+      if (graphFamily && (baseLoras.length === 0 || nsfwLoras.length === 0)) {
         // Fallback to global comfyui-config.json
         try {
           const globalConfigPath = path.join(getDataDir(), "tools/comfyui/comfyui-config.json");
