@@ -47,8 +47,9 @@ function error(text) { console.log(`  ✗ ${text}`); }
 async function stepNodeCheck() {
   header("Step 1: Node.js Version Check");
   const ver = process.versions.node;
-  const major = parseInt(ver.split(".")[0], 10);
-  if (major < 18) { error(`Node.js 18+ required (found ${ver})`); process.exit(1); }
+  const [major, minor] = ver.split(".").map((n) => parseInt(n, 10));
+  // Next.js 15 / sharp 하한 = 18.18 (major 18만 보면 18.0~18.17이 통과했다가 npm install에서 깨진다)
+  if (major < 18 || (major === 18 && minor < 18)) { error(`Node.js 18.18+ required (found ${ver})`); process.exit(1); }
   info(`Node.js ${ver}`);
 }
 

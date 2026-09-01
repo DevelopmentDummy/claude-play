@@ -5,7 +5,7 @@
 
 ## Prerequisites
 
-- **Node.js 18.18+** (20 LTS 이상 권장) — `node --version`. `setup.js`는 major 18 미만만 거부하므로 18.0~18.17은 통과했다가 Next.js/sharp 설치에서 깨진다.
+- **Node.js 18.18+** (20 LTS 이상 권장) — `node --version`. `setup.js`와 `package.json`의 `engines` 필드가 이 하한을 검사한다 (Next.js 15 / sharp 요구사항).
 - **Python 3.10+** (optional) — for GPU Manager (local TTS, image generation)
 - **Git** — for ComfyUI installation (optional)
 - **NVIDIA GPU with 8GB+ VRAM** (optional) — for ComfyUI image generation and local TTS
@@ -26,7 +26,7 @@ node setup.js --yes
 **What it does:**
 | Step | Action | Required? |
 |------|--------|-----------|
-| 1 | Node.js version check (major ≥ 18) | Yes |
+| 1 | Node.js version check (≥ 18.18) | Yes |
 | 2 | `npm install` | Yes |
 | 3 | Python detection | No |
 | 4 | Python venv + dependencies in `gpu-manager/` | No |
