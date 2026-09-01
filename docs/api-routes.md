@@ -2,7 +2,7 @@
 
 Optional admin password auth via `ADMIN_PASSWORD` env var. MCP server requests include `x-bridge-token` for internal validation.
 
-Next.js 밖에서 `server.ts`가 직접 처리하는 라우트: `/api/chat/tts`, `/api/personas/[name]/voice/generate` (TTS 인터셉트), **`POST /mcp/external`** (외부 에이전트용 Streamable HTTP MCP — `x-external-token` 인증, [external-mcp.md](external-mcp.md)).
+Next.js 밖에서 `server.ts`가 직접 처리하는 라우트: `/ws?sessionId=&builder=` (WebSocket upgrade — `ws-server.ts`), `/api/chat/tts`, `/api/personas/[name]/voice/generate` (TTS 인터셉트), **`POST /mcp/external`** (외부 에이전트용 Streamable HTTP MCP — `x-external-token` 인증, [external-mcp.md](external-mcp.md)).
 
 ## Authentication
 
@@ -47,7 +47,7 @@ Next.js 밖에서 `server.ts`가 직접 처리하는 라우트: `/api/chat/tts`,
 |-------|---------|---------|
 | `/api/sessions` | GET, POST | List sessions / create new session |
 | `/api/sessions/[id]` | DELETE | Delete session (moved to `data/deleted_sessions/`) |
-| `/api/sessions/[id]/open` | POST | Open session (spawn AI process, start panels) |
+| `/api/sessions/[id]/open` | POST | Open session (spawn AI process, start panels). Body `{ model?, ttsAutoPlay? }` — `model`(`<model>[:effort]`)로 이번 open의 모델을 덮어쓸 수 있다 |
 | `/api/sessions/[id]/sync` | GET, POST | GET: diff (`?direction=reverse`); POST: selective sync with `direction` + `variablesMode` |
 | `/api/sessions/[id]/conversations` | GET | List provider-side conversations (jsonl/rollouts) tied to this session folder for the resume menu |
 | `/api/sessions/[id]/close` | POST | 수동 세션 종료 — 유예 시간을 기다리지 않고 live SessionInstance(AI 프로세스·PanelEngine·스케줄러)를 즉시 정리. 대화 기록은 보존되어 다음 `open` 때 resume |
@@ -67,9 +67,9 @@ Next.js 밖에서 `server.ts`가 직접 처리하는 라우트: `/api/chat/tts`,
 | `/api/sessions/[id]/pipeline-scheduler/start` | POST | Start the per-session pipeline scheduler |
 | `/api/sessions/[id]/pipeline-scheduler/stop` | POST | Stop the per-session pipeline scheduler |
 | `/api/sessions/[id]/persona-images` | GET | List persona images / serve a single image (thumbnail support; Range/206 for video/audio) |
-| `/api/sessions/[id]/files` | GET, HEAD | Serve session files (images, etc.) |
+| `/api/sessions/[id]/files` | GET, HEAD | Serve a session file by `?path=` (legacy flat read, `no-store`; no Range/ETag/thumb — use the `[...filepath]` variant for media) |
 | `/api/sessions/[id]/files/[...filepath]` | GET, HEAD | Serve session files (nested path). Media → streamed with Range/206; images → weak ETag/304; `?thumb=N` webp thumbnails |
-| `/api/sessions/[id]/images` | GET | List session images |
+| `/api/sessions/[id]/images` | GET | List session images — flat string array; `?recursive=true` returns `{ images[{path,folder,mtime}], folders, total }` |
 | `/api/sessions/[id]/layout` | PATCH | Update session layout config |
 | `/api/sessions/[id]/options` | GET, PUT | Read/write session options |
 | `/api/sessions/[id]/options/apply` | POST | Apply options changes to active session |
@@ -98,7 +98,7 @@ Next.js 밖에서 `server.ts`가 직접 처리하는 라우트: `/api/chat/tts`,
 | Route | Methods | Purpose |
 |-------|---------|---------|
 | `/api/builder/start` | POST | Start persona builder session |
-| `/api/builder/edit` | POST | Send message in builder mode |
+| `/api/builder/edit` | POST | Open/resume the builder session for an **existing** persona (body `{ name, model?, service? }` — no message field): rewrites the builder meta-prompt files, loads history, respawns the CLI with `--resume` on model/provider switch, consumes a pending restart marker. Actual messages go through `/ws` (`chat:send`) |
 | `/api/builder/cancel` | POST | Cancel builder session |
 
 ## Setup
@@ -115,7 +115,7 @@ Next.js 밖에서 `server.ts`가 직접 처리하는 라우트: `/api/chat/tts`,
 
 | Route | Methods | Purpose |
 |-------|---------|---------|
-| `/api/service/status` | GET | Active sessions, instances, schedulers, WS-client snapshot |
+| `/api/service/status` | GET | Active sessions, instances, schedulers, WS-client snapshot (`?sessionId=` filters the scheduler list) |
 | `/api/service/restart` | POST | Rebuild and restart the server via the background restart orchestrator |
 
 ## Usage

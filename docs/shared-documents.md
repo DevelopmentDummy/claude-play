@@ -12,6 +12,8 @@
 | `session-shared.md` | Session AI (all providers) | 공용 세션 가이드 (응답 형식, OOC, STT, 이미지 생성, 선택지 시스템, 패널 액션, scene break) | 세션 Open 시 primer와 결합 → AI 런타임 시스템 프롬프트로 전달 |
 | `panel-spec.md` | Builder / Session AI | 패널 시스템 기술 레퍼런스 (Handlebars, panelBridge, placement, 패널 액션 메타 등) | 빌더 세션 시작 및 RP 세션 Open 시 → 작업 디렉토리로 복사 (매번 최신본으로 갱신) |
 
+**전파되지 않는 루트 문서** (개발자·에이전트용, 위 표의 대상이 아님): `README.md`, `SETUP.md`, `CLAUDE.md`, `AGENTS.md`, `HANDOVER.md`. 루트 `CLAUDE.md`/`AGENTS.md`는 **이 리포를 개발하는** AI를 위한 것이고, 페르소나·세션 디렉토리 안의 동명 파일은 위 표가 생성하는 **RP 런타임용** 산출물이다 — 이름이 같을 뿐 다른 문서다.
+
 ## Document Assembly Flow
 
 **빌더 세션 시작/편집** (`POST /api/builder/start`, `POST /api/builder/edit`):

@@ -7,13 +7,17 @@ data/
 ├── .setup-complete                  # Setup completion flag
 ├── .runtime/                        # Runtime process registries (gitignored)
 │   ├── agy-procs.json               # Antigravity orphan-PID registry (PIDs keyed by cwd; reaped via killAgyForDir on session/persona DELETE)
-│   └── subagent-procs.json          # Sub-agent PID registry
-├── .server.pid / restart*.log       # Server PID + restart orchestrator logs (gitignored)
+│   ├── subagent-procs.json          # Sub-agent PID registry
+│   └── external-mcp-token           # /mcp/external 인증 토큰 (서버 시작 시 자동 생성; scripts/setup-external.mjs가 읽음)
+├── .agy-profile/                    # Antigravity CLI 프로필 디렉토리 (agy 바이너리가 직접 생성·관리, 서버 코드 미참조)
+├── .server.pid                      # {pid, port, mode, startedAt} — scripts/smoke.mjs 프로브 대상
+├── server-start.log, restart.log, restart-build.log, restart-newserver.log, restart-orchestrator.log  # 기동/재시작 로그 (gitignored, repo 루트 아님)
 ├── chat-options-schema.json         # Chat options UI schema definition
 ├── skills/                          # Global shared skills (auto-copied to all sessions)
 ├── builder_skills/                  # Skills exposed only inside builder sessions
 ├── tools/{name}/                    # Global tool definitions
 │   ├── skills/                      # Tool-specific skills auto-copied to all sessions
+│   │   └── generate-image/workflows/{pkg}/  # (tools/comfyui only) ComfyUI 워크플로 패키지 — workflow.json + params.json (+ optional resolver.mjs); workflow-resolver.ts loadPackage/listPackages
 │   ├── panels/                      # Shared panel HTML auto-mounted into ALL sessions (panel-engine getSharedPanelFiles)
 │   ├── panels.removed/              # Soft-deleted shared panels (gitignored)
 │   └── comfyui-config.json          # (tools/comfyui only) Default ComfyUI config copied to new personas/sessions (tools/comfyui also tracks checkpoints.json, character-tags.json, panels/, pipeline_meta.json, …)
@@ -33,10 +37,12 @@ data/
 │   ├── layout.json                  # UI layout & theme config
 │   ├── style.json                   # Writing style preset link/snapshot
 │   ├── persona.json                 # (optional) Publish manifest (repo URL, version)
+│   ├── import-meta.json             # (import된 페르소나만) 원본 repo URL + 설치 커밋 — check-update가 비교, clone 시 제외
 │   ├── panels/                      # Handlebars HTML templates (01-status.html, …)
 │   │   └── _actions.meta.json       # Panel-action specs read by panel-actions-meta.ts
 │   ├── skills/                      # Persona-specific skills copied to sessions
 │   ├── images/                      # icon.png, profile.png, generated images
+│   │   └── .thumbs/                 # `?thumb=N` webp 썸네일 캐시 (persona-images 라우트가 생성)
 │   ├── tools/                       # Server-side custom tool scripts (*.js / *.mjs)
 │   ├── hooks/                       # Lifecycle hooks (on-message.js, on-assistant.js, on-compaction-resume.js, on-style-check.js)
 │   ├── style-check.json             # (optional) Opt-in self-review config {enabled, intervalTurns, rulesPath, model, effort}
@@ -65,6 +71,7 @@ data/
 ├── sessions/{persona}-{timestamp}/  # Ephemeral session instances
 │   ├── (cloned persona files above — EXCEPT builder artifacts, skills/, runtime config dirs, chat-history.json, gallery.json, images/, plus persona `.sessionignore` entries; only profile.png/icon.png are copied from images/; gallery images are served from the persona dir via /api/sessions/[id]/persona-images)
 │   ├── session.json                 # Metadata (persona, title, createdAt, model, profileSlug + provider-specific resume ids claudeSessionId/codexThreadId/geminiSessionId/kimiSessionId/antigravityCascadeId; provider derived from model; 세션 메모 memo/autoMemo/autoMemoAt/memoAuto)
+│   ├── variables.json               # Panel template data + 코어 관리 카운터 (__style_check_counter, __session_memo_counter, __popups, __modals) — 원자적 tmp+rename 쓰기 (playbook §5.1)
 │   ├── chat-options.json            # Per-session option overrides
 │   ├── memory.md                    # Session memory (written by AI)
 │   ├── chat-history.json            # Persisted chat history
@@ -80,7 +87,8 @@ data/
 │   ├── panel-spec.md                # Refreshed on every Open
 │   ├── policy-context.json          # Content policy context
 │   ├── audio/                       # TTS audio output files
-│   ├── images/                      # Generated images
+│   ├── images/                      # Generated images / video / audio (served by /files/[...filepath] with Range/206)
+│   │   └── .thumbs/                 # `?thumb=N` webp 썸네일 캐시
 │   ├── popups/                      # Popup content
 │   ├── voice/                       # Session voice files
 │   ├── .claude/settings.json        # Permission sandbox

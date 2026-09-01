@@ -35,7 +35,7 @@ Python FastAPI child process (port 3342 by default) for serial GPU task queueing
 | `soft-delete.ts` | Shared soft-delete flow for sessions and builder personas: close live instance → `killAgyForDir()` orphan reap → rename into `data/deleted_*` with Windows-lock retry. |
 | `fs-mirror.ts` | Generic recursive dir copy / additive mirror utilities; skips transient `background-*.log` runtime artifacts. |
 | `session-instance.ts` | Per-session stateful container — holds active AI process, PanelEngine, chat history, broadcast functions. One instance per open session. Drives panel-action hooks, OOC routing, fire-ai dispatch, autoResume spontaneous turns, and system event flushing (events/actions/hint snapshots) before each turn. (Scene-break parsing is client-side — `ChatMessages.tsx`.) |
-| `session-registry.ts` | Registry for active `SessionInstance` objects. `getSessionInstance()`, `openSessionInstance()`, `closeSessionInstance()`. Cleanup with grace period on disconnect. |
+| `session-registry.ts` | Registry for active `SessionInstance` objects. `getSessionInstance()`, `openSessionInstance()`, `closeSessionInstance()`. `scheduleSessionCleanup()` — 마지막 WS 클라이언트가 끊기면 `SESSION_CLEANUP_GRACE_MS`(기본 6시간, `0`/`never`면 자동 정리 없음) 뒤 인스턴스 정리; 수동 즉시 종료는 `POST /api/sessions/[id]/close`. |
 | `session-list.ts` | Provider-side conversation enumeration (Claude / Codex / Gemini / Kimi) for the resume menu. JSONL tail parsing for last-message previews. `listConversationsForSession()`, `relinkConversation()`. |
 | `services.ts` | Compatibility layer — re-exports `SessionManager` and the registry helpers (`getSessionInstance`, `openSessionInstance`, etc). Most call sites should use `getServices()` to grab the global singleton. |
 | `background-session.ts` | Spawns background AI turns (`spawnBackgroundAI()`) for long-running side jobs invoked from hooks or the `fire_ai` MCP tool. Provider derived from `model` (default Claude) via `createProcess()`; runs one turn then settles on `{type:"result"}`. Optional minimal vs full persona-context system prompt; safety timeout via `FIRE_AI_TIMEOUT_MS`. |
@@ -71,7 +71,7 @@ Python FastAPI child process (port 3342 by default) for serial GPU task queueing
 
 | File | Role |
 |------|------|
-| `ws-server.ts` | WebSocket server on `/ws?sessionId=X&builder=true/false`. Handles `chat:send`, `chat:cancel`, `event:queue`, `command:send`, `session:bind`, `session:leave` messages. `wsBroadcast()` for global broadcasts. 5s grace period cleanup on last client disconnect. |
+| `ws-server.ts` | WebSocket server on `/ws?sessionId=X&builder=true/false`. Handles `chat:send`, `chat:cancel`, `event:queue`, `command:send`, `session:bind`, `session:leave` messages. `wsBroadcast()` for global broadcasts. 마지막 클라이언트 disconnect / `session:leave` 시 파이프라인 스케줄러는 즉시 정지하고 인스턴스 정리는 `session-registry.ts`의 `scheduleSessionCleanup()`(기본 6시간 유예)에 위임한다. |
 | `sse-manager.ts` | Server-Sent Events broadcast manager for streaming responses. `addClient()`, `removeClient()`, `broadcast()`. |
 
 ### Image Generation
@@ -134,6 +134,15 @@ Python FastAPI child process (port 3342 by default) for serial GPU task queueing
 | `session-memo.ts` | Pure session-memo helpers: `MEMO_MAX_LEN`, `clampMemo()`, `extractLastUserPreview()` (strips `[MEMO]`/`[TIME]` event-header lines). |
 | `autoplay.ts` | Autoplay & Steering Preset management stored in localStorage. `SteeringPreset` interface, `loadPresets()`, `savePresets()`. |
 
+### External MCP (`src/lib/external-mcp/`)
+
+| File | Role |
+|------|------|
+| `external-mcp/token.ts` | `x-external-token` 값 — `data/.runtime/external-mcp-token`에 영속화(서버 시작 시 자동 생성), `scripts/setup-external.mjs`와 공유. |
+| `external-mcp/registry.ts` | `EXTERNAL_TOOLS` — 외부에 노출하는 툴 정의(zod 스키마 + 브릿지 API 호출 `bridgeFetch`, `long-http.ts` 경유). 확장 지점. |
+| `external-mcp/server.ts` | Streamable HTTP(stateless, POST 전용) transport. `server.ts`가 Next 앞에서 `/mcp/external`을 가로채 여기로 넘긴다. |
+| `external-mcp/flatten.ts` | 생성 결과를 `outputDir` 직하로 옮기는 헬퍼 (`flatten.test.ts`). |
+
 ## MCP Server
 
 `src/mcp/claude-play-mcp-server.mjs` — Per-session MCP server spawned as a child process by Claude / Codex / Gemini / Kimi / Antigravity. Configured via `.mcp.json` (Claude and Kimi — kimi spawns with `--mcp-config-file <cwd>/.mcp.json`), `.codex/config.toml` (Codex — read via the `CODEX_HOME` repoint at spawn), `.gemini/` settings (Gemini), or `.agents/mcp_config.json` (Antigravity) inside the session directory; all are (re)written by `runtime-config.ts` on every session open, so token rotation self-heals but already-open sessions need a re-open to pick up config changes. Authenticates to the Bridge API via the internal `x-bridge-token` header. Helper `withPersona()` injects the active persona / session id into every outgoing request.
@@ -166,7 +175,7 @@ MCP registration is the **only** viable tool channel for the AI processes — "j
 | `run_tool` | Execute custom session tools — single or chained, with state snapshot |
 | `fire_ai` | Spawn a detached background AI run (long-form generation, side jobs). Exit-time hooks: `notify` (silent system event queued for next user turn), `autoResume` (fire a spontaneous response turn as soon as the caller AI is idle — immediately if idle, else right after the current turn; subsumes `notify`), `onExit.broadcast` (WS to caller session's clients — UI updates without AI turn), `onExit.script` (JS module inside session dir for dynamic broadcast/queueEvent). |
 | `bridge_delegate` | (세션 모드) 메인 AI가 상시 서브에이전트에게 태스크를 위임. `{ to: name, task: string }` → `SubAgentManager.dispatch()`. |
-| `report_to_main` | (서브에이전트 전용) 서브가 결과를 메인 세션 이벤트 큐에 보고. `{ from: name, summary: string }` → `pending-events.json` 큐잉 → 다음 사용자 턴에 flush. |
+| `report_to_main` | (서브에이전트 전용 — 관례. 코드는 `mode === "session"`만 확인하고 호출자가 서브인지는 검증하지 않는다) 서브가 결과를 메인 세션 이벤트 큐에 보고. `{ from: name, summary: string }` → `pending-events.json` 큐잉 → 다음 사용자 턴에 flush. |
 | `bridge_define_subagent` | (빌더 모드 전용) 서브에이전트 정의 생성/갱신. `{ name, role, model?, instructions, delegable?, autoTrigger?, autoTriggerTask?, emitSummary? }` → 페르소나 디렉토리에 `subagents.json` + `subagents/{name}/instructions.md` 기록. |
 
 ### MCP Features
