@@ -6,7 +6,7 @@
 
 ## 1. 리포 상태 (2026-09-02 기준)
 
-- `main`이 `origin/main`(`8ac1d62`)보다 앞서 있다 — 2026-09-02 정비 머지 `b9bf886`(6커밋, `--no-ff`) **미푸시**. 로컬 브랜치는 `main` + `feat/antigravity-ruleset-persistence`.
+- `main` == `origin/main` — 2026-09-02 정비 머지 `b9bf886`(6커밋, `--no-ff`) 푸시 완료. 로컬 브랜치는 `main` + `feat/antigravity-ruleset-persistence`.
 - 워킹 트리 클린.
 - src 코드에 TODO/FIXME 마커 **0개** — 미해결 항목은 전부 이 문서와 docs/에 있다.
 - `npm run verify` 통과(2026-09-02). 프로덕션 서버(`npm run start`, 2026-09-01 18:16 기동)가 어느 빌드를 서빙 중인지는 확인하지 않았다 — 최소 `a730ccc` 이상.
