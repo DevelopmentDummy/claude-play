@@ -35,9 +35,9 @@ node setup.js --yes
 | 7 | ComfyUI clone + setup (if VRAM >= 8GB) | No |
 | 8 | Claude Code CLI check | No |
 | 9 | Port configuration | Yes |
-| 10 | `.env.local` creation (+ sample persona clone) | Yes |
+| 10 | `.env.local` creation | Yes |
 | 11 | Port conflict check | Info only |
-| 12 | `data/` directory initialization | Yes |
+| 12 | `data/` directory initialization (+ sample persona clone) | Yes |
 | 13 | `npm run build` (production build) | Yes |
 
 **Expected prompts (--yes mode uses defaults):**
