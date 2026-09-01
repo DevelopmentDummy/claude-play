@@ -7,9 +7,10 @@ This file provides guidance to OpenAI Codex CLI (and any non-Claude agent) when 
 ## Mandatory reading order
 
 1. [CLAUDE.md](CLAUDE.md) — commands, conventions, doc map
-2. [docs/maintenance-playbook.md](docs/maintenance-playbook.md) — traps, design rationale, debugging procedures (**read before touching unfamiliar subsystems**)
-3. [docs/pre-merge-checklist.md](docs/pre-merge-checklist.md) — mechanical steps before any commit
-4. [HANDOVER.md](HANDOVER.md) — pending work and deferred decisions
+2. [docs/codebase-map.md](docs/codebase-map.md) — **start here for any new task**: request vocabulary → entry files → grep anchors → which playbook section to read
+3. [docs/maintenance-playbook.md](docs/maintenance-playbook.md) — traps, design rationale, debugging procedures (**read before touching unfamiliar subsystems**)
+4. [docs/pre-merge-checklist.md](docs/pre-merge-checklist.md) — mechanical steps before any commit
+5. [HANDOVER.md](HANDOVER.md) — pending work and deferred decisions
 
 ## Codex-specific notes
 

@@ -25,13 +25,13 @@
 | 단계 | 명령 | 소요 | 언제 |
 |------|------|------|------|
 | 1 | `npm run typecheck` | ~6s | 모든 코드 편집 직후 |
-| 2 | `npm run verify` | ~30s | 커밋 전 (typecheck + lint:data + check:static + smoke 통합 — 리포 코드 게이트) |
+| 2 | `npm run verify` | ~30s | 커밋 전 (typecheck + lint:data + check:static + check:docs + smoke 통합 — 리포 코드 게이트). `check:docs`는 라우트·lib·컴포넌트·훅·MCP 도구가 해당 문서에 없으면 에러, `docs/codebase-map.md`의 죽은 경로도 에러 |
 | 3 | `npm run build` | ~62s | main 머지 전 (next build 고유 실패 — route export 형태 등 — 를 잡는 유일한 단계) |
 | 4 | 라이브 스모크 | 수동 | 세션 런타임·프로바이더·hot-path 파일 변경 시 (아래 §1.2) |
 
 - 단독 테스트 파일이 몇 개 있다 (프레임워크 없음, 직접 실행): `npx tsx src/lib/inline-formatter.test.mts`, `npx tsx --test src/lib/session-state.test.ts src/lib/modal-merge.test.ts`. 해당 모듈을 건드리면 반드시 실행.
 - `npm run lint:persona`는 verify에 **불포함** — 라이브 페르소나(유저 데이터)에 legacy 스키마 finding이 상존한다. 페르소나 저작/수정 시에만 해당 페르소나 대상으로 사용하고, 기존 finding을 승인 없이 고치지 말 것.
-- `npm run smoke`는 절대 서버를 직접 띄우지 않는다 (server.ts는 import 시점에 GPU 매니저 포트 킬 + stale agy 킬 부수효과가 있어 두 번째 인스턴스 기동은 라이브 세션을 파괴한다). 로그인 프로브는 실행당 1회 — 분당 5회 rate limit이 있으니 verify를 1분에 4회 이상 돌리지 말 것.
+- `npm run smoke`는 **WARN에도 exit 1**이다 (check-static·check-docs는 WARN이면 0) — 로그인 429 한 번이면 verify 체인 전체가 실패하니, 실패 로그에서 `warn`인지 `fail`인지 먼저 구분할 것. `npm run smoke`는 절대 서버를 직접 띄우지 않는다 (server.ts는 import 시점에 GPU 매니저 포트 킬 + stale agy 킬 부수효과가 있어 두 번째 인스턴스 기동은 라이브 세션을 파괴한다). 로그인 프로브는 실행당 1회 — 분당 5회 rate limit이 있으니 verify를 1분에 4회 이상 돌리지 말 것.
 - tsconfig는 `data/`와 `scratch/`를 exclude한다 — RP 세션이 세션 디렉토리에 남긴 `.ts` 파일이 빌드를 깨는 것을 막는 펜스. **typecheck/build가 `data/` 안 파일 때문에 실패한다면 네 코드 탓이 아니라 펜스가 뚫린 것이다.**
 
 ### 1.1 hot-path 파일 (tsc만으로 불충분, dev 서버 스모크 필수)
@@ -198,6 +198,7 @@ Node의 전역 `fetch`(undici)는 `headersTimeout` 기본값이 **300초 고정*
 - 스펙/플랜을 리포에 남기려면 `docs/specs/`·`docs/plans/`에 쓸 것 — **`docs/superpowers/`는 gitignored** (절대경로·페르소나명 포함 개인 노트용)라 거기 쓴 문서는 이 머신에만 존재한다.
 
 ### 6.3 무엇을 건드리기 전에 무엇을 읽나
+- **새 작업 요청 전반** → [codebase-map.md](codebase-map.md) — 요청 어휘로 행을 찾아 진입 파일·grep 앵커·아래 어느 문서/§를 읽을지 결정. 큰 파일은 지도 §4의 구역 앵커로 점프하고 통독하지 않는다.
 - 세션/프로바이더 런타임 → [session-lifecycle.md](session-lifecycle.md) + 이 문서 §4
 - API 라우트 추가/변경 → [api-routes.md](api-routes.md) + [change-propagation.md](change-propagation.md)
 - 데이터 파일 형식 → [data-model.md](data-model.md)

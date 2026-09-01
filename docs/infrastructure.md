@@ -29,6 +29,7 @@
 | `DATA_DIR` | `./data` | Data directory path |
 | `ADMIN_PASSWORD` | (none) | Admin login password. If not set, authentication is disabled |
 | `NODE_ENV` | `development` | Node environment |
+| `CODEX_HOME` | `~/.codex` | Codex CLI 홈. 브릿지는 `codex-image.ts`가 `generated_images/` 위치를 찾을 때만 읽는다. 세션 spawn(`codex-process.ts`)은 자식 env에서 이 값을 세션 `.codex/`로 **덮어쓰므로** 사용자가 설정할 일은 거의 없다 |
 | `SESSION_CLEANUP_GRACE_MS` | `21600000` (6시간) | 마지막 WebSocket 클라이언트가 끊긴 뒤 SessionInstance(AI 프로세스)를 정리하기까지의 유예. `0`/음수/`never` 는 자동 정리를 끄고 수동 종료(`POST /api/sessions/[id]/close`)만 남긴다. 상한은 `setTimeout` 한계인 `2147483647`(~24.8일) |
 
 ### ComfyUI Integration

@@ -11,7 +11,8 @@ Claude Play is a Next.js web app that bridges interactive roleplay (RP) chat ses
 - `node setup.js` — First-time setup: Node deps, Python venv, PyTorch, ports, data/ init. `--yes` for non-interactive mode. Web-driven alternative: `node setup-web.js` (see [AI Setup Guide](docs/ai-setup-guide.md)).
 - `npm run dev` — Start dev server (all interfaces), uses `tsx watch server.ts`. `npm run dev:lite` skips TTS + GPU Manager.
 - `npm run typecheck` — `tsc --noEmit` (~6s). Run after **every** code change.
-- `npm run verify` — Composite repo-code gate: typecheck + lint:data + check:static + smoke. Run before every commit. (`lint:persona` is intentionally excluded — live personas carry pre-existing legacy findings; use it only when authoring personas.)
+- `npm run verify` — Composite repo-code gate: typecheck + lint:data + check:static + check:docs + smoke. Run before every commit. (`lint:persona` is intentionally excluded — live personas carry pre-existing legacy findings; use it only when authoring personas.) Note: `smoke` exits 1 on a WARN (e.g. login rate-limit 429), so don't run verify more than 4×/min.
+- `npm run check:docs` — Doc↔code drift gate (~1s): every API route / `src/lib` file / component / hook / MCP tool must appear in its doc, and every path in `docs/codebase-map.md` must exist. Fails the commit when you add code without the matching doc row.
 - `npm run build` — TypeScript check + Next.js production build (~62s). Required before merging to main. **Never run while a production server is serving `.next/`.**
 - `npm run start` — Serve production build
 
@@ -19,6 +20,7 @@ No test framework is configured; a few standalone test files exist under `src/li
 
 ## Before You Work
 
+0. **New task? Start at [docs/codebase-map.md](docs/codebase-map.md)** — map the request vocabulary (선택지, OOC, 메모, 패널, 서브에이전트, 이미지, agy, …) to entry files + grep anchors + the playbook section + the change-propagation row + the verification tier. Grep the anchors before reading files; never read `session-instance.ts`/`session-manager.ts`/`chat/[sessionId]/page.tsx` end to end. In the shell use `git grep -- src server.ts scripts` (`rg` is not on PATH; the Grep tool has its own ripgrep) and always scope searches away from `data/`.
 1. **Read [docs/maintenance-playbook.md](docs/maintenance-playbook.md) before touching unfamiliar subsystems** — it records the traps, design rationale, and debugging procedures that are not derivable from code. Seemingly wrong code (e.g. non-atomic variables.json writes) is often intentional and documented there.
 2. Follow [docs/pre-merge-checklist.md](docs/pre-merge-checklist.md) for every commit/merge.
 3. Pending work, deferred decisions, and the live-smoke backlog live in [HANDOVER.md](HANDOVER.md).
@@ -29,6 +31,7 @@ Detailed documentation is split into topic-specific files under `docs/`:
 
 | Document | Contents |
 |----------|----------|
+| [Codebase Map](docs/codebase-map.md) | **Start here for any new task** — request vocabulary → subsystem → entry files → grep anchors → docs/playbook § → propagation row → verification tier |
 | [Maintenance Playbook](docs/maintenance-playbook.md) | **Read first** — golden rules, verification ladder, Windows traps, per-provider debugging, subsystem landmines |
 | [Pre-Merge Checklist](docs/pre-merge-checklist.md) | Mechanical steps before any commit/merge |
 | [Architecture](docs/architecture.md) | Stack, server entry, GPU Manager, Core Libraries (`src/lib/`), MCP Server & Tools |
@@ -73,7 +76,7 @@ Snapshot of pending work: [HANDOVER.md](HANDOVER.md) (root).
 - Never hand-edit `CLAUDE.md`/`AGENTS.md`/`GEMINI.md` inside `data/personas/{name}/` — the builder overwrites them on every run.
 - Specs/plans that must persist in the repo go to `docs/specs/` and `docs/plans/` — `docs/superpowers/` is gitignored (machine-local notes).
 - `.next` cache can get stale — delete and restart if API route changes aren't reflected; hard refresh (Ctrl+Shift+R) after frontend changes.
-- `docs/` is the source of structural truth. When behavior changes, update docs per [change-propagation.md](docs/change-propagation.md). Last full doc sweep: **2026-07-07**.
+- `docs/` is the source of structural truth. When behavior changes, update docs per [change-propagation.md](docs/change-propagation.md); `npm run check:docs` enforces the file-level half of that mechanically. Last full doc sweep: **2026-09-02**.
 
 ## Code Style
 

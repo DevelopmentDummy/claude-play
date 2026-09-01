@@ -1,15 +1,15 @@
 # HANDOVER — 인수인계 대장
 
-> **스냅샷 기준일: 2026-07-07** (작성: Claude Fable 5, 서비스 이관 전 마지막 정비 세션)
+> **스냅샷 기준일: 2026-09-02** (최초 작성 2026-07-07 Claude Fable 5, 서비스 이관 전 마지막 정비 세션 — 이후 갱신은 §1·§4·§5·§8에 날짜와 함께 누적)
 > 이 문서는 **시점 스냅샷**이다 — 리포의 현재 상태·미완료 작업·보류된 결정을 기록한다. 항목을 처리하면 이 문서에서 지우거나 완료 표시할 것.
 > 작업 수칙·함정·디버깅 절차는 [docs/maintenance-playbook.md](docs/maintenance-playbook.md), 커밋 전 절차는 [docs/pre-merge-checklist.md](docs/pre-merge-checklist.md) 참고.
 
 ## 1. 리포 상태 (2026-09-02 기준)
 
-- `main` == `origin/main` — 2026-09-02 정비 머지 `b9bf886`(6커밋, `--no-ff`) 푸시 완료. 로컬 브랜치는 `main` + `feat/antigravity-ruleset-persistence`.
+- `origin/main` = `40df2a0` (2026-09-02 정비 머지 `b9bf886` 푸시 완료). 같은 날 **문서 정비 브랜치 `docs/2026-09-02-doc-refresh-and-codebase-map`(5커밋)이 `--no-ff`로 main에 머지됐고 푸시는 대기 중** — `git log origin/main..main`으로 확인 후 사용자 지시로 푸시. 로컬 브랜치는 `main` + `feat/antigravity-ruleset-persistence` + 위 문서 브랜치(머지 후 삭제 가능).
 - 워킹 트리 클린.
 - src 코드에 TODO/FIXME 마커 **0개** — 미해결 항목은 전부 이 문서와 docs/에 있다.
-- `npm run verify` 통과(2026-09-02). 프로덕션 서버(`npm run start`, 2026-09-01 18:16 기동)가 어느 빌드를 서빙 중인지는 확인하지 않았다 — 최소 `a730ccc` 이상.
+- `npm run verify` 통과(2026-09-02, `check:docs` 포함). ⚠️ 2026-09-02 verify 시점에 `data/.server.pid`는 있으나 **포트 3340이 리스닝하지 않았다** (smoke SKIPPED: stale pid file) — 2026-09-01 18:16 기동한 프로덕션 서버가 내려간 상태. 재기동은 `node scripts/restart.mjs`(빌드 포함) 또는 `npm run start`. 서빙 빌드는 최소 `a730ccc` 이상이었다. 문서 전수 대조는 2026-09-02에 재실행(4축 병렬 감사: api-routes / architecture+MCP / frontend+data-model / infra+lifecycle+README+SETUP) — 라우트 80개·MCP 도구 24개·lib 68개·컴포넌트 40개 전부 문서와 일치했고, 설명 드리프트만 수정했다.
 
 ## 2. 브랜치·워크트리 (2026-08-26 정리 완료)
 
@@ -91,6 +91,13 @@
 - `npm run typecheck` (~6s) / `npm run verify` (통합 검증) / `npm run lint:data` / `npm run check:static` / `npm run smoke`
 - tsconfig `data/`·`scratch/` 펜스 — 유저 데이터 .ts가 빌드를 깨는 경로 차단
 - docs/ 전체 드리프트 수정 (Penta Runtime 반영, Antigravity 문서화, env var 표 보강 등)
+
+### 2026-09-02 문서 정비에서 새로 생긴 것
+
+- `docs/codebase-map.md` — **새 작업 요청의 첫 진입점.** 요청 어휘(선택지·OOC·메모·개입·패널·서브에이전트·이미지·agy…) → 서버→클라이언트 진입 파일 → grep 앵커(WS 이벤트명·헤더 토큰·한국어 UI 문자열) → 플레이북 § → change-propagation 행 → 검증 단계. 큰 파일 4개의 구역 앵커 표 포함. 줄 번호는 의도적으로 없음.
+- `npm run check:docs` (`scripts/check-docs.mjs`) — verify 체인에 편입. 라우트·lib·컴포넌트·훅·MCP 도구·외부 MCP 툴이 해당 문서에 없으면 에러, 문서 표의 유령 항목도 에러, `codebase-map.md`의 죽은 경로도 에러, 미문서화 env var는 WARN. git hook이 아니라 verify 단계인 이유는 §6의 "git hook 안 함" 결정과 같다.
+- 드리프트 수정: architecture(ws-server "5초 유예"→6시간 위임, external-mcp 4파일 표), api-routes(`/ws`, builder/edit 실제 동작, open body, files/images/status 쿼리), frontend(메모 칩·세션 종료·InlineImage 미디어·모델 선택기 3곳·"오토 메시지 프리셋" 개명), data-model(external-mcp-token·`.agy-profile`·워크플로 패키지·`.thumbs`·`import-meta.json`·variables.json·로그 파일명), infrastructure(`CODEX_HOME`), README(24 tools·Node 18.18+·문서 표 6종), SETUP(13단계 표·TTS 메뉴·save 후 종료·401 성공 신호·Blackwell cu130·COMFYUI_AUTOSTART), shared-documents(비전파 루트 문서 주석), pre-merge/playbook(smoke WARN=exit 1).
+- **남은 결정 (사용자)**: `package.json`에 `engines.node >= 18.18` 추가 여부 — setup.js 게이트가 major 18만 보므로 18.0~18.17에서 Next/sharp가 깨진다. 코드 변경이라 이번 정비에서는 문서만 고쳤다.
 
 ---
 

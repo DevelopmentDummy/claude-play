@@ -1,6 +1,6 @@
 # Claude Play
 
-[![Node.js 18+](https://img.shields.io/badge/Node.js-18%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![Node.js 18.18+](https://img.shields.io/badge/Node.js-18.18%2B-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![Next.js 15](https://img.shields.io/badge/Next.js-15-black?logo=next.js)](https://nextjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -46,7 +46,7 @@ CLI 기반 AI 런타임(Claude Code, Codex, Kimi, Antigravity)을 서브프로�
 
 ### Developer
 
-- **MCP Integration** — 세션별 MCP 서버 (11+ tools)로 AI가 브릿지와 상호작용
+- **MCP Integration** — 세션별 MCP 서버 (24 tools)로 AI가 브릿지와 상호작용 + 외부 에이전트용 `/mcp/external` 엔드포인트
 - **Custom Tools & Skills** — 페르소나별 도구 스크립트와 AI 스킬 확장
 - **File-Based Storage** — DB 불필요, `data/` 디렉토리에 모든 데이터 저장
 
@@ -54,7 +54,7 @@ CLI 기반 AI 런타임(Claude Code, Codex, Kimi, Antigravity)을 서브프로�
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) 18+
+- [Node.js](https://nodejs.org/) 18.18+ (Next.js 15 / sharp의 하한 — 20 LTS 이상 권장)
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) (또는 [Codex CLI](https://github.com/openai/codex), Kimi CLI, Antigravity CLI) 설치 및 인증 완료
 - Python 3.10+ *(선택 — GPU Manager, 로컬 TTS용)*
 - NVIDIA GPU 8GB+ VRAM *(선택 — ComfyUI, 로컬 TTS용)*
@@ -139,6 +139,7 @@ Browser ◀──WebSocket──▶ server.ts ◀──NDJSON/JSON-RPC──┘
 | `COMFYUI_AUTOSTART` | `false` | `true`로 설정 시 서버 시작과 함께 ComfyUI 자식 프로세스 spawn (포트 이미 사용 중이면 skip) |
 | `GEMINI_API_KEY` | — | Gemini 이미지 생성 API 키 |
 | `TTS_ENABLED` | `true` | TTS 전역 활성화/비활성화 |
+| `SESSION_CLEANUP_GRACE_MS` | `21600000` | 마지막 클라이언트가 끊긴 뒤 세션 AI 프로세스를 정리하기까지의 유예 (기본 6시간, `never`=수동 종료만) |
 
 전체 목록은 [`.env.example`](.env.example)을 참고하세요.
 
@@ -166,6 +167,8 @@ data/                  # 파일 기반 스토리지 (gitignored)
 | Document | Contents |
 |----------|----------|
 | [Maintenance Playbook](docs/maintenance-playbook.md) | 유지보수 수칙, 함정, 프로바이더별 디버깅 |
+| [Codebase Map](docs/codebase-map.md) | 작업 요청 어휘 → 진입 파일 → grep 앵커 → 관련 문서 (탐색 시작점) |
+| [Pre-Merge Checklist](docs/pre-merge-checklist.md) | 커밋/머지 전 기계적 절차 |
 | [Architecture](docs/architecture.md) | 스택, 서버, GPU Manager, 핵심 라이브러리, MCP |
 | [API Routes](docs/api-routes.md) | 전체 API 라우트 |
 | [Frontend](docs/frontend.md) | 페이지, 훅, 컴포넌트 |
@@ -173,6 +176,10 @@ data/                  # 파일 기반 스토리지 (gitignored)
 | [Session Lifecycle](docs/session-lifecycle.md) | 세션 라이프사이클, Penta Runtime, 서브에이전트, fire-ai |
 | [Change Propagation](docs/change-propagation.md) | 변경 시 업데이트 가이드 |
 | [Infrastructure](docs/infrastructure.md) | 컨벤션, 환경변수 전체 목록 |
+| [Shared Documents](docs/shared-documents.md) | 루트 공용 문서(primer/prompt/spec)가 빌더·세션으로 전파되는 흐름 |
+| [External MCP](docs/external-mcp.md) | 외부 에이전트용 `/mcp/external` + [셋업 가이드](docs/external-setup-guide.md) |
+| [Style Check System](docs/style-check-system.md) | 페르소나별 옵트인 문체 자가검토 |
+| [AI Setup Guide](docs/ai-setup-guide.md) | AI 에이전트용 설치 흐름 (setup.js / setup-web.js) |
 
 ## License
 
