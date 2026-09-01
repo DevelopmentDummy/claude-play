@@ -57,8 +57,9 @@
 | Codex 런타임 설정 변경 (config.toml/MCP 등록) | `codex-process.ts` (spawn 시 `CODEX_HOME`을 세션 `.codex`로 리포인트 + `auth.json` 복사 — codex는 cwd의 `.codex/config.toml`을 읽지 않음) + `runtime-config.ts` `writeCodexConfig`. 기존 codex 세션은 재open 필요 |
 | Antigravity 런타임 배관 변경 | `antigravity-process.ts` + `runtime-config.ts` `writeAntigravityMcpConfig` + 고아 PID 레지스트리 (`antigravity-pid-registry.ts`, `data/.runtime/agy-procs.json`, 세션 DELETE 라우트의 reap) + `docs/session-lifecycle.md` |
 | TTS 서브시스템 변경 | `tts-server.mjs` (port 3341 독립 서버) + `tts-handler.ts` (server.ts 라우트 인터셉트, Edge/ComfyUI 분기) + `edge-tts-client.ts` + `TTS_ENABLED`/`TTS_PORT` env (`docs/infrastructure.md`) + voice.json 스키마면 `builder-prompt.md`도 (빌더 변경 표 참조) |
-| 프론트엔드 페이지/컴포넌트/훅 추가 | `docs/frontend.md` |
-| Core Library 파일 추가/변경 | `docs/architecture.md` (Core Libraries) |
+| 프론트엔드 페이지/컴포넌트/훅 추가 | `docs/frontend.md` (`npm run check:docs`가 누락을 에러로 잡음) |
+| Core Library 파일 추가/변경 | `docs/architecture.md` (Core Libraries — `check:docs` 강제) |
+| 새 기능/서브시스템 추가 (사용자에게 보이는 개념이 하나 생김) | `docs/codebase-map.md` §2에 행 추가 — 요청 어휘·서버→클라이언트 진입 파일·grep 앵커·함정 §·전파 행·검증 단계. 기존 행의 진입 파일이 바뀌었으면 그 행도 갱신. 파일 삭제/이동은 `check:docs`(죽은 경로)가 잡지만 **행 추가는 손으로** |
 | 사용량 API 변경 (Claude/Codex/Gemini/Antigravity) | `usage-checker.ts` + `/api/usage` + `docs/api-routes.md` |
 | 외부 LLM 게이트웨이 라우팅 변경 | `docs/external-llm-routing.md` + `codex-process.ts` 관련 흐름 |
 
