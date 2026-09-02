@@ -13,6 +13,12 @@ const AGY_PATH = path.join(os.homedir(), "AppData", "Local", "agy", "bin", "agy.
 // (1.0.2: Pro High=165 → 1.0.5: 37로 바뀌어 "unknown model key M165: model not found"로
 //  cascade가 죽은 이력. 그래서 숫자를 박지 않고 매 spawn마다 LS에서 현재 인덱스를 받는다.)
 
+/** displayName("Gemini 3.8 Flash (High)")에서 세대 번호(3.8)를 뽑는다. 미검출 시 0. */
+function generationOf(displayName: string): number {
+  const m = /Gemini\s+(\d+(?:\.\d+)?)/i.exec(displayName);
+  return m ? Number(m[1]) : 0;
+}
+
 export interface AntigravityProcessEvents {
   message: [data: unknown];
   error: [err: string];
@@ -809,13 +815,16 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
     if (this.logStream) { try { this.logStream.end(); } catch { /* */ } this.logStream = null; }
   }
 
-  /** 모델 선택 문자열(antigravity-flash/-pro/-pro-low)을 agy displayName 패턴으로 매핑.
-   *  버전이 올라도 안 깨지게 세대 숫자("3.5") 대신 등급("Flash (High)"/"Pro (High)")으로 매칭. */
+  /** 모델 선택 문자열(antigravity-flash[-medium|-low]/-pro[-low])을 agy displayName 패턴으로 매핑.
+   *  버전이 올라도 안 깨지게 세대 숫자("3.5") 대신 등급("Flash (High)"/"Pro (High)")으로 매칭.
+   *  세대가 여러 개 남아 있으면 resolveModelKeyDynamic이 최신 세대를 고른다. */
   private modelPattern(model?: string): string {
     if (!model) return "Flash (High)";
     const lower = model.toLowerCase();
     if (lower.includes("pro-low")) return "Pro (Low)";
     if (lower.includes("pro")) return "Pro (High)";
+    if (lower.includes("flash-low")) return "Flash (Low)";
+    if (lower.includes("flash-medium")) return "Flash (Medium)";
     return "Flash (High)";
   }
 
@@ -829,9 +838,16 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
     try {
       const resp = await this.rpc<Record<string, unknown>>("GetAvailableModels", {});
       const models = this.collectModels(resp);
-      const match = models.find(m => m.displayName.includes(pattern));
+      // 같은 등급의 구세대가 목록에 함께 남는다(2026-09-03 실측: Flash (High)가
+      // 3.5/3.6/3.7/3.8 4개 공존). 첫 매치를 쓰면 walk 순서에 따라 구세대가 잡히므로
+      // displayName의 세대 번호("Gemini 3.8 …")가 가장 높은 것을 고른다.
+      const candidates = models.filter(m => m.displayName.includes(pattern));
+      const match = candidates.reduce<{ displayName: string; model: string } | null>(
+        (best, m) => (best === null || generationOf(m.displayName) > generationOf(best.displayName) ? m : best),
+        null,
+      );
       if (match) {
-        this.writeLog(`model resolved: "${pattern}" → "${match.displayName}" = "${match.model}"`);
+        this.writeLog(`model resolved: "${pattern}" → "${match.displayName}" = "${match.model}" (${candidates.length} candidates)`);
         return match.model;
       }
       const avail = models.map(m => `${m.displayName}=${m.model}`).join(", ");

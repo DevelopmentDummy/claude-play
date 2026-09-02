@@ -237,9 +237,14 @@ function buildModelGroups(): ModelGroup[] {
     label: "Gemini (Antigravity)",
     provider: "antigravity" as AIProvider,
     options: [
-      { value: "antigravity-flash", label: "Gemini 3.7 Flash" },
-      { value: "antigravity-pro", label: "Gemini 3.1 Pro (High)" },
-      { value: "antigravity-pro-low", label: "Gemini 3.1 Pro (Low)" },
+      // 라벨에 세대 숫자를 넣지 않는다 — 각 항목은 "그 등급의 최신 세대" 별칭이다.
+      // 실제 선택은 agy GetAvailableModels의 등급 displayName("Flash (High)" 등)
+      // 매칭 + 최신 세대 우선(antigravity-process.ts). 세대가 올라도 여기는 그대로.
+      { value: "antigravity-flash", label: "Gemini Flash (High)" },
+      { value: "antigravity-flash-medium", label: "Gemini Flash (Medium)" },
+      { value: "antigravity-flash-low", label: "Gemini Flash (Low)" },
+      { value: "antigravity-pro", label: "Gemini Pro (High)" },
+      { value: "antigravity-pro-low", label: "Gemini Pro (Low)" },
     ],
   });
   groups.push({
