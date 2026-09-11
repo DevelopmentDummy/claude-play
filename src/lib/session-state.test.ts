@@ -51,10 +51,11 @@ test("applyPatch: 빈 패치는 no-op 복제", () => {
   assert.deepEqual(applyPatch({ a: 1 }, {}), { a: 1 });
 });
 
-test("SSOT: SYSTEM_JSON union(17) + LINT_SKIP_JSON은 variables.json 미포함", () => {
+test("SSOT: SYSTEM_JSON union(18) + LINT_SKIP_JSON은 variables.json 미포함", () => {
   assert.equal(SYSTEM_JSON.has("comfyui-config.json"), true);
   assert.equal(SYSTEM_JSON.has("style-check.json"), true);
-  assert.equal(SYSTEM_JSON.size, 17);
+  assert.equal(SYSTEM_JSON.size, 18);
+  assert.ok(SYSTEM_JSON.has("runtime-mcp.json"));
   assert.equal(LINT_SKIP_JSON.has("variables.json"), false);
   assert.equal(LINT_SKIP_JSON.has("voice.json"), false);
 });

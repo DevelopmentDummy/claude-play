@@ -3,6 +3,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { getInternalToken } from "./auth";
 import { getApiBase } from "./endpoints";
+import { readPersonaMcpServers } from "./persona-mcp";
 
 // 세션/빌더 디렉터리에 쓰는 .claude/settings.json.
 // `permissions.allow` 목록은 의도적으로 비워 둔다 — 세션 디렉터리는 Claude Code의
@@ -45,6 +46,12 @@ function mcpServerEnv(
   };
 }
 
+function personaServers(projectDir: string, appRoot: string, personaName: string | undefined, mode: "builder" | "session") {
+  return Object.fromEntries(Object.entries(readPersonaMcpServers(projectDir, appRoot, personaName)).map(([name, config]) => [name, {
+    ...config, env: { ...config.env, ...mcpServerEnv(projectDir, mode, personaName) },
+  }]));
+}
+
 export function ensureClaudeRuntimeConfig(
   projectDir: string,
   appRoot: string,
@@ -79,6 +86,7 @@ export function writeMcpConfig(
 
   const mcpConfig = {
     mcpServers: {
+      ...personaServers(projectDir, appRoot, personaName, mode),
       [CLAUDE_MCP_SERVER_NAME]: {
         command: "node",
         args: [serverScript],
@@ -143,6 +151,13 @@ export function writeCodexConfig(
     lines.push(`${key} = ${JSON.stringify(value)}`);
   }
 
+  for (const [name, config] of Object.entries(personaServers(projectDir, appRoot, personaName, mode))) {
+    lines.push("", `[mcp_servers.${name}]`, `command = ${JSON.stringify(config.command)}`);
+    lines.push(`args = ${JSON.stringify(config.args)}`, "startup_timeout_sec = 30", "tool_timeout_sec = 180");
+    lines.push(`[mcp_servers.${name}.env]`);
+    for (const [key, value] of Object.entries(config.env)) lines.push(`${key} = ${JSON.stringify(value)}`);
+  }
+
   fs.writeFileSync(
     path.join(codexDir, "config.toml"),
     lines.join("\n") + "\n",
@@ -163,6 +178,7 @@ export function writeGeminiConfig(
 
   const settings = {
     mcpServers: {
+      ...personaServers(projectDir, appRoot, personaName, mode),
       "claude-play": {
         command: "node",
         args: [serverScript],
@@ -199,6 +215,7 @@ export function writeAntigravityMcpConfig(
 
   const config = {
     mcpServers: {
+      ...personaServers(projectDir, appRoot, personaName, mode),
       "claude-play": {
         command: "node",
         args: [serverScript],

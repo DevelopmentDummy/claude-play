@@ -5,13 +5,13 @@ import { retryOnWindowsLock } from "./fs-retry";
 type Dict = Record<string, unknown>;
 
 // ── SSOT 상수 ────────────────────────────────────────────────
-/** 세션 디렉터리에서 페르소나 "데이터"가 아닌 시스템 JSON 파일 (union, 17). */
+/** 세션 디렉터리에서 페르소나 "데이터"가 아닌 시스템 JSON 파일. */
 export const SYSTEM_JSON: ReadonlySet<string> = new Set([
   "variables.json", "session.json", "builder-session.json", "layout.json",
   "chat-history.json", "pending-events.json", "pending-actions.json",
   "package.json", "tsconfig.json", "voice.json", "chat-options.json",
   "comfyui-config.json", "character-tags.json", ".mcp.json", "style.json",
-  "policy-context.json", "style-check.json",
+  "policy-context.json", "style-check.json", "runtime-mcp.json",
 ]);
 
 /** buildJsonLint 전용 스킵 (현행 9 — SYSTEM_JSON과 의도적으로 별개). */

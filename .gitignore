@@ -18,6 +18,9 @@ data/*.db-wal
 data/*.db-shm
 .restart-trigger
 data/.server.pid
+# Machine-local MCP approvals and portable Blender binaries
+data/mcp-trust.json
+data/tools/blender/
 data/restart.log
 data/restart-build.log
 data/restart-newserver.log
