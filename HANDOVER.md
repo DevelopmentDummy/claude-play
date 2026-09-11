@@ -74,6 +74,24 @@
 | 16 | 영상 스킬 MCP 수정 반영 (구 §4-B) | 브랜치 자체는 main 머지·푸시 완료(라이브 검증 끝남). 남은 것: **기존 세션은 재-open**해야 내부 MCP 수정이 반영된다 |
 | 17 | 턴 중 개입(interject/steer) | 토글 ON → AI 응답 중 메시지 전송. (a) Claude/Codex 세션: **2026-09-12 턴 분할로 동작 변경** — 개입 시 그때까지 나온 응답이 *위*에 얼어붙고 유저 메시지가 그 뒤에 오며, 이어지는 응답이 새 버블로 열리는지 / 재로드 후에도 `[유저][앞부분][개입][뒷부분]` 순서가 유지되는지(서버 `splitAssistantTurnForInterject`가 history를 쪼갬) / 얼린 버블에 `chat:split` id가 붙어 TTS·OOC 토글이 동작하는지 / 분할 직전 carry 문자가 유실되지 않는지 / 본문 없이(툴 실행 중) 개입하면 종전대로 라이브 버블 위에 삽입되는지. 기존 항목: 스트리밍이 끊기지 않는지, 재로드 후 순서 일치. 추가 확인: **두 클라이언트 동시 접속 시 비-발신 클라에서도** 같은 분할 순서 + 얼린 버블에 id 부여(`chat:user` → `chat:split` 순서 의존) / 분할된 턴의 **TTS·on-assistant 훅·문체검토·메모가 앞부분까지 합친 전체 본문**을 받는지(`turnSplitPrefix`) / 알려진 엣지: `<dialog_response>` 태그가 열리기 전 프리앰블 상태에서 개입하면 그 프리앰블이 독립 버블로 남아 RP 모드에서도 원문이 보일 수 있음(저장 내용 자체는 종전과 동일, 항목만 둘로 쪼개짐) — **두 클라이언트(데스크톱+폰) 동시 접속 시 비-발신 클라이언트에서도** 라이브 버블 위에 끼워지고 두 번째 stream 버블이 생기지 않는지(2026-09-02 `addUserMessage` 수정, 라이브 스모크 미실행); **취소(Stop) 후 재전송** 시 유저 메시지가 취소된 버블 *뒤*에 오고 취소 버블의 부분 텍스트가 보존되는지(`handleCancelled`가 live를 지우도록 수정) (b) **agy 세션: 미검증 — queued user input이 실제로 소비되는지**, 안 되면 `SendAllQueuedMessages` 명시 호출 추가; 추가 리스크(2026-09-02 리뷰): 큐잉된 user step이 turn 중 trajectory에 붙으면 `emitNewChunks`가 `lastSeenMessageCount`/tail baseline을 그 user step으로 옮겨 진행 중이던 assistant step의 잔여 delta가 유실될 수 있다 — `antigravity-stream.log`에서 `steer: queued` 직후 RUNNING 상태로 step 수가 늘어나는지 확인, 늘어나면 tail-delta를 마지막 assistant step 기준으로 바꿔야 한다 (c) codex 세션: `codex-stream.log`에 `[steer]` 라인 + 같은 턴에서 소비 (프로토콜 자체는 app-server 프로브로 검증 완료) (d) 빌더(상시 ON) 각 프로바이더 (e) Kimi는 폴백 send — 큐잉/에러 여부 확인 |
 
+### 4-A. 앱 모드 플랫폼 확장 (브랜치 `feat/app-mode-platform`, **미머지**)
+
+앱 모드 전체가 **라이브 미검증**이다. 단위 테스트 39건 + 월드 계약 회귀 8건은 통과했고 `npm run verify`도 통과하지만,
+스레드 루프·프로세스 스폰·앱 슬롯 렌더는 실제 세션 없이는 확인되지 않는다.
+
+**왜 안 돌렸나**: `reapOrphanSubProcs()`(server.ts 부팅 시)가 `data/.runtime/subagent-procs.json`의 살아있는 서브 PID를
+**서버 구분 없이** 죽이고 레지스트리를 비운다. 스모크 당시 프로덕션 서버(pid 30540, port 3340)에 세션 1개·클라이언트 2개가
+붙어 있어서, 두 번째 서버를 띄우면 사용자가 쓰고 있을 세션의 서브에이전트를 죽인다. 서비스 재시작은 사용자 확인 사안이라 중단했다.
+
+**돌리는 법**: 프로덕션을 멈춘 뒤 `scripts/fixtures/app-mode-stub/`를 새 페르소나에 복사하고 세션 생성 → Open.
+체크리스트는 `scripts/fixtures/app-mode-stub/README.md`.
+
+특히 확인해야 할 것:
+- 앱 HUD의 "1회 마운트" 시각이 상태 변경에도 바뀌지 않는지 (재마운트하면 게임 루프가 못 산다)
+- 컨텍스트 리셋(`resetEveryTurns: 10`) 후 스레드가 자기 `entityId`를 유지하는지 — `resetContext()`의 프로세스 교체 경로
+- 바쁜 스레드 despawn 시 `subagent-procs.json`에 고아 PID가 남지 않는지
+- 기존(앱 모드 아닌) 페르소나 세션이 무영향인지
+
 ## 5. 사용자 결정 대기
 
 1. **soft-delete 누적**: `data/deleted_sessions` **163개 / 4.47GB** (2026-06-06의 52개/2.4GB에서 3배). 복구 지향 설계라 자율 정리 금지 — 보존 기간/정책 결정 필요. `data/deleted_personas`는 24개/0.13GB.
