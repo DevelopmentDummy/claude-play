@@ -390,6 +390,18 @@ function handleMessage(
       break;
     }
 
+    // 앱 모드의 월드 진행 제어. 스레드 루프가 없으면(=앱 모드 아님) 무시된다.
+    case "threads:control": {
+      if (!client.sessionId) return;
+      const loop = getSessionInstance(client.sessionId)?.threadLoop;
+      if (!loop) return;
+      const action = msg.action as string;
+      if (action === "pause") loop.setPaused(true);
+      else if (action === "resume") loop.setPaused(false);
+      else if (action === "speed") loop.setSpeed(Number(msg.value));
+      break;
+    }
+
     case "event:queue": {
       const header = msg.header as string;
       if (!header?.trim() || !client.sessionId) return;

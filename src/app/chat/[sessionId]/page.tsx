@@ -89,6 +89,10 @@ export default function ChatPage() {
   const [subLiveEntry, setSubLiveEntry] = useState<{ name: string; entry: TranscriptEntry } | null>(null);
   // Names of sub-agents currently working a task (live, non-blocking activity indicator).
   const [busySubs, setBusySubs] = useState<Record<string, boolean>>({});
+  // 앱 모드 월드 루프 상태 (threads:status). null이면 컨트롤을 렌더하지 않는다.
+  const [threadStatus, setThreadStatus] = useState<
+    { running: boolean; paused: boolean; speed: number; threads: number } | null
+  >(null);
   const [currentModel, setCurrentModel] = useState(searchParams.get("model") || "");
   const [currentProvider, setCurrentProvider] = useState<AIProvider>("claude");
   const [showOOC, setShowOOC] = useState(false);
@@ -563,6 +567,10 @@ export default function ChatPage() {
             enqueueMessage(messageId, totalChunks > 0 ? totalChunks : Infinity);
           }
         }
+      },
+      "threads:status": (d) => {
+        // 앱 모드의 월드 루프 상태. 앱 모드가 아니면 서버가 보내지 않는다.
+        setThreadStatus(d as { running: boolean; paused: boolean; speed: number; threads: number });
       },
       "subagent:message": (d) => {
           const { name, entry } = d as { name: string; entry: TranscriptEntry };
@@ -1275,6 +1283,8 @@ export default function ChatPage() {
         onForceInputToggle={() => setForceInput((v) => !v)}
         onSubAgents={() => setSubModalOpen(true)}
         busySubNames={Object.keys(busySubs)}
+        threadStatus={threadStatus}
+        onThreadControl={(action, value) => wsSend("threads:control", { action, value })}
       />
       <ErrorBanner error={error} onDismiss={() => setError(null)} />
       <div className="flex-1 relative min-h-0">
