@@ -575,6 +575,7 @@ export class SessionManager {
     const SKIP_FILES = new Set([
       "builder-session.json",
       "panel-spec.md",
+      "app-spec.md",
       "skills",
       ".claude",
       ".agents",
@@ -1782,6 +1783,7 @@ export class SessionManager {
     const SKIP_FILES = new Set<string>([
       "builder-session.json",
       "panel-spec.md",
+      "app-spec.md",
       "skills",
       ".claude",
       ".agents",

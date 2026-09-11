@@ -40,10 +40,10 @@ export async function POST(req: Request) {
   fs.writeFileSync(path.join(personaDir, "AGENTS.md"), builderPrompt, "utf-8");
   fs.writeFileSync(path.join(personaDir, "GEMINI.md"), builderPrompt, "utf-8");
 
-  // Copy panel-spec.md
-  const panelSpecSrc = path.join(getAppRoot(), "panel-spec.md");
-  if (fs.existsSync(panelSpecSrc)) {
-    fs.copyFileSync(panelSpecSrc, path.join(personaDir, "panel-spec.md"));
+  // Copy panel-spec.md + app-spec.md (앱 모드 저작 계약)
+  for (const spec of ["panel-spec.md", "app-spec.md"]) {
+    const src = path.join(getAppRoot(), spec);
+    if (fs.existsSync(src)) fs.copyFileSync(src, path.join(personaDir, spec));
   }
 
 

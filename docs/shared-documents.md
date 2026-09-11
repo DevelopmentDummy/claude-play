@@ -10,6 +10,7 @@
 | `session-primer-codex.yaml` | Session AI (Codex / Kimi) | Codex·Kimi용 RP 세션 시스템 프롬프트 | 세션 Open 시 → Codex: `.codex/model-instructions.md`에 기록 (config.toml `model_instructions_file` + spawn 시 `CODEX_HOME` 리포인트로 로드) / Kimi: 세션 `AGENTS.md`에 CLAUDE.md와 병합 기록 |
 | `session-primer-gemini.yaml` | Session AI (Antigravity / retired Gemini CLI) | Antigravity(구 Gemini)용 RP 세션 시스템 프롬프트 | 세션 Open 시 → Antigravity: spawn `--prompt-interactive`로 전달 (`GEMINI.md`에는 세션 instructions만 기록) / (retired) Gemini CLI: `GEMINI.md`에 병합. `NEXT_PUBLIC_DISABLE_GEMINI=true`(현재 설정) 시 gemini-* 모델은 Antigravity로 라우팅됨 |
 | `session-shared.md` | Session AI (all providers) | 공용 세션 가이드 (응답 형식, OOC, STT, 이미지 생성, 선택지 시스템, 패널 액션, scene break) | 세션 Open 시 primer와 결합 → AI 런타임 시스템 프롬프트로 전달 |
+| `app-spec.md` | Builder AI | **앱 모드** 페르소나 저작 계약 (월드 엔진 4액션, 의도 큐 규칙, 관측 계층, 앱 화면 제약, 체크리스트) | 빌더 세션 시작/재진입 시 → 페르소나 디렉토리로 복사. 세션에는 복사하지 않는다(앱 저작은 빌더 전용) |
 | `panel-spec.md` | Builder / Session AI | 패널 시스템 기술 레퍼런스 (Handlebars, panelBridge, placement, 패널 액션 메타 등) | 빌더 세션 시작 및 RP 세션 Open 시 → 작업 디렉토리로 복사 (매번 최신본으로 갱신) |
 
 **전파되지 않는 루트 문서** (개발자·에이전트용, 위 표의 대상이 아님): `README.md`, `SETUP.md`, `CLAUDE.md`, `AGENTS.md`, `HANDOVER.md`. 루트 `CLAUDE.md`/`AGENTS.md`는 **이 리포를 개발하는** AI를 위한 것이고, 페르소나·세션 디렉토리 안의 동명 파일은 위 표가 생성하는 **RP 런타임용** 산출물이다 — 이름이 같을 뿐 다른 문서다.
@@ -23,6 +24,7 @@ builder-prompt.md (Handlebars 컴파일)
 builder-primer.yaml → AI 런타임 시스템 프롬프트
   (codex/gemini/kimi는 .codex/model-instructions.md / GEMINI.md / AGENTS.md에도 기록)
 panel-spec.md → 페르소나 디렉토리에 복사 (참조용)
+app-spec.md   → 페르소나 디렉토리에 복사 (앱 모드 저작 시 참조)
 빌더 전용 스킬 (data/builder_skills/*) → 페르소나 .claude/skills/
   (Claude 전용 — 글로벌 data/skills/*는 빌더 플로우에서 복사되지 않음)
 ```

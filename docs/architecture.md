@@ -183,6 +183,7 @@ MCP registration is the **only** viable tool channel for the AI processes — "j
 | `fire_ai` | Spawn a detached background AI run (long-form generation, side jobs). Exit-time hooks: `notify` (silent system event queued for next user turn), `autoResume` (fire a spontaneous response turn as soon as the caller AI is idle — immediately if idle, else right after the current turn; subsumes `notify`), `onExit.broadcast` (WS to caller session's clients — UI updates without AI turn), `onExit.script` (JS module inside session dir for dynamic broadcast/queueEvent). |
 | `bridge_delegate` | (세션 모드) 메인 AI가 상시 서브에이전트에게 태스크를 위임. `{ to: name, task: string }` → `SubAgentManager.dispatch()`. |
 | `report_to_main` | (서브에이전트 전용 — 관례. 코드는 `mode === "session"`만 확인하고 호출자가 서브인지는 검증하지 않는다) 서브가 결과를 메인 세션 이벤트 큐에 보고. `{ from: name, summary: string }` → `pending-events.json` 큐잉 → 다음 사용자 턴에 flush. |
+| `bridge_define_role` | (빌더 모드 전용, **앱 모드**) 역할 템플릿 하나와 그 인스턴스인 스레드 여러 개를 정의. `{ name, role, instructions, threads[{threadId, params?}], loopMode?, intervalMs?, resetEveryTurns?, scope?, model?, emitSummary? }` → `roles/{name}.md` 기록 + `subagents.json`의 `roles`/`threads` 갱신(나머지 보존). `intervalMs`는 5000으로 클램프, 상한은 `subagents[]`+`threads[]` 합계 `THREAD_MAX`. |
 | `bridge_define_subagent` | (빌더 모드 전용) 서브에이전트 정의 생성/갱신. `{ name, role, model?, instructions, delegable?, autoTrigger?, autoTriggerTask?, emitSummary? }` → 페르소나 디렉토리에 `subagents.json` + `subagents/{name}/instructions.md` 기록. |
 
 ### MCP Features

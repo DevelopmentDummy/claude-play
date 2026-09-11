@@ -90,6 +90,7 @@ const REQUIRED_FILES = [
   "builder-prompt.md",           // /api/builder/start·edit이 매번 컴파일
   "session-shared.md",           // 세션 인스트럭션 조립
   "panel-spec.md",               // 패널 스펙 주입
+  "app-spec.md",                 // 앱 모드 저작 계약 (빌더 주입)
   "src/mcp/claude-play-mcp-server.mjs", // per-session MCP 서버
   "scripts/restart.mjs",         // restart 오케스트레이터
 ];

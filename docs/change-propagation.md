@@ -81,4 +81,6 @@
 | 월드 엔진 액션 계약(`observe`/`submit`/`step`/`snapshot`) | `src/lib/world-engine.ts` · `scripts/fixtures/app-mode-stub/tools/world.js` · 역할 지침 템플릿 · [설계 문서](specs/2026-09-12-app-mode-platform-design.md) §5 |
 | `subagents.json` 스키마 | `src/lib/thread-manifest.ts`(+테스트) · `src/lib/subagent-manager.ts` `buildThreadDefs` · `docs/data-model.md` |
 | 틱 예산·순서 | `src/lib/thread-loop.ts` · `docs/infrastructure.md` env 표 · 설계 문서 §7 |
+| 앱 저작 계약(엔진 액션·큐 규칙·앱 제약) | `app-spec.md` · `builder-prompt.md` 앱 모드 절 · `scripts/fixtures/app-mode-stub/` · 설계 문서 — **빌더 세션 재시작 필요** |
+| `bridge_define_role` 인자·검증 | `src/mcp/claude-play-mcp-server.mjs` · `app-spec.md` §4 · `builder-prompt.md` · `docs/architecture.md` MCP 표 |
 | 스레드 정체성 주입 | `src/lib/subagent-instance.ts` `buildSubSystemPrompt` · 역할 지침 — **세션 재-open 필요** |
