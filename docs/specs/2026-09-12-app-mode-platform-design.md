@@ -440,7 +440,11 @@ run_tool("world", { action: "submit", observerId, intent })
 ## 13. 명시적 비범위 (v2 이후)
 
 - **메인 에이전트 완전 비활성** — 이벤트 큐·메모·style-check·`report_to_main` 흡수처 재배선 필요
-- **빌더의 앱 페르소나 저작 UI** — 역할·엔진·앱 번들을 빌더가 생성하는 흐름. 별도 프로젝트
+- **빌더의 앱 페르소나 저작 UI** — 역할·엔진·앱 번들을 빌더가 생성하는 흐름. 별도 프로젝트.
+  v1에서는 **가드레일만** 넣었다: `builder-prompt.md`가 (a) `layout.json`의 `app`/`chat.mode`를 지우지 말 것,
+  (b) `subagents.json`의 `roles`/`threads`를 직접 쓰지 말 것(도구는 보존함), (c) 상한은 `subagents[]`+`threads[]`
+  합계라는 것을 지시하고, `bridge_define_subagent`는 합계 기준으로 상한을 검사한다 —
+  넘기면 파서가 throw하고 `spawnAll`이 bail해서 그 세션의 서브·스레드가 **전부** 안 뜨기 때문.
 - **레퍼런스 게임** — 타일맵·경제·상호작용을 갖춘 실제 월드. 자체 spec → plan 사이클
 - **역할별 도구 격리** — 필요해지면 디렉토리 복제가 아니라 MCP 도구 레벨 게이트로
 - **이벤트 구동 틱** — "변화가 생기면 다음 틱을 앞당긴다". 루프 위에 나중에 얹을 수 있음

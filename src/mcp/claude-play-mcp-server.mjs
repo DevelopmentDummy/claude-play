@@ -1634,10 +1634,18 @@ server.registerTool(
       const idx = manifest.subagents.findIndex((s) => s && s.name === input.name);
       if (idx >= 0) manifest.subagents[idx] = { ...manifest.subagents[idx], ...entry };
       else manifest.subagents.push(entry);
-      // Keep in sync with MAX_SUBAGENTS in src/lib/subagent-manifest.ts (can't import .ts here).
-      const maxSubs = Number(process.env.SUBAGENT_MAX) > 0 ? Number(process.env.SUBAGENT_MAX) : 6;
-      if (manifest.subagents.length > maxSubs) {
-        return fail(`Too many sub-agents (${manifest.subagents.length} > cap ${maxSubs}).`);
+      // Keep in sync with THREAD_MAX in src/lib/thread-manifest.ts (can't import .ts here).
+      // 상한은 v1 subagents[]와 v2 threads[]의 **합계**에 걸어야 한다 — 파서가 둘을 합쳐
+      // 검사하고 초과 시 throw하며, spawnAll은 그걸 잡고 bail하므로 한 개만 넘겨도
+      // 그 세션의 서브·스레드가 전부 안 뜬다.
+      const maxThreads = Number(process.env.THREAD_MAX) > 0 ? Number(process.env.THREAD_MAX) : 12;
+      const threadCount = manifest.subagents.length
+        + (Array.isArray(manifest.threads) ? manifest.threads.length : 0);
+      if (threadCount > maxThreads) {
+        return fail(
+          `Too many sub-agents/threads (${threadCount} > cap ${maxThreads}). ` +
+          `이 페르소나는 앱 모드 스레드를 포함할 수 있다 — subagents.json의 threads[]도 상한에 포함된다.`
+        );
       }
       const subDir = path.join(sessionDir, "subagents", input.name);
       fs.mkdirSync(subDir, { recursive: true });

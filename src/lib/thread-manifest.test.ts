@@ -80,3 +80,13 @@ test("매니페스트가 없으면 빈 결과", () => {
   assert.equal(m.roles.size, 0);
   assert.deepEqual(m.threads, []);
 });
+
+test("v1 서브 + v2 스레드가 합쳐져 상한을 넘으면 매니페스트 전체가 죽는다 (빌더 상호작용)", () => {
+  const roles = [{ name: "villager", instructions: "roles/v.md", loop: { mode: "loop" } }];
+  const threads = Array.from({ length: 12 }, (_, i) => ({ threadId: `v${i}`, role: "villager" }));
+  // 빌더의 bridge_define_subagent가 v1 서브를 하나 더 얹은 상황
+  assert.throws(() => parseThreadManifest({
+    version: 2, roles, threads,
+    subagents: [{ name: "archivist", role: "기록", instructions: "instructions.md" }],
+  }), /too many threads/);
+});
