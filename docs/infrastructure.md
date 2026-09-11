@@ -1,5 +1,13 @@
 # Infrastructure Conventions
 
+## Persona-scoped MCP approvals
+
+`runtime-mcp.json` declares optional stdio servers. Machine-local `data/mcp-trust.json` pins each approved persona declaration SHA-256; it must not be exported. No new global env var is needed. The service adds its existing bridge runtime context to approved servers. See [persona MCP](specs/persona-mcp.md).
+
+- **Model selection UI**: Model and effort use separate dropdowns across session start, persona creation, and chat/builder headers. `ModelSelect` deduplicates the shared catalog by base model; stored model strings and API payloads remain `model[:effort][@advisor]`. Chat selection stays within the session provider.
+
+- **GPT-6 Astra**: `gpt-6-astra` runs through Codex. The shared model picker exposes Medium/High/XHigh/Max, also feeding the builder model catalog. Session badges and conversation lookup recognize Astra as Codex. The CLI version warning uses 0.153.1 (observed Astra catalog version, not a proven first supported release); local CLI 0.148.0 did not list Astra. Model reference: [OpenAI GPT-6 Astra](https://developers.openai.com/api/docs/models/gpt-6-astra). No additional environment variable is required.
+
 - **Setup wizard**: `node setup.js` (CLI) + `/setup` web wizard. `data/.setup-complete` flag controls redirect.
 - **Port auto-calculation**: `TTS_PORT` defaults to `PORT+1`, `GPU_MANAGER_PORT` defaults to `PORT+2`.
 - **MCP authentication**: Internal token per server process → `.mcp.json` (Claude via `--mcp-config`, Kimi via `--mcp-config-file`) / `.codex/config.toml` (via per-session `CODEX_HOME`) / `.gemini/settings.json` / `.agents/mcp_config.json` (Antigravity) env blocks → `x-bridge-token` header. All writers share `mcpServerEnv()` in `runtime-config.ts`.

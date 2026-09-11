@@ -1,5 +1,7 @@
 # Data Model
 
+Optional `personas/<name>/runtime-mcp.json` stdio declarations are copied into sessions and excluded from custom panel data (`SYSTEM_JSON`). Machine-local `data/mcp-trust.json` maps persona names to approved declaration SHA-256 hashes and must never be exported. See [persona MCP](specs/persona-mcp.md).
+
 **File-based data** under `data/`. User-generated content (`personas/`, `sessions/`, `profiles/`, `styles/`, `deleted_*`, `.runtime/`) is gitignored; shared assets (`skills/`, `builder_skills/`, `style-check/`, `tools/`, `chat-options-schema.json`) are tracked in the repo.
 
 ```

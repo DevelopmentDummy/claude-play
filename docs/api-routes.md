@@ -47,7 +47,7 @@ Next.js 밖에서 `server.ts`가 직접 처리하는 라우트: `/ws?sessionId=&
 |-------|---------|---------|
 | `/api/sessions` | GET, POST | List sessions / create new session |
 | `/api/sessions/[id]` | DELETE | Delete session (moved to `data/deleted_sessions/`) |
-| `/api/sessions/[id]/open` | POST | Open session (spawn AI process, start panels). Body `{ model?, ttsAutoPlay? }` — `model`(`<model>[:effort]`)로 이번 open의 모델을 덮어쓸 수 있다 |
+| `/api/sessions/[id]/open` | POST | Open session (spawn AI process, start panels). Persona/global skills refresh before spawn; replaced persona skill bytes go to `.skill-backups/`. Body `{ model?, ttsAutoPlay? }` — `model`(`<model>[:effort]`)로 이번 open의 모델을 덮어쓸 수 있다 |
 | `/api/sessions/[id]/sync` | GET, POST | GET: diff (`?direction=reverse`); POST: selective sync with `direction` + `variablesMode` |
 | `/api/sessions/[id]/conversations` | GET | List provider-side conversations (jsonl/rollouts) tied to this session folder for the resume menu |
 | `/api/sessions/[id]/close` | POST | 수동 세션 종료 — 유예 시간을 기다리지 않고 live SessionInstance(AI 프로세스·PanelEngine·스케줄러)를 즉시 정리. 대화 기록은 보존되어 다음 `open` 때 resume |
@@ -116,7 +116,7 @@ Next.js 밖에서 `server.ts`가 직접 처리하는 라우트: `/ws?sessionId=&
 | Route | Methods | Purpose |
 |-------|---------|---------|
 | `/api/service/status` | GET | Active sessions, instances, schedulers, WS-client snapshot (`?sessionId=` filters the scheduler list) |
-| `/api/service/restart` | POST | Rebuild and restart the server via the background restart orchestrator |
+| `/api/service/restart` | POST | Flush active builder history drafts before scheduling the restart orchestrator; return 500 without restarting if a checkpoint fails. Stop → wait for free port → build → start (downtime includes build; build failure leaves service stopped). `skipBuild: true` reuses the current build. |
 
 ## Usage
 

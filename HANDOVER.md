@@ -1,5 +1,30 @@
 # HANDOVER — 인수인계 대장
 
+## 2026-09-08 페르소나 스킬 Open 자동 갱신 (소스 수정, 배포 대기)
+
+- 세션 Open에서 `refreshToolSkills(sessionDir, info.persona)` 호출. 원본 skills를 4종 CLI 디렉터리에 갱신한 뒤 기존 글로벌 스킬 우선순위 적용.
+- `fs-mirror.ts`의 `refreshDirectoryWithBackups`: 변경 파일은 `.skill-backups/<provider>/skills/`에 SHA256별 원본 바이트 백업. 동일 내용 재쓰기 없음, 세션 전용/원본 삭제 파일 자동 삭제 없음, 링크 경로 거부. RP 상태는 수정하지 않음.
+- `fs-mirror.test.ts` 4건 통과: 중첩 리소스/한글·바이너리/백업·멱등성/원본 부재·삭제/링크 거부, 실제 SessionManager를 통한 4종 대상 및 글로벌 충돌 우선순위/RP 상태 보존. typecheck·check:docs 통과.
+- **운영 서비스 재빌드·재시작 및 실제 Open HTTP/CLI 재탐색 검증은 아직 하지 않음.** 운영 `.next`를 덮어쓰지 않았으며 서버를 임의 재시작하지 않음. 배포 시 정지→빌드→기동 경로 사용. 실행 중 프로세스를 재사용한 페이지 새로고침은 새 스킬 캐시 갱신을 보장하지 않음.
+- 다른 사용자 미커밋 변경은 보존. 커밋/푸시 없음. → **2026-09-12 main에 커밋 완료(푸시 미실행).**
+
+## 2026-09-08 빌더 대화 기록 누락 수정
+
+- **19:33 KST 운영 반영 완료:** 기존 REST 재시작 API로 정지→포트 해제→빌드(37초, 성공)→production 시작. PID 16112, BUILD_ID `FGoDbzpNbuVIfH8pCa6rn`. 재오픈 후 `hist-a-13` 설명이 기록에 한 번 복구되고 draft 삭제, 다음 사용자 `hist-u-14`로 이어짐을 확인. 서버 smoke 5/5 통과. 최초 배포 직전 구 프로세스에는 자동 체크포인트 코드가 없어서 원본 provider 로그의 현재 설명을 일회성 draft로 보존한 뒤 재시작함. 새 프로세스의 자동 저장은 아래 단위 테스트로 검증됨.
+- `scripts/restart.mjs`도 정지 후 빌드로 수정. 포트가 해제되지 않으면 빌드하지 않음. 빌드 실패 시 서버는 정지 상태로 남으므로 로그 확인 후 재시도 필요. MCP `bridge_restart_service`의 별도 동기 build-first 경로는 여전히 남아 있으므로 운영 반영에는 REST API를 사용한다.
+- 재시작 직전 보였던 assistant 설명이 `chat-history.json`에는 없고 Codex 원본 JSONL에는 존재함을 확인. 사용자 메시지는 저장되어 있었으며, 긴 작업 중 설명이 한 assistant 응답으로 합쳐지는 것은 현재 UI의 기존 동작이다.
+- `history-storage.ts`와 `SessionInstance`: 빌더 스트리밍 중 250ms 체크포인트, 블록 완료/종료/파괴 시 즉시 저장, 재오픈 시 안정된 ID로 한 번만 복구. 최종 기록 원자적 교체 및 UTF-8 BOM 보존, 배열 길이 대신 최대 ID 사용, 손상 파일 덮어쓰기 차단. 재시작 API는 체크포인트 실패 시 재시작을 취소한다.
+- 테스트 11개와 `npm run verify` 통과. 수정 당시 PID 368에는 미반영이었으나 위 19:33 KST 배포로 해소. 새 자동 저장→재시작의 추가 전 구간 스모크는 별도 수행 가능.
+- 기존 기록/프로바이더 로그 백업: `scratch/blender-history-backup-1788862686663/`. `recovered-assistant.json`에는 원본 로그에서 확인된 누락 문장과 시각을 별도 확보. 실행 중인 인스턴스가 덮어쓸 수 있으므로 실제 `chat-history.json`에 임의로 끼워 넣지는 않았다.
+- 이전 요청의 API 재시작은 `skipBuild:true`로 08:10 UTC에 수행됨. 재시작 성공과 신규 소스/라우트 배포 완료를 혼동하지 말 것. 커밋/푸시는 하지 않음. → **2026-09-12 main에 커밋 완료(푸시 미실행).**
+
+## 2026-09-08 Blender Master 추가 작업
+
+- `src/lib/persona-mcp.ts` + runtime-config 4종 emitter: 로컬 SHA256 승인된 persona stdio MCP 병합. `runtime-mcp.json`은 SYSTEM_JSON에 추가. `scripts/approve-persona-mcp.mjs`로 선언 검토/승인/취소. 상세: `docs/specs/persona-mcp.md`.
+- 머신 로컬 Blender 4.5.13 LTS 설치(`data/tools/blender/`, 바이너리는 내부 .gitignore로 제외). `data/personas/blender_master` 페르소나·전용 MCP·로봇 렌더 생성. 실제 stdio/Blender 생성·재열기·오류/취소·클라이언트 이탈·MCP 종료 테스트 통과. typecheck, 코어 21개 테스트, verify 통과.
+- **코어 배포 완료(19:33 KST):** 서비스 정지→build→시작 수행. 실제 새 Astra 작업 세션에서 `studio_status` 확인은 별도로 필요. restart.mjs의 build-before-stop 문제는 위 후속 수정으로 해소.
+- 시작부터 모델 선택기 관련 사용자 미커밋 변경이 존재했으며 그대로 보존. 이 작업은 커밋/푸시하지 않음. → **2026-09-12 main에 커밋 완료(푸시 미실행).** 페르소나 lint의 자동 생성 지시문 legacy 예제 15건은 미수정; 작성한 파일 오류는 0.
+
 > **스냅샷 기준일: 2026-09-02** (최초 작성 2026-07-07 Claude Fable 5, 서비스 이관 전 마지막 정비 세션 — 이후 갱신은 §1·§4·§5·§8에 날짜와 함께 누적)
 > 이 문서는 **시점 스냅샷**이다 — 리포의 현재 상태·미완료 작업·보류된 결정을 기록한다. 항목을 처리하면 이 문서에서 지우거나 완료 표시할 것.
 > 작업 수칙·함정·디버깅 절차는 [docs/maintenance-playbook.md](docs/maintenance-playbook.md), 커밋 전 절차는 [docs/pre-merge-checklist.md](docs/pre-merge-checklist.md) 참고.
@@ -47,7 +72,7 @@
 | 14 | 인라인 이미지 재로딩 제거 (a730ccc) | OOC 토글을 반복해도 이미지가 스피너로 되돌아가지 않고 재요청이 없는지(DevTools Network 304 또는 요청 없음). 이미지가 실제로 삭제된 경우엔 종전대로 에러 카드로 떨어지는지 |
 | 15 | H3 영상 25스텝 기본값 (a9bc5ba) | 다음 영상 생성 1회 — steps=25로 나가는지, 소요 시간이 20스텝 대비 수용 가능한지. 신규 패키지 `minimax-h3-latent-upscale`/`-video-nsfw`는 실험 상태 |
 | 16 | 영상 스킬 MCP 수정 반영 (구 §4-B) | 브랜치 자체는 main 머지·푸시 완료(라이브 검증 끝남). 남은 것: **기존 세션은 재-open**해야 내부 MCP 수정이 반영된다 |
-| 17 | 턴 중 개입(interject/steer) | 토글 ON → AI 응답 중 메시지 전송. (a) Claude 세션: 라이브 버블 위에 유저 메시지가 끼워지고 스트리밍이 끊기지 않는지, 재로드 후 순서 일치 — **두 클라이언트(데스크톱+폰) 동시 접속 시 비-발신 클라이언트에서도** 라이브 버블 위에 끼워지고 두 번째 stream 버블이 생기지 않는지(2026-09-02 `addUserMessage` 수정, 라이브 스모크 미실행); **취소(Stop) 후 재전송** 시 유저 메시지가 취소된 버블 *뒤*에 오고 취소 버블의 부분 텍스트가 보존되는지(`handleCancelled`가 live를 지우도록 수정) (b) **agy 세션: 미검증 — queued user input이 실제로 소비되는지**, 안 되면 `SendAllQueuedMessages` 명시 호출 추가; 추가 리스크(2026-09-02 리뷰): 큐잉된 user step이 turn 중 trajectory에 붙으면 `emitNewChunks`가 `lastSeenMessageCount`/tail baseline을 그 user step으로 옮겨 진행 중이던 assistant step의 잔여 delta가 유실될 수 있다 — `antigravity-stream.log`에서 `steer: queued` 직후 RUNNING 상태로 step 수가 늘어나는지 확인, 늘어나면 tail-delta를 마지막 assistant step 기준으로 바꿔야 한다 (c) codex 세션: `codex-stream.log`에 `[steer]` 라인 + 같은 턴에서 소비 (프로토콜 자체는 app-server 프로브로 검증 완료) (d) 빌더(상시 ON) 각 프로바이더 (e) Kimi는 폴백 send — 큐잉/에러 여부 확인 |
+| 17 | 턴 중 개입(interject/steer) | 토글 ON → AI 응답 중 메시지 전송. (a) Claude/Codex 세션: **2026-09-12 턴 분할로 동작 변경** — 개입 시 그때까지 나온 응답이 *위*에 얼어붙고 유저 메시지가 그 뒤에 오며, 이어지는 응답이 새 버블로 열리는지 / 재로드 후에도 `[유저][앞부분][개입][뒷부분]` 순서가 유지되는지(서버 `splitAssistantTurnForInterject`가 history를 쪼갬) / 얼린 버블에 `chat:split` id가 붙어 TTS·OOC 토글이 동작하는지 / 분할 직전 carry 문자가 유실되지 않는지 / 본문 없이(툴 실행 중) 개입하면 종전대로 라이브 버블 위에 삽입되는지. 기존 항목: 스트리밍이 끊기지 않는지, 재로드 후 순서 일치. 추가 확인: **두 클라이언트 동시 접속 시 비-발신 클라에서도** 같은 분할 순서 + 얼린 버블에 id 부여(`chat:user` → `chat:split` 순서 의존) / 분할된 턴의 **TTS·on-assistant 훅·문체검토·메모가 앞부분까지 합친 전체 본문**을 받는지(`turnSplitPrefix`) / 알려진 엣지: `<dialog_response>` 태그가 열리기 전 프리앰블 상태에서 개입하면 그 프리앰블이 독립 버블로 남아 RP 모드에서도 원문이 보일 수 있음(저장 내용 자체는 종전과 동일, 항목만 둘로 쪼개짐) — **두 클라이언트(데스크톱+폰) 동시 접속 시 비-발신 클라이언트에서도** 라이브 버블 위에 끼워지고 두 번째 stream 버블이 생기지 않는지(2026-09-02 `addUserMessage` 수정, 라이브 스모크 미실행); **취소(Stop) 후 재전송** 시 유저 메시지가 취소된 버블 *뒤*에 오고 취소 버블의 부분 텍스트가 보존되는지(`handleCancelled`가 live를 지우도록 수정) (b) **agy 세션: 미검증 — queued user input이 실제로 소비되는지**, 안 되면 `SendAllQueuedMessages` 명시 호출 추가; 추가 리스크(2026-09-02 리뷰): 큐잉된 user step이 turn 중 trajectory에 붙으면 `emitNewChunks`가 `lastSeenMessageCount`/tail baseline을 그 user step으로 옮겨 진행 중이던 assistant step의 잔여 delta가 유실될 수 있다 — `antigravity-stream.log`에서 `steer: queued` 직후 RUNNING 상태로 step 수가 늘어나는지 확인, 늘어나면 tail-delta를 마지막 assistant step 기준으로 바꿔야 한다 (c) codex 세션: `codex-stream.log`에 `[steer]` 라인 + 같은 턴에서 소비 (프로토콜 자체는 app-server 프로브로 검증 완료) (d) 빌더(상시 ON) 각 프로바이더 (e) Kimi는 폴백 send — 큐잉/에러 여부 확인 |
 
 ## 5. 사용자 결정 대기
 

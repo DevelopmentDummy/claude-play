@@ -16,7 +16,7 @@
 |------|------|
 | `useWebSocket.ts` | Manages the `/ws` connection lifecycle (bind/leave, reconnect) |
 | `useSSE.ts` | Subscribes to Server-Sent Events for streamed turns |
-| `useChat.ts` | High-level chat state — send, history pagination (loadHistory/loadMore), per-message OOC toggle, streaming message assembly, tool-answer/cancel handling, `prepareInterject`(턴 중 개입 — 누적 ref를 리셋하지 않음; `addUserMessage`가 꼬리에 live stream 버블이 있으면 그 바로 위에 사용자 메시지를 삽입하므로 로컬 개입과 다른 클라이언트의 `chat:user` 브로드캐스트가 같은 순서 규칙을 탄다; `handleCancelled`는 live를 지워 취소 버블이 이 규칙에 걸리지 않게 한다) |
+| `useChat.ts` | High-level chat state — send, history pagination (loadHistory/loadMore), per-message OOC toggle, streaming message assembly, tool-answer/cancel handling, `prepareInterject`(턴 중 개입 — 누적 ref를 리셋하지 않음; `addUserMessage`가 꼬리의 live stream 버블에 **표시 본문이 있으면 턴을 분할**한다: 그 버블을 얼려(live 해제) 남기고 뒤에 유저 메시지를 붙여 이후 delta가 새 버블을 열게 한다 → `[유저][앞부분][개입][뒷부분]`. 본문이 없으면(툴만 돌던 중) 종전대로 라이브 버블 *위*에 삽입. 분할 시 `turnSplitRef`가 서면 UTF-8 healing과 `result` 텍스트 폴백을 이번 턴 한정으로 끈다(둘 다 턴 전체 텍스트라 나머지 버블과 어긋남). 서버가 같은 시점에 history를 쪼개고 `chat:split`으로 확정 id를 보내면 `assignSplitMessageId`가 얼린 버블에 부여한다. 로컬 개입과 다른 클라이언트의 `chat:user` 브로드캐스트가 같은 규칙을 탄다; `handleCancelled`는 live를 지워 취소 버블이 이 규칙에 걸리지 않게 한다) |
 | `useLayout.ts` | Reads/writes layout config: panel-area position (right/left/bottom/hidden) and per-panel placement (left/right/modal/modal-dismissible/full-screen/dock/dock-left/dock-right/dock-bottom) |
 | `useIsMobile.ts` | Mobile breakpoint detector (drives compact UI variants) |
 | `useFocusTrap.ts` | Traps Tab focus inside modal dialogs (a11y); shared by the modal components |
@@ -74,7 +74,8 @@ Accessibility conventions (2026-06 a11y wave): modal components share `useFocusT
 | `VersionHistoryModal.tsx` | Git-like version history for personas with restore capability |
 | `SteeringPresetsModal.tsx` | Autoplay preset management (load, add, update, delete) — UI 제목은 "오토 메시지 프리셋" (턴 중 개입/steer와 혼동을 피하려고 개명; 코드 식별자는 `SteeringPreset` 유지) |
 | `SessionListModal.tsx` | Provider conversation picker for resume / relink flows |
-| `NewPersonaDialog.tsx` | New persona creation with name input validation + builder model selector (`MODEL_GROUPS`, `onCreate(name, model?)`) |
+| `ModelSelect.tsx` | Shared separate model/effort dropdowns derived from `MODEL_GROUPS`. Preserves supported effort on model changes, falls back to the first catalog option otherwise, retains existing custom values/advisor suffixes, and supports a locked provider. Emits the existing `model:effort` format. Used by StatusBar, NewPersonaDialog, and PersonaStartModal. |
+| `NewPersonaDialog.tsx` | New persona creation with name input validation + separate builder model/effort selectors (`ModelSelect`, `onCreate(name, model?)`) |
 | `ClonePersonaDialog.tsx` | Duplicate an existing persona under a new folder name |
 | `ImportPersonaModal.tsx` | Install a persona from a GitHub URL with metadata preview |
 | `PublishPersonaModal.tsx` | Push a persona dir to a GitHub repo (publish flow) |

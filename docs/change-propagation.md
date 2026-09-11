@@ -68,6 +68,7 @@
 | 변경 내용 | 업데이트 대상 |
 |-----------|--------------|
 | `data/skills/` 글로벌 공유 스킬 변경 | 변경 즉시 반영 안 됨 — 세션 Open 시 자동 갱신 (`refreshToolSkills()`) |
+| `data/personas/{name}/skills/` 페르소나 스킬 변경 | 세션 Open 시 4종 CLI skills에 추가/수정 자동 반영. 달라진 기존 파일은 `.skill-backups/<provider>/skills/`에 SHA256별 원본 바이트 보존. 세션 전용/원본에서 삭제된 파일은 삭제하지 않음. 글로벌 동명 스킬은 기존 우선순위대로 마지막 적용 |
 | `data/tools/{name}/skills/` 도구 스킬 변경 | 동일 — 세션 Open 시 자동 갱신 |
 | `data/builder_skills/` 빌더 전용 스킬 변경 | 빌더 세션 시작 시 자동 갱신 |
 | 스킬 내 `{{PORT}}` 플레이스홀더 | 세션 Open 시 현재 서버 포트로 치환됨 (`SKILL.md`, `*.sh`) |
