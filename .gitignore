@@ -81,3 +81,5 @@ __pycache__/
 
 # One-off ComfyUI relaunch stderr dump (manual runs with cwd = repo root)
 comfyui-relaunch.err.log
+# 워크플로 수동 백업 (타임스탬프, 머신 로컬)
+data/tools/*/skills/*/workflows/**/*.bak-*

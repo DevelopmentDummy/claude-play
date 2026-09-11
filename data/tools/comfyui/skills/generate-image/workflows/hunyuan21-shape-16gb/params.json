@@ -1,0 +1,48 @@
+{
+  "description": "Hunyuan3D 2.1 native image-to-GLB; RTX 5070 Ti 16GB conservative shape-only preset. GLB output: use ComfyUI prompt/history API, not image-only result collector.",
+  "features": {
+    "checkpoint_auto": false,
+    "lora_injection": false,
+    "lora_couple_branches": false,
+    "seed_randomize": true,
+    "trigger_tags": false
+  },
+  "params": {
+    "image": {
+      "node": "2",
+      "field": "image",
+      "type": "string",
+      "required": true
+    },
+    "seed": {
+      "node": "7",
+      "field": "seed",
+      "type": "number",
+      "default": 20260908
+    },
+    "steps": {
+      "node": "7",
+      "field": "steps",
+      "type": "number",
+      "default": 20
+    },
+    "octree_resolution": {
+      "node": "8",
+      "field": "octree_resolution",
+      "type": "number",
+      "default": 192
+    },
+    "num_chunks": {
+      "node": "8",
+      "field": "num_chunks",
+      "type": "number",
+      "default": 4000
+    },
+    "filename_prefix": {
+      "node": "10",
+      "field": "filename_prefix",
+      "type": "string",
+      "default": "mesh/blender_master_hunyuan21/character"
+    }
+  }
+}

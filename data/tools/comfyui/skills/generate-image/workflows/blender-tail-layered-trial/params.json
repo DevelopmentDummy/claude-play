@@ -1,0 +1,40 @@
+{
+  "description": "Experimental Qwen Layered tail decomposition; not yet quality validated. Original canvas crop x640 y32 w288 h576 retained.",
+  "features": {
+    "checkpoint_auto": false,
+    "lora_injection": false,
+    "trigger_tags": false
+  },
+  "params": {
+    "input_image": {
+      "node": "1",
+      "field": "image",
+      "type": "string",
+      "required": true
+    },
+    "seed": {
+      "node": "14",
+      "field": "seed",
+      "type": "number",
+      "default": 2026090908
+    },
+    "steps": {
+      "node": "14",
+      "field": "steps",
+      "type": "number",
+      "default": 20
+    },
+    "cfg": {
+      "node": "14",
+      "field": "cfg",
+      "type": "number",
+      "default": 2.5
+    },
+    "layers": {
+      "node": "13",
+      "field": "layers",
+      "type": "number",
+      "default": 4
+    }
+  }
+}

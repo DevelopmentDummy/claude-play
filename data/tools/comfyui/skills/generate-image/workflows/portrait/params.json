@@ -22,6 +22,10 @@
     "sink": {
       "node": "30",
       "field": "image"
+    },
+    "model_source": {
+      "node": "1",
+      "output": 0
     }
   },
   "params": {

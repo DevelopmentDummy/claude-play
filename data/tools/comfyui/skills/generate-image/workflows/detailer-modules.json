@@ -4,8 +4,12 @@
     "nodes": {
       "detector": {
         "class_type": "UltralyticsDetectorProvider",
-        "inputs": { "model_name": "bbox/face_yolov8m.pt" },
-        "_meta": { "title": "face-detector" }
+        "inputs": {
+          "model_name": "bbox/face_yolov8m.pt"
+        },
+        "_meta": {
+          "title": "face-detector"
+        }
       },
       "detailer": {
         "class_type": "FaceDetailer",
@@ -24,7 +28,7 @@
           "force_inpaint": true,
           "bbox_threshold": 0.5,
           "bbox_dilation": 10,
-          "bbox_crop_factor": 3.0,
+          "bbox_crop_factor": 3,
           "sam_detection_hint": "center-1",
           "sam_dilation": 0,
           "sam_threshold": 0.93,
@@ -35,24 +39,43 @@
           "wildcard": "",
           "cycle": 1
         },
-        "_meta": { "title": "face-detailer" }
+        "_meta": {
+          "title": "face-detailer"
+        }
       },
       "pos_prompt": {
         "class_type": "CLIPTextEncode",
-        "inputs": { "text": "detailed face, beautiful eyes, natural skin, detailed facial features" },
-        "_meta": { "title": "face-pos" }
+        "inputs": {
+          "text": "detailed face, beautiful eyes, natural skin, detailed facial features"
+        },
+        "_meta": {
+          "title": "face-pos"
+        }
       },
       "neg_prompt": {
         "class_type": "CLIPTextEncode",
-        "inputs": { "text": "blurry face, bad face, deformed face, asymmetric eyes, cross-eyed, lazy eye, malformed pupil, extra eyes" },
-        "_meta": { "title": "face-neg" }
+        "inputs": {
+          "text": "blurry face, bad face, deformed face, asymmetric eyes, cross-eyed, lazy eye, malformed pupil, extra eyes"
+        },
+        "_meta": {
+          "title": "face-neg"
+        }
       }
     },
     "use_main_prompt": true,
     "internal_wiring": {
-      "detailer.bbox_detector": ["detector", 0],
-      "detailer.positive": ["pos_prompt", 0],
-      "detailer.negative": ["neg_prompt", 0],
+      "detailer.bbox_detector": [
+        "detector",
+        0
+      ],
+      "detailer.positive": [
+        "pos_prompt",
+        0
+      ],
+      "detailer.negative": [
+        "neg_prompt",
+        0
+      ],
       "pos_prompt.clip": "__clip__",
       "neg_prompt.clip": "__clip__"
     }
@@ -62,8 +85,12 @@
     "nodes": {
       "detector": {
         "class_type": "UltralyticsDetectorProvider",
-        "inputs": { "model_name": "bbox/hand_yolov8s.pt" },
-        "_meta": { "title": "hand-detector" }
+        "inputs": {
+          "model_name": "bbox/hand_yolov8s.pt"
+        },
+        "_meta": {
+          "title": "hand-detector"
+        }
       },
       "detailer": {
         "class_type": "FaceDetailer",
@@ -93,24 +120,43 @@
           "wildcard": "",
           "cycle": 1
         },
-        "_meta": { "title": "hand-detailer" }
+        "_meta": {
+          "title": "hand-detailer"
+        }
       },
       "pos_prompt": {
         "class_type": "CLIPTextEncode",
-        "inputs": { "text": "masterpiece, best quality, amazing quality, very aesthetic, absurdres, high detail, detailed hands, perfect fingers, natural hand, fingernails" },
-        "_meta": { "title": "hand-pos" }
+        "inputs": {
+          "text": "masterpiece, best quality, amazing quality, very aesthetic, absurdres, high detail, detailed hands, perfect fingers, natural hand, fingernails"
+        },
+        "_meta": {
+          "title": "hand-pos"
+        }
       },
       "neg_prompt": {
         "class_type": "CLIPTextEncode",
-        "inputs": { "text": "eyes, face, mouth, nose, extra fingers, mutated hands, bad hands, fused fingers, too many fingers, missing fingers, deformed fingers" },
-        "_meta": { "title": "hand-neg" }
+        "inputs": {
+          "text": "eyes, face, mouth, nose, extra fingers, mutated hands, bad hands, fused fingers, too many fingers, missing fingers, deformed fingers"
+        },
+        "_meta": {
+          "title": "hand-neg"
+        }
       }
     },
     "use_main_prompt": false,
     "internal_wiring": {
-      "detailer.bbox_detector": ["detector", 0],
-      "detailer.positive": ["pos_prompt", 0],
-      "detailer.negative": ["neg_prompt", 0],
+      "detailer.bbox_detector": [
+        "detector",
+        0
+      ],
+      "detailer.positive": [
+        "pos_prompt",
+        0
+      ],
+      "detailer.negative": [
+        "neg_prompt",
+        0
+      ],
       "pos_prompt.clip": "__clip__",
       "neg_prompt.clip": "__clip__"
     }
@@ -120,8 +166,12 @@
     "nodes": {
       "detector": {
         "class_type": "UltralyticsDetectorProvider",
-        "inputs": { "model_name": "bbox/vagina-v2.6.pt" },
-        "_meta": { "title": "pussy-detector" }
+        "inputs": {
+          "model_name": "bbox/vagina-v2.6.pt"
+        },
+        "_meta": {
+          "title": "pussy-detector"
+        }
       },
       "detailer": {
         "class_type": "FaceDetailer",
@@ -131,16 +181,16 @@
           "cfg": 4,
           "sampler_name": "euler_ancestral",
           "scheduler": "simple",
-          "denoise": 0.3,
+          "denoise": 0.22,
           "guide_size": 512,
           "guide_size_for": true,
           "max_size": 1024,
-          "feather": 15,
+          "feather": 48,
           "noise_mask": true,
           "force_inpaint": true,
           "bbox_threshold": 0.45,
-          "bbox_dilation": 20,
-          "bbox_crop_factor": 5.0,
+          "bbox_dilation": 40,
+          "bbox_crop_factor": 4,
           "sam_detection_hint": "center-1",
           "sam_dilation": 0,
           "sam_threshold": 0.93,
@@ -151,24 +201,43 @@
           "wildcard": "",
           "cycle": 1
         },
-        "_meta": { "title": "pussy-detailer" }
+        "_meta": {
+          "title": "pussy-detailer"
+        }
       },
       "pos_prompt": {
         "class_type": "CLIPTextEncode",
-        "inputs": { "text": "masterpiece, best quality, amazing quality, very aesthetic, absurdres, high detail, detailed pussy, detailed vulva, labia, clitoris, anatomically correct, fair skin, matte skin, consistent skin texture" },
-        "_meta": { "title": "pussy-pos" }
+        "inputs": {
+          "text": "masterpiece, best quality, amazing quality, very aesthetic, absurdres, high detail, detailed pussy, detailed vulva, labia, clitoris, anatomically correct, fair skin, matte skin, consistent skin texture, soft shading"
+        },
+        "_meta": {
+          "title": "pussy-pos"
+        }
       },
       "neg_prompt": {
         "class_type": "CLIPTextEncode",
-        "inputs": { "text": "eyes, face, fingers, bad anatomy, censored, mosaic censoring, bar censor" },
-        "_meta": { "title": "pussy-neg" }
+        "inputs": {
+          "text": "eyes, face, fingers, bad anatomy, censored, mosaic censoring, bar censor, discoloration, color shift, dark spot"
+        },
+        "_meta": {
+          "title": "pussy-neg"
+        }
       }
     },
-    "use_main_prompt": false,
+    "use_main_prompt": true,
     "internal_wiring": {
-      "detailer.bbox_detector": ["detector", 0],
-      "detailer.positive": ["pos_prompt", 0],
-      "detailer.negative": ["neg_prompt", 0],
+      "detailer.bbox_detector": [
+        "detector",
+        0
+      ],
+      "detailer.positive": [
+        "pos_prompt",
+        0
+      ],
+      "detailer.negative": [
+        "neg_prompt",
+        0
+      ],
       "pos_prompt.clip": "__clip__",
       "neg_prompt.clip": "__clip__"
     }
@@ -178,8 +247,12 @@
     "nodes": {
       "detector": {
         "class_type": "UltralyticsDetectorProvider",
-        "inputs": { "model_name": "bbox/anus_v4.pt" },
-        "_meta": { "title": "anus-detector" }
+        "inputs": {
+          "model_name": "bbox/anus_v4.pt"
+        },
+        "_meta": {
+          "title": "anus-detector"
+        }
       },
       "detailer": {
         "class_type": "FaceDetailer",
@@ -189,16 +262,16 @@
           "cfg": 4,
           "sampler_name": "euler_ancestral",
           "scheduler": "simple",
-          "denoise": 0.2,
+          "denoise": 0.18,
           "guide_size": 768,
           "guide_size_for": true,
           "max_size": 1024,
-          "feather": 20,
+          "feather": 48,
           "noise_mask": true,
           "force_inpaint": false,
           "bbox_threshold": 0.3,
-          "bbox_dilation": 80,
-          "bbox_crop_factor": 8.0,
+          "bbox_dilation": 30,
+          "bbox_crop_factor": 3,
           "sam_detection_hint": "center-1",
           "sam_dilation": 0,
           "sam_threshold": 0.93,
@@ -209,24 +282,43 @@
           "wildcard": "",
           "cycle": 1
         },
-        "_meta": { "title": "anus-detailer" }
+        "_meta": {
+          "title": "anus-detailer"
+        }
       },
       "pos_prompt": {
         "class_type": "CLIPTextEncode",
-        "inputs": { "text": "masterpiece, best quality, amazing quality, very aesthetic, absurdres, high detail, detailed anus, anatomically correct, fair skin, matte skin, consistent skin texture, soft shading" },
-        "_meta": { "title": "anus-pos" }
+        "inputs": {
+          "text": "masterpiece, best quality, amazing quality, very aesthetic, absurdres, high detail, detailed anus, anatomically correct, fair skin, matte skin, consistent skin texture, soft shading"
+        },
+        "_meta": {
+          "title": "anus-pos"
+        }
       },
       "neg_prompt": {
         "class_type": "CLIPTextEncode",
-        "inputs": { "text": "eyes, face, fingers, bad anatomy, censored, mosaic censoring, dark spot, black spot, discoloration" },
-        "_meta": { "title": "anus-neg" }
+        "inputs": {
+          "text": "eyes, face, fingers, bad anatomy, censored, mosaic censoring, dark spot, black spot, discoloration, color shift"
+        },
+        "_meta": {
+          "title": "anus-neg"
+        }
       }
     },
-    "use_main_prompt": false,
+    "use_main_prompt": true,
     "internal_wiring": {
-      "detailer.bbox_detector": ["detector", 0],
-      "detailer.positive": ["pos_prompt", 0],
-      "detailer.negative": ["neg_prompt", 0],
+      "detailer.bbox_detector": [
+        "detector",
+        0
+      ],
+      "detailer.positive": [
+        "pos_prompt",
+        0
+      ],
+      "detailer.negative": [
+        "neg_prompt",
+        0
+      ],
       "pos_prompt.clip": "__clip__",
       "neg_prompt.clip": "__clip__"
     }
