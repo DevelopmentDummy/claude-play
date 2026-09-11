@@ -16,7 +16,7 @@ import { AIProvider, providerFromModel } from "./ai-provider";
 import { SYSTEM_JSON, mutateSessionJsonSync } from "./session-state";
 import { clampMemo, extractLastUserPreview } from "./session-memo";
 import { fileDiffers, personaSkillsDiffer, dirDiffers, toolsDiffer, variablesDiffer, stripAssembledSections, liveInstructionsDiffer, getCustomDataFiles } from "./session-sync-diff";
-import { copyDirRecursive, mirrorAdditive } from "./fs-mirror";
+import { copyDirRecursive, mirrorAdditive, refreshDirectoryWithBackups } from "./fs-mirror";
 import {
   writeCodexInstructions as writeCodexInstructionsImpl,
   writeGeminiInstructions as writeGeminiInstructionsImpl,
@@ -1754,7 +1754,6 @@ export class SessionManager {
 
   // ── Tools ──────────────────────────────────────────────
 
-  /** Re-copy global tool skills into an existing session (called on session open/resume) */
   /** Copy latest panel-spec.md from project root to session */
   refreshPanelSpec(sessionDir: string): void {
     const src = path.join(this.appRoot, "panel-spec.md");
@@ -1818,7 +1817,16 @@ export class SessionManager {
     mirrorAdditive(personaDir, sessionDir, SKIP_FILES);
   }
 
-  refreshToolSkills(sessionDir: string): void {
+  /** Persona source wins over session edits (backed up), then global tool skills
+   * retain their existing precedence. Called before CLI spawn on open/resume. */
+  refreshToolSkills(sessionDir: string, personaName?: string): void {
+    if (personaName) {
+      const source = path.join(this.getPersonaDir(personaName), "skills");
+      for (const provider of [".claude", ".agents", ".gemini", ".kimi"]) {
+        refreshDirectoryWithBackups(source, path.join(sessionDir, provider, "skills"),
+          path.join(sessionDir, ".skill-backups", provider, "skills"));
+      }
+    }
     const claudeSkillsDest = path.join(sessionDir, ".claude", "skills");
     const agentsSkillsDest = path.join(sessionDir, ".agents", "skills");
     const geminiSkillsDest = path.join(sessionDir, ".gemini", "skills");

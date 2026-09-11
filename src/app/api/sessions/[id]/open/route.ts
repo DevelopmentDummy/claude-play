@@ -51,8 +51,9 @@ export async function POST(
   // Read layout config
   const layout = svc.sessions.readLayout(sessionDir);
 
-  // Refresh global tool skills (always sync on open — these are shared, not persona-specific)
-  svc.sessions.refreshToolSkills(sessionDir);
+  // Refresh persona + global skills before CLI spawn. Replaced persona skill
+  // files are backed up; RP state and session-only skills are not overwritten.
+  svc.sessions.refreshToolSkills(sessionDir, info.persona);
 
   // Always copy latest panel-spec.md from project root
   svc.sessions.refreshPanelSpec(sessionDir);
