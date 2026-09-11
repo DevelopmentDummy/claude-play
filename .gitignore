@@ -21,6 +21,8 @@ data/.server.pid
 # Machine-local MCP approvals and portable Blender binaries
 data/mcp-trust.json
 data/tools/blender/
+# Blender 런타임 상태(userpref/recent-files) — 머신 로컬
+data/tools/blender-community/user-config/
 data/restart.log
 data/restart-build.log
 data/restart-newserver.log
