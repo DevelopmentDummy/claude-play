@@ -3,7 +3,8 @@ import * as path from "path";
 import { NextResponse } from "next/server";
 import { getServices } from "@/lib/services";
 import { getSessionInstance } from "@/lib/session-registry";
-import { mutateSessionJson, applyPatch } from "@/lib/session-state";
+import { mutateSessionJson, applyPatch, readSessionJson } from "@/lib/session-state";
+import { resolveAppMode } from "@/lib/app-mode";
 
 // System JSON files that cannot be patched via this endpoint
 const PROTECTED_FILES = new Set([
@@ -37,6 +38,19 @@ export async function PATCH(
   if (PROTECTED_FILES.has(fileName)) {
     return NextResponse.json({ error: "Cannot modify protected file" }, { status: 403 });
   }
+
+  // 앱 모드에서 월드 파일은 엔진만 쓴다 (spec §9). 앱/패널은 run_tool("<engine>", { action: "submit" })로
+  // 가야 "규칙은 step()에만 존재한다"는 불변식이 유지된다.
+  // 주의: tool 라우트의 PROTECTED_FILES에는 월드 파일을 넣지 않는다 — 넣으면 엔진 자신의 쓰기가 막힌다.
+  try {
+    const app = resolveAppMode(readSessionJson(path.join(sessionDir, "layout.json")));
+    if (app && fileName === app.worldFile) {
+      return NextResponse.json(
+        { error: `${fileName} is owned by the world engine — submit an intent instead` },
+        { status: 403 },
+      );
+    }
+  } catch { /* layout.json 없음/깨짐 → 가드 없이 진행 (기존 동작) */ }
 
   const filePath = path.join(sessionDir, fileName);
 
