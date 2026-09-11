@@ -23,6 +23,12 @@ export const STATIC_MIME: Record<string, string> = {
   ".webm": "video/webm",
   ".mov": "video/quicktime",
   ".vtt": "text/vtt",
+  // 앱 모드 번들 (layout.app.entry가 가리키는 HTML과 그 자산)
+  ".html": "text/html; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
 };
 
 /** Content-Type for a file path; defaults to application/octet-stream. */
