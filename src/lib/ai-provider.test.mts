@@ -34,5 +34,12 @@ eq("builder-advisor", resolveBuilderModel("opus@fable").advisor, "fable");
 // 슬래시 포함 모델 id는 advisor 분리 영향 없음
 eq("kimi-slash", parseModelEffort("moonshot-ai/kimi-k2.6:thinking"), { model: "moonshot-ai/kimi-k2.6", effort: "thinking", advisor: undefined });
 
+eq("astra-provider", providerFromModel("gpt-6-astra"), "codex");
+eq("astra-effort-provider", providerFromModel("gpt-6-astra:xhigh"), "codex");
+eq("astra-case-provider", providerFromModel("GPT-6-ASTRA:high"), "codex");
+eq("astra-builder", resolveBuilderModel("gpt-6-astra:max"), {
+  model: "gpt-6-astra", effort: "max", provider: "codex", combined: "gpt-6-astra:max", advisor: undefined,
+});
+
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail > 0) process.exit(1);

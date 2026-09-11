@@ -122,7 +122,7 @@ const PROVIDER_CLIS = ["claude", "codex", "kimi", "agy"];
 // (2026-07-21: codex-cli 0.124.0 + gpt-5.6-sol → "requires a newer version of Codex").
 // 여기 걸어두면 그 조합을 커밋 전에 잡는다. WARN 전용 — 이 블록은 절대 error를 내지 않는다.
 const MIN_CLI_VERSIONS = {
-  codex: { min: "0.144.6", why: "GPT-5.6(sol/terra/luna) 지원. 0.124.0은 API가 400으로 거절" },
+  codex: { min: "0.153.1", why: "GPT-6 Astra 카탈로그 확인 버전 기준(최초 지원 버전은 미확인). 0.148.0 model/list에는 Astra 없음" },
 };
 
 function parseSemver(s) {

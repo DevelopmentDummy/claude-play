@@ -36,7 +36,7 @@ function providerInfo(model?: string): { label: string; cls: string; mark?: "kim
   const lower = model.split(":")[0].toLowerCase();
   if (lower === "kimi-auto" || lower.startsWith("kimi-") || lower.startsWith("moonshot-ai/kimi-"))
     return { label: "Kimi", mark: "kimi", cls: "bg-[#173735]/70 text-[#74f5dc]/90 border-[#74f5dc]/20 shadow-[0_0_14px_rgba(116,245,220,0.10)]" };
-  if (/^(gpt-5|codex-mini|o3|o4)/.test(lower))
+  if (lower === "gpt-6-astra" || /^(gpt-5|codex-mini|o3|o4)/.test(lower))
     return { label: "Codex", cls: "bg-[#2a5a3a]/60 text-[#4dff91]/80 border-[#4dff91]/15" };
   if (/^gemini/.test(lower))
     return { label: "Gemini", cls: "bg-[#1a3a5c]/60 text-[#64b5f6]/80 border-[#64b5f6]/15" };

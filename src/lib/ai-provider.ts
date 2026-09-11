@@ -4,7 +4,7 @@ const GEMINI_DISABLED = process.env.NEXT_PUBLIC_DISABLE_GEMINI === "true";
 
 const EXTERNAL_CODEX_MODEL_PREFIX = "external/";
 const CODEX_MODEL_PREFIXES = ["gpt-5", "codex-mini"];
-const CODEX_MODEL_EXACT = new Set(["codex-mini-latest", "o3", "o4-mini"]);
+const CODEX_MODEL_EXACT = new Set(["codex-mini-latest", "o3", "o4-mini", "gpt-6-astra"]);
 
 const GEMINI_MODEL_PREFIXES = ["gemini-"];
 const GEMINI_MODEL_EXACT = new Set(["gemini-pro", "gemini-flash"]);
@@ -196,6 +196,10 @@ function buildModelGroups(): ModelGroup[] {
       label: "Codex",
       provider: "codex",
       options: [
+        { value: "gpt-6-astra:medium", label: "GPT-6 Astra Medium" },
+        { value: "gpt-6-astra:high", label: "GPT-6 Astra High" },
+        { value: "gpt-6-astra:xhigh", label: "GPT-6 Astra XHigh" },
+        { value: "gpt-6-astra:max", label: "GPT-6 Astra Max" },
         // GPT-5.6 (2026-07-09): Sol=플래그십(bare `gpt-5.6` 별칭이 Sol로 라우팅), Terra=균형, Luna=최속·최저가.
         { value: "gpt-5.6-sol:medium", label: "GPT-5.6 Sol Medium" },
         { value: "gpt-5.6-sol:high", label: "GPT-5.6 Sol High" },

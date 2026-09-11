@@ -2,7 +2,8 @@
 
 import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { AIProvider, MODEL_GROUPS } from "@/lib/ai-provider";
+import { AIProvider } from "@/lib/ai-provider";
+import ModelSelect from "@/components/ModelSelect";
 
 interface StatusBarProps {
   title: string;
@@ -386,39 +387,12 @@ export default function StatusBar({
 
         {/* Builder: full model selector */}
         {isBuilderMode && onBuilderModelChange && (
-          <select
-            value={builderModel || ""}
-            onChange={(e) => onBuilderModelChange(e.target.value)}
-            className={selectClass}
-            style={selectStyle}
-          >
-            {MODEL_GROUPS.map((g) => (
-              <optgroup key={g.label} label={g.label}>
-                {g.options.map((o) => (
-                  <option key={o.value} value={o.value} className={optClass}>
-                    {o.label}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
+          <ModelSelect value={builderModel || ""} onChange={onBuilderModelChange} className={selectClass} style={selectStyle} />
         )}
 
         {/* Chat: model selector within locked provider */}
         {!isBuilderMode && onModelChange && (
-          <select
-            value={model || ""}
-            onChange={(e) => onModelChange(e.target.value)}
-            className={selectClass}
-            style={selectStyle}
-          >
-            {MODEL_GROUPS
-              .filter((g) => g.provider === provider)
-              .flatMap((g) => g.options)
-              .map((o) => (
-                <option key={o.value} value={o.value} className={optClass}>{o.label}</option>
-              ))}
-          </select>
+          <ModelSelect value={model || ""} onChange={onModelChange} provider={provider} className={selectClass} style={selectStyle} />
         )}
 
         <span

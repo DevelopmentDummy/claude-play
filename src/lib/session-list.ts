@@ -44,7 +44,7 @@ function readMeta(folderPath: string): SessionMeta | null {
 function detectProvider(model?: string): ConversationProvider {
   if (!model) return "claude";
   const lower = model.split(":")[0].toLowerCase();
-  if (/^(gpt-5|codex-mini|o3|o4)/.test(lower)) return "codex";
+  if (lower === "gpt-6-astra" || /^(gpt-5|codex-mini|o3|o4)/.test(lower)) return "codex";
   if (/^gemini/.test(lower)) return "gemini";
   if (lower === "kimi-auto" || lower.startsWith("kimi-") || lower.startsWith("moonshot-ai/kimi-")) return "kimi";
   return "claude";

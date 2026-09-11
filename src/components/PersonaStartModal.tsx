@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { MODEL_GROUPS } from "@/lib/ai-provider";
+import ModelSelect from "@/components/ModelSelect";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 
 interface ProfileOption {
@@ -291,7 +291,7 @@ export default function PersonaStartModal({
             <div className="mb-3 text-[12px] text-error">{startError}</div>
           )}
           <div className="flex items-center gap-3">
-            <div className="flex-1 relative">
+            <div className="w-28 shrink-0 relative">
               <label className="block text-[11px] text-text-dim/50 uppercase tracking-wider font-medium mb-1.5">
                 User Profile
               </label>
@@ -319,33 +319,11 @@ export default function PersonaStartModal({
               </select>
             </div>
 
-            <div className="flex-1 relative">
+            <div className="flex-1 min-w-0 relative">
               <label className="block text-[11px] text-text-dim/50 uppercase tracking-wider font-medium mb-1.5">
                 Model
               </label>
-              <select
-                value={selectedModel}
-                onChange={(e) => setSelectedModel(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl text-sm text-text bg-[rgba(15,15,26,0.6)]
-                  border border-border/60 outline-none cursor-pointer appearance-none
-                  transition-all duration-fast
-                  focus:border-[var(--accent)] focus:shadow-[0_0_0_3px_var(--accent-glow)]
-                  hover:border-border"
-                style={{
-                  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M3 5l3 3 3-3'/%3E%3C/svg%3E")`,
-                  backgroundRepeat: "no-repeat",
-                  backgroundPosition: "right 12px center",
-                  paddingRight: "32px",
-                }}
-              >
-                {MODEL_GROUPS.map((g) => (
-                  <optgroup key={g.label} label={g.label} className="bg-[#1a1a2e] text-[#ccc]">
-                    {g.options.map((o) => (
-                      <option key={o.value} value={o.value} className="bg-[#1a1a2e] text-[#ccc]">{o.label}</option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
+              <ModelSelect value={selectedModel} onChange={setSelectedModel} />
             </div>
 
             <div className="pt-5 flex items-center gap-2">
