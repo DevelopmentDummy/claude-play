@@ -121,7 +121,7 @@ export function resolveSessionFilePath(sessionDir: string, fileName: string): st
 let tmpSeq = 0;
 
 /** tmp+rename 원자적 쓰기(동기). 실패 시 tmp 정리 후 throw. */
-function atomicWriteJsonSync(filePath: string, value: unknown): void {
+export function atomicWriteJsonSync(filePath: string, value: unknown): void {
   const tmp = `${filePath}.${process.pid}.${tmpSeq++}.tmp`;
   try {
     fs.writeFileSync(tmp, JSON.stringify(value, null, 2), "utf-8");
