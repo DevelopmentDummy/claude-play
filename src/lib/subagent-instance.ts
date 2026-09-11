@@ -12,17 +12,29 @@ import {
 /** System-prompt preamble prepended to every sub-agent's instructions. Establishes
  *  the sub's contract: it actuates shared state, never talks to the end user, and
  *  reports a concise summary back to the main narrator via the report_to_main tool. */
-function buildSubSystemPrompt(def: SubAgentDef, instructions: string): string {
+export function buildSubSystemPrompt(def: SubAgentDef, instructions: string): string {
+  const id = def.threadId ?? def.name;
+  const hasParams = !!def.params && Object.keys(def.params).length > 0;
   return [
-    `You are "${def.name}", a specialized background sub-agent for a roleplay session.`,
+    `You are "${id}", a specialized background sub-agent for a roleplay session.`,
     `Your role: ${def.role}`,
     "You are NOT the narrator and you do NOT talk to the end user. The main narrator handles all user-facing prose.",
     "Exception: a message beginning with [OPERATOR] is the human operator talking to you directly, out of character. In that turn, reply to the operator concisely and conversationally. You MAY still use your tools and call report_to_main when you actually change state.",
     "You operate on the SHARED session directory: read/write panel variables and data files using the MCP tools available to you (run_tool and the session's custom tools).",
     def.emitSummary
-      ? `When you finish a task, call the MCP tool report_to_main with { from: "${def.name}", summary: "<one or two concise sentences of what changed>" } so the narrator learns what happened on its next turn. Do NOT write user-facing narrative.`
+      ? `When you finish a task, call the MCP tool report_to_main with { from: "${id}", summary: "<one or two concise sentences of what changed>" } so the narrator learns what happened on its next turn. Do NOT write user-facing narrative.`
       : "Do not emit user-facing narrative.",
     "Keep your own text responses terse. The real work happens through tool calls.",
+    // 역할 지침은 같은 역할의 모든 스레드가 공유한다. 아래 값이 "네가 누구인지"다.
+    ...(hasParams
+      ? [
+          "",
+          "--- THREAD IDENTITY ---",
+          `[THREAD] threadId=${id}`,
+          JSON.stringify(def.params, null, 2),
+          def.scope ? `[SCOPE] ${def.scope}` : "",
+        ].filter(Boolean)
+      : []),
     "",
     "--- ROLE INSTRUCTIONS ---",
     instructions,
@@ -72,7 +84,7 @@ export class SubAgentInstance {
     private readonly onStatus?: (busy: boolean) => void,
   ) {
     this.def = def;
-    this.name = def.name;
+    this.name = def.threadId ?? def.name;
     this.sessionDir = sessionDir;
     this.sessionId = sessionId;
     this.provider = provider;
@@ -127,7 +139,11 @@ export class SubAgentInstance {
   private resumePath(): string { return path.join(this.subDir(), `.resume-${this.provider}`); }
 
   private readInstructions(): string {
-    const fp = path.join(this.subDir(), this.def.instructions);
+    // v2 역할 지침은 세션 루트 기준(roles/{role}.md) — 같은 역할의 스레드들이 한 파일을 공유한다.
+    // v1 승격분은 기존대로 subagents/{name}/ 기준이라 마이그레이션이 필요 없다.
+    const fp = this.def.instructionsFromSessionRoot
+      ? path.join(this.sessionDir, this.def.instructions)
+      : path.join(this.subDir(), this.def.instructions);
     try {
       return fs.readFileSync(fp, "utf-8");
     } catch {

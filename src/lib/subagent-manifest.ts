@@ -27,6 +27,14 @@ export interface SubAgentDef {
   autoTriggerTask?: string;              // default task when autoTrigger === "onAssistantTurn"
   emitSummary: boolean;                  // sub should report_to_main on completion
   writes?: string[];                     // advisory only in v1 (doc), not enforced
+  /** 스레드 인스턴스 식별자. v1 승격분은 name과 같다. */
+  threadId?: string;
+  /** 이 스레드의 정체성 파라미터. 역할 지침은 공유되고 이것이 누구/무엇인지를 정한다. */
+  params?: Record<string, unknown>;
+  /** 지침 경로가 세션 디렉토리 기준인지 (v2 역할) 아니면 subagents/{name}/ 기준인지 (v1). */
+  instructionsFromSessionRoot?: boolean;
+  /** 엔진이 해석하는 가시 범위 태그. */
+  scope?: string;
 }
 
 export interface SubAgentManifest {
