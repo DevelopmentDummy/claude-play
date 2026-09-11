@@ -1,0 +1,16 @@
+{
+  "app": {
+    "entry": "app/index.html",
+    "engine": "world",
+    "worldFile": "world.json"
+  },
+  "chat": {
+    "mode": "dock",
+    "maxWidth": null,
+    "align": "stretch"
+  },
+  "panels": {
+    "position": "hidden",
+    "size": 320
+  }
+}
