@@ -130,6 +130,32 @@ Optional persona MCP servers are merged by runtime config writers on open when `
 - ⓓ **sync 훅 ↔ async 서브 쓰기 레이스**: 메인의 `runAssistantHooks`는 `mutateSessionJsonSync`(동기, per-file 뮤텍스 우회)로 `variables.json`을 쓰고, 서브는 라우트 경유 `mutateSessionJson`(뮤텍스 적용)으로 쓴다. 같은 파일을 sync(메인)와 async(서브)가 거의 동시에 건드리면 atomic tmp+rename으로 파일 손상은 없으나 **lost update** 가능. 노출은 낮음(윈도우 짧음, 보통 disjoint 키). **회피책**: 매니페스트 `writes[]`(권고)에 맞춰 메인 훅과 서브가 서로 다른 변수/파일을 쓰도록 페르소나를 구성. 완전 해결(훅 변수 쓰기의 async 게이트 경유)은 후속 작업.
 - ⓔ **Kimi 첫 open 시 sticky id 오염 가능성 (잔여 race, 라이브 미검증)**: Kimi 세션 id는 cwd+mtime 휴리스틱이라, 서브가 cwd를 공유하는 세션의 **첫** open에서 서브 대화 파일이 mtime 우선권을 잡으면 sticky `resolvedSessionId`가 서브 id로 잘못 고정될 수 있음. `session.json`의 `kimiSessionId`가 메인 대화인지는 `kimi-stream.log`의 `ignored heuristic id` 라인으로 확인. 실제 발생 시 수정 방향은 서브 spawn을 메인 sessionId emit 이후로 지연.
 
+## 앱 모드 — 월드 엔진과 스레드 루프
+
+`layout.json`에 `app`이 있는 세션만 해당한다. 없으면 아래 경로는 전부 꺼지고 기존 채팅 중심 셸로 동작한다. 설계 근거는 [앱 모드 설계 문서](specs/2026-09-12-app-mode-platform-design.md).
+
+**기동**: `/api/sessions/[id]/open`이 `subAgents.spawnAll()` 직후 `instance.syncThreadLoop(provider, model, effort)`를 호출한다. `resolveAppMode(layout)`가 null이면 루프를 만들지 않는다.
+
+**역할과 스레드**: `subagents.json` v2는 역할(템플릿) + 스레드(인스턴스)로 나뉜다. 같은 역할에서 스레드 N개가 뜨고 지침은 한 벌이며, 정체성은 스폰 시 선행 메시지에 붙는 `[THREAD] threadId=… params=…`가 갖는다. 살아있는 스레드 목록의 진실은 매니페스트가 아니라 `threads.json`이라 런타임 스폰이 재open에서 보존된다. v1 `subagents[]`는 스레드 하나짜리 역할로 승격되어 기존 동작이 그대로 유지된다.
+
+**틱 순서 (고정)** — 이 순서가 배치 경합 판정을 성립시킨다:
+
+1. 깨울 스레드 선정 — 주기 도래 + 바쁘지 않음 + 동시 실행 예산(`THREAD_CONCURRENCY`, 기본 3) 여유. 오래 기다린 순서(기아 방지)
+2. 선정된 스레드에 병렬로 `observe(observerId, {since})` → `dispatch`
+3. 이번 틱의 턴이 전부 끝날 때까지 대기 (`THREAD_TICK_WAIT_MS` 초과 시 다음 틱으로 넘김 — 남은 의도는 다음 배치에 합류)
+4. **세션 뮤텍스 아래 `step()` 1회** — 이번 틱에 쌓인 의도를 한 배치로 드레인·검증·적용
+5. 컨텍스트 리셋 판정 (틱 경계 = `step` 적용 **후**)
+
+턴마다 `step`을 돌리면 배치 크기가 항상 1이 되어 "같은 틱의 경합을 의도적으로 판정한다"가 공허해진다. 부작용으로 한 틱 안의 관측 시점이 일관된다.
+
+**단일 writer**: 규칙은 `step()`에만 존재한다. 유저 조작도 스레드 의도와 같은 `submit`을 타므로 검증 경로가 하나다. 앱이 `/api/sessions/[id]/variables`로 월드 파일을 쓰는 것은 403으로 막히고, tool 라우트(엔진 반환 패치)만 허용된다 — 그래서 tool 라우트의 `PROTECTED_FILES`에 월드 파일을 **넣으면 안 된다**.
+
+**컨텍스트 성장**: 루프 스레드는 transcript가 무한히 자라지만 요약 턴을 돌리지 않는다. 권위 있는 상태가 `world.json`에 있으므로 프로세스를 버리고 역할 지침 + `params` + `observe` + 월드에 저장된 자기 `memory`로 재prime한다(추가 LLM 호출 0회). `resetContext()`가 곧바로 새 프로세스를 띄워(프리워밍) 다음 틱의 콜드 스타트를 덮고, 리셋 주기는 스레드마다 ±20% 지터를 줘 동시 리셋으로 세계가 멈추는 것을 막는다.
+
+**메인은 조용한 코디네이터**: 스레드의 `report_to_main`은 메인 턴을 강제하지 않고, `runStyleCheckHook`/`runSessionMemoTick`은 메인 턴 직후에만 돌므로 앱 모드에서 자연히 쉰다. 메인이 깨어나는 것은 ①유저 메시지 ②명시적 에스컬레이션(`fire_ai` autoResume) 뿐이다. 깨어날 때는 밀린 이벤트 재생이 아니라 `observe("main")`의 현재 월드 상태가 `[WORLD]` 헤더로 붙는다 — 앱 모드에서 엔진·스레드는 이벤트 큐를 쓰지 않는다.
+
+**정지 조건**: 클라이언트가 하나도 연결돼 있지 않으면(`countSessionClients() === 0`) 틱이 돌지 않는다. 사용자는 StatusBar에서 일시정지·속도(0.5×~4×)를 조절하고, 상태는 `threads:status` WS 이벤트로 내려간다. 제어는 `threads:control` WS 메시지.
+
 ## Pipeline Scheduler
 
 - 세션별 폴링 루프가 페르소나 커스텀 도구 `pipeline`을 `{action:"scheduler_tick"}`으로 주기 호출 (시작/정지/완료 시엔 `engine` 도구의 `start_scheduler`/`stop_scheduler`/`finish_scheduler` 액션; 호출 경로는 `POST /api/sessions/[id]/tools/[name]` 재사용)

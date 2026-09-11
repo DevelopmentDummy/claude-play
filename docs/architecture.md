@@ -46,6 +46,11 @@ Python FastAPI child process (port 3342 by default) for serial GPU task queueing
 | `ai-process-factory.ts` | Factory helper that constructs the correct provider process (ClaudeProcess / CodexProcess / etc.) given a model id and options. Used by both main session and sub-agent spawn paths. |
 | `subagent-manifest.ts` | Reads and validates `subagents.json` — manifest schema types, `loadSubAgentManifest()`, cap enforcement (`SUBAGENT_MAX`). |
 | `subagent-instance.ts` | Per-sub stateful wrapper over any provider process (follows the session's provider/model by default; a per-sub `model` in the manifest pins a fixed provider). No PanelEngine. Emits messages to `SubAgentManager`; persists a provider-namespaced `.resume-<provider>` id for continuity. |
+| `app-mode.ts` | `resolveAppMode(layout)` — `layout.json`의 `app`/`chat.mode`를 해석해 `AppModeConfig`를 돌려준다. `app`이 없으면 `null`이라 앱 모드 경로 전체가 꺼진다 (기존 페르소나 무영향). 경로 구분자·traversal을 거부한다. |
+| `world-engine.ts` | 월드 엔진(`tools/{engine}.js`) 액션 래퍼 — `observe`/`submit`/`step`/`snapshot`. 기존 tool 라우트를 HTTP로 호출해 패치 적용·타임아웃을 한 곳에 유지한다. `runExclusiveSession()` 세션 뮤텍스가 `step`만 직렬화해 lost update를 막는다. |
+| `thread-manifest.ts` | `subagents.json` v2 파싱 — 역할(`roles[]`) 템플릿 + 스레드(`threads[]`) 인스턴스. v1 `subagents[]`는 스레드 하나짜리 역할로 승격(하위호환). `MIN_INTERVAL_MS`(5s) 클램프, `THREAD_MAX`(12), `THREAD_ID_RE`(dot 금지 — `$unset` dot-path 제약). |
+| `thread-registry.ts` | `threads.json` 라이브 레지스트리 — 어떤 스레드가 살아있는지의 진실. 세션 재open 시 복원하고, 엔진의 `result.threads.spawn/despawn`을 적용한다. |
+| `thread-loop.ts` | 앱 모드 스레드 루프 런타임. 세션 틱마다 ①깨울 스레드 선정(`selectDueThreads`) ②병렬 `observe`+`dispatch` ③전원 완료 대기 ④`step()` **1회** ⑤컨텍스트 리셋. 틱 예산(동시 3·주기 하한 5s·클라이언트 없으면 일시정지)과 `briefMain()`(메인 턴 월드 브리핑)을 담당. |
 | `subagent-manager.ts` | `SubAgentManager` — owns all `SubAgentInstance` objects for a session. `spawnAll()` on session open, `dispatch(name, task)` for all three dispatch paths, `destroyAll()` on session destroy. |
 | `subagent-registry.ts` | PID registry for sub-agent processes (`data/.runtime/subagent-procs.json`). `reapOrphanSubProcs()` called on server boot to kill survivors, with recycling-safe session-dir verification. |
 | `subagent-transcript.ts` | Per-sub `transcript.jsonl` reader/appender (dispatch/response/report entries) feeding the `subagent:message` WS side-channel and the messenger-style sub-agent modal UI. |

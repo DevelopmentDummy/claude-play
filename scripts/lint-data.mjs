@@ -154,6 +154,24 @@ function lintJsonFile(file, basename) {
           }
         }
       }
+      // 앱 모드 설정 (docs/specs/2026-09-12-app-mode-platform-design.md)
+      if (isObject(data.app)) {
+        if (typeof data.app.entry !== "string" || !data.app.entry.trim()) {
+          issue("error", "layout-app-entry", file, "layout.app.entry가 없거나 문자열이 아님");
+        }
+        for (const key of ["engine", "worldFile"]) {
+          const v = data.app[key];
+          if (v !== undefined && (typeof v !== "string" || /[\\/]|\.\./.test(v))) {
+            issue("error", "layout-app-path", file,
+              `layout.app.${key}는 경로 구분자 없는 단일 이름이어야 함`);
+          }
+        }
+      }
+      if (isObject(data.chat) && data.chat.mode !== undefined
+          && !["normal", "dock", "hidden"].includes(data.chat.mode)) {
+        issue("warn", "layout-chat-mode", file,
+          `chat.mode "${data.chat.mode}"는 알 수 없는 값 (허용: normal, dock, hidden)`);
+      }
     }
   } else if (basename === "voice.json") {
     if (isObject(data) && "ttsProvider" in data && !VALID_TTS_PROVIDERS.has(data.ttsProvider)) {

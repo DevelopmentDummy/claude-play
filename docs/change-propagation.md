@@ -72,3 +72,13 @@
 | `data/tools/{name}/skills/` 도구 스킬 변경 | 동일 — 세션 Open 시 자동 갱신 |
 | `data/builder_skills/` 빌더 전용 스킬 변경 | 빌더 세션 시작 시 자동 갱신 |
 | 스킬 내 `{{PORT}}` 플레이스홀더 | 세션 Open 시 현재 서버 포트로 치환됨 (`SKILL.md`, `*.sh`) |
+
+## 앱 모드 / 스레드 루프 변경
+
+| 바꾸는 것 | 같이 고칠 것 |
+|---|---|
+| `layout.json`의 `app`/`chat.mode` 스키마 | `src/lib/app-mode.ts`(+테스트) · `src/hooks/useLayout.ts` `LayoutConfig` · `scripts/lint-data.mjs` 검증 · `docs/data-model.md` |
+| 월드 엔진 액션 계약(`observe`/`submit`/`step`/`snapshot`) | `src/lib/world-engine.ts` · `scripts/fixtures/app-mode-stub/tools/world.js` · 역할 지침 템플릿 · [설계 문서](specs/2026-09-12-app-mode-platform-design.md) §5 |
+| `subagents.json` 스키마 | `src/lib/thread-manifest.ts`(+테스트) · `src/lib/subagent-manager.ts` `buildThreadDefs` · `docs/data-model.md` |
+| 틱 예산·순서 | `src/lib/thread-loop.ts` · `docs/infrastructure.md` env 표 · 설계 문서 §7 |
+| 스레드 정체성 주입 | `src/lib/subagent-instance.ts` `buildSubSystemPrompt` · 역할 지침 — **세션 재-open 필요** |
