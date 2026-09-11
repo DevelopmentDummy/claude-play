@@ -57,6 +57,7 @@ export default function ChatPage() {
     handleToolAnswered,
     handleCancelled,
     assignMessageId,
+    assignSplitMessageId,
     addUserMessage,
     addOpeningMessage,
     clearMessages,
@@ -400,6 +401,11 @@ export default function ChatPage() {
       "claude:messageId": (d) => {
         const { messageId } = d as { messageId: string };
         if (messageId) assignMessageId(messageId);
+      },
+      // 개입으로 분할돼 확정된 앞부분 버블에 서버 history id를 부여
+      "chat:split": (d) => {
+        const { messageId } = d as { messageId?: string };
+        if (messageId) assignSplitMessageId(messageId);
       },
       "claude:error": (e) => setError(e as string),
       "claude:status": (s) => setStatus(s as string),

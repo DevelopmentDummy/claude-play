@@ -113,30 +113,15 @@ export function useChat(rawSessionId?: string) {
 
   const seenToolKeysRef = useRef<Set<string>>(new Set());
   const sawTextDeltaRef = useRef(false);
+  /** 이번 턴이 개입으로 분할됐는가 — 스트리밍 ref가 분할 이후 나머지만 담고 있음을 뜻한다.
+   *  서버 SessionInstance.turnSplit과 같은 의미(healing/result 폴백 차단). */
+  const turnSplitRef = useRef(false);
   const currentBlockTypeRef = useRef<string>("text");
   const pushedTextsByMsgIdRef = useRef<Map<string, Set<string>>>(new Map());
   const msgIdRef = useRef(0);
   const totalRef = useRef(0);
   const loadedOffsetRef = useRef(0);
   const oocRef = useRef(false);
-
-  /** 사용자 메시지를 추가한다. AI 턴이 진행 중(live stream 버블이 꼬리에 있음)이면
-   *  그 버블 바로 위에 끼워 넣는다 — 라이브 버블은 `prev[prev.length-1]`
-   *  (upsertAssistantMessage의 타깃)로 남아야 delta 파이프라인이 깨지지 않는다.
-   *  로컬 개입(prepareInterject)과 다른 클라이언트의 개입 브로드캐스트(`chat:user`)가
-   *  같은 규칙을 타야 두 클라이언트의 순서가 일치하고, 꼬리 append로 인한
-   *  두 번째 stream 버블 생성(앞 버블이 live로 고아화)을 막는다. */
-  const addUserMessage = useCallback((text: string, ooc?: boolean) => {
-    const id = `user-${++msgIdRef.current}`;
-    const userMsg: ChatMessage = { id, renderKey: id, role: "user", content: text, ooc: ooc || undefined };
-    setMessages((prev) => {
-      const last = prev[prev.length - 1];
-      if (last && last.role === "assistant" && last.live && last.id.startsWith("stream-")) {
-        return [...prev.slice(0, -1), userMsg, last];
-      }
-      return [...prev, userMsg];
-    });
-  }, []);
 
   const upsertAssistantMessage = useCallback((content: string) => {
     const isOOC = oocRef.current;
@@ -161,6 +146,49 @@ export function useChat(rawSessionId?: string) {
       ];
     });
   }, []);
+
+  /** 사용자 메시지를 추가한다. AI 턴이 진행 중(live stream 버블이 꼬리에 있음)이면
+   *  **턴을 분할**한다 — 지금까지 스트리밍된 본문을 그대로 얼려(live 해제) 남기고
+   *  그 뒤에 유저 메시지를 붙인다. 이후 delta는 새 stream 버블을 열어 이어진다.
+   *  결과 순서는 [유저][응답 앞부분][개입][응답 뒷부분]이고, 서버도 같은 시점에
+   *  `splitAssistantTurnForInterject()`로 history를 쪼개므로 재로드 후에도 유지된다.
+   *  본문이 아직 없으면(툴만 돌던 중) 분할할 게 없으므로 종전대로 라이브 버블 위에
+   *  끼워 넣는다 — 라이브 버블은 `prev[prev.length-1]`(upsertAssistantMessage의
+   *  타깃)로 남아야 delta 파이프라인이 깨지지 않는다.
+   *  로컬 개입(prepareInterject)과 다른 클라이언트의 개입 브로드캐스트(`chat:user`)가
+   *  같은 규칙을 타야 두 클라이언트의 순서가 일치한다. */
+  const addUserMessage = useCallback((text: string, ooc?: boolean) => {
+    const id = `user-${++msgIdRef.current}`;
+    const userMsg: ChatMessage = { id, renderKey: id, role: "user", content: text, ooc: ooc || undefined };
+    // 라이브 버블에 표시된 본문 = displayAssistantTextRef. 비어 있으면 분할 대상이 없다.
+    const splitting = displayAssistantTextRef.current.trim().length > 0;
+
+    if (splitting) {
+      // carry(포맷터가 붙들고 있던 미표시 꼬리)를 먼저 토해내야 글자가 유실되지 않는다.
+      carryAssistantTextRef.current = "";
+      displayAssistantTextRef.current = rawAssistantTextRef.current;
+      upsertAssistantMessage(displayAssistantTextRef.current);
+    }
+
+    setMessages((prev) => {
+      const last = prev[prev.length - 1];
+      if (last && last.role === "assistant" && last.live && last.id.startsWith("stream-")) {
+        if (splitting) return [...prev.slice(0, -1), { ...last, live: undefined }, userMsg];
+        return [...prev.slice(0, -1), userMsg, last];
+      }
+      return [...prev, userMsg];
+    });
+
+    if (splitting) {
+      // 나머지 본문은 새 버블에서 처음부터 누적한다. assistantFullText는 턴 전체를
+      // 담아 remainder와 길이가 어긋나므로 healing/result 폴백을 이번 턴 한정으로 끈다.
+      rawAssistantTextRef.current = "";
+      displayAssistantTextRef.current = "";
+      assistantFullTextRef.current = null;
+      toolsRef.current = [];
+      turnSplitRef.current = true;
+    }
+  }, [upsertAssistantMessage]);
 
   const appendAssistantText = useCallback((text: string) => {
     rawAssistantTextRef.current += text;
@@ -219,6 +247,23 @@ export function useChat(rawSessionId?: string) {
     });
   }, []);
 
+  /** 개입 분할로 얼린 버블에 서버가 확정한 history id를 부여한다(`chat:split`).
+   *  타깃은 "꼬리에서 가장 가까운, live가 아닌 stream-* assistant 메시지" —
+   *  분할 직후 열린 새 라이브 버블은 live라서 자연히 제외된다. */
+  const assignSplitMessageId = useCallback((backendId: string) => {
+    setMessages((prev) => {
+      for (let i = prev.length - 1; i >= 0; i--) {
+        const m = prev[i];
+        if (m.role === "assistant" && !m.live && m.id.startsWith("stream-")) {
+          const next = [...prev];
+          next[i] = { ...m, id: backendId };
+          return next;
+        }
+      }
+      return prev;
+    });
+  }, []);
+
   const finishAssistantTurn = useCallback((backendId?: string, contentOverride?: string) => {
     flushAssistantText();
 
@@ -228,7 +273,7 @@ export function useChat(rawSessionId?: string) {
     const deltaText = rawAssistantTextRef.current;
     const fullText = assistantFullTextRef.current;
     let healedText: string | null = null;
-    if (fullText && deltaText && sawTextDeltaRef.current) {
+    if (fullText && deltaText && sawTextDeltaRef.current && !turnSplitRef.current) {
       const deltaHasFffd = deltaText.includes("\ufffd");
       const fullHasFffd = fullText.includes("\ufffd");
       if (deltaHasFffd || fullHasFffd) {
@@ -261,6 +306,7 @@ export function useChat(rawSessionId?: string) {
 
     seenToolKeysRef.current.clear();
     sawTextDeltaRef.current = false;
+    turnSplitRef.current = false;
     currentBlockTypeRef.current = "text";
     pushedTextsByMsgIdRef.current.clear();
     oocRef.current = false;
@@ -286,6 +332,7 @@ export function useChat(rawSessionId?: string) {
     toolsRef.current = [];
     seenToolKeysRef.current.clear();
     sawTextDeltaRef.current = false;
+    turnSplitRef.current = false;
     currentBlockTypeRef.current = "text";
     pushedTextsByMsgIdRef.current.clear();
     oocRef.current = false;
@@ -379,7 +426,7 @@ export function useChat(rawSessionId?: string) {
           }
           setStatus("connected");
         } else {
-          if (!rawAssistantTextRef.current && msg.result) {
+          if (!rawAssistantTextRef.current && !turnSplitRef.current && msg.result) {
             const result = msg.result as Record<string, unknown>;
             const text =
               typeof result === "string"
@@ -413,6 +460,7 @@ export function useChat(rawSessionId?: string) {
       toolsRef.current = [];
       seenToolKeysRef.current.clear();
       sawTextDeltaRef.current = false;
+      turnSplitRef.current = false;
       currentBlockTypeRef.current = "text";
       pushedTextsByMsgIdRef.current.clear();
       addUserMessage(text, isOOC);
@@ -478,6 +526,7 @@ export function useChat(rawSessionId?: string) {
     toolsRef.current = [];
     seenToolKeysRef.current.clear();
     sawTextDeltaRef.current = false;
+    turnSplitRef.current = false;
     currentBlockTypeRef.current = "text";
     pushedTextsByMsgIdRef.current.clear();
     oocRef.current = false;
@@ -500,6 +549,7 @@ export function useChat(rawSessionId?: string) {
 
     seenToolKeysRef.current.clear();
     sawTextDeltaRef.current = false;
+    turnSplitRef.current = false;
     currentBlockTypeRef.current = "text";
     pushedTextsByMsgIdRef.current.clear();
     oocRef.current = false;
@@ -618,6 +668,7 @@ export function useChat(rawSessionId?: string) {
     handleToolAnswered,
     handleCancelled,
     assignMessageId,
+    assignSplitMessageId,
     addUserMessage,
     addOpeningMessage,
     clearMessages,

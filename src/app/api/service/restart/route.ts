@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { spawn } from "child_process";
 import path from "path";
 import fs from "fs";
-import { getServices } from "@/lib/services";
+import { getServices, getSessionInstance, listActiveInstances } from "@/lib/services";
 import { markRestartTriggered } from "@/lib/restart-notification";
 
 export const maxDuration = 30;
@@ -93,6 +93,14 @@ export async function POST(req: Request) {
     });
   }
 
+  // The orchestrator uses forced process termination; exit handlers cannot save us.
+  for (const active of listActiveInstances()) {
+    const instance = getSessionInstance(active.id);
+    if (instance && !instance.flushHistoryDraft()) {
+      return NextResponse.json({ error: "History checkpoint failed; restart cancelled", instanceId: active.id }, { status: 500 });
+    }
+  }
+
   // If a session triggered this restart (e.g. via MCP tool), drop a marker so the
   // session gets a silent "restart completed" notification when it's reactivated
   // on the new server. See restart-notification.ts.
@@ -131,8 +139,8 @@ export async function POST(req: Request) {
     console.log(`[restart] no sessionId/builderPersona provided — silent notification will not be delivered`);
   }
 
-  // Spawn orchestrator and return immediately — orchestrator runs build → kill → respawn
-  // in the background. This keeps the running server unaffected during build.
+  // Spawn orchestrator and return immediately. It stops the old server before
+  // rebuilding .next; the service is unavailable during the build.
   const orchestratorPid = spawnRespawnOrchestrator(root, body.mode, skipBuild);
 
   return NextResponse.json({
@@ -144,6 +152,6 @@ export async function POST(req: Request) {
     notificationMarker: markerWritten,
     note: skipBuild
       ? "Orchestrator spawned (skipBuild). It will kill and respawn the server. See data/restart.log."
-      : "Orchestrator spawned. It will run 'npm run build' first, then kill and respawn on success. See data/restart.log and data/restart-build.log.",
+      : "Orchestrator spawned. It will stop the server, build, then respawn on success. A failed build leaves the service stopped. See data/restart.log and data/restart-build.log.",
   });
 }

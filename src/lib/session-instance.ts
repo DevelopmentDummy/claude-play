@@ -10,6 +10,7 @@ import { getGpuManagerUrl } from "./endpoints";
 import { buildHintSnapshotLine } from "./hint-snapshot";
 import { spawnBackgroundAI } from "./background-session";
 import { SubAgentManager } from "./subagent-manager";
+import { historyDraftPath, isHistoryMessage, nextHistorySequence, readHistoryJson, recoverHistoryDraft, writeHistoryJson } from "./history-storage";
 import {
   mutateSessionJsonSync, readSessionJson, applyPatch, loadSessionData,
   resolveSessionFilePath, SYSTEM_JSON, LINT_SKIP_JSON,
@@ -244,6 +245,13 @@ export class SessionInstance {
   // Accumulator for assistant turn
   private segments: string[] = [];
   private assistantFullText: string | null = null; // full text from assistant message (for UTF-8 healing)
+  /** 이번 턴이 개입(interject)으로 한 번 이상 분할됐는가 — segments가 턴 전체가 아닌
+   *  분할 이후 나머지만 담고 있음을 뜻한다(healing/result 폴백을 이번 턴 한정으로 끈다). */
+  private turnSplit = false;
+  /** 이번 턴에서 분할로 이미 확정된 앞부분들의 합본 — 턴 종료 시 on-assistant 훅·
+   *  style-check·메모·TTS에 "턴 전체 본문"을 넘기기 위해 보관한다(나머지만 넘기면
+   *  개입 앞 본문이 훅/음성에서 통째로 누락된다). */
+  private turnSplitPrefix = "";
   private tools: Array<{
     id?: string;
     name: string;
@@ -259,6 +267,9 @@ export class SessionInstance {
   private isSlashCommand = false;
   private _currentStatus: string = "disconnected";
   private historyId = 0;
+  private historyDraftId: string | null = null;
+  private historyDraftTimer: ReturnType<typeof setTimeout> | null = null;
+  private historyLoadFailed = false;
   private destroyed = false;
 
   // Subagent task tracking: hold result until all spawned tasks complete
@@ -1173,6 +1184,40 @@ export class SessionInstance {
 
   // --- History ---
 
+  /** Builder output is visible before result; checkpoint it before tools/restarts. */
+  flushHistoryDraft(): boolean {
+    if (this.historyDraftTimer) { clearTimeout(this.historyDraftTimer); this.historyDraftTimer = null; }
+    if (!this.isBuilder || this.isSlashCommand || !this.segments.length) return true;
+    const dir = this.getDir();
+    if (!dir || this.historyLoadFailed) return false;
+    this.historyDraftId ??= `hist-a-${++this.historyId}`;
+    try {
+      writeHistoryJson(historyDraftPath(dir), {
+        id: this.historyDraftId, role: "assistant", content: this.segments.join(""),
+        tools: this.tools.length ? [...this.tools] : undefined, ooc: this.isOOC || undefined,
+      });
+      return true;
+    } catch (err) {
+      console.error(`[session:${this.id}] history checkpoint failed:`, err);
+      return false;
+    }
+  }
+
+  private scheduleHistoryDraft(): void {
+    if (!this.isBuilder || this.historyDraftTimer || this.destroyed) return;
+    this.historyDraftTimer = setTimeout(() => this.flushHistoryDraft(), 250);
+    this.historyDraftTimer.unref();
+  }
+
+  private clearHistoryDraft(): void {
+    if (this.historyDraftTimer) { clearTimeout(this.historyDraftTimer); this.historyDraftTimer = null; }
+    this.historyDraftId = null;
+    const dir = this.getDir();
+    if (!dir || !this.isBuilder) return;
+    try { fs.rmSync(historyDraftPath(dir), { force: true }); }
+    catch (err) { console.error(`[session:${this.id}] history checkpoint cleanup failed:`, err); }
+  }
+
   addUserToHistory(text: string, ooc?: boolean): void {
     this.chatHistory.push({
       id: `hist-u-${++this.historyId}`,
@@ -1186,6 +1231,41 @@ export class SessionInstance {
     if (!ooc && text && !text.startsWith("OOC:")) {
       this.triggerTts(text, `hist-u-${this.historyId}`);
     }
+  }
+
+  /** 턴 중 개입 직전에 호출 — 그때까지 스트리밍된 assistant 본문을 별도 history
+   *  항목으로 확정하고 턴 누적을 리셋한다. 그래야 디스크 순서가
+   *  [유저][응답 앞부분][개입][응답 뒷부분]이 되어 화면 순서와 일치한다
+   *  (클라이언트 `addUserMessage`가 같은 규칙으로 라이브 버블을 얼린다).
+   *  본문이 아직 없으면 no-op — 빈 assistant 항목을 만들지 않는다.
+   *  분할 시 진행 중이던 tool_use는 앞 항목에 붙여 넘기므로, 분할 이전의
+   *  AskUserQuestion pending 감지(pendingToolUseId)는 포기한다 — 개입이 곧
+   *  질문을 대체하는 답이므로 실질 손실이 없다. */
+  splitAssistantTurnForInterject(): string | null {
+    if (this.isSlashCommand) return null;
+    const partial = this.segments.join("");
+    if (!partial.trim()) return null;
+
+    const id = this.historyDraftId ?? `hist-a-${++this.historyId}`;
+    this.chatHistory.push({
+      id,
+      role: "assistant",
+      content: partial,
+      tools: this.tools.length > 0 ? [...this.tools] : undefined,
+      ooc: this.isOOC || undefined,
+    });
+    if (this.saveHistory()) this.clearHistoryDraft();
+
+    this.segments = [];
+    this.tools = [];
+    // 분할 이후 assistantFullText는 턴 전체 본문을 담아 remainder와 길이가 어긋난다 —
+    // UTF-8 healing과 result 텍스트 폴백을 이번 턴 한정으로 끈다(turnSplit).
+    this.assistantFullText = null;
+    this.turnSplit = true;
+    this.turnSplitPrefix += partial;
+    // `chat:split` 브로드캐스트는 호출부가 한다 — 비-발신 클라이언트에서는 `chat:user`가
+    // 먼저 도착해 버블을 얼려야 id를 붙일 대상이 생긴다(순서 역전 시 no-op이 된다).
+    return id;
   }
 
   /** Send a slash command (e.g. /compact, /context) — result skips history & TTS.
@@ -1210,6 +1290,7 @@ export class SessionInstance {
   /** Kill the AI process and save any partial assistant response accumulated so far. */
   cancelStreaming(): void {
     const partial = this.segments.join("");
+    this.flushHistoryDraft();
 
     // Kill the process
     this._process.kill();
@@ -1217,16 +1298,18 @@ export class SessionInstance {
     // Save partial response to history if any text was accumulated
     if (partial) {
       this.chatHistory.push({
-        id: `hist-a-${++this.historyId}`,
+        id: this.historyDraftId ?? `hist-a-${++this.historyId}`,
         role: "assistant",
         content: partial,
       });
-      this.saveHistory();
+      if (this.saveHistory()) this.clearHistoryDraft();
     }
 
     // Reset accumulator state
     this.segments = [];
     this.assistantFullText = null;
+    this.turnSplit = false;
+    this.turnSplitPrefix = "";
     this.tools = [];
     this.seenToolKeys.clear();
     this.sawTextDelta = false;
@@ -1252,6 +1335,8 @@ export class SessionInstance {
   }
 
   clearHistory(): void {
+    this.clearHistoryDraft();
+    this.historyLoadFailed = false;
     this.chatHistory = [];
     this.segments = [];
     this.tools = [];
@@ -1274,8 +1359,10 @@ export class SessionInstance {
     const fp = path.join(dir, HISTORY_FILE);
     try {
       if (fs.existsSync(fp)) {
-        this.chatHistory = JSON.parse(fs.readFileSync(fp, "utf-8"));
-        this.historyId = this.chatHistory.length;
+        const loaded = readHistoryJson(fp);
+        if (!Array.isArray(loaded) || !loaded.every(isHistoryMessage)) throw new Error("Invalid chat history");
+        this.chatHistory = loaded;
+        this.historyId = Math.max(this.historyId, nextHistorySequence(this.chatHistory));
         // Restart-recovery: chatHistory의 마지막 assistant 메시지에서 미답 AskUserQuestion이
         // 있으면 pendingToolUseId를 복원. Claude cascade가 새로 시작된 경우 tool_use_id는
         // 무효일 수 있으므로, submitToolAnswer 시 sendToolResult가 실패해도 graceful degrade.
@@ -1292,22 +1379,30 @@ export class SessionInstance {
         this.chatHistory = [];
         this.pendingToolUseId = null;
       }
-    } catch {
-      this.chatHistory = [];
-      this.pendingToolUseId = null;
+      this.historyLoadFailed = false;
+      // Never materialize a live draft during GET history: the UI owns its stream bubble.
+      if (this.isBuilder && !this.segments.length && !this.isBusy()) {
+        this.chatHistory = recoverHistoryDraft(dir, this.chatHistory);
+        this.historyId = Math.max(this.historyId, nextHistorySequence(this.chatHistory));
+        if (fs.existsSync(historyDraftPath(dir)) && this.saveHistory()) this.clearHistoryDraft();
+      }
+    } catch (err) {
+      // Preserve both the original bytes and any in-memory messages on read failure.
+      this.historyLoadFailed = true;
+      console.error(`[session:${this.id}] history load failed (writes blocked):`, err);
     }
   }
 
-  saveHistory(): void {
+  saveHistory(): boolean {
     const dir = this.getDir();
-    if (!dir) return;
+    if (!dir || this.historyLoadFailed) return false;
     try {
-      fs.writeFileSync(
-        path.join(dir, HISTORY_FILE),
-        JSON.stringify(this.chatHistory),
-        "utf-8"
-      );
-    } catch { /* ignore */ }
+      writeHistoryJson(path.join(dir, HISTORY_FILE), this.chatHistory);
+      return true;
+    } catch (err) {
+      console.error(`[session:${this.id}] history save failed:`, err);
+      return false;
+    }
   }
 
   // --- Provider ---
@@ -1651,6 +1746,9 @@ export class SessionInstance {
 
     // 누출 스트립 후의 본문(frontend 교체용). null=누출 아님, ""=스트립 후 본문 없음.
     let leakCleanedContent: string | null = null;
+    // 이번 result에서 assistant 항목을 새로 기록했는가 — 분할된 턴에서 "앞부분 + 나머지"를
+    // 합칠 때, 나머지가 없는데 합치면 앞부분이 두 번 들어가므로 구분이 필요하다.
+    let remainderPushed = false;
 
     if (isSlash) {
       const result = msg.result as Record<string, unknown> | string | undefined;
@@ -1664,7 +1762,7 @@ export class SessionInstance {
       // streaming\uc73c\ub85c frontend\uc5d0\ub294 \uc774\ubbf8 \ub178\ucd9c\ub410\uc744 \uc218 \uc788\uc73c\ub098, \uc601\uad6c \uae30\ub85d\uc740 \ucc28\ub2e8 (\ub2e4\uc74c reload\u00b7\ub2e4\uc74c turn \ucee8\ud14d\uc2a4\ud2b8\uc5d0 \uc548 \ub0a8\uc74c).
       if ((this.segments.length > 0 || this.tools.length > 0) && !isAntigravityMetaOnly) {
         let rawContent = this.segments.join("");
-        if (this.assistantFullText && this.sawTextDelta) {
+        if (this.assistantFullText && this.sawTextDelta && !this.turnSplit) {
           if (rawContent.includes("\ufffd") || this.assistantFullText.includes("\ufffd")) {
             rawContent = mergeUtf8Texts(rawContent, this.assistantFullText);
           }
@@ -1677,14 +1775,17 @@ export class SessionInstance {
         }
         if (rawContent) {
           this.chatHistory.push({
-            id: `hist-a-${++this.historyId}`,
+            id: this.historyDraftId ?? `hist-a-${++this.historyId}`,
             role: "assistant",
             content: rawContent,
             tools: this.tools.length > 0 ? [...this.tools] : undefined,
             ooc: isOOC || undefined,
           });
+          remainderPushed = true;
         }
-      } else if (msg.result) {
+      } else if (msg.result && !this.turnSplit) {
+        // turnSplit이면 result.text는 분할 이전 본문까지 포함한 턴 전체라
+        // 폴백으로 쓰면 앞 항목과 중복된다 — 남길 나머지 본문이 없으므로 건너뛴다.
         const result = msg.result as Record<string, unknown>;
         const text =
           typeof result === "string" ? result
@@ -1692,21 +1793,26 @@ export class SessionInstance {
           : null;
         if (text) {
           this.chatHistory.push({
-            id: `hist-a-${++this.historyId}`,
+            id: this.historyDraftId ?? `hist-a-${++this.historyId}`,
             role: "assistant",
             content: text as string,
             ooc: isOOC || undefined,
           });
+          remainderPushed = true;
         }
       }
-      this.saveHistory();
+      if (this.saveHistory()) this.clearHistoryDraft();
 
       // Run on-assistant hook with the just-finished assistant response.
       // Skip for OOC / slash to avoid noise. Use the last assistant message text.
       if (!isOOC) {
         const lastAsst = [...this.chatHistory].reverse().find(m => m.role === "assistant");
         if (lastAsst && typeof lastAsst.content === "string" && lastAsst.content) {
-          this.runAssistantHooks(lastAsst.content);
+          // 개입으로 분할된 턴이면 앞부분까지 합쳐 넘긴다(훅·문체검토·메모는 턴 단위 판단).
+          const turnText = this.turnSplitPrefix
+            ? this.turnSplitPrefix + (remainderPushed ? lastAsst.content : "")
+            : lastAsst.content;
+          this.runAssistantHooks(turnText);
           this.runStyleCheckHook();
           this.runSessionMemoTick();
         }
@@ -1717,6 +1823,9 @@ export class SessionInstance {
     this.isSlashCommand = false;
     this.segments = [];
     this.assistantFullText = null;
+    this.turnSplit = false;
+    const splitPrefix = this.turnSplitPrefix;
+    this.turnSplitPrefix = "";
 
     // Detect pending AskUserQuestion: 마지막 tool_use이고 answer 없으면 pending으로 잡음.
     // (한 turn에 여러 AskUserQuestion이 있으면 마지막 것만 pending — 앞선 것은 turn이 이미
@@ -1745,7 +1854,11 @@ export class SessionInstance {
     if (!isSlash && !isOOC && !turnHadNoNewBody && this.chatHistory.length > 0) {
       const lastMsg = this.chatHistory[this.chatHistory.length - 1];
       if (lastMsg.role === "assistant" && lastMsg.content) {
-        const dialogOnly = extractDialog(lastMsg.content);
+        // 분할된 턴은 앞부분까지 합쳐 한 번에 읽는다 — 나머지만 읽으면 개입 앞 대사가 통째로 빠진다.
+        const ttsSource = splitPrefix
+          ? splitPrefix + (remainderPushed ? lastMsg.content : "")
+          : lastMsg.content;
+        const dialogOnly = extractDialog(ttsSource);
         if (dialogOnly) this.triggerTts(dialogOnly);
       }
     }
@@ -1940,10 +2053,12 @@ export class SessionInstance {
           if (delta?.type === "text_delta" && typeof delta.text === "string" && this.currentBlockType === "text") {
             this.sawTextDelta = true;
             this.segments.push(delta.text);
+            this.scheduleHistoryDraft();
           }
         }
         if (event.type === "content_block_stop") {
           this.currentBlockType = "text";
+          this.flushHistoryDraft();
         }
       }
 
@@ -1984,6 +2099,7 @@ export class SessionInstance {
         if (fullTextParts.length > 0) {
           this.assistantFullText = fullTextParts.join("");
         }
+        this.flushHistoryDraft();
       }
 
       if (msg.type === "result") {
@@ -2015,6 +2131,7 @@ export class SessionInstance {
     p.on("error", (e) => this.broadcast("claude:error", e));
     p.on("status", (s) => this.setStatus(s as string));
     p.on("exit", () => {
+      this.flushHistoryDraft();
       this.flushIdleWaiters();
       this.setStatus("disconnected");
     });
@@ -2045,6 +2162,7 @@ export class SessionInstance {
   // --- Lifecycle ---
 
   destroy(): void {
+    this.flushHistoryDraft();
     this.destroyed = true;
     this.flushIdleWaiters();
     this.ttsQueue = [];

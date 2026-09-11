@@ -348,6 +348,8 @@ function handleMessage(
       // 턴 중 개입(interject)일 때는 진행 중인 턴의 OOC 라벨을 뒤집지 않는다 —
       // instance.isOOC는 턴 종료 시 assistant 메시지 라벨/상태 처리 분기에 쓰인다.
       if (!instance.isBusy()) instance.isOOC = isOOC;
+      // 개입이면 그때까지 스트리밍된 본문을 먼저 확정해 [유저][앞부분][개입][뒷부분] 순서를 만든다
+      const splitId = instance.isBusy() ? instance.splitAssistantTurnForInterject() : null;
       if (!isOOC) {
         instance.clearPopups();
       }
@@ -374,6 +376,9 @@ function handleMessage(
 
       // Broadcast user message to other clients in same session (sender already has it locally)
       wsBroadcast("chat:user", { text, isOOC }, { sessionId: client.sessionId, exclude: client });
+      // 분할로 확정된 앞부분 버블에 history id를 부여 — 반드시 `chat:user` **뒤**에 보낸다.
+      // 비-발신 클라이언트는 `chat:user`로 버블을 얼린 뒤에야 붙일 대상이 생긴다.
+      if (splitId) wsBroadcast("chat:split", { messageId: splitId }, { sessionId: client.sessionId });
       break;
     }
 

@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 // Detached respawn orchestrator:
-//   build (optional) → wait → kill old server → wait for port → spawn new server
+//   wait → kill old server → wait for port → build (optional) → spawn new server
 // Spawned via cmd /c start /B + { detached: true, stdio: file, .unref() } so it
 // survives the API route's parent death AND keeps logging through the kill.
 //
 // Args:
 //   --mode dev|start    (default: read from data/.server.pid, fallback "dev")
-//   --skip-build        (default: build runs first, only kill on success)
+//   --skip-build        (default: build after stop; failure leaves server stopped)
 
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -327,24 +327,9 @@ async function main() {
 
   log(`detected old pid=${oldPid ?? "?"} port=${port} mode=${mode}`);
 
-  // Step 1: Build first while old server is still serving traffic.
-  // Old server stays alive throughout the build — only get killed if build succeeds.
-  if (!skipBuild) {
-    log("starting build phase (old server still running)");
-    const buildResult = await runBuild();
-    log(`build phase done: ok=${buildResult.ok} code=${buildResult.code} duration=${buildResult.durationMs}ms`);
-    if (!buildResult.ok) {
-      log("build FAILED — aborting restart, old server kept alive");
-      log("==== orchestrator done (build failure) ====\n");
-      return;
-    }
-  } else {
-    log("skipBuild=true — skipping build phase");
-  }
-
-  // Step 2: Brief delay so any in-flight requests on the old server can finish
+  // Let the restart API response finish before stopping its server.
   await new Promise((r) => setTimeout(r, 500));
-  log("post-build delay complete");
+  log("pre-stop delay complete");
 
   if (oldPid) {
     const topPid = findTopmostBridgeAncestor(oldPid);
@@ -360,7 +345,22 @@ async function main() {
   }
 
   const portFree = await waitForPortFree(port);
-  log(portFree ? `port ${port} is free` : `port ${port} still in use after wait — proceeding anyway`);
+  if (!portFree) throw new Error(`port ${port} still in use — refusing to build over a live server`);
+  log(`port ${port} is free`);
+
+  // Never overwrite .next while the old production server is serving it.
+  if (!skipBuild) {
+    log("starting build phase (old server stopped)");
+    const buildResult = await runBuild();
+    log(`build phase done: ok=${buildResult.ok} code=${buildResult.code} duration=${buildResult.durationMs}ms`);
+    if (!buildResult.ok) {
+      log("build FAILED — server remains stopped; fix the build and rerun restart.mjs");
+      process.exitCode = 1;
+      return;
+    }
+  } else {
+    log("skipBuild=true — skipping build phase");
+  }
 
   log("about to call spawnNewServer");
   spawnNewServer(mode);

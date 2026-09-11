@@ -31,7 +31,10 @@ export async function POST(req: Request) {
 
   // 턴 중 개입(interject)이면 진행 중인 턴의 OOC 라벨을 유지 (ws-server와 동일 규칙)
   if (!instance.isBusy()) instance.isOOC = isOOC;
+  // 개입이면 그때까지 스트리밍된 본문을 먼저 확정해 [유저][앞부분][개입][뒷부분] 순서를 만든다
+  const splitId = instance.isBusy() ? instance.splitAssistantTurnForInterject() : null;
   instance.addUserToHistory(text, isOOC);
+  if (splitId) instance.broadcast("chat:split", { messageId: splitId });
 
   // Flush pending event headers and prepend to AI message
   const eventHeaders = isOOC ? "" : instance.flushEvents();
