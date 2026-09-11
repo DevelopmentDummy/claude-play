@@ -123,6 +123,9 @@ export async function POST(
   if (!instance.isBuilder) {
     try { instance.subAgents.spawnAll(provider, effectiveModel || undefined, finalEffort); }
     catch (err) { console.error(`[open:${id}] subAgents.spawnAll failed:`, err); }
+    // 앱 모드(layout.app)면 스레드 루프를 기동한다. 아니면 no-op — 기존 세션은 무영향.
+    try { instance.syncThreadLoop(provider, effectiveModel || undefined, finalEffort); }
+    catch (err) { console.error(`[open:${id}] syncThreadLoop failed:`, err); }
   }
 
   // Include initial panels + context in response (SSE may not be connected yet)
