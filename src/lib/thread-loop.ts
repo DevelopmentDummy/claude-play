@@ -91,6 +91,16 @@ export class ThreadLoop {
 
   start(): void {
     if (this.timer) return;
+    // 재open마다 ThreadLoop이 새로 만들어지므로 state가 비어 있다. 그대로 두면
+    // selectDueThreads가 모든 스레드를 "처음 보는 스레드"로 보고 예산만큼 한꺼번에
+    // 깨우고, 각자 since=null로 전체 스냅샷을 받는다 — 재open마다 토큰 스파이크.
+    // 이미 존재하던 스레드는 한 주기를 기다리게 시드한다.
+    const now = Date.now();
+    for (const t of this.d.loopThreads()) {
+      if (!this.state[t.threadId]) {
+        this.state[t.threadId] = { lastRunAt: now, turns: 0, busy: false, lastObservedAt: null };
+      }
+    }
     this.timer = setInterval(() => { void this.runTick(); }, RESOLUTION_MS);
     // 서버 종료를 막지 않는다.
     this.timer.unref?.();

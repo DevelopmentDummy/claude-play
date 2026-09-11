@@ -150,7 +150,7 @@ Optional persona MCP servers are merged by runtime config writers on open when `
 
 **단일 writer**: 규칙은 `step()`에만 존재한다. 유저 조작도 스레드 의도와 같은 `submit`을 타므로 검증 경로가 하나다. 앱이 `/api/sessions/[id]/variables`로 월드 파일을 쓰는 것은 403으로 막히고, tool 라우트(엔진 반환 패치)만 허용된다 — 그래서 tool 라우트의 `PROTECTED_FILES`에 월드 파일을 **넣으면 안 된다**.
 
-**컨텍스트 성장**: 루프 스레드는 transcript가 무한히 자라지만 요약 턴을 돌리지 않는다. 권위 있는 상태가 `world.json`에 있으므로 프로세스를 버리고 역할 지침 + `params` + `observe` + 월드에 저장된 자기 `memory`로 재prime한다(추가 LLM 호출 0회). `resetContext()`가 곧바로 새 프로세스를 띄워(프리워밍) 다음 틱의 콜드 스타트를 덮고, 리셋 주기는 스레드마다 ±20% 지터를 줘 동시 리셋으로 세계가 멈추는 것을 막는다.
+**컨텍스트 성장**: 루프 스레드는 transcript가 무한히 자라지만 요약 턴을 돌리지 않는다. 권위 있는 상태가 `world.json`에 있으므로 프로세스를 버리고 재prime한다(추가 LLM 호출 0회). 플랫폼이 조립하는 것은 **역할 지침 + `[THREAD] params`**뿐이고, 기억은 **엔진의 `observe`가 실어 보낸다** — 리셋 후 첫 `observe`는 `since`가 초기화되어 전체 스냅샷이므로 엔진이 거기에 그 스레드의 `memory`를 포함시켜야 한다. 엔진이 넣지 않으면 리셋된 스레드는 자기 과거를 잃는다. `resetContext()`가 곧바로 새 프로세스를 띄워(프리워밍) 다음 틱의 콜드 스타트를 덮고, 리셋 주기는 스레드마다 ±20% 지터를 줘 동시 리셋으로 세계가 멈추는 것을 막는다.
 
 **메인은 조용한 코디네이터**: 스레드의 `report_to_main`은 메인 턴을 강제하지 않고, `runStyleCheckHook`/`runSessionMemoTick`은 메인 턴 직후에만 돌므로 앱 모드에서 자연히 쉰다. 메인이 깨어나는 것은 ①유저 메시지 ②명시적 에스컬레이션(`fire_ai` autoResume) 뿐이다. 깨어날 때는 밀린 이벤트 재생이 아니라 `observe("main")`의 현재 월드 상태가 `[WORLD]` 헤더로 붙는다 — 앱 모드에서 엔진·스레드는 이벤트 큐를 쓰지 않는다.
 
