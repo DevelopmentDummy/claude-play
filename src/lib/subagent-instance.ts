@@ -91,9 +91,14 @@ export class SubAgentInstance {
     this.model = model;
     this.effort = effort;
     this._process = createProcess(provider);
+    this.attachProcessListeners();
+  }
+
+  /** 프로바이더 프로세스의 이벤트 리스너를 부착한다. 생성자와 resetContext()가 공유한다. */
+  private attachProcessListeners(): void {
     // Prevent unhandledRejection crashes if initialize/emit fires after destroy.
     this._process.on("error", (e: unknown) => {
-      console.error(`[subagent:${sessionId}/${this.name}] process error:`, e);
+      console.error(`[subagent:${this.sessionId}/${this.name}] process error:`, e);
       // A mid-turn error means the turn won't reach `result` — clear busy so the
       // indicator doesn't stick on.
       this.setBusy(false);
@@ -269,6 +274,29 @@ export class SubAgentInstance {
   /** Read the last `n` transcript entries for display. */
   readTranscript(n: number): TranscriptEntry[] {
     return readTranscriptTail(this.sessionDir, this.name, n);
+  }
+
+  /**
+   * 대화 컨텍스트를 버리고 다음 dispatch에서 역할·정체성·관측으로 재prime한다.
+   * 요약 턴을 돌리지 않는다 — 권위 있는 상태는 월드에 있고 재prime이 그것을 읽는다 (spec §7.2).
+   * 프로세스를 죽이고 resume 파일을 지운 뒤 곧바로 다시 띄워(프리워밍) 다음 틱의 지연을 줄인다.
+   */
+  resetContext(): void {
+    if (this.destroyed) return;
+    try { this._process.kill(); } catch { /* ignore */ }
+    try { this._process.removeAllListeners(); } catch { /* ignore */ }
+    if (this.pid) { unregisterSubProc(this.pid); this.pid = null; }
+    this.resumeId = null;
+    try { fs.rmSync(this.resumePath(), { force: true }); } catch { /* ignore */ }
+    this.primed = false;
+    this.spawnInFlight = false;
+    this.setBusy(false);
+    this._process = createProcess(this.provider);
+    this.attachProcessListeners();
+    // 프리워밍: 다음 dispatch가 콜드 스타트를 기다리지 않도록 미리 띄운다.
+    try { this.start(); } catch (err) {
+      console.warn(`[subagent:${this.sessionId}/${this.name}] reset 후 재시작 실패:`, err);
+    }
   }
 
   destroy(): void {
