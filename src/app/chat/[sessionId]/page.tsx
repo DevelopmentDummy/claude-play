@@ -9,6 +9,8 @@ import { useIsMobile } from "@/hooks/useIsMobile";
 import StatusBar from "@/components/StatusBar";
 import ErrorBanner from "@/components/ErrorBanner";
 import ChatMessages from "@/components/ChatMessages";
+import AppSlot from "@/components/AppSlot";
+import { resolveAppMode } from "@/lib/app-mode";
 import ChatInput from "@/components/ChatInput";
 import { extractChoices } from "@/components/ChatMessages";
 import PanelArea from "@/components/PanelArea";
@@ -845,6 +847,9 @@ export default function ChatPage() {
   );
   const dockMaxHeight = layout?.panels?.dockHeight || layout?.panels?.dockSize;
   const dockWidth = layout?.panels?.dockWidth;
+  // 앱 모드: layout.app이 있으면 메인 영역을 앱이 차지하고 챗이 강등된다.
+  // 없으면 null이라 아래 분기가 전부 기존 경로로 떨어진다.
+  const appMode = resolveAppMode(layout);
   const rawPlacement = layout?.panels?.placement || {};
 
   const modalSize = layout?.panels?.modalSize || {};
@@ -1139,6 +1144,105 @@ export default function ChatPage() {
     return true;
   }, [sessionId]);
 
+  // 사이드바 오프셋 — 앱 모드에서는 바깥 래퍼가 대신 갖는다.
+  const sidebarOffsetStyle: React.CSSProperties = {
+    ...(showInlinePanel && hasLeftSidebar ? { left: `${leftPanelSize}px` } : {}),
+    ...(showInlinePanel && hasRightSidebar ? { right: `${rightPanelSize}px` } : {}),
+  };
+  const chatColumn = (
+    <>
+          {/* Chat column */}
+          <div
+            className="absolute inset-0 flex flex-col min-h-0"
+            style={appMode ? undefined : sidebarOffsetStyle}
+          >
+            <ChatMessages
+              messages={visibleMessages}
+              isStreaming={isStreaming}
+              hideTools
+              sessionId={sessionId}
+              panels={inlinePanels}
+              hasMore={hasMore}
+              onLoadMore={loadMore}
+              onToggleOOC={toggleMessageOOC}
+              showOOC={showOOC}
+              dockLeft={activeDockLeft.length > 0 ? activeDockLeft : undefined}
+              dockRight={activeDockRight.length > 0 ? activeDockRight : undefined}
+              dockMaxSize={dockMaxHeight}
+              dockWidth={dockWidth}
+              dockLockDuringStreaming={layout?.panels?.lockDuringStreaming !== false}
+              panelData={panelData}
+              onDockClose={handleModalClose}
+              audioMap={audioMap}
+              audioStatus={audioStatus}
+              onRequestTts={(messageId, text) => {
+                // Clear any partial/failed audio for this message before regenerating
+                setAudioMap((prev) => {
+                  const next = { ...prev };
+                  delete next[messageId];
+                  audioMapRef.current = next;
+                  return next;
+                });
+                fetch("/api/chat/tts", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ messageId, text, sessionId }),
+                }).catch(() => {});
+              }}
+              onPlayAudio={(messageId) => {
+                playChunkSequence(messageId, 0);
+              }}
+            />
+            <DockPanel
+              panels={activeDockBottom}
+              direction="bottom"
+              maxSize={dockMaxHeight}
+              sessionId={sessionId}
+              panelData={panelData}
+              lockDuringStreaming={layout?.panels?.lockDuringStreaming !== false}
+              onClose={handleModalClose}
+              open={activeDockBottom.length > 0}
+            />
+            <div
+              style={{
+                overflow: "hidden",
+                // modal hide animation용 max-height — 정상 상태는 choices + textarea +
+                // 버튼들이 합쳐 200px 훌쩍 넘는다. viewport 60%로 cap (ChatInput 내부의
+                // choices max-h-30vh, pendingEvents max-h-100px이 자체 스크롤).
+                maxHeight: hasRequiredModal && !forceInput ? 0 : "60vh",
+                opacity: hasRequiredModal && !forceInput ? 0 : 1,
+                transition: "max-height 0.25s ease, opacity 0.2s ease",
+              }}
+            >
+              <ChatInput
+                disabled={(isStreaming && !interjectOn) || status === "compacting"}
+                isStreaming={isStreaming}
+                onSend={sendMessage}
+                onCancel={handleCancel}
+                sessionId={sessionId}
+                showOOC={showOOC}
+                onOOCToggle={handleOOCToggle}
+                choices={currentChoices}
+                pendingEvents={pendingEvents}
+                voiceChat={voiceChat}
+                ttsPlaying={ttsPlaying}
+                autoSendDelay={typeof chatOptions.autoSendDelay === "number" ? chatOptions.autoSendDelay : undefined}
+                autoplayActive={autoplayOn}
+                onAutoplayToggle={handleAutoplayToggle}
+                interjectActive={interjectOn}
+                onInterjectToggle={handleInterjectToggle}
+                steeringPresetName={steeringPreset?.name}
+                onSteeringEdit={() => setSteeringModalOpen(true)}
+                usageProvider={currentProvider === "kimi" ? undefined : currentProvider}
+                usageSessionId={sessionId}
+                usageRefreshTrigger={usageTrigger}
+                onUsageClick={() => setShowUsage(true)}
+              />
+            </div>
+          </div>
+    </>
+  );
+
   return (
     <div className="flex flex-col h-screen">
       <StatusBar
@@ -1174,98 +1278,18 @@ export default function ChatPage() {
       />
       <ErrorBanner error={error} onDismiss={() => setError(null)} />
       <div className="flex-1 relative min-h-0">
-        {/* Chat column */}
-        <div
-          className="absolute inset-0 flex flex-col min-h-0"
-          style={{
-            ...(showInlinePanel && hasLeftSidebar ? { left: `${leftPanelSize}px` } : {}),
-            ...(showInlinePanel && hasRightSidebar ? { right: `${rightPanelSize}px` } : {}),
-          }}
-        >
-          <ChatMessages
-            messages={visibleMessages}
-            isStreaming={isStreaming}
-            hideTools
-            sessionId={sessionId}
-            panels={inlinePanels}
-            hasMore={hasMore}
-            onLoadMore={loadMore}
-            onToggleOOC={toggleMessageOOC}
-            showOOC={showOOC}
-            dockLeft={activeDockLeft.length > 0 ? activeDockLeft : undefined}
-            dockRight={activeDockRight.length > 0 ? activeDockRight : undefined}
-            dockMaxSize={dockMaxHeight}
-            dockWidth={dockWidth}
-            dockLockDuringStreaming={layout?.panels?.lockDuringStreaming !== false}
-            panelData={panelData}
-            onDockClose={handleModalClose}
-            audioMap={audioMap}
-            audioStatus={audioStatus}
-            onRequestTts={(messageId, text) => {
-              // Clear any partial/failed audio for this message before regenerating
-              setAudioMap((prev) => {
-                const next = { ...prev };
-                delete next[messageId];
-                audioMapRef.current = next;
-                return next;
-              });
-              fetch("/api/chat/tts", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ messageId, text, sessionId }),
-              }).catch(() => {});
-            }}
-            onPlayAudio={(messageId) => {
-              playChunkSequence(messageId, 0);
-            }}
-          />
-          <DockPanel
-            panels={activeDockBottom}
-            direction="bottom"
-            maxSize={dockMaxHeight}
-            sessionId={sessionId}
-            panelData={panelData}
-            lockDuringStreaming={layout?.panels?.lockDuringStreaming !== false}
-            onClose={handleModalClose}
-            open={activeDockBottom.length > 0}
-          />
-          <div
-            style={{
-              overflow: "hidden",
-              // modal hide animation용 max-height — 정상 상태는 choices + textarea +
-              // 버튼들이 합쳐 200px 훌쩍 넘는다. viewport 60%로 cap (ChatInput 내부의
-              // choices max-h-30vh, pendingEvents max-h-100px이 자체 스크롤).
-              maxHeight: hasRequiredModal && !forceInput ? 0 : "60vh",
-              opacity: hasRequiredModal && !forceInput ? 0 : 1,
-              transition: "max-height 0.25s ease, opacity 0.2s ease",
-            }}
-          >
-            <ChatInput
-              disabled={(isStreaming && !interjectOn) || status === "compacting"}
-              isStreaming={isStreaming}
-              onSend={sendMessage}
-              onCancel={handleCancel}
-              sessionId={sessionId}
-              showOOC={showOOC}
-              onOOCToggle={handleOOCToggle}
-              choices={currentChoices}
-              pendingEvents={pendingEvents}
-              voiceChat={voiceChat}
-              ttsPlaying={ttsPlaying}
-              autoSendDelay={typeof chatOptions.autoSendDelay === "number" ? chatOptions.autoSendDelay : undefined}
-              autoplayActive={autoplayOn}
-              onAutoplayToggle={handleAutoplayToggle}
-              interjectActive={interjectOn}
-              onInterjectToggle={handleInterjectToggle}
-              steeringPresetName={steeringPreset?.name}
-              onSteeringEdit={() => setSteeringModalOpen(true)}
-              usageProvider={currentProvider === "kimi" ? undefined : currentProvider}
-              usageSessionId={sessionId}
-              usageRefreshTrigger={usageTrigger}
-              onUsageClick={() => setShowUsage(true)}
-            />
+        {appMode ? (
+          <div className="absolute inset-0 flex flex-col min-h-0" style={sidebarOffsetStyle}>
+            <div className="min-h-0 flex-1">
+              <AppSlot sessionId={sessionId} entry={appMode.entry} panelData={panelData} />
+            </div>
+            {appMode.chatMode !== "hidden" && (
+              <div className="relative h-[38%] min-h-[180px] shrink-0 overflow-hidden border-t border-border">
+                {chatColumn}
+              </div>
+            )}
           </div>
-        </div>
+        ) : chatColumn}
         {/* Desktop: left sidebar (profile + left panels) */}
         {showInlinePanel && hasLeftSidebar && (
           <div
