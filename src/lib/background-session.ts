@@ -62,7 +62,7 @@ export interface FireAIResult {
 // ── Active process tracking ─────────────────────────────────
 
 /** Live background provider processes. Killed en masse on server shutdown. */
-const activeProcesses = new Set<AIProcess>();
+const activeProcesses = new Map<AIProcess, { dir: string; cancel: () => void }>();
 
 /** Structural accessor for a provider process's underlying child pid.
  *  Pipe-based providers (claude/codex/gemini/kimi) expose `proc?.pid`; AntigravityProcess
@@ -380,7 +380,16 @@ export function spawnBackgroundAI(opts: FireAIOptions): FireAIResult {
 
   // Fresh conversation (no resumeId). Log to background-<provider>.log.
   proc.spawn(sessionDir, undefined, effectiveModel, claudeSystemPrompt, effectiveEffort, true, logName);
-  activeProcesses.add(proc);
+  activeProcesses.set(proc, {
+    dir: path.resolve(sessionDir),
+    cancel: () => {
+      // Deletion must not run completion hooks, recreate files, or resume the session.
+      settled = true;
+      if (timer) { clearTimeout(timer); timer = null; }
+      activeProcesses.delete(proc);
+      try { proc.kill(); } catch { /* already exited */ }
+    },
+  });
   firedPid = (proc as unknown as ProcCarrier).proc?.pid ?? 0;
 
   console.log(`[background-session] spawned provider=${provider} pid=${firedPid} model=${effectiveModel || "(default)"} effort=${effectiveEffort || "(default)"} notify=${notify || false} autoResume=${autoResume || false}`);
@@ -423,10 +432,23 @@ export function spawnBackgroundAI(opts: FireAIOptions): FireAIResult {
 
 // ── Cleanup ─────────────────────────────────────────────────
 
+/** Cancel only jobs owned by the directory being soft-deleted. */
+export function destroyBackgroundProcessesForDir(dir: string): void {
+  const normalize = (value: string) => process.platform === "win32"
+    ? path.resolve(value).toLowerCase() : path.resolve(value);
+  const target = normalize(dir);
+  for (const job of Array.from(activeProcesses.values())) {
+    const relative = path.relative(target, normalize(job.dir));
+    if (relative === "" || (!path.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path.sep}`))) {
+      job.cancel();
+    }
+  }
+}
+
 /** Destroy all active background provider processes (called on server shutdown).
  *  Each provider's kill() handles its own process-tree teardown (Windows taskkill /T, etc.). */
 export function destroyAllBackgroundProcesses(): void {
-  for (const proc of Array.from(activeProcesses)) {
+  for (const proc of Array.from(activeProcesses.keys())) {
     try { proc.kill(); } catch { /* already exited */ }
   }
   activeProcesses.clear();

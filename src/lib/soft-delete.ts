@@ -2,14 +2,16 @@ import { NextResponse } from "next/server";
 import { closeSessionInstance } from "./services";
 import { retryOnWindowsLock } from "./fs-retry";
 import { killAgyForDir } from "./antigravity-pid-registry";
+import { destroyBackgroundProcessesForDir } from "./background-session";
 
 /**
  * Shared soft-delete flow for sessions and builder personas:
  *  1. close the live instance (kills the agent process + stops panels)
- *  2. reap any orphaned agy.exe still holding `dir` as its cwd — detached
+ *  2. cancel this directory's fire_ai jobs without completion side effects
+ *  3. reap any orphaned agy.exe still holding `dir` as its cwd — detached
  *     processes survive dev-server restarts and otherwise block the rename
  *     with EBUSY/EPERM (closeSessionInstance only knows the live instance PID)
- *  3. soft-delete with Windows-lock retry
+ *  4. soft-delete with Windows-lock retry
  *
  * Returns the API response (`{ ok: true }` or a 500 with the error code).
  */
@@ -22,6 +24,7 @@ export async function softDeleteWithReap(opts: {
   const { key, dir, del, label } = opts;
 
   closeSessionInstance(key);
+  destroyBackgroundProcessesForDir(dir);
   killAgyForDir(dir);
 
   try {
