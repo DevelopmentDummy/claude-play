@@ -81,6 +81,8 @@ export default function ChatPage() {
   const [layout, setLayout] = useState<LayoutConfig | null>(null);
   // 앱 모드 chat.mode="hidden"에서 메인 채팅을 디버깅용으로 잠깐 꺼내는 스위치. 새로고침하면 다시 닫힌다.
   const [debugChatOpen, setDebugChatOpen] = useState(false);
+  // 디버그 챗 높이(px). null이면 기본 비율(55%)을 쓴다. 드래그 핸들로 조절, localStorage에 세션별 저장.
+  const [debugChatHeight, setDebugChatHeight] = useState<number | null>(null);
   const [title, setTitle] = useState("");
   const [memo, setMemo] = useState("");
   const [profileImage, setProfileImage] = useState<string | null>(null);
@@ -421,19 +423,25 @@ export default function ChatPage() {
         const update = p as {
           panels: Panel[];
           context: Record<string, unknown>;
+          panelsUnchanged?: boolean;
           sharedPlacements?: Record<string, "modal" | "modal-dismissible" | "full-screen" | "dock" | "dock-left" | "dock-right" | "dock-bottom">;
           popups?: Array<{ template: string; html: string; duration: number }>;
         };
-        setPanels(update.panels);
-        setPanelData(update.context);
-        // Pre-parse <panel-actions> metadata from all panel HTML (before rendering)
-        if (sessionId) {
-          const registry = getPanelActionRegistry(sessionId);
-          for (const panel of update.panels) {
-            const metas = parsePanelActions(panel.html);
-            if (metas.length > 0) registry.registerMeta(panel.name, metas);
+        // panelsUnchanged면 HTML이 그대로다 — setPanels를 건너뛰어 참조를 유지한다.
+        // 앱 모드는 월드 틱마다(5Hz) 이 이벤트가 오므로, 여기서 매번 setPanels를 부르면
+        // 패널 DOM이 초당 다섯 번 재주입되어 스크롤이 풀리고 게임 rAF가 밀린다.
+        if (!update.panelsUnchanged) {
+          setPanels(update.panels);
+          // Pre-parse <panel-actions> metadata from all panel HTML (before rendering)
+          if (sessionId) {
+            const registry = getPanelActionRegistry(sessionId);
+            for (const panel of update.panels) {
+              const metas = parsePanelActions(panel.html);
+              if (metas.length > 0) registry.registerMeta(panel.name, metas);
+            }
           }
         }
+        setPanelData(update.context);
         if (update.sharedPlacements) setSharedPlacements(update.sharedPlacements);
         // Only update popup queue when explicitly present in update
         if (update.popups !== undefined) {
@@ -855,11 +863,39 @@ export default function ChatPage() {
     },
     [sessionId]
   );
+  const debugChatKey = sessionId ? `debugChatHeight:${sessionId}` : "";
+  // 저장된 디버그 챗 높이 복원 (SSR 불일치 방지를 위해 마운트 후에 읽는다)
+  useEffect(() => {
+    if (!debugChatKey) return;
+    try {
+      const raw = window.localStorage.getItem(debugChatKey);
+      if (!raw) return;
+      const n = Number(raw);
+      if (!Number.isFinite(n) || n <= 0) return;
+      // 작은 화면으로 옮겨왔을 때 대비해 현재 창 높이로 클램프
+      setDebugChatHeight(Math.max(180, Math.min(n, Math.max(180, window.innerHeight - 160))));
+    } catch { /* localStorage 접근 불가 환경 무시 */ }
+  }, [debugChatKey]);
+  const resetDebugChatHeight = useCallback(() => {
+    setDebugChatHeight(null);
+    if (!debugChatKey) return;
+    try { window.localStorage.removeItem(debugChatKey); } catch { /* 무시 */ }
+  }, [debugChatKey]);
+  const saveDebugChatHeight = useCallback(
+    (size: number) => {
+      setDebugChatHeight(size);
+      if (!debugChatKey) return;
+      try { window.localStorage.setItem(debugChatKey, String(Math.round(size))); } catch { /* 무시 */ }
+    },
+    [debugChatKey]
+  );
   const dockMaxHeight = layout?.panels?.dockHeight || layout?.panels?.dockSize;
   const dockWidth = layout?.panels?.dockWidth;
   // 앱 모드: layout.app이 있으면 메인 영역을 앱이 차지하고 챗이 강등된다.
   // 없으면 null이라 아래 분기가 전부 기존 경로로 떨어진다.
   const appMode = resolveAppMode(layout);
+  // 앱 모드에서 숨겨둔 메인 챗을 잠깐 꺼낸 상태 — 이때만 오버레이로 띄운다.
+  const isDebugOverlay = appMode?.chatMode === "hidden" && debugChatOpen;
   const rawPlacement = layout?.panels?.placement || {};
 
   const modalSize = layout?.panels?.modalSize || {};
@@ -1293,11 +1329,38 @@ export default function ChatPage() {
       <div className="flex-1 relative min-h-0">
         {appMode ? (
           <div className="absolute inset-0 flex flex-col min-h-0" style={sidebarOffsetStyle}>
-            <div className="min-h-0 flex-1">
+            {/*
+              디버그 챗은 앱 영역을 밀어내지 않고 그 위에 뜬다. 챗을 여닫을 때 앱 슬롯의
+              크기가 변하면 캔버스가 리사이즈되면서 게임 화면의 배율·구도가 흔들리기 때문이다.
+              반면 chatMode !== "hidden"인 페르소나는 챗이 레이아웃의 일부라 기존처럼 분할한다.
+            */}
+            <div
+              className={isDebugOverlay ? "absolute inset-0" : "min-h-0 flex-1"}
+              // 캔버스는 건드리지 않고 앱의 HUD만 챗 높이만큼 띄우도록 값을 물려준다.
+              // 커스텀 속성은 Shadow DOM 경계를 넘어 상속되므로 앱 CSS가 그대로 읽는다.
+              style={
+                isDebugOverlay
+                  ? ({ "--chat-inset": debugChatHeight === null ? "55%" : `${debugChatHeight}px` } as React.CSSProperties)
+                  : undefined
+              }
+            >
               <AppSlot sessionId={sessionId} entry={appMode.entry} panelData={panelData} />
             </div>
             {(appMode.chatMode !== "hidden" || debugChatOpen) && (
-              <div className="relative h-[38%] min-h-[180px] shrink-0 overflow-hidden border-t border-border">
+              <div
+                className={
+                  isDebugOverlay
+                    ? `absolute inset-x-0 bottom-0 z-30 min-h-[180px] overflow-hidden border-t border-accent/40 bg-bg/95 shadow-[0_-12px_40px_rgba(0,0,0,0.55)] ${debugChatHeight === null ? "h-[55%]" : ""}`
+                    : `relative ${debugChatHeight === null ? "h-[55%]" : ""} min-h-[180px] shrink-0 overflow-hidden border-t border-border`
+                }
+                style={debugChatHeight === null ? undefined : { height: `${debugChatHeight}px` }}
+              >
+                <PanelResizeHandle
+                  side="top"
+                  onResize={setDebugChatHeight}
+                  onResizeEnd={saveDebugChatHeight}
+                  onResetDefault={resetDebugChatHeight}
+                />
                 {chatColumn}
               </div>
             )}

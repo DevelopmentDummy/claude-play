@@ -33,10 +33,14 @@ export default function AppSlot({ sessionId, entry, panelData }: AppSlotProps) {
     let cancelled = false;
     const base = `/api/sessions/${encodeURIComponent(sessionId)}/files/`;
     const isAbsolute = (u: string) => /^(https?:|data:|blob:|\/)/.test(u);
+    // 앱 코드(HTML/스크립트)는 개발 중 수시로 바뀌는데 브라우저가 이전 응답을 재사용하면
+    // 새 클라이언트와 새 서버 엔진이 어긋나 원인을 찾기 힘든 증상이 된다.
+    // 마운트 시각을 쿼리로 붙여 코드만 확실히 새로 받는다 (이미지 등 나머지 자산은 캐시 유지).
+    const bust = "?v=" + Date.now();
 
     void (async () => {
       try {
-        const res = await fetch(base + entry);
+        const res = await fetch(base + entry + bust);
         if (!res.ok) throw new Error(`앱 진입 파일을 불러오지 못했습니다 (${res.status})`);
         const html = await res.text();
         if (cancelled) return;
@@ -65,7 +69,7 @@ export default function AppSlot({ sessionId, entry, panelData }: AppSlotProps) {
           let code = s.textContent || "";
           if (src) {
             const url = isAbsolute(src) ? src : base + src;
-            const r = await fetch(url);
+            const r = await fetch(url + (isAbsolute(src) ? "" : bust));
             if (!r.ok) throw new Error(`앱 스크립트를 불러오지 못했습니다: ${src} (${r.status})`);
             code = await r.text();
           }
