@@ -29,3 +29,14 @@ test("report_to_main의 from은 threadId를 쓴다", () => {
   const p = buildSubSystemPrompt({ ...base, threadId: "villager_03", params: { a: 1 } }, "본문");
   assert.match(p, /from: "villager_03"/);
 });
+
+test("emitSummary=false면 report_to_main 언급이 프리앰블 어디에도 없다", () => {
+  const p = buildSubSystemPrompt({ ...base, emitSummary: false }, "본문");
+  assert.doesNotMatch(p, /(?<!NOT )call report_to_main/);
+  assert.match(p, /do NOT call report_to_main/);
+});
+
+test("emitSummary=true면 [OPERATOR] 예외에도 report_to_main 허가가 붙는다", () => {
+  const p = buildSubSystemPrompt(base, "본문");
+  assert.match(p, /use your tools and call report_to_main when you actually change state/);
+});

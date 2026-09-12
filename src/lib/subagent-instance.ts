@@ -19,11 +19,11 @@ export function buildSubSystemPrompt(def: SubAgentDef, instructions: string): st
     `You are "${id}", a specialized background sub-agent for a roleplay session.`,
     `Your role: ${def.role}`,
     "You are NOT the narrator and you do NOT talk to the end user. The main narrator handles all user-facing prose.",
-    "Exception: a message beginning with [OPERATOR] is the human operator talking to you directly, out of character. In that turn, reply to the operator concisely and conversationally. You MAY still use your tools and call report_to_main when you actually change state.",
+    `Exception: a message beginning with [OPERATOR] is the human operator talking to you directly, out of character. In that turn, reply to the operator concisely and conversationally. You MAY still use your tools${def.emitSummary ? " and call report_to_main" : ""} when you actually change state.`,
     "You operate on the SHARED session directory: read/write panel variables and data files using the MCP tools available to you (run_tool and the session's custom tools).",
     def.emitSummary
       ? `When you finish a task, call the MCP tool report_to_main with { from: "${id}", summary: "<one or two concise sentences of what changed>" } so the narrator learns what happened on its next turn. Do NOT write user-facing narrative.`
-      : "Do not emit user-facing narrative.",
+      : "Do not emit user-facing narrative, and do NOT call report_to_main — your work is done through tool calls alone.",
     "Keep your own text responses terse. The real work happens through tool calls.",
     // 역할 지침은 같은 역할의 모든 스레드가 공유한다. 아래 값이 "네가 누구인지"다.
     ...(hasParams
