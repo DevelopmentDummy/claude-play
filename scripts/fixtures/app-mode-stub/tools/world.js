@@ -53,12 +53,18 @@ module.exports = async function world(ctx, args) {
     }
 
     case "step": {
+      // 월드 시계가 AI와 무관하게 부른다 — 의도가 0건일 수 있고, 그래도 세계는 진행한다.
       const entries = Object.entries(state.intents)
         .filter(([, v]) => v && typeof v === "object")
         .sort((a, b) => (a[1].seq || 0) - (b[1].seq || 0));
       const feedback = {};
       const actors = { ...state.actors };
       let wheat = state.wheat;
+
+      // (0) 의도와 무관한 세계 진행. 여기가 없으면 AI가 조용할 때 세계가 얼어붙는다.
+      //     스텁에서는 20틱마다 밀이 하나 자란다 (상한 5).
+      const growth = (state.tick + 1) % 20 === 0 && wheat < 5 ? 1 : 0;
+      wheat += growth;
 
       const takers = entries.filter(([, v]) => v.intent && v.intent.type === "take_wheat");
       if (takers.length > 1) {
@@ -93,7 +99,10 @@ module.exports = async function world(ctx, args) {
             feedback,
           },
         },
-        result: { note: `tick ${state.tick} → ${state.tick + 1}, 밀 ${state.wheat} → ${wheat}, 의도 ${entries.length}건` },
+        result: {
+          note: `tick ${state.tick} → ${state.tick + 1}, 밀 ${state.wheat} → ${wheat}, `
+            + `의도 ${entries.length}건${growth ? ", 밀 +1 자람" : ""}`,
+        },
       };
     }
 

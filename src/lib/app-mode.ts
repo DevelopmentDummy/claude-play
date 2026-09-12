@@ -6,6 +6,8 @@ export interface AppModeConfig {
   engine: string;
   /** 세션 디렉토리 직하의 월드 상태 파일명 */
   worldFile: string;
+  /** 월드 시계 간격(ms). AI 턴과 무관하게 이 주기로 step()이 돈다. */
+  worldTickMs: number;
   chatMode: ChatMode;
 }
 
@@ -40,8 +42,13 @@ export function resolveAppMode(layout: unknown): AppModeConfig | null {
   if (!worldFile.endsWith(".json")) worldFile = `${worldFile}.json`;
   if (!isSafeSegment(worldFile)) return null;
 
+  // 월드 시계. 100ms 하한 — 엔진 호출이 tool 라우트를 타므로 그보다 촘촘하면 의미가 없다.
+  const rawTick = typeof app.worldTickMs === "number" && Number.isFinite(app.worldTickMs)
+    ? app.worldTickMs : 1000;
+  const worldTickMs = Math.max(100, Math.floor(rawTick));
+
   const rawMode = isObject(layout.chat) && typeof layout.chat.mode === "string" ? layout.chat.mode : "normal";
   const chatMode = (CHAT_MODES.has(rawMode) ? rawMode : "normal") as ChatMode;
 
-  return { entry, engine, worldFile, chatMode };
+  return { entry, engine, worldFile, worldTickMs, chatMode };
 }

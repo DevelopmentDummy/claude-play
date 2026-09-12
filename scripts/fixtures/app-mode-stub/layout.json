@@ -2,7 +2,8 @@
   "app": {
     "entry": "app/index.html",
     "engine": "world",
-    "worldFile": "world.json"
+    "worldFile": "world.json",
+    "worldTickMs": 1000
   },
   "chat": {
     "mode": "dock",

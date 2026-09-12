@@ -26,6 +26,9 @@ cp -r scripts/fixtures/app-mode-stub/* "data/personas/<새-페르소나>/"
 
 ## 스모크 체크리스트
 
+- [ ] **월드 시계가 AI와 무관하게 돈다** — StatusBar에서 일시정지하지 않은 채로 스레드를 전부 바쁘게
+  두거나(또는 `subagents.json`의 `threads`를 비우고 열어) `world.json`의 `tick`이 계속 오르는지 확인.
+  20틱마다 밀이 하나 자라는 것도 AI 없이 관찰돼야 한다
 - [ ] 스레드 3개가 뜨고 각자 주기로 턴을 돈다 (`threads:status`의 스레드 수 = 3)
 - [ ] 의도가 적용되어 `world.json`의 `wheat`이 줄고 `actors[*].held`가 는다
 - [ ] 같은 틱 경합 시 양쪽 모두 기각되고 사유가 다음 관측의 `[직전 결과]`에 실린다

@@ -14,6 +14,7 @@ test("app 설정의 기본값을 채운다", () => {
     entry: "app/index.html",
     engine: "world",
     worldFile: "world.json",
+    worldTickMs: 1000,
     chatMode: "normal",
   });
 });
@@ -40,4 +41,10 @@ test("engine 이름은 경로 구분자를 거부한다", () => {
 
 test("entry가 없으면 null", () => {
   assert.equal(resolveAppMode({ app: { engine: "world" } }), null);
+});
+
+test("worldTickMs는 100ms로 클램프된다", () => {
+  assert.equal(resolveAppMode({ app: { entry: "a/i.html", worldTickMs: 10 } })?.worldTickMs, 100);
+  assert.equal(resolveAppMode({ app: { entry: "a/i.html", worldTickMs: 2500 } })?.worldTickMs, 2500);
+  assert.equal(resolveAppMode({ app: { entry: "a/i.html", worldTickMs: "빠르게" } })?.worldTickMs, 1000);
 });

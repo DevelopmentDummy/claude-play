@@ -88,8 +88,8 @@
 | `FIRE_AI_AUTORESUME_MAX` | `5` | Runaway guard: cap on consecutive `fire_ai` autoResume spontaneous-turn chains without user input (`session-instance.ts`) |
 | `SUBAGENT_MAX` | `6` | Max persona subagents per session (`subagent-manifest.ts`) |
 | `THREAD_MAX` | `12` | 앱 모드 세션당 살아있는 스레드 상한 (`thread-manifest.ts`). `SUBAGENT_MAX`를 대체한다 |
-| `THREAD_CONCURRENCY` | `3` | 한 틱에 동시에 도는 스레드 턴 수 (`thread-loop.ts`). 프리워밍 스왑도 이 예산을 먹는다 |
-| `THREAD_TICK_WAIT_MS` | `120000` | 한 틱의 디스패치 완료 대기 상한 (`thread-loop.ts`). 초과하면 `step()`을 돌리고 남은 의도는 다음 배치로 넘긴다 |
+| `THREAD_CONCURRENCY` | `3` | 동시에 턴을 도는 스레드 수 상한 (`thread-loop.ts`). 프리워밍 스왑도 이 예산을 먹는다. 월드 시계 주기는 env가 아니라 `layout.app.worldTickMs` |
+
 | `CLAUDE_CODE_WORKFLOWS` | (set internally) | Set to `1` on spawned Claude processes when the `:ultracode` pseudo-effort is selected — gates the multi-agent Workflow tool (`claude-process.ts` / `resolveClaudeEffort()`) |
 
 ### Codex External Gateway (optional)

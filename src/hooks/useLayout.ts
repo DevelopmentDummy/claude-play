@@ -29,6 +29,8 @@ export interface LayoutConfig {
     entry: string;
     engine?: string;
     worldFile?: string;
+    /** 월드 시계 간격(ms). 기본 1000, 하한 100. AI 턴과 무관하게 돈다. */
+    worldTickMs?: number;
   };
   theme: {
     accent: string;

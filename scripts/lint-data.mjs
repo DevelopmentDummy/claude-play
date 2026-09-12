@@ -159,6 +159,10 @@ function lintJsonFile(file, basename) {
         if (typeof data.app.entry !== "string" || !data.app.entry.trim()) {
           issue("error", "layout-app-entry", file, "layout.app.entry가 없거나 문자열이 아님");
         }
+        if (data.app.worldTickMs !== undefined
+            && (typeof data.app.worldTickMs !== "number" || !Number.isFinite(data.app.worldTickMs))) {
+          issue("warn", "layout-app-tick", file, "layout.app.worldTickMs는 숫자여야 함 (기본 1000, 하한 100)");
+        }
         for (const key of ["engine", "worldFile"]) {
           const v = data.app[key];
           if (v !== undefined && (typeof v !== "string" || /[\\/]|\.\./.test(v))) {
