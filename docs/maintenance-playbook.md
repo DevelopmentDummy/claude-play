@@ -189,6 +189,17 @@ Node의 전역 `fetch`(undici)는 `headersTimeout` 기본값이 **300초 고정*
 - **동반 함정 (같은 날 실경로 스모크에서 발견)**: `seed_randomize` 기능은 파라미터 정의의 `field`를 읽어 seed 계열 필드만 랜덤화한다. 예전에는 `field === "seed"`로 하드코딩돼 있어, RandomNoise 노드의 `noise_seed`를 쓰는 MiniMax H3 패키지는 기본값 -1이 그대로 제출되어 `value_smaller_than_min`(400)으로 **seed 미지정 호출이 전부 실패**했다. wan/zimage 계열은 resolver.mjs가 -1을 자체 랜덤화해 무증상이었다 — 새 영상 패키지를 추가하면 seed 경로가 코어와 resolver 중 어디에 있는지 확인할 것.
 - **대기 예산 판정**: `ComfyUIClient.timeoutBudget(filename, prompt)` — 제출 그래프에 영상 출력 노드(`SaveVideo`/`CreateVideo`/`SaveAnimatedWEBP`/`VHS_*`)가 있으면 영상 예산(60분), 없으면 이미지 예산. 확장자는 fallback이다 (SaveAnimatedWEBP 영상이 `.webp`라 확장자만 믿으면 이미지 예산에 걸린다).
 
+### 5.11 `readLayout()`은 최상위 키를 화이트리스트로 재조립한다 — 새 layout.json 최상위 키는 여기에 반드시 추가
+`src/lib/session-config-io.ts:readLayout()`은 `layout.json`을 통째로 돌려주지 않고 `panels`/`chat`/`theme`/`customCSS`(+`app`)만 기본값과 병합해 **새 객체로 재구성**한다. 중첩 키(`panels.placement`, `chat.mode`)는 spread로 살아남지만 **최상위 새 키는 조용히 사라진다**.
+- **실제 사고 (2026-09-12, kingdom)**: 앱 모드 블록 `app`이 누락돼 세션이 일반 채팅으로 열렸다. 이 함수 하나가 ① open 응답의 초기 레이아웃 ② 파일 변경 시 `layout:update` 브로드캐스트 ③ `SessionInstance.syncThreadLoop()`의 `resolveAppMode()` 입력을 전부 먹이므로, 세 경로가 동시에 죽는다. 반면 `PATCH /api/sessions/[id]/layout`은 파일 원본을 deepMerge해 돌려주므로 그 응답에는 키가 보여 **증상이 경로마다 달라** 헷갈린다.
+- **왜 단위 테스트가 못 잡았나**: `app-mode.test.ts`는 파싱된 JSON을 `resolveAppMode()`에 직접 넣었고, 페르소나 쪽 브라우저 스모크는 가짜 bridge로 레이아웃 읽기를 우회했다. 서비스 경로 회귀는 `src/lib/session-config-io.test.ts`(`readLayout` → `resolveAppMode` 합성)가 담당한다.
+- **규칙**: `layout.json`에 최상위 키를 추가하면 `readLayout()`·서버 `LayoutConfig`(`session-manager.ts`)·클라이언트 `LayoutConfig`(`hooks/useLayout.ts`) 세 곳을 같이 고치고, `session-config-io.test.ts`에 보존 케이스를 추가한다. 검증은 `readLayout`에서 하지 말 것 — `app`은 원본 그대로 통과시키고 `resolveAppMode()`가 단일 검증자다.
+
+### 5.12 빌더 세션의 서버 재시작 복구 — 두 군데가 같이 살아 있어야 한다
+빌더 페이지가 재시작 후 "나갔다 다시 와야" 했던 원인은 둘이었다 (2026-09-12).
+- **클라이언트 자동 재기동**: `useWebSocket`은 재연결 시 서버의 `connected.sessionActive=false`를 보고 `onSessionLost`를 부른다. 빌더도 `sessionId=페르소나명`으로 바인드하므로 이 신호는 오지만, `builder/[name]/page.tsx`가 콜백을 안 넘겨 아무 일도 안 났다(채팅 페이지는 `/open`을 다시 친다). 지금은 `handleSessionLost`가 모델 없이 `/api/builder/edit`를 다시 쳐 같은 resume id로 프로세스를 되살린다. 새 페이지 타입을 만들면 이 콜백을 빠뜨리지 말 것.
+- **재시작 마커(AI에게 "재시작 끝났다" 알림)**: MCP `bridge_restart_service`의 입력 `mode`("dev"/"start")를 `{ mode }`로 구조분해하면 모듈 상수 `mode`("session"/"builder")를 **가려서** 빌더 분기가 죽은 코드가 된다 — 응답의 `notificationMarker:false`가 그 증상. 지금은 `mode: respawnMode`로 받는다. MCP 서버 파일에서 핸들러 인자 이름을 모듈 상수(`mode`/`persona`/`sessionId`/`sessionDir`)와 겹치게 짓지 마라.
+
 ## 6. 작업 방법론
 
 ### 6.1 대형 파일 분해 규율 (waves 6–12에서 무회귀 검증된 방법)

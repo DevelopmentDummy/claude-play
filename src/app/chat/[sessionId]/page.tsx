@@ -79,6 +79,8 @@ export default function ChatPage() {
   }, [panelData, sessionId]);
   const [sharedPlacements, setSharedPlacements] = useState<Record<string, "modal" | "modal-dismissible" | "full-screen" | "dock" | "dock-left" | "dock-right" | "dock-bottom">>({});
   const [layout, setLayout] = useState<LayoutConfig | null>(null);
+  // 앱 모드 chat.mode="hidden"에서 메인 채팅을 디버깅용으로 잠깐 꺼내는 스위치. 새로고침하면 다시 닫힌다.
+  const [debugChatOpen, setDebugChatOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [memo, setMemo] = useState("");
   const [profileImage, setProfileImage] = useState<string | null>(null);
@@ -1285,6 +1287,7 @@ export default function ChatPage() {
         busySubNames={Object.keys(busySubs)}
         threadStatus={threadStatus}
         onThreadControl={(action, value) => wsSend("threads:control", { action, value })}
+        debugChat={appMode?.chatMode === "hidden" ? { open: debugChatOpen, onToggle: () => setDebugChatOpen((v) => !v) } : null}
       />
       <ErrorBanner error={error} onDismiss={() => setError(null)} />
       <div className="flex-1 relative min-h-0">
@@ -1293,7 +1296,7 @@ export default function ChatPage() {
             <div className="min-h-0 flex-1">
               <AppSlot sessionId={sessionId} entry={appMode.entry} panelData={panelData} />
             </div>
-            {appMode.chatMode !== "hidden" && (
+            {(appMode.chatMode !== "hidden" || debugChatOpen) && (
               <div className="relative h-[38%] min-h-[180px] shrink-0 overflow-hidden border-t border-border">
                 {chatColumn}
               </div>

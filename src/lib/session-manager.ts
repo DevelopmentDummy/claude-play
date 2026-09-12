@@ -143,6 +143,15 @@ export interface LayoutConfig {
   chat: {
     maxWidth: number | null;
     align: "stretch" | "center";
+    /** 앱 모드에서 채팅 영역의 강등 수준. 미지정 = "normal". */
+    mode?: "normal" | "dock" | "hidden";
+  };
+  /** 앱 모드 설정(검증 전 원본). 해석·검증은 resolveAppMode()가 담당한다. */
+  app?: {
+    entry: string;
+    engine?: string;
+    worldFile?: string;
+    worldTickMs?: number;
   };
   theme: {
     accent: string;

@@ -1573,10 +1573,13 @@ server.registerTool(
       respawn: z.boolean().optional().describe("Whether to respawn after build (default: true)"),
     },
   },
-  async ({ mode, respawn }) => {
+  // NOTE: the input is named `respawnMode` on purpose — destructuring it as `mode` used to
+  // shadow the module-level runtime `mode` ("session"/"builder"), which made the builder
+  // branch below dead code (marker never written → no restart notification for builders).
+  async ({ mode: respawnMode, respawn }) => {
     try {
       const data = await requestJson("POST", "/api/service/restart", {
-        ...(mode ? { mode } : {}),
+        ...(respawnMode ? { mode: respawnMode } : {}),
         ...(respawn === false ? { respawn: false } : {}),
         ...(sessionId ? { sessionId, triggeredBy: "mcp:bridge_restart_service" } : {}),
         // Builder sessions have no sessionId (path.basename only set for "session" mode);
