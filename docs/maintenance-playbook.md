@@ -127,7 +127,8 @@ agy는 **파이프 상주 헤드리스 프로세스**다 (2026-09-14 전환, agy
 
 #### 4.4.3 모델 slug·MCP
 - `--model`은 `agy models` 출력의 slug(`gemini-3.8-flash-high`). 같은 등급의 구세대가 목록에 남으므로 `resolveModelSlug()`가 displayName 세대 번호 최대를 고른다. 하드코딩 금지(버전마다 바뀜).
-- agy 1.2 문서상 MCP 설정 위치는 **전역(`~/.gemini/config/mcp_config.json`)과 플러그인뿐**이다. 세션별 서버는 workspace 플러그인 `.agents/plugins/claude-play/{plugin.json,mcp_config.json}`으로 등록한다(`writeAntigravityMcpConfig`, 2026-09-14 드라이버로 도구 호출 검증). 옛 `.agents/mcp_config.json`은 병행 기록만 한다. MCP 서버는 첫 도구 호출 시 지연 기동되므로 턴 시작 직후 자식 프로세스가 없어도 정상.
+- **헤드리스 agy는 workspace `.agents/`를 전혀 로드하지 않는다** — `mcp_config.json`, `plugins/`, `skills/` 모두(2026-09-14 실측: workspace 플러그인의 스킬도 안 보임, trust 등록과 무관). 읽히는 건 **전역 `~/.gemini/config/mcp_config.json`뿐**이다. 그래서 `AntigravityProcess`가 세션 `.agents/mcp_config.json`(= `writeAntigravityMcpConfig` 산출물)을 원천으로 삼아 ① env 없는 `claude-play` 항목을 전역 파일에 병합(사용자 항목 보존, 파싱 불가 파일은 미변경)하고 ② 그 항목의 env(세션 dir·토큰·모드·페르소나)를 agy 프로세스 env로 넘긴다. agy가 띄우는 MCP 자식은 그 env를 상속하고 cwd도 세션 dir이다(실측). 부작용: 사용자의 개인 agy에도 `claude-play` 서버가 보인다(env 없으면 API 401로 무해). **페르소나 전용 MCP 서버(`runtime-mcp.json`)는 agy에서 쓸 수 없다.**
+- **MCP 검증 함정**: 모델은 MCP가 없으면 서버 **소스 파일을 grep해서** 반환값을 "맞힌다". MCP 동작 판정은 응답이 아니라 `[recv]`의 `"tool_name":"call_mcp_tool"` step 또는 서버 기동 부수효과로 할 것(첫 드라이버 검증이 이걸로 오판). MCP 서버는 첫 호출 시 지연 기동, 시스템 프롬프트에는 "Lazy-loaded tool"로만 노출되며 cli 로그의 `empty component: prompt section "mcp_servers"` 경고는 정상.
 
 #### 4.4.4 디버깅
 1. 세션 디렉토리 `antigravity-stream.log`(또는 spawn logName)에 **모든 `[send]`/`[recv]` NDJSON 라인과 agy `[stderr]`**가 남는다 — 턴 내용 자체를 여기서 본다.

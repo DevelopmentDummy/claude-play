@@ -59,9 +59,9 @@
 | 1 | fire_ai `autoResume` (9286e18) | 백그라운드 잡 완료 시 idle이면 즉시 자발 턴, busy면 턴 종료 직후 발동. 체인 상한 `FIRE_AI_AUTORESUME_MAX`(기본 5) |
 | 2 | 서브에이전트 v2.1 모델 고정 (6b4362a, 6a43f56) | 세션과 다른 프로바이더 pin (예: claude 세션 + gpt-5.4 서브) → `subagents/{name}/sub.log`에 해당 프로바이더 + `.resume-codex` 생성; 미지정 서브는 세션 상속; gemini pin은 세션 폴백 + console.warn |
 | 3 | 서브 대화 모달 (e3876d5) | tools 메뉴 → 모달; 직접 메시지 → 대화형 응답 + `transcript.jsonl` 기록; auto 디스패치 흐릿한 라인; report 칩 + 다음 턴 `[SUB:]`; 서브 작업 중엔 StatusBar '작업 중' 펄스 칩에 이름 표시 (안읽음 배지는 5234c38에서 ambient 인디케이터로 대체됨) |
-| 4 | agy stream-json 전환 (2026-09-14, `3eaf079`) | agy 1.2.2 CSRF로 LS RPC 전멸 → `-p "" --input-format stream-json` 파이프 상주로 교체. **2026-09-14 서버 재시작 후 사용자 실세션 동작 확인됨.** 세부 항목별 재확인이 필요하면: (a) 첫 응답 정상·primer 비노출 (b) MCP 이미지 생성 1회 (`.agents/plugins/claude-play`) (c) async 이미지 완료 후 wake-up 턴이 라이브 등장 (`antigravity-stream.log`에 `spontaneous turn started`) (d) 개입(steer) 1회 (e) fire_ai·서브 agy 1회. 단독 드라이버로는 primer·플러그인 MCP·steer·resume 검증 완료 |
+| 4 | agy stream-json 전환 (2026-09-14, `3eaf079`) | agy 1.2.2 CSRF로 LS RPC 전멸 → `-p "" --input-format stream-json` 파이프 상주로 교체. **2026-09-14 실세션 채팅 동작 확인, 단 MCP 미부착 발견 → 전역 mcp_config 등록 + env 상속으로 수정(재시작 후 재확인 필요).** 세부 항목별 재확인이 필요하면: (a) 첫 응답 정상·primer 비노출 (b) MCP 이미지 생성 1회 (`claude-stream.log`에 `"tool_name":"call_mcp_tool"` step — 모델 말만 믿지 말 것) (c) async 이미지 완료 후 wake-up 턴이 라이브 등장 (`antigravity-stream.log`에 `spontaneous turn started`) (d) 개입(steer) 1회 (e) fire_ai·서브 agy 1회. 단독 드라이버로는 primer·steer·resume 검증(첫 드라이버의 "플러그인 MCP 검증"은 모델이 소스 파일을 읽은 오판이었음) |
 | 5 | kimi 첫-open sticky id | 서브 있는 kimi 세션 첫 open에서 `session.json.kimiSessionId`가 메인 대화 것인지 (`kimi-stream.log`의 sticky 라인) — 플레이북 §4.3 |
-| 6 | agy MCP (workspace plugin `.agents/plugins/claude-play/`) | agy 1.2는 `.agents/mcp_config.json`을 안 읽음 → 플러그인으로 등록. **기존 agy 세션은 재-open해야 파일이 생성됨.** 위 #4와 함께 확인 |
+| 6 | agy MCP (전역 등록 + env 상속) | 헤드리스 agy는 workspace `.agents/`를 안 읽음 → 전역 `~/.gemini/config/mcp_config.json`에 `claude-play` 병합 + 세션 env를 agy 프로세스로 전달. **agy 세션 re-open(재spawn) 필요.** 페르소나 전용 MCP(`runtime-mcp.json`)는 agy 미지원 |
 | 7 | ultracode Workflow 도구 | 헤드리스 빌더 spawn(`claude -p`)의 도구 목록에 Workflow가 실제로 나타나는지 |
 | 8 | fire_ai 멀티 프로바이더 (260cf99) | Claude 외 모델 id로 fire_ai 1회 (예: kimi) → 결과 정상 회수 |
 | 9 | variables.json 원자화 (4a7e128) | 변수를 바꾸는 행동 → 패널 라이브 갱신 확인 — per-file `fs.watch`가 rename-replace를 견디는지 (플레이북 §5.1) |

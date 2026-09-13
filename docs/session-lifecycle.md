@@ -42,7 +42,7 @@ Optional persona MCP servers are merged by runtime config writers on open when `
   - UI: RP 채팅은 하단 바 `턴 중 개입` 토글(localStorage `bridge_interject_enabled`, 기본 OFF), 빌더 세션은 상시 허용
 - 모두 동일한 EventEmitter interface (`message/status/error/sessionId`)
 - Instruction files: `CLAUDE.md` (Claude) + `AGENTS.md` (Codex/Kimi — Kimi CLI는 작업 디렉토리의 AGENTS.md를 로드하며, spawn마다 `writeKimiInstructions`가 CLAUDE.md+런타임 프롬프트 병합본으로 AGENTS.md를 덮어씀) + `GEMINI.md` (Gemini/Antigravity — 단 agy는 자동 로드하지 않음, 위 Antigravity 항목 참조) — 세션 생성 시 동일 컨텐츠로 병렬 생성 (CLAUDE.md가 병합의 authoritative source)
-- MCP config: `.mcp.json` (Claude·Kimi — Kimi는 동일 파일을 `--mcp-config-file`로 명시 전달, `.kimi/`는 skills·agent yaml 전용) + `.codex/config.toml` (Codex — 위 CODEX_HOME 리포인트로 로드됨) + `.gemini/` (Gemini) + `.agents/plugins/claude-play/mcp_config.json` (Antigravity 1.2.x — workspace plugin; 옛 `.agents/mcp_config.json`도 병행 기록)
+- MCP config: `.mcp.json` (Claude·Kimi — Kimi는 동일 파일을 `--mcp-config-file`로 명시 전달, `.kimi/`는 skills·agent yaml 전용) + `.codex/config.toml` (Codex — 위 CODEX_HOME 리포인트로 로드됨) + `.gemini/` (Gemini) + `.agents/mcp_config.json` (Antigravity — 헤드리스 agy는 workspace 설정을 안 읽으므로 이 파일은 원천일 뿐, 실제 등록은 전역 `~/.gemini/config/mcp_config.json`의 env 없는 `claude-play` 항목 + agy 프로세스 env 상속. 페르소나 전용 MCP 미지원)
 - Builder mode supports service switching — provider 전환 시 빌더 채팅 히스토리 리셋
 
 ## Background AI (`fire_ai`)

@@ -195,14 +195,15 @@ export function writeGeminiConfig(
 }
 
 /**
- * Write the claude-play MCP server config for the Antigravity (agy) CLI.
- * agy has no per-runtime config flag. Two copies are written:
- * - `.agents/mcp_config.json` — honored by agy ≤1.0.x (verified 2026-06-27).
- * - `.agents/plugins/claude-play/{plugin.json,mcp_config.json}` — agy 1.2.x only
- *   documents global and plugin-scoped MCP config; a workspace plugin under
- *   `.agents/plugins/` is the per-session way to register servers (2026-09-14).
- * Same `mcpServers` shape as the Gemini config. `.agents/` is excluded from
- * persona publish and session mirroring, so the internal token never leaks.
+ * Write `.agents/mcp_config.json` with the claude-play MCP server for the
+ * Antigravity (agy) CLI. agy ≤1.0.x read this workspace file directly (verified
+ * 2026-06-27). Headless agy 1.2.x ignores workspace `.agents/` entirely, so
+ * `AntigravityProcess` now uses this file as the source of truth: it registers an
+ * env-less `claude-play` entry in the global `~/.gemini/config/mcp_config.json`
+ * and passes this entry's `env` to the agy process, which the MCP child inherits.
+ * Persona-declared servers are written here but are not reachable from agy 1.2.
+ * `.agents/` is excluded from persona publish and session mirroring, so the
+ * internal token never leaks.
  */
 export function writeAntigravityMcpConfig(
   projectDir: string,
@@ -231,11 +232,6 @@ export function writeAntigravityMcpConfig(
     JSON.stringify(config, null, 2),
     "utf-8"
   );
-
-  const pluginDir = path.join(agentsDir, "plugins", "claude-play");
-  fs.mkdirSync(pluginDir, { recursive: true });
-  fs.writeFileSync(path.join(pluginDir, "plugin.json"), JSON.stringify({ name: "claude-play" }, null, 2), "utf-8");
-  fs.writeFileSync(path.join(pluginDir, "mcp_config.json"), JSON.stringify(config, null, 2), "utf-8");
 }
 
 export function ensurePolicyContext(projectDir: string): void {

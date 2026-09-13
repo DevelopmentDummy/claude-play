@@ -17,6 +17,15 @@ const AGY_PATH = path.join(os.homedir(), "AppData", "Local", "agy", "bin", "agy.
 // `--print-timeout`은 헤드리스 대기(백그라운드 task 포함) 상한이라 상주 프로세스에는 크게 준다.
 const PRINT_TIMEOUT = "720h";
 
+// MCP: 헤드리스 모드는 workspace `.agents/`(mcp_config·plugins·skills)를 전혀 로드하지 않는다
+// (2026-09-14 실측). 전역 `~/.gemini/config/mcp_config.json`만 읽으므로 env 없는 claude-play
+// 항목을 전역에 병합하고, 세션별 값(세션 dir·토큰·모드·페르소나)은 agy 프로세스 env로 넣는다 —
+// agy가 띄우는 MCP 자식이 그 env를 상속하고 cwd도 세션 dir이다.
+const BRIDGE_MCP_SERVER = "claude-play";
+const GLOBAL_MCP_CONFIG = path.join(os.homedir(), ".gemini", "config", "mcp_config.json");
+
+interface BridgeMcpServer { command: string; args: string[]; env: Record<string, string> }
+
 /** displayName("Gemini 3.8 Flash (High)")에서 세대 번호(3.8)를 뽑는다. 미검출 시 0. */
 function generationOf(displayName: string): number {
   const m = /Gemini\s+(\d+(?:\.\d+)?)/i.exec(displayName);
@@ -83,6 +92,8 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
   private spontaneousTurn = false;
   /** step_index별 agent_response 누적 원문과 이미 emit한 (echo strip 후) 길이. */
   private stepText = new Map<number, { raw: string; emitted: number }>();
+  /** agy 프로세스 env로 넘겨 MCP 자식이 상속하게 할 claude-play 세션 env. */
+  private mcpEnv: Record<string, string> = {};
 
   constructor() {
     super();
@@ -118,6 +129,11 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
     this.ensureAntigravitySettings(cwd);
     if (logName) this.logName = logName;
     this.openLogStream(cwd);
+
+    const mcp = this.readSessionMcpServer(cwd);
+    if (mcp) this.ensureGlobalMcpServer(mcp);
+    else this.writeLog(`no ${BRIDGE_MCP_SERVER} entry in .agents/mcp_config.json — MCP tools unavailable`);
+    this.mcpEnv = mcp?.env ?? {};
 
     if (!fs.existsSync(AGY_PATH)) {
       this.writeLog(`agy not found at ${AGY_PATH}`);
@@ -164,6 +180,7 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
         delete (env as Record<string, string | undefined>)[key];
       }
     }
+    Object.assign(env, this.mcpEnv);
 
     this.writeLog(`[start] agy ${args.map(a => (a === "" ? '""' : a)).join(" ")} cwd=${cwd}`);
     const proc = spawn(AGY_PATH, args, { cwd, env, stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
@@ -469,6 +486,52 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
     }
     this.writeLog(`model "${pattern}" not found among ${models.length} models — agy default`);
     return null;
+  }
+
+  // --- MCP ---
+
+  /** 세션 `.agents/mcp_config.json`(runtime-config `writeAntigravityMcpConfig` 산출물)의 claude-play 항목. */
+  private readSessionMcpServer(cwd: string): BridgeMcpServer | null {
+    try {
+      const cfg = JSON.parse(fs.readFileSync(path.join(cwd, ".agents", "mcp_config.json"), "utf-8")) as {
+        mcpServers?: Record<string, { command?: unknown; args?: unknown; env?: unknown }>;
+      };
+      const server = cfg.mcpServers?.[BRIDGE_MCP_SERVER];
+      if (!server || typeof server.command !== "string" || !Array.isArray(server.args)) return null;
+      const env = server.env && typeof server.env === "object" ? server.env as Record<string, unknown> : {};
+      return {
+        command: server.command,
+        args: server.args.filter((a): a is string => typeof a === "string"),
+        env: Object.fromEntries(Object.entries(env).filter((e): e is [string, string] => typeof e[1] === "string")),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  /** 전역 mcp_config.json에 env 없는 claude-play 항목을 병합한다. 사용자 항목은 보존하고,
+   *  파싱할 수 없는 파일(주석 등)은 건드리지 않는다. BOM 없이 쓴다(Go 파서). */
+  private ensureGlobalMcpServer(server: BridgeMcpServer): void {
+    let cfg: Record<string, unknown> = {};
+    try {
+      const text = fs.existsSync(GLOBAL_MCP_CONFIG) ? fs.readFileSync(GLOBAL_MCP_CONFIG, "utf-8").replace(/^﻿/, "") : "";
+      if (text.trim()) cfg = JSON.parse(text) as Record<string, unknown>;
+    } catch (err) {
+      this.writeLog(`global mcp_config.json unparseable — left untouched, MCP tools unavailable: ${err}`);
+      return;
+    }
+    const servers = (cfg.mcpServers && typeof cfg.mcpServers === "object" ? cfg.mcpServers : {}) as Record<string, unknown>;
+    const desired = { command: server.command, args: server.args };
+    if (JSON.stringify(servers[BRIDGE_MCP_SERVER]) === JSON.stringify(desired)) return;
+    servers[BRIDGE_MCP_SERVER] = desired;
+    cfg.mcpServers = servers;
+    try {
+      fs.mkdirSync(path.dirname(GLOBAL_MCP_CONFIG), { recursive: true });
+      fs.writeFileSync(GLOBAL_MCP_CONFIG, JSON.stringify(cfg, null, 2), "utf-8");
+      this.writeLog(`global mcp_config.json: registered ${BRIDGE_MCP_SERVER}`);
+    } catch (err) {
+      this.writeLog(`global mcp_config.json write failed: ${err}`);
+    }
   }
 
   // --- settings ---
