@@ -165,6 +165,11 @@ function buildModelGroups(): ModelGroup[] {
       label: "Claude",
       provider: "claude",
       options: [
+        // Haiku 4.5 (별칭 `haiku` → claude-haiku-4-5-20251001, 2026-09-13 로컬 CLI 확인).
+        // 서브에이전트/스레드 role처럼 판단 폭이 좁고 호출이 잦은 저비용 용도를 위해 노출.
+        { value: "haiku", label: "Haiku" },
+        { value: "haiku:medium", label: "Haiku Medium" },
+        { value: "haiku:high", label: "Haiku High" },
         { value: "sonnet", label: "Sonnet" },
         { value: "sonnet:medium", label: "Sonnet Medium" },
         { value: "sonnet:high", label: "Sonnet High" },

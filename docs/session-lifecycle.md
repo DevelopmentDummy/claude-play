@@ -29,20 +29,20 @@ Optional persona MCP servers are merged by runtime config writers on open when `
 - **Codex**: `codex app-server` persistent JSON-RPC 2.0 over stdin/stdout. `external/...` 모델은 `model_provider="external"`을 per-process로 주입 (외부 게이트웨이 사용 시). spawn 시 child env의 `CODEX_HOME`을 세션 `.codex/`로 리포인트하고 실제 `auth.json`을 복사 — codex는 config.toml(mcp_servers·model_instructions_file 포함)을 `$CODEX_HOME`에서만 읽으므로 세션별 MCP/시스템 프롬프트는 이 리포인트로만 성립 (`codex-process.ts`)
 - **Gemini** (은퇴): `gemini` per-turn spawning with `--resume`. **⚠️ 2026-06-18부터 Google이 무료/Pro/Ultra 요청 처리 중단으로 Gemini CLI 텍스트 프로바이더 사용 불가** → 현재 배포는 `NEXT_PUBLIC_DISABLE_GEMINI=true` **기본 설정**. 이때 `providerFromModel`이 **gemini-* id를 antigravity로 투명 리맵**(gemini-…-pro→Pro tier, 그 외→Flash; agy `modelPattern`이 키워드 기반이라 매핑 테이블 불필요) + 선택기 Gemini 그룹 숨김. 기존 gemini 세션/페르소나/서브/fire_ai가 그대로 agy에서 동작(세션 open/sync/options 라우트의 uncaught throw 500도 해소). 신규 선택은 "Gemini (Antigravity)" 옵션(Gemini Flash High/Medium/Low, Pro High/Low) — **라벨에 세대 숫자가 없다. 각 항목은 "그 등급의 최신 세대" 별칭**이다. agy는 구세대 등급 항목(2026-09-03 실측: Flash가 3.5~3.8 4세대 공존)을 목록에 계속 노출하므로 `resolveModelKeyDynamic`이 등급 매칭 후 displayName 세대 번호가 가장 높은 것을 고른다(그전엔 첫 매치라 3.5가 잡히고 있었음). (이미지 생성용 `GEMINI_API_KEY`는 별개로 유효)
 - **Kimi**: `kimi --wire` JSON-RPC persistent process, `:thinking` suffix는 `--thinking` 플래그로 전달. 세션 id 캡처는 cwd+mtime **휴리스틱**(`findKimiSessionId`) — 서브에이전트가 cwd를 공유하므로 per-spawn sticky `resolvedSessionId`로 한 번 확정된 뒤의 휴리스틱 id는 무시(`kimi-stream.log`에 `[session] ignored heuristic id X (sticky: Y)` 기록). 서브는 kimi id를 캡처/영속하지 않음(매 open fresh+re-prime)
-- **Antigravity** (agy 1.0.5 기준 — 1.0.5에서 `SendUserCascadeMessage`가 `items:[{text}]` 스키마로, 모델 키가 동적 인덱스 `MODEL_PLACEHOLDER_M{N}`으로 변경됨): PowerShell `Start-Process -WindowStyle Hidden`으로 agy 백그라운드 spawn, 자체 in-process Language Server(HTTPS+gRPC, random port)에 ConnectRPC 직접 호출(`/exa.language_server_pb.LanguageServerService/*`). Service: `StartCascade` → `SendUserCascadeMessage` → `GetCascadeTrajectory` 500ms 폴링. agy CLI in-process LS는 unauth (CSRF 토큰 불필요). `~/.gemini/antigravity-cli/settings.json` trustedWorkspaces 자동 등록. Windows-only 현재
-  - **턴 종료 감지**: primary = agy의 명시적 `WaitForConversationFullyIdle` RPC(`{conversationId: cascadeId}`)와 휴리스틱 폴백(IDLE grace 틱 + trajectory-stable 5틱; ERROR 종료 분기는 stable 3틱으로 단축)의 race. 턴 종료 후에는 `startIdleWatch()`가 4초 간격 경폴링으로 async 도구(ComfyUI 이미지/영상) 완료 wake-up 턴을 라이브 emit — 결과에 `spontaneous:true` 태깅, 15분/연속 실패 3회 상한, `ANTIGRAVITY_IDLE_WATCH=false`로 opt-out (`antigravity-process.ts`)
-  - **빈 턴 silent retry (agy 전용)**: 턴 결과가 빈 턴(세그먼트 0+도구 0)·메타-only·도구호출 누출이면 `SessionInstance`가 `[system]` nudge를 `_silentRetry`로 1회 재전송 (`silentRetryDone` — 유저 입력마다 리셋, 입력당 최대 1회; spontaneous idle-watch 턴은 제외). 로그에 보이는 유령 `[system]` nudge의 정체
-  - **GEMINI.md 자동 로드 안 함**: agy는 지시문을 **primer**(첫 USER_INPUT)로만 전달받으며 cascade 히스토리에 남아 resume에도 유지됨 — 진행 중 세션의 GEMINI.md 수정은 사실상 no-op. primer는 `MAX_PRIMER_CHARS`(28000자, Windows 커맨드라인 32767자 한계) truncation 주의
+- **Antigravity** (agy 1.2.x 기준, 2026-09-14 전환): `agy --input-format stream-json --output-format stream-json --dangerously-skip-permissions --print-timeout 720h [--model <slug>] [--conversation <id>] -p ""`를 파이프 상주 프로세스로 spawn(`claude -p`와 같은 구조). stdin 한 줄 = 한 턴(`{"event":"user","message":{"content":[{type:"text",text}]}}`), stdout `init`→`step_update`(`agent_response`의 `text_delta`)→`result`. 옛 PowerShell `Start-Process` + in-process LS RPC 폴링은 agy 1.2.2가 LS에 CSRF 토큰을 요구(전 RPC `401 missing CSRF token`)하면서 폐기. 모델은 `agy models`의 slug 중 요청 등급의 최신 세대. `~/.gemini/antigravity-cli/settings.json` trustedWorkspaces·memory off 자동 패치. Windows-only 현재
+  - **턴 관리**: agy는 턴 진행 중 들어온 stdin 메시지를 큐잉해 다음 턴으로 실행한다 → `turnQueue`로 `result`와 짝지음. 신규 대화의 primer 턴은 출력을 숨기고 끝나면 ready. 큐가 빈 상태에서 오는 `step_update`는 async 도구(ComfyUI 이미지/영상) 완료 wake-up 턴으로 라이브 emit하고 결과에 `spontaneous:true` 태깅 (`antigravity-process.ts`)
+  - **빈 턴 silent retry (agy 전용)**: 턴 결과가 빈 턴(세그먼트 0+도구 0)·메타-only·도구호출 누출이면 `SessionInstance`가 `[system]` nudge를 `_silentRetry`로 1회 재전송 (`silentRetryDone` — 유저 입력마다 리셋, 입력당 최대 1회; spontaneous 턴은 제외). 로그에 보이는 유령 `[system]` nudge의 정체
+  - **GEMINI.md 자동 로드 안 함**: agy는 지시문을 **primer**(신규 대화의 첫 stdin 턴)로만 전달받으며 대화 히스토리에 남아 resume에도 유지됨 — 진행 중 세션의 GEMINI.md 수정은 사실상 no-op. stdin 전달이라 옛 28000자 primer 절단은 없어짐
 - **턴 중 개입(interject/steer)**: AI 턴이 진행 중일 때 사용자가 보낸 메시지는 `SessionInstance.steerAI()` → 프로바이더별 `steer()`로 라우팅된다(`isBusy()`로 분기, ws-server·REST `/api/chat/send` 공통). 신규 턴을 시작하지 않으므로 `_pendingTurn`/턴 경계는 유지된다.
   - **턴 분할**: `steerAI` 직전에 `splitAssistantTurnForInterject()`가 그때까지 누적된 `segments`를 별도 assistant history 항목으로 확정하고 `segments`/`tools`를 비운다 → 디스크 순서가 `[유저][응답 앞부분][개입][응답 뒷부분]`이 되어 화면 순서와 일치한다(클라 `addUserMessage`가 대칭 규칙). 본문이 없으면 no-op. 분할되면 `turnSplit` 플래그로 그 턴의 UTF-8 healing(`assistantFullText`는 턴 전체라 나머지와 어긋남)과 `msg.result` 텍스트 폴백(중복 기록)을 끈다. 확정된 항목 id는 `chat:split` WS 이벤트로 클라에 전달된다. 분할 이전의 tool_use는 앞 항목에 붙여 넘기므로 그 턴의 `pendingToolUseId`(AskUserQuestion) 감지는 포기한다.
   - **Claude**: 일반 send와 동일 경로(stream-json stdin push)
   - **Codex**: 네이티브 `turn/steer` RPC — `{threadId, expectedTurnId, input}`. `expectedTurnId`는 필수 전제조건이라 그 사이 턴이 끝나면 실패 → `turn/start`로 폴백(타임아웃은 전달 여부 불명이라 폴백하지 않음). codex-cli 0.148.0 라이브 검증: 개입 메시지는 **같은 턴 안에서** 현재 응답 뒤에 소비됨(turn/completed 1회)
-  - **Antigravity**: `SendUserCascadeMessage`만 호출(폴루프 teardown·pre-send baseline 스냅샷·startPollLoop 재시작 없음 — 하면 진행 중 턴이 종료 처리된다). agy가 queued user input step으로 쌓아 현재 step 뒤에 소비(`SendAllQueuedMessages`/`DeleteQueuedUserInputStep` RPC 존재). 큐잉 step은 role=user라 `emitNewChunks`가 걸러 에코되지 않음. ⚠️ 라이브 미검증 — 안 먹으면 `SendAllQueuedMessages` 명시 호출이 1차 시도
+  - **Antigravity**: 일반 stdin 턴을 하나 더 넣는다. agy가 현재 턴 직후 다음 턴으로 실행하고, `turnQueue`에 user 턴이 남아 있는 동안 `result`를 보류하므로 소비자에게는 한 턴으로 보인다(2026-09-14 드라이버 검증: 개입 후 `result` 1회)
   - **Gemini/Kimi**: 전용 경로 없음 — 일반 send 폴백(미검증)
   - UI: RP 채팅은 하단 바 `턴 중 개입` 토글(localStorage `bridge_interject_enabled`, 기본 OFF), 빌더 세션은 상시 허용
 - 모두 동일한 EventEmitter interface (`message/status/error/sessionId`)
 - Instruction files: `CLAUDE.md` (Claude) + `AGENTS.md` (Codex/Kimi — Kimi CLI는 작업 디렉토리의 AGENTS.md를 로드하며, spawn마다 `writeKimiInstructions`가 CLAUDE.md+런타임 프롬프트 병합본으로 AGENTS.md를 덮어씀) + `GEMINI.md` (Gemini/Antigravity — 단 agy는 자동 로드하지 않음, 위 Antigravity 항목 참조) — 세션 생성 시 동일 컨텐츠로 병렬 생성 (CLAUDE.md가 병합의 authoritative source)
-- MCP config: `.mcp.json` (Claude·Kimi — Kimi는 동일 파일을 `--mcp-config-file`로 명시 전달, `.kimi/`는 skills·agent yaml 전용) + `.codex/config.toml` (Codex — 위 CODEX_HOME 리포인트로 로드됨) + `.gemini/` (Gemini) + `.agents/mcp_config.json` (Antigravity)
+- MCP config: `.mcp.json` (Claude·Kimi — Kimi는 동일 파일을 `--mcp-config-file`로 명시 전달, `.kimi/`는 skills·agent yaml 전용) + `.codex/config.toml` (Codex — 위 CODEX_HOME 리포인트로 로드됨) + `.gemini/` (Gemini) + `.agents/mcp_config.json` (Antigravity — 헤드리스 agy는 workspace 설정을 안 읽으므로 이 파일은 원천일 뿐, 실제 등록은 전역 `~/.gemini/config/mcp_config.json`의 env 없는 `claude-play` 항목 + agy 프로세스 env 상속. 페르소나 전용 MCP 미지원)
 - Builder mode supports service switching — provider 전환 시 빌더 채팅 히스토리 리셋
 
 ## Background AI (`fire_ai`)
@@ -58,7 +58,7 @@ Optional persona MCP servers are merged by runtime config writers on open when `
 - **트리거 경로별 옵션 차이**: `autoResume`은 MCP `fire_ai` 도구와 `POST /api/sessions/[id]/fire-ai` 라우트에서만 지원 — hook 반환 `fireAi`(on-assistant)는 autoResume 미지원, on-style-check 경로는 `onExit`도 미지원 (`session-instance.ts`의 각 fireAi shape 참조)
 - **안전 타임아웃**: `FIRE_AI_TIMEOUT_MS` env (기본 600000ms=10분) — persistent provider 프로세스는 한 턴 후 자체 종료하지 않으므로 hung turn을 kill (`background-session.ts`)
 - **readiness 규칙**: `waitForReady(20s) === false`는 실패가 **아님** — `!proc.isRunning()`일 때만 abort하고, 프로세스가 살아 있으면 그냥 `send()` 한다 (각 provider의 send()가 자체 readiness 대기; agy는 primer 응답 대기로 20s를 상습 초과하므로 timeout=실패 취급 시 프롬프트 전송 전에 죽음). 서브에이전트 dispatch(`subagent-instance.ts`)도 동일 규칙. child PID는 spawn 직후 1회 캡처(`firedPid`) — settle 시 provider가 내부 proc를 null화하므로 늦게 읽으면 -1
-- **Antigravity 백그라운드는 `pid=0` 반환** — agy는 `proc.pid` 미노출(자체 `agy-procs.json` PID 레지스트리로 reap)
+- **Antigravity도 파이프 child라 `proc.pid`를 노출한다** (2026-09-14 전환 이전에는 detached spawn이라 `pid=0`). 삭제 시 reap은 여전히 `agy-procs.json` 레지스트리 경로도 병행
 - 서버 종료 시 `destroyAllBackgroundProcesses()`가 활성 백그라운드 프로세스를 일괄 kill (`server.ts`)
 
 ## Sub-Agents (always-on)
@@ -129,6 +129,37 @@ Optional persona MCP servers are merged by runtime config writers on open when `
 - ⓒ **비-Claude 서브의 cmdline 기반 고아 reap 미지원**: PID 레지스트리의 정상 등록·해제 경로는 모든 provider에서 동작한다. 단, `reapOrphanSubProcs()`가 PID의 커맨드라인에서 세션 디렉토리를 검증하는 로직은 Claude 프로세스 외에는 적용되지 않는다. Antigravity 서브는 `agy-procs.json` 레지스트리 + `killAgyForDir`로 별도 reap됨.
 - ⓓ **sync 훅 ↔ async 서브 쓰기 레이스**: 메인의 `runAssistantHooks`는 `mutateSessionJsonSync`(동기, per-file 뮤텍스 우회)로 `variables.json`을 쓰고, 서브는 라우트 경유 `mutateSessionJson`(뮤텍스 적용)으로 쓴다. 같은 파일을 sync(메인)와 async(서브)가 거의 동시에 건드리면 atomic tmp+rename으로 파일 손상은 없으나 **lost update** 가능. 노출은 낮음(윈도우 짧음, 보통 disjoint 키). **회피책**: 매니페스트 `writes[]`(권고)에 맞춰 메인 훅과 서브가 서로 다른 변수/파일을 쓰도록 페르소나를 구성. 완전 해결(훅 변수 쓰기의 async 게이트 경유)은 후속 작업.
 - ⓔ **Kimi 첫 open 시 sticky id 오염 가능성 (잔여 race, 라이브 미검증)**: Kimi 세션 id는 cwd+mtime 휴리스틱이라, 서브가 cwd를 공유하는 세션의 **첫** open에서 서브 대화 파일이 mtime 우선권을 잡으면 sticky `resolvedSessionId`가 서브 id로 잘못 고정될 수 있음. `session.json`의 `kimiSessionId`가 메인 대화인지는 `kimi-stream.log`의 `ignored heuristic id` 라인으로 확인. 실제 발생 시 수정 방향은 서브 spawn을 메인 sessionId emit 이후로 지연.
+
+## 앱 모드 — 월드 엔진과 스레드 루프
+
+`layout.json`에 `app`이 있는 세션만 해당한다. 없으면 아래 경로는 전부 꺼지고 기존 채팅 중심 셸로 동작한다. 설계 근거는 [앱 모드 설계 문서](specs/2026-09-12-app-mode-platform-design.md).
+
+**기동**: `/api/sessions/[id]/open`이 `subAgents.spawnAll()` 직후 `instance.syncThreadLoop(provider, model, effort)`를 호출한다. `resolveAppMode(layout)`가 null이면 루프를 만들지 않는다.
+
+**역할과 스레드**: `subagents.json` v2는 역할(템플릿) + 스레드(인스턴스)로 나뉜다. 같은 역할에서 스레드 N개가 뜨고 지침은 한 벌이며, 정체성은 스폰 시 선행 메시지에 붙는 `[THREAD] threadId=… params=…`가 갖는다. 살아있는 스레드 목록의 진실은 매니페스트가 아니라 `threads.json`이라 런타임 스폰이 재open에서 보존된다. v1 `subagents[]`는 스레드 하나짜리 역할로 승격되어 기존 동작이 그대로 유지된다.
+
+**두 개의 독립 시계** — 월드 시계와 AI 스케줄링은 서로를 기다리지 않는다:
+
+- **월드 시계** (`layout.app.worldTickMs`, 기본 1s): `step()`을 부른다. 큐에 **도착해 있는** 의도만 꺼내
+  판정·적용하고, 없으면 없는 대로 세계를 진행시킨다. AI가 한 명도 안 깨어 있어도 시간이 흐른다.
+- **스레드 스케줄러** (1s 해상도, 역할별 `intervalMs`): 주기가 된 스레드에 `observe` → `dispatch`를 걸고
+  **완료를 기다리지 않는다**. 스레드는 백그라운드에서 돌다가 끝날 때 `submit`으로 큐에 넣는다.
+
+즉 의도는 비동기로 도착하고 월드 틱이 폴링한다(윈도우 메시지 펌프와 같은 구조). 늦게 온 의도는 다음 틱 배치에 합류한다.
+한 틱에 여러 건이 도착해 있으면 `step()`이 같이 보고 경합을 판정하므로 배치 판정은 그대로 성립한다 —
+요구는 "규칙이 메시지마다 돌면 안 된다"이지 "배치가 항상 여러 건"이 아니다.
+
+관측 시점과 적용 시점이 어긋나는 것은 버그가 아니라 전제다. 엔진이 기각하고 사유가 다음 `observe`에 실린다.
+동시 실행 예산(`THREAD_CONCURRENCY`, 기본 3)은 **현재 바쁜 스레드 수를 뺀 만큼**만 새로 깨우는 데 쓴다.
+컨텍스트 리셋은 스레드가 idle일 때 — 턴 사이의 자연스러운 경계에서 일어난다.
+
+**단일 writer**: 규칙은 `step()`에만 존재한다. 유저 조작도 스레드 의도와 같은 `submit`을 타므로 검증 경로가 하나다. 앱이 `/api/sessions/[id]/variables`로 월드 파일을 쓰는 것은 403으로 막히고, tool 라우트(엔진 반환 패치)만 허용된다 — 그래서 tool 라우트의 `PROTECTED_FILES`에 월드 파일을 **넣으면 안 된다**.
+
+**컨텍스트 성장**: 루프 스레드는 transcript가 무한히 자라지만 요약 턴을 돌리지 않는다. 권위 있는 상태가 `world.json`에 있으므로 프로세스를 버리고 재prime한다(추가 LLM 호출 0회). 플랫폼이 조립하는 것은 **역할 지침 + `[THREAD] params`**뿐이고, 기억은 **엔진의 `observe`가 실어 보낸다** — 리셋 후 첫 `observe`는 `since`가 초기화되어 전체 스냅샷이므로 엔진이 거기에 그 스레드의 `memory`를 포함시켜야 한다. 엔진이 넣지 않으면 리셋된 스레드는 자기 과거를 잃는다. `resetContext()`가 곧바로 새 프로세스를 띄워(프리워밍) 다음 틱의 콜드 스타트를 덮고, 리셋 주기는 스레드마다 ±20% 지터를 줘 동시 리셋으로 세계가 멈추는 것을 막는다.
+
+**메인은 조용한 코디네이터**: 스레드의 `report_to_main`은 메인 턴을 강제하지 않고, `runStyleCheckHook`/`runSessionMemoTick`은 메인 턴 직후에만 돌므로 앱 모드에서 자연히 쉰다. 메인이 깨어나는 것은 ①유저 메시지 ②명시적 에스컬레이션(`fire_ai` autoResume) 뿐이다. 깨어날 때는 밀린 이벤트 재생이 아니라 `observe("main")`의 현재 월드 상태가 `[WORLD]` 헤더로 붙는다 — 앱 모드에서 엔진·스레드는 이벤트 큐를 쓰지 않는다.
+
+**정지 조건**: 클라이언트가 하나도 연결돼 있지 않으면(`countSessionClients() === 0`) 틱이 돌지 않는다. 사용자는 StatusBar에서 일시정지·속도(0.5×~4×)를 조절하고, 상태는 `threads:status` WS 이벤트로 내려간다. 제어는 `threads:control` WS 메시지.
 
 ## Pipeline Scheduler
 

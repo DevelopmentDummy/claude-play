@@ -12,6 +12,13 @@ export interface PanelData {
 export interface PanelUpdate {
   panels: PanelData[];
   context: Record<string, unknown>;
+  /**
+   * 패널 HTML이 직전 브로드캐스트와 동일하면 true. 이때 `panels`는 빈 배열로 오고,
+   * 수신 측은 기존 패널을 그대로 둔 채 `context`만 반영해야 한다.
+   * 앱 모드(월드 틱 5Hz)에서 매 틱 수십 KB의 HTML 전문을 재전송해 프론트를 통째로
+   * 리렌더시키던 문제 때문에 도입했다 — 스크롤이 풀리고 rAF가 밀린다.
+   */
+  panelsUnchanged?: boolean;
   /** Default placement for shared panels (panel name → placement type) */
   sharedPlacements?: Record<string, "modal">;
   popups?: Array<{ template: string; html: string; duration: number }>;
@@ -517,10 +524,19 @@ export class PanelEngine {
     }
   }
 
+  /** 직전에 내보낸 패널 HTML의 지문. 같은 내용을 다시 실어 보내지 않기 위한 것. */
+  private lastPanelSig: string | null = null;
+
   private render(): void {
     if (!this.sessionDir) return;
     const result = this.getCurrentPanels();
     this.templateDirty.clear();
+    const sig = result.panels.map((panel) => panel.name + " " + panel.html).join("");
+    if (this.lastPanelSig === sig) {
+      this.onUpdate({ ...result, panels: [], panelsUnchanged: true });
+      return;
+    }
+    this.lastPanelSig = sig;
     this.onUpdate(result);
   }
 

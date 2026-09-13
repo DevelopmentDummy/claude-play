@@ -101,6 +101,11 @@
     "last_frame": {
       "type": "string",
       "description": "선택 — 끝 프레임 파일명(ComfyUI input 기준). 지정하면 FLF2V로 동작해 클립이 이 이미지로 수렴한다. 15초 후반부 드리프트 억제 + 체이닝 이음새 고정용. 비우면 노드가 제거된다."
+    },
+    "style_loras": {
+      "type": "array",
+      "required": false,
+      "description": "선택 — 터보 LoRA(node 200) 위에 추가로 얹을 스타일/컨셉 LoRA 체인. `[{\"name\":\"파일.safetensors\",\"strength\":0.8,\"low_vram\":false}]` 형식. 비우면 노드가 생성되지 않아 기존 동작과 동일하다.\n\n체인 순서: UNETLoader(6) → MiniMaxH3TurboLoRA(200, 터보) → [300…] → BasicScheduler(9)/BasicGuider(16).\n\n⚠️ 로더는 generic `LoraLoaderModelOnly`가 아니라 `MiniMaxH3TurboLoRA`를 쓴다 — 이름만 Turbo일 뿐 범용 H3 LoRA 로더이며, pruned/양자화 베이스에서 int8-fused fc2와 adaln_proj delta를 올바르게 처리하는 유일한 경로다. generic 로더는 이 모듈들을 조용히 누락시킨다.\n\n⚠️ payload 최상위 `loras`는 무시된다(`lora_injection=false`). 반드시 `params.style_loras`.\n\n⚠️ 터보 스텝 수(6~8)에서는 스타일 LoRA가 덜 먹을 수 있다. 강도를 풀스텝보다 높게 잡아라."
     }
   },
   "benchmarks": {

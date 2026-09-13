@@ -1,0 +1,28 @@
+{
+  "version": 2,
+  "roles": [
+    {
+      "name": "keeper",
+      "role": "월드 관리자 — 캐릭터를 연기하지 않는 기능성 스레드",
+      "instructions": "roles/keeper.md",
+      "scope": "global",
+      "loop": { "mode": "loop", "intervalMs": 15000, "resetEveryTurns": 10 },
+      "emitSummary": false,
+      "delegable": false
+    },
+    {
+      "name": "gatherer",
+      "role": "밀을 모으는 행위자",
+      "instructions": "roles/gatherer.md",
+      "scope": "local",
+      "loop": { "mode": "loop", "intervalMs": 10000, "resetEveryTurns": 10 },
+      "emitSummary": false,
+      "delegable": false
+    }
+  ],
+  "threads": [
+    { "threadId": "keeper_1", "role": "keeper", "params": { "entityId": "keeper_1" } },
+    { "threadId": "gatherer_1", "role": "gatherer", "params": { "entityId": "gatherer_1" } },
+    { "threadId": "gatherer_2", "role": "gatherer", "params": { "entityId": "gatherer_2" } }
+  ]
+}

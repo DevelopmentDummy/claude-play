@@ -26,12 +26,18 @@ export function readLayout(dir: string): LayoutConfig {
   if (!fs.existsSync(layoutPath)) return { ...DEFAULT_LAYOUT };
   try {
     const raw = JSON.parse(fs.readFileSync(layoutPath, "utf-8"));
-    return {
+    const layout: LayoutConfig = {
       panels: { ...DEFAULT_LAYOUT.panels, ...(raw.panels || {}) },
       chat: { ...DEFAULT_LAYOUT.chat, ...(raw.chat || {}) },
       theme: { ...DEFAULT_LAYOUT.theme, ...(raw.theme || {}) },
       customCSS: raw.customCSS ?? DEFAULT_LAYOUT.customCSS,
     };
+    // 앱 모드 블록은 검증 없이 그대로 통과시킨다 — 유효성 판단은 resolveAppMode()의 단일 책임.
+    // 여기서 빠뜨리면 open 응답·layout:update·syncThreadLoop 세 경로 모두에서 앱이 사라진다.
+    if (raw.app && typeof raw.app === "object" && !Array.isArray(raw.app)) {
+      layout.app = raw.app;
+    }
+    return layout;
   } catch {
     return { ...DEFAULT_LAYOUT };
   }

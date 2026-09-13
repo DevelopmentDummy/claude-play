@@ -1,5 +1,6 @@
-import { execSync } from "child_process";
+import { spawn, execFile, execSync, ChildProcess } from "child_process";
 import { EventEmitter } from "events";
+import { StringDecoder } from "string_decoder";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
@@ -7,16 +8,54 @@ import { recordAgyPid, forgetAgyPid } from "./antigravity-pid-registry";
 
 const AGY_PATH = path.join(os.homedir(), "AppData", "Local", "agy", "bin", "agy.exe");
 
+// agy 1.2.x headless 상주 모드 — `claude -p` stream-json과 같은 구조.
+// stdin: 한 줄 NDJSON = 한 턴 (`{"event":"user","message":{"content":[{type:"text",text}]}}`).
+// stdout: `init`(conversation_id) → `step_update`(agent_response text_delta / tool / …) → `result`.
+// 이전의 PowerShell Start-Process + in-process LS RPC 폴링 방식은 agy 1.2.2에서 LS가
+// CSRF 토큰(`x-codeium-csrf-token`, 프로세스 내부 생성·외부 비노출)을 요구하면서 전 RPC가
+// 401로 막혀 폐기했다. 파이프 모드는 TTY도 CSRF도 필요 없다.
+// `--print-timeout`은 헤드리스 대기(백그라운드 task 포함) 상한이라 상주 프로세스에는 크게 준다.
+const PRINT_TIMEOUT = "720h";
 
-// 모델 ID는 agy 버전마다 바뀌는 동적 인덱스(MODEL_PLACEHOLDER_M{N})다.
-// 하드코딩 금지 — initialize()에서 GetAvailableModels로 displayName을 매칭해 조회한다.
-// (1.0.2: Pro High=165 → 1.0.5: 37로 바뀌어 "unknown model key M165: model not found"로
-//  cascade가 죽은 이력. 그래서 숫자를 박지 않고 매 spawn마다 LS에서 현재 인덱스를 받는다.)
+// MCP: 헤드리스 모드는 workspace `.agents/`(mcp_config·plugins·skills)를 전혀 로드하지 않는다
+// (2026-09-14 실측). 전역 `~/.gemini/config/mcp_config.json`만 읽으므로 env 없는 claude-play
+// 항목을 전역에 병합하고, 세션별 값(세션 dir·토큰·모드·페르소나)은 agy 프로세스 env로 넣는다 —
+// agy가 띄우는 MCP 자식이 그 env를 상속하고 cwd도 세션 dir이다.
+const BRIDGE_MCP_SERVER = "claude-play";
+const GLOBAL_MCP_CONFIG = path.join(os.homedir(), ".gemini", "config", "mcp_config.json");
+
+interface BridgeMcpServer { command: string; args: string[]; env: Record<string, string> }
 
 /** displayName("Gemini 3.8 Flash (High)")에서 세대 번호(3.8)를 뽑는다. 미검출 시 0. */
 function generationOf(displayName: string): number {
   const m = /Gemini\s+(\d+(?:\.\d+)?)/i.exec(displayName);
   return m ? Number(m[1]) : 0;
+}
+
+interface AgyModel { slug: string; displayName: string }
+
+const MODEL_CACHE_TTL_MS = 10 * 60 * 1000;
+let modelCache: { at: number; models: AgyModel[] } | null = null;
+
+/** `agy models` 출력(`slug\tDisplay Name`)을 파싱한다. 모델 목록은 버전·계정마다 달라서
+ *  하드코딩하지 않고 spawn마다(10분 캐시) 조회한다. 실패 시 빈 배열. */
+function listAgyModels(): Promise<AgyModel[]> {
+  if (modelCache && Date.now() - modelCache.at < MODEL_CACHE_TTL_MS) {
+    return Promise.resolve(modelCache.models);
+  }
+  return new Promise((resolve) => {
+    const child = execFile(AGY_PATH, ["models"], { timeout: 30_000, windowsHide: true, encoding: "utf-8" }, (err, stdout) => {
+      if (err) { resolve([]); return; }
+      const models = stdout
+        .split(/\r?\n/)
+        .map(line => line.split("\t"))
+        .filter(parts => parts.length >= 2 && parts[0].trim() && parts[1].trim())
+        .map(([slug, displayName]) => ({ slug: slug.trim(), displayName: displayName.trim() }));
+      if (models.length > 0) modelCache = { at: Date.now(), models };
+      resolve(models);
+    });
+    child.stdin?.end();
+  });
 }
 
 export interface AntigravityProcessEvents {
@@ -27,46 +66,41 @@ export interface AntigravityProcessEvents {
   sessionId: [id: string];
 }
 
-// Windows CreateProcess command-line limit is 32767 chars. We leave headroom
-// for the agy.exe path + other args + arg-quoting overhead.
-const MAX_PRIMER_CHARS = 28000;
+type TurnKind = "primer" | "user";
 
 export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
-  private agyPid: number | null = null;
-  private lsPort: number | null = null;
-  private cascadeId: string | null = null;
-  private spawnCwd = "";
-  private spawnModelString: string | undefined;
-  /** agy가 cascade에 넣을 모델 키 — GetAvailableModels의 `model` 필드 전체 문자열
-   *  (예: "MODEL_PLACEHOLDER_M37"). agy는 이 값을 그대로 lookup 키로 쓰므로 숫자만
-   *  뽑아 보내면 "unknown model key 37"로 실패한다. 미해소 시 null → requestedModel 생략. */
-  private modelKey: string | null = null;
+  private proc: ChildProcess | null = null;
+  private buffer = "";
   private logStream: fs.WriteStream | null = null;
   private logName = "antigravity-stream.log";
-  private polling = false;
-  private lastSeenMessageCount = 0;
-  private lastSeenTailLength = 0;
-  private initPromise: Promise<void> | null = null;
-  /** 현재 진행 중인 pollLoop의 promise. _sendAsync가 새 turn 시작 전 in-flight
-   *  pollLoop(특히 idle-watch가 재진입한 wake-up turn)을 await해 두 loop가 같은
-   *  cascade에 동시 polling하는 것을 막는다. */
-  private pollLoopPromise: Promise<void> | null = null;
-  /** 턴 종료 후 idle 구간에 trajectory를 가볍게 감시 중인지 여부. async 도구
-   *  (예: comfyui async 이미지/영상 생성)가 turn 종료 뒤 wake-up step을 cascade에
-   *  주입하면 즉시 잡아 live emit하기 위함. _sendAsync/kill에서 해제. */
-  private idleWatching = false;
-  /** 현재 진행 중인 turn이 idle-watch가 재진입한 자발적 wake-up turn인지 여부.
-   *  result emit에 실려 SessionInstance가 silent-retry(사용자 응답 누락 보정)를
-   *  자발적 turn에는 적용하지 않도록 한다 — 자발적 turn은 nudge 대상이 아니다. */
-  private currentTurnSpontaneous = false;
+  private spawnCwd = "";
+  private spawnModelString: string | undefined;
+  private conversationId: string | null = null;
+  /** 모델 slug 해소(`agy models`) 중 — proc은 아직 없지만 send는 버퍼링해 받는다. */
+  private starting = false;
+  /** spawn/kill마다 증가. 비동기 launch가 그 사이 kill/재spawn됐으면 버린다. */
+  private generation = 0;
+  /** primer 턴이 끝났거나(신규) primer가 필요 없을 때(resume/primer 없음) true. */
+  private ready = false;
+  private readyWaiters: Array<(ok: boolean) => void> = [];
+  /** stdin에 넣은 턴들의 순서. agy는 턴 진행 중 들어온 메시지를 큐잉해 다음 턴으로 실행하므로
+   *  `result` 1개가 큐 head 1개에 대응한다. */
+  private turnQueue: TurnKind[] = [];
+  /** proc 기동 전에 들어온 stdin 라인 (primer / 조기 send). */
+  private pendingLines: string[] = [];
+  /** 큐가 빈 상태에서 step_update가 오면 async 도구 완료 wake-up으로 모델이 스스로 연 턴. */
+  private spontaneousTurn = false;
+  /** step_index별 agent_response 누적 원문과 이미 emit한 (echo strip 후) 길이. */
+  private stepText = new Map<number, { raw: string; emitted: number }>();
+  /** agy 프로세스 env로 넘겨 MCP 자식이 상속하게 할 claude-play 세션 env. */
+  private mcpEnv: Record<string, string> = {};
 
   constructor() {
     super();
     // Default no-op "error" listener. EventEmitter는 'error' event에 listener 없으면
     // throw하여 process를 죽인다. session-instance가 bindProcessEvents에서 broadcast
     // listener를 부착하지만 destroy()에서 removeAllListeners()로 제거 — destroy 후
-    // initialize().catch가 emit("error") 호출하는 race가 있어 dev server를 crash시킴.
-    // 항상 1개 default listener 보장 (실제 처리는 antigravity-stream.log에서 추적).
+    // 늦은 비동기 에러가 emit되는 race가 dev server를 crash시킴.
     this.on("error", () => { /* swallowed — antigravity-stream.log 참조 */ });
   }
 
@@ -79,605 +113,313 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
     _skipPermissions?: boolean,
     logName?: string,
   ): void {
-    if (this.agyPid) this.kill();
+    if (this.proc || this.starting) this.kill();
 
     this.spawnCwd = cwd;
-    this.cascadeId = resumeId || null;
     this.spawnModelString = model;
-    // modelKey는 initialize()에서 LS 연결 후 GetAvailableModels로 동적 해소한다.
-    this.lastSeenMessageCount = 0;
-    this.lastSeenTailLength = 0;
+    this.conversationId = resumeId || null;
+    this.ready = false;
+    this.turnQueue = [];
+    this.pendingLines = [];
+    this.spontaneousTurn = false;
+    this.stepText.clear();
+    this.buffer = "";
 
     this.cleanupLegacyGlobalSettings();
     this.ensureAntigravitySettings(cwd);
     if (logName) this.logName = logName;
     this.openLogStream(cwd);
 
-    // agy.exe는 bubbletea TUI 라이브러리 기반 — CONIN$/CONOUT$ console handle 필수.
-    // Node child_process.spawn은 detached/windowsHide 어떤 조합으로도 Windows console
-    // 할당이 안 되어 agy가 즉시 "bubbletea: could not open TTY: open CONIN$" 에러로
-    // exit code 0. PowerShell Start-Process -WindowStyle Hidden은 hidden console이지만
-    // CONIN$/CONOUT$이 실제로 allocated되어 정상 동작. 다른 provider(Claude/Codex 등)는
-    // stdin/stdout pipe로만 통신하는 CLI라 console 불필요했지만 agy만 다름.
-    //
-    // 한글 cwd 처리:
-    //   - ps1 파일에 UTF-8 BOM prepend (`﻿`) → PS 5.1이 시스템 ANSI(CP949) 대신
-    //     UTF-8로 정확히 디코드
-    //   - -WorkingDirectory 대신 Set-Location -LiteralPath 사용 → wildcard 해석 우회
-    const escapePS = (s: string) => s.replace(/'/g, "''");
-    const tempDir = path.join(os.tmpdir(), "agy-bridge");
-    if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
-    let tempPrimerPath: string | null = null;
-    let psScript: string;
+    const mcp = this.readSessionMcpServer(cwd);
+    if (mcp) this.ensureGlobalMcpServer(mcp);
+    else this.writeLog(`no ${BRIDGE_MCP_SERVER} entry in .agents/mcp_config.json — MCP tools unavailable`);
+    this.mcpEnv = mcp?.env ?? {};
 
-    if (resumeId) {
-      psScript = [
-        `$ErrorActionPreference = 'Stop'`,
-        `Set-Location -LiteralPath '${escapePS(cwd)}'`,
-        `$p = Start-Process -FilePath '${escapePS(AGY_PATH)}' -ArgumentList @('--conversation', '${escapePS(resumeId)}', '--dangerously-skip-permissions') -WindowStyle Hidden -PassThru`,
-        `Write-Output $p.Id`,
-      ].join("\n");
-      this.writeLog(`spawn(resume): cascadeId=${resumeId}`);
-    } else {
-      // primer는 큰 텍스트(수만자)라 임시 파일로 저장 후 PowerShell에서 읽어 escape.
-      // CommandLineToArgvW spec: 2n backslashes before " → n backslashes + delimiter;
-      // 2n+1 → n backslashes + literal ". 따라서 " 앞의 backslash run을 doubling.
-      let primer = appendSystemPrompt && appendSystemPrompt.length > 0 ? appendSystemPrompt : "_BRIDGE_INIT_";
-      if (primer.length > MAX_PRIMER_CHARS) {
-        this.writeLog(`WARN: primer truncated ${primer.length} → ${MAX_PRIMER_CHARS}`);
-        primer = primer.slice(0, MAX_PRIMER_CHARS);
-      }
-      tempPrimerPath = path.join(tempDir, `primer-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.txt`);
-      fs.writeFileSync(tempPrimerPath, primer, "utf-8");
-      psScript = [
-        `$ErrorActionPreference = 'Stop'`,
-        `Set-Location -LiteralPath '${escapePS(cwd)}'`,
-        `$primer = [System.IO.File]::ReadAllText('${escapePS(tempPrimerPath)}', [System.Text.Encoding]::UTF8)`,
-        `$primerEscaped = $primer -replace '(\\\\*)"', '$1$1\\"'`,
-        `$primerArg = '"' + $primerEscaped + '"'`,
-        `$argsString = '--prompt-interactive ' + $primerArg + ' --dangerously-skip-permissions'`,
-        `$p = Start-Process -FilePath '${escapePS(AGY_PATH)}' -ArgumentList $argsString -WindowStyle Hidden -PassThru`,
-        `Write-Output $p.Id`,
-      ].join("\n");
-      this.writeLog(`spawn(new): primer=${primer.length}b cwd=${cwd}`);
-    }
-
-    const tempScriptPath = path.join(tempDir, `spawn-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.ps1`);
-    // UTF-8 BOM prepend — Windows PowerShell 5.1은 BOM 없으면 시스템 ANSI(CP949)로
-    // 해석하여 한글 cwd가 mojibake되고 Start-Process가 wildcard 해석 fail함.
-    fs.writeFileSync(tempScriptPath, "﻿" + psScript, "utf-8");
-
-    try {
-      let out: string;
-      try {
-        out = execSync(`powershell -NoProfile -ExecutionPolicy Bypass -File "${tempScriptPath}"`, {
-          encoding: "utf-8",
-        }).trim();
-      } catch (err) {
-        const e = err as { stderr?: Buffer | string; stdout?: Buffer | string };
-        const stderr = (typeof e.stderr === "string" ? e.stderr : e.stderr?.toString("utf-8")) ?? "";
-        const stdout = (typeof e.stdout === "string" ? e.stdout : e.stdout?.toString("utf-8")) ?? "";
-        this.writeLog(`spawn powershell failed: stdout="${stdout.slice(0, 300)}" stderr="${stderr.slice(0, 300)}"`);
-        this.emit("error", `Failed to spawn agy: powershell exit. stderr=${stderr.slice(0, 200)}`);
-        return;
-      }
-      const pid = Number(out);
-      if (!pid || Number.isNaN(pid)) {
-        this.emit("error", `Failed to spawn agy: parse pid failed (out="${out}")`);
-        return;
-      }
-      this.agyPid = pid;
-      // Persist the PID keyed by cwd so the detached process can be reaped even
-      // after this in-memory owner is lost (dev-server restart orphans it and
-      // its cwd handle blocks session-dir deletion with EBUSY).
-      recordAgyPid(pid, cwd, this.cascadeId);
-      this.writeLog(`spawn pid=${pid} model=${this.spawnModelString ?? "default"}`);
-    } finally {
-      try { fs.unlinkSync(tempScriptPath); } catch { /* */ }
-      if (tempPrimerPath) { try { fs.unlinkSync(tempPrimerPath); } catch { /* */ } }
-    }
-
-    this.emit("status", "connected");
-    // Eager init in background — discover port + reuse auto-cascade + wait for
-    // primer-response to reach IDLE. First send() awaits this.
-    this.initPromise = this.initialize(resumeId).catch(err => {
-      this.writeLog(`init failed: ${err}`);
-      this.emit("error", `Antigravity init failed: ${err}`);
-    });
-  }
-
-  private async initialize(resumeId?: string): Promise<void> {
-    const port = await this.discoverLsPort();
-    if (!port) throw new Error("LS port discovery timeout");
-    this.lsPort = port;
-
-    // 모델 ID 동적 해소 (agy 버전마다 인덱스가 바뀌므로 하드코딩 불가).
-    this.modelKey = await this.resolveModelKeyDynamic(this.spawnModelString);
-
-    if (resumeId) {
-      this.cascadeId = resumeId;
-      // Snapshot existing stepCount as baseline so we don't re-emit history
-      try {
-        const traj = await this.rpc<Record<string, unknown>>("GetCascadeTrajectory", { cascadeId: resumeId });
-        const steps = this.extractItems(traj) || [];
-        this.lastSeenMessageCount = steps.length;
-        this.syncTailBaseline(steps);
-        this.writeLog(`init(resume): baseline stepCount=${steps.length}`);
-      } catch (err) { this.writeLog(`init(resume): baseline snapshot failed: ${err}`); }
-      this.emit("sessionId", resumeId);
+    if (!fs.existsSync(AGY_PATH)) {
+      this.writeLog(`agy not found at ${AGY_PATH}`);
+      this.emit("error", `Antigravity CLI not found: ${AGY_PATH}`);
+      this.emit("status", "disconnected");
       return;
     }
 
-    // New session: poll until agy creates the auto-cascade from --prompt-interactive
-    let foundId: string | null = null;
-    for (let i = 0; i < 30; i++) {
-      try {
-        const all = await this.rpc<{ trajectorySummaries?: Record<string, { createdTime?: string }> }>("GetAllCascadeTrajectories", {});
-        const summaries = all?.trajectorySummaries || {};
-        const ids = Object.keys(summaries);
-        if (ids.length > 0) {
-          // Pick most recently created
-          ids.sort((a, b) => (summaries[b].createdTime || "").localeCompare(summaries[a].createdTime || ""));
-          foundId = ids[0];
-          break;
-        }
-      } catch { /* retry */ }
-      await new Promise(r => setTimeout(r, 500));
+    // 신규 대화: 지시문을 첫 턴(primer)으로 넣고 그 응답은 사용자에게 노출하지 않는다.
+    // resume: primer가 이미 대화 히스토리에 있으므로 다시 넣지 않는다.
+    // stdin 전달이라 커맨드라인 32767자 한계에 따른 primer 절단이 더 이상 없다.
+    const primer = !resumeId && appendSystemPrompt && appendSystemPrompt.trim() ? appendSystemPrompt : null;
+    if (primer) {
+      this.turnQueue.push("primer");
+      this.writeUserLine(primer);
+      this.writeLog(`primer queued (${primer.length} chars)`);
     }
-    if (!foundId) throw new Error("agy did not auto-create cascade within 15s");
-    this.cascadeId = foundId;
-    this.emit("sessionId", foundId);
-    this.writeLog(`init(new): reusing auto-cascade ${foundId}`);
 
-    // Wait for LLM's primer-response to finish, then snapshot stepCount as
-    // baseline so the user only sees responses to their own messages.
-    await this.waitForIdle(foundId);
-    try {
-      const traj = await this.rpc<Record<string, unknown>>("GetCascadeTrajectory", { cascadeId: foundId });
-      const steps = this.extractItems(traj) || [];
-      this.lastSeenMessageCount = steps.length;
-      this.syncTailBaseline(steps);
-      this.writeLog(`init(new): baseline after primer-response stepCount=${steps.length}`);
-    } catch (err) { this.writeLog(`init(new): baseline snapshot failed: ${err}`); }
+    const gen = ++this.generation;
+    this.starting = true;
+    void (async () => {
+      const slug = await this.resolveModelSlug(model);
+      if (gen !== this.generation) return;
+      this.launch(cwd, resumeId, slug);
+      if (!primer) this.markReady();
+    })();
   }
 
-  /** baseline 갱신 시 마지막 step이 assistant 텍스트면 그 stripped 길이를 tail로 동기화.
-   *  0으로 리셋하면 SendUserCascadeMessage 직후 agy가 USER_INPUT step을 아직 안 붙인
-   *  poll race에서 emitNewChunks의 tail-delta 경로가 "이미 baseline으로 제외한 마지막
-   *  assistant 응답 전체"를 새 delta로 오인 emit한다 — 신규 세션 첫 턴에서 primer 턴의
-   *  선행 RP 응답이 실제 응답 앞에 중복 출력된 근본 원인 (slavejourney 2026-07-06). */
-  private syncTailBaseline(steps: Record<string, unknown>[]): void {
-    const last = steps.length > 0 ? steps[steps.length - 1] : null;
-    if (last && this.extractRole(last) === "assistant") {
-      const raw = this.extractText(last) ?? "";
-      this.lastSeenTailLength = this.stripSystemMessageEcho(raw).length;
-    } else {
-      this.lastSeenTailLength = 0;
-    }
-  }
+  private launch(cwd: string, resumeId: string | undefined, slug: string | null): void {
+    const args = [
+      "--input-format", "stream-json",
+      "--output-format", "stream-json",
+      "--dangerously-skip-permissions",
+      "--print-timeout", PRINT_TIMEOUT,
+    ];
+    if (slug) args.push("--model", slug);
+    if (resumeId) args.push("--conversation", resumeId);
+    // stream-json 입력 모드는 명령줄 프롬프트를 거부하지만 `-p`는 인자를 요구한다 → 빈 문자열.
+    args.push("-p", "");
 
-  private async waitForIdle(cascadeId: string, timeoutMs = 5 * 60 * 1000): Promise<void> {
-    // Primary: agy의 명시적 `WaitForConversationFullyIdle`. Fallback: 휴리스틱.
-    // pollLoop와 같은 race 모델 (parent 메서드 주석 참조).
-    const startedAt = Date.now();
-    let fullyIdleSettled = false;
-    let fullyIdleResolved = false;
-    this.rpc<unknown>(
-      "WaitForConversationFullyIdle",
-      { conversationId: cascadeId },
-      timeoutMs,
-    ).then(() => {
-      fullyIdleSettled = true;
-      fullyIdleResolved = true;
-      this.writeLog(`waitForIdle(primer): FullyIdle resolved after ${((Date.now() - startedAt) / 1000).toFixed(1)}s`);
-    }).catch((err) => {
-      fullyIdleSettled = true;
-      this.writeLog(`waitForIdle(primer): FullyIdle failed (heuristic fallback): ${err}`);
+    const env = { ...process.env } as NodeJS.ProcessEnv;
+    for (const key of Object.keys(env)) {
+      if (key.startsWith("CLAUDECODE") || key.startsWith("CLAUDE_CODE")) {
+        delete (env as Record<string, string | undefined>)[key];
+      }
+    }
+    Object.assign(env, this.mcpEnv);
+
+    this.writeLog(`[start] agy ${args.map(a => (a === "" ? '""' : a)).join(" ")} cwd=${cwd}`);
+    const proc = spawn(AGY_PATH, args, { cwd, env, stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
+    this.proc = proc;
+    this.starting = false;
+    if (proc.pid) recordAgyPid(proc.pid, cwd, this.conversationId);
+
+    const stdoutDecoder = new StringDecoder("utf-8");
+    const stderrDecoder = new StringDecoder("utf-8");
+    proc.stdout?.on("data", (chunk: Buffer) => this.handleStdout(stdoutDecoder.write(chunk)));
+    proc.stdout?.on("end", () => {
+      this.handleStdout(stdoutDecoder.end());
+      if (this.buffer.trim()) { const line = this.buffer; this.buffer = ""; this.parseLine(line); }
+    });
+    proc.stderr?.on("data", (chunk: Buffer) => {
+      const text = stderrDecoder.write(chunk);
+      if (text) this.writeLog(`[stderr] ${text.trimEnd()}`);
+    });
+    proc.stdin?.on("error", (err) => this.writeLog(`[stdin error] ${err.message}`));
+
+    proc.on("error", (err) => {
+      this.writeLog(`[spawn error] ${err.message}`);
+      this.emit("error", `Failed to start agy: ${err.message}`);
+      this.emit("status", "disconnected");
     });
 
-    const deadline = startedAt + timeoutMs;
-    let consecutiveIdle = 0;
-    let everSawRunning = false;
-    while (Date.now() < deadline) {
-      if (fullyIdleResolved) return;
-      try {
-        const all = await this.rpc<{ trajectorySummaries?: Record<string, { status?: string }> }>("GetAllCascadeTrajectories", {});
-        const status = all?.trajectorySummaries?.[cascadeId]?.status;
-        if (status === "CASCADE_RUN_STATUS_RUNNING") {
-          everSawRunning = true;
-          consecutiveIdle = 0;
-        } else if (status) {
-          consecutiveIdle++;
-          if (fullyIdleSettled && everSawRunning && consecutiveIdle >= 3) {
-            this.writeLog(`waitForIdle(primer): cascade IDLE (heuristic fallback) after ${((Date.now() - startedAt) / 1000).toFixed(1)}s status=${status}`);
-            return;
-          }
-        }
-      } catch { /* retry */ }
-      await new Promise(r => setTimeout(r, 1000));
-    }
-    this.writeLog(`waitForIdle(primer): timeout after ${timeoutMs / 1000}s, proceeding anyway`);
+    proc.on("close", (code) => {
+      if (this.proc !== proc) return; // kill() 후 재spawn된 이전 proc
+      this.writeLog(`[exit] code=${code}`);
+      forgetAgyPid(proc.pid ?? null);
+      this.proc = null;
+      this.ready = false;
+      this.turnQueue = [];
+      this.resolveReadyWaiters(false);
+      this.emit("exit", code);
+      this.emit("status", "disconnected");
+    });
+
+    for (const line of this.pendingLines.splice(0)) this.writeRaw(line);
+    this.emit("status", this.turnQueue.length > 0 && this.turnQueue[0] !== "primer" ? "streaming" : "connected");
   }
 
   send(text: string): void {
-    void (async () => {
-      if (this.initPromise) await this.initPromise;
-      return this._sendAsync(text);
-    })().catch(err => {
-      this.emit("error", String(err));
-      this.emit("status", "connected");
-    });
+    if (!this.proc && !this.starting) {
+      this.emit("error", "AntigravityProcess not running — spawn() first");
+      return;
+    }
+    this.turnQueue.push("user");
+    this.spontaneousTurn = false;
+    this.emit("status", "streaming");
+    this.writeUserLine(text);
   }
 
-  /** 턴 중 개입 — 진행 중인 cascade에 사용자 메시지를 큐잉한다.
-   *  send()와 달리 poll loop teardown / pre-send baseline 스냅샷 / startPollLoop
-   *  재시작을 하지 않는다 — 그걸 하면 진행 중인 턴이 종료 처리되어버린다.
-   *  agy는 실행 중 도착한 user message를 queued user input step으로 쌓았다가
-   *  현재 step 뒤에 소비한다(binary RPC: SendAllQueuedMessages /
-   *  DeleteQueuedUserInputStep). 큐잉된 step은 role=user라 emitNewChunks가
-   *  걸러내므로 사용자 메시지가 assistant로 에코되지 않는다. */
+  /** 턴 중 개입 — agy는 턴 진행 중 stdin으로 들어온 메시지를 큐잉해 현재 턴 직후 다음 턴으로
+   *  실행한다(2026-09-14 라이브 확인). handleResult가 큐에 user 턴이 남아 있으면 `result`를
+   *  내보내지 않으므로, 소비자에게는 개입 메시지까지 한 턴으로 보인다. */
   steer(text: string): void {
-    void (async () => {
-      if (this.initPromise) await this.initPromise;
-      if (!this.lsPort || !this.cascadeId) {
-        this.emit("error", "AntigravityProcess not initialized — steer ignored");
-        return;
-      }
-      const plannerConfig: Record<string, unknown> = {
-        plannerTypeConfig: { conversational: {} },
-      };
-      if (this.modelKey != null) {
-        plannerConfig.requestedModel = { model: this.modelKey };
-      }
-      await this.rpc("SendUserCascadeMessage", {
-        cascadeId: this.cascadeId,
-        items: [{ text }],
-        cascadeConfig: { plannerConfig },
-      });
-      this.writeLog(`steer: queued user message (${text.length} chars) into running cascade`);
-    })().catch(err => {
-      this.emit("error", `steer failed: ${err}`);
-    });
+    this.send(text);
   }
 
   sendToolResult(_toolUseId: string, _content: string): void {
     this.writeLog("sendToolResult not implemented — AskUserQuestion is Claude-only for now");
   }
 
-  private async _sendAsync(text: string): Promise<void> {
-    if (!this.lsPort || !this.cascadeId) {
-      this.emit("error", "AntigravityProcess not initialized — call spawn() first and wait for init");
+  respawn(): void {
+    if (!this.spawnCwd) return;
+    this.spawn(this.spawnCwd, this.conversationId || undefined, this.spawnModelString);
+  }
+
+  isRunning(): boolean {
+    return this.starting || this.proc !== null;
+  }
+
+  get running(): boolean {
+    return this.isRunning();
+  }
+
+  /** primer 턴 완료(또는 primer 없는 기동 완료)까지 대기. primer 응답은 20초를 넘길 수 있으나
+   *  send()는 기동 전·primer 진행 중에도 stdin에 큐잉되므로 false여도 전송은 안전하다. */
+  async waitForReady(timeoutMs = 60_000): Promise<boolean> {
+    if (this.ready && this.proc) return true;
+    if (!this.isRunning()) return false;
+    return new Promise<boolean>((resolve) => {
+      let settled = false;
+      const finish = (ok: boolean) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(ok);
+      };
+      const timer = setTimeout(() => finish(false), timeoutMs);
+      timer.unref?.();
+      this.readyWaiters.push(finish);
+    });
+  }
+
+  kill(): void {
+    this.generation++;
+    this.starting = false;
+    const proc = this.proc;
+    this.proc = null;
+    this.ready = false;
+    this.turnQueue = [];
+    this.pendingLines = [];
+    this.spontaneousTurn = false;
+    this.resolveReadyWaiters(false);
+    if (proc) {
+      proc.stdout?.removeAllListeners();
+      proc.stderr?.removeAllListeners();
+      proc.removeAllListeners();
+      if (proc.pid) {
+        try { execSync(`taskkill /T /F /PID ${proc.pid}`, { stdio: "pipe" }); } catch { /* already exited */ }
+        forgetAgyPid(proc.pid);
+      }
+      this.writeLog(`killed pid=${proc.pid}`);
+      this.emit("status", "disconnected");
+    }
+    if (this.logStream) { try { this.logStream.end(); } catch { /* */ } this.logStream = null; }
+  }
+
+  // --- stdin ---
+
+  private writeUserLine(text: string): void {
+    const line = JSON.stringify({ event: "user", message: { content: [{ type: "text", text }] } });
+    if (this.proc) this.writeRaw(line);
+    else this.pendingLines.push(line);
+  }
+
+  private writeRaw(line: string): void {
+    if (!this.proc?.stdin?.writable) {
+      this.writeLog(`[send dropped — stdin not writable] ${line.slice(0, 200)}`);
+      return;
+    }
+    this.writeLog(`[send] ${line.length > 500 ? `${line.slice(0, 500)}… (${line.length} chars)` : line}`);
+    this.proc.stdin.write(line + "\n");
+  }
+
+  private markReady(): void {
+    if (this.ready) return;
+    this.ready = true;
+    this.resolveReadyWaiters(true);
+    if (this.turnQueue.length === 0) this.emit("status", "connected");
+  }
+
+  private resolveReadyWaiters(ok: boolean): void {
+    for (const w of this.readyWaiters.splice(0)) w(ok);
+  }
+
+  // --- stdout ---
+
+  private handleStdout(chunk: string): void {
+    if (!chunk) return;
+    this.buffer += chunk;
+    const lines = this.buffer.split("\n");
+    this.buffer = lines.pop() || "";
+    for (const line of lines) this.parseLine(line);
+  }
+
+  private parseLine(line: string): void {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+    this.writeLog(`[recv] ${trimmed.length > 2000 ? `${trimmed.slice(0, 2000)}…` : trimmed}`);
+    let msg: Record<string, unknown>;
+    try { msg = JSON.parse(trimmed) as Record<string, unknown>; }
+    catch { return; }
+
+    switch (msg.event) {
+      case "init": this.handleInit(msg.init as Record<string, unknown> | undefined, msg.conversation_id); break;
+      case "step_update": this.handleStepUpdate((msg.step_update || {}) as Record<string, unknown>); break;
+      case "result": this.handleResult((msg.result || {}) as Record<string, unknown>); break;
+      default: break;
+    }
+  }
+
+  private handleInit(_init: Record<string, unknown> | undefined, conversationId: unknown): void {
+    if (typeof conversationId !== "string" || !conversationId) return;
+    this.conversationId = conversationId;
+    if (this.proc?.pid) recordAgyPid(this.proc.pid, this.spawnCwd, conversationId);
+    this.emit("sessionId", conversationId);
+  }
+
+  private handleStepUpdate(su: Record<string, unknown>): void {
+    // 서브에이전트 등 다른 대화의 step은 무시한다.
+    if (typeof su.conversation_id === "string" && this.conversationId && su.conversation_id !== this.conversationId) return;
+
+    const current = this.turnQueue[0];
+    if (current === "primer") return;
+    if (current === undefined && !this.spontaneousTurn) {
+      // 턴이 끝난 뒤 async 도구 완료로 모델이 스스로 깨어난 턴 — 라이브로 노출한다.
+      this.spontaneousTurn = true;
+      this.writeLog("spontaneous turn started (async wake-up)");
+      this.emit("status", "streaming");
+    }
+
+    if (su.step_type !== "agent_response" || typeof su.text_delta !== "string" || !su.text_delta) return;
+    const index = typeof su.step_index === "number" ? su.step_index : -1;
+    const entry = this.stepText.get(index) ?? { raw: "", emitted: 0 };
+    entry.raw += su.text_delta;
+    const visible = this.stripSystemMessageEcho(entry.raw);
+    if (visible.length > entry.emitted) {
+      const delta = visible.slice(entry.emitted);
+      entry.emitted = visible.length;
+      this.emit("message", { type: "assistant", subtype: "text_delta", message: { role: "assistant", content: delta } });
+    }
+    this.stepText.set(index, entry);
+  }
+
+  private handleResult(result: Record<string, unknown>): void {
+    this.stepText.clear();
+    const kind = this.turnQueue.shift();
+    const failed = result.status === "ERROR";
+    const errText = typeof result.error === "string" ? result.error : "";
+
+    if (kind === "primer") {
+      this.writeLog(`primer turn done status=${result.status}${errText ? ` error=${errText}` : ""}`);
+      this.markReady();
       return;
     }
 
-    // idle-watch 중단 + in-flight pollLoop(=idle-watch가 재진입한 wake-up turn) 정리.
-    // 같은 cascade에 두 poll loop가 동시에 돌면 lastSeenMessageCount race로 emit이
-    // 꼬이므로, 새 user turn을 시작하기 전에 직렬화한다. polling=false로 신호 후
-    // 그 loop가 result를 emit하고 끝나길 기다린다(짧음 — wake-up turn은 보통 즉시 종료).
-    this.idleWatching = false;
-    const inflight = this.pollLoopPromise;
-    if (inflight) {
-      this.polling = false;
-      try { await inflight; } catch { /* */ }
-      // 그 loop의 .finally가 idle-watch를 재무장했을 수 있으니 다시 해제(레이스 차단).
-      // 재무장된 watch는 sleep 중이며, 다음 깨어남에서 이 플래그를 보고 즉시 break한다.
-      this.idleWatching = false;
-    }
-
-    this.emit("status", "streaming");
-
-    // Wake-up turn skip: 이전 turn 종료 후 idle 중에 agy 내부가 async 도구 task 완료
-    // (예: comfyui_generate async 이미지 생성 완료) event를 cascade에 자동 inject하면,
-    // 빈 USER_INPUT step으로 모델이 깨어나 자동 PLANNER_RESPONSE를 만든다(`[이미지 생성
-    // 완료] ...` 같은 메타 acknowledge). 그 step들은 사용자가 의도한 turn이 아니므로
-    // 노출하지 않는다. send 직전 trajectory snapshot → 그 사이 추가된 step 개수만큼
-    // baseline을 끌어올려 emitNewChunks가 skip하도록 한다.
-    try {
-      const traj = await this.rpc<Record<string, unknown>>("GetCascadeTrajectory", { cascadeId: this.cascadeId });
-      const steps = this.extractItems(traj) || [];
-      if (steps.length > this.lastSeenMessageCount) {
-        this.writeLog(`pre-send: dropping ${steps.length - this.lastSeenMessageCount} wake-up step(s) from baseline (was ${this.lastSeenMessageCount}, now ${steps.length})`);
-        this.lastSeenMessageCount = steps.length;
-        this.syncTailBaseline(steps);
-      }
-    } catch (err) {
-      this.writeLog(`pre-send snapshot failed: ${err}`);
-    }
-
-    // No prepend — primer is already the first USER_INPUT step of the cascade
-    // via --prompt-interactive at spawn time. User messages are sent as-is.
-    // Chunk.text는 nested Text message — `{ content: string }`로 wrap해야 한다.
-    // 이전엔 raw string으로 보냈는데 agy가 schema mismatch로 deserialize 실패 →
-    // 모델 context에 user text가 안 들어가서 모델이 user 의도 모른 채 자율 진행 →
-    // RP 페르소나는 자연스러워 보이지만 일반 페르소나는 환각 응답. binary strings의
-    // `Chunk_Text` 패턴(protoc-gen-go nested type naming)이 단서. agy CLI native input과
-    // 비교 검증 완료 (2026-05-27).
-    const plannerConfig: Record<string, unknown> = {
-      plannerTypeConfig: { conversational: {} },
-    };
-    // modelKey가 해소됐을 때만 명시 — 실패(null) 시 생략하면 agy default 모델로 동작.
-    // model은 GetAvailableModels의 키 문자열 전체("MODEL_PLACEHOLDER_M37")를 그대로 전달.
-    if (this.modelKey != null) {
-      plannerConfig.requestedModel = { model: this.modelKey };
-    }
-    // SendUserCascadeMessageRequest.items 는 TextOrScopeItem[] (agy proto codeium_common_pb).
-    // user text는 TextOrScopeItem.text(string) oneof 필드에 담는다. 이전엔
-    // items[].chunk.text.content 로 보냈는데 chunk 는 TextOrScopeItem 의 다른 oneof 멤버라
-    // agy 가 무시 → items 가 비어 USER_REQUEST 빈 채로 turn 진행 → 모델이 입력을 못 받음.
-    // (agy 1.0.5에서 확인. GetText/SetText/GetChunk/GetItem 메서드 + proto rawDesc로 검증.)
-    await this.rpc("SendUserCascadeMessage", {
-      cascadeId: this.cascadeId,
-      items: [{ text }],
-      cascadeConfig: { plannerConfig },
-    });
-
-    this.startPollLoop();
-  }
-
-  /** pollLoop을 시작하고 promise를 추적한다. 턴이 자연 종료되면 idle-watch를 재무장해
-   *  async wake-up step을 계속 감시한다. _sendAsync(새 user turn)와 idle-watch(재진입)
-   *  양쪽에서 호출된다. */
-  private startPollLoop(spontaneous = false): void {
-    this.idleWatching = false; // 턴이 idle-watch보다 우선
-    this.currentTurnSpontaneous = spontaneous;
-    this.polling = true;
-    this.pollLoopPromise = this.pollLoop()
-      .catch(err => {
-        this.emit("error", `Polling failed: ${err}`);
-        this.polling = false;
-        this.emit("status", "connected");
-      })
-      .finally(() => {
-        this.pollLoopPromise = null;
-        // 턴 종료 후 idle 구간 감시 시작(살아있을 때만). 비-차단.
-        if (this.cascadeId && this.lsPort) void this.startIdleWatch();
+    if (failed && errText) {
+      // 모델/cascade 에러를 침묵 대신 본문으로 노출 (디버깅·모델 전환 판단용).
+      this.emit("message", {
+        type: "assistant",
+        subtype: "text_delta",
+        message: { role: "assistant", content: `\n\n[Antigravity 모델 에러]\n${errText}\n` },
       });
-  }
-
-  /** 턴 종료 후 idle 구간에 trajectory step 수를 가볍게(GetAllCascadeTrajectories,
-   *  ~2.5KB) 폴링한다. async 도구 완료로 agy가 wake-up step을 주입해 step 수가 늘면
-   *  즉시 pollLoop을 재진입해 그 응답을 live emit한다 — 사용자의 다음 입력까지 묵혀
-   *  두지 않는다. emitNewChunks가 stripSystemMessageEcho로 순수 메타 echo는 걸러내므로
-   *  실제 내러티브만 노출된다. 무한 폴링 방지를 위해 turn당 max window로 제한하고,
-   *  새 user turn(_sendAsync)·kill·재진입 시 즉시 해제한다. */
-  private async startIdleWatch(): Promise<void> {
-    if (process.env.ANTIGRAVITY_IDLE_WATCH === "false") return;
-    if (!this.cascadeId || !this.lsPort || this.polling) return;
-    const INTERVAL_MS = 4000;
-    const MAX_WINDOW_MS = 15 * 60 * 1000; // 긴 async 영상 생성(wan-i2v 등)까지 커버
-    const MAX_CONSECUTIVE_FAILS = 3;      // LS가 죽었으면 빠르게 포기
-    const watchStart = Date.now();
-    let consecutiveFails = 0;
-    this.idleWatching = true;
-    this.writeLog(`idle-watch: armed (baseline steps=${this.lastSeenMessageCount})`);
-    while (this.idleWatching && this.cascadeId && !this.polling && this.isRunning()) {
-      await new Promise(r => setTimeout(r, INTERVAL_MS));
-      if (!this.idleWatching || this.polling || !this.cascadeId || !this.isRunning()) break;
-      if (Date.now() - watchStart > MAX_WINDOW_MS) {
-        this.writeLog(`idle-watch: window elapsed (${MAX_WINDOW_MS / 1000}s) — stopping`);
-        break;
-      }
-      let stepCount: number | undefined;
-      try {
-        const all = await this.rpc<{ trajectorySummaries?: Record<string, { stepCount?: number }> }>(
-          "GetAllCascadeTrajectories", {}
-        );
-        stepCount = all.trajectorySummaries?.[this.cascadeId]?.stepCount;
-        consecutiveFails = 0;
-      } catch (err) {
-        if (++consecutiveFails >= MAX_CONSECUTIVE_FAILS) {
-          this.writeLog(`idle-watch: ${consecutiveFails} consecutive status-check failures — stopping (${err})`);
-          break;
-        }
-        this.writeLog(`idle-watch: status check failed (${consecutiveFails}/${MAX_CONSECUTIVE_FAILS}): ${err}`);
-        continue;
-      }
-      if (typeof stepCount === "number" && stepCount > this.lastSeenMessageCount) {
-        this.writeLog(`idle-watch: async wake-up detected (steps ${this.lastSeenMessageCount} → ${stepCount}) — re-entering turn for live emit`);
-        this.idleWatching = false;
-        this.emit("status", "streaming");
-        this.startPollLoop(true); // 자발적 wake-up turn을 live emit하고 끝나면 idle-watch 재무장
-        return;
-      }
-    }
-    this.idleWatching = false;
-  }
-
-  private async pollLoop(): Promise<void> {
-    const POLL_INTERVAL_MS = 700;
-    const MAX_TURN_DURATION_MS = 15 * 60 * 1000; // 전체 max 15분 (긴 sub-agent chain 대응)
-    const STATUS_CHECK_EVERY = 2;
-    const IDLE_GRACE_TICKS = 5;
-    const TRAJECTORY_STABLE_TICKS = 5;
-    const ERROR_EXIT_STABLE_TICKS = 3; // ERROR로 끝나면 더 빨리 종료
-    const STUCK_TIMEOUT_MS = 5 * 60 * 1000; // trajectory 변화 없이 5분 stuck이면 강제 종료
-    const turnStart = Date.now();
-    let iter = 0;
-    let lastTrajKey = "";
-    let consecutiveStable = 0;
-    let consecutiveIdle = 0;
-    let everSawRunning = false;
-    let lastEndedOnError = false;
-
-    // Primary turn-complete signal: agy의 명시적 `WaitForConversationFullyIdle` RPC.
-    // 휴리스틱(idle+stable)은 background task pending 시점(예: comfyui_generate async
-    // 호출 후 cascade가 잠깐 IDLE 갔다가 task 완료 후 PLANNER_RESPONSE 추가 출력하는
-    // 패턴)에 turn complete로 오판해서 delayed RP 응답을 놓쳤음. FullyIdle은 agy 내부
-    // 로직이 sub-agent/background까지 다 끝났는지 판단해 응답 → 휴리스틱보다 정확.
-    // FullyIdle이 fail하거나 schema 안 맞으면 휴리스틱이 fallback (둘 다 turn 종료 트리거).
-    // ConversationKey는 binary proto schema. cascadeId 단일 string이 아니라 메시지 wrap.
-    let fullyIdleSettled = false;
-    let fullyIdleResolved = false;
-    this.rpc<unknown>(
-      "WaitForConversationFullyIdle",
-      { conversationId: this.cascadeId },
-      MAX_TURN_DURATION_MS,
-    ).then(() => {
-      fullyIdleSettled = true;
-      fullyIdleResolved = true;
-      this.writeLog(`WaitForConversationFullyIdle: resolved`);
-    }).catch((err) => {
-      fullyIdleSettled = true;
-      this.writeLog(`WaitForConversationFullyIdle: failed (falling back to heuristic): ${err}`);
-    });
-
-    while (this.polling && this.cascadeId) {
-      if (Date.now() - turnStart > MAX_TURN_DURATION_MS) {
-        this.writeLog(`poll: turn timeout after ${MAX_TURN_DURATION_MS / 1000}s`);
-        break;
-      }
-
-      // Explicit fully-idle 신호가 먼저 도착하면 즉시 종료 (휴리스틱 race 무시).
-      if (fullyIdleResolved) {
-        this.writeLog(`[poll #${iter}] turn complete via WaitForConversationFullyIdle`);
-        try {
-          const finalConv = await this.rpc<Record<string, unknown>>("GetCascadeTrajectory", { cascadeId: this.cascadeId });
-          this.emitNewChunks(finalConv);
-        } catch { /* */ }
-        break;
-      }
-
-      let conv: Record<string, unknown>;
-      try {
-        conv = await this.rpc<Record<string, unknown>>("GetCascadeTrajectory", { cascadeId: this.cascadeId });
-      } catch (err) {
-        this.writeLog(`poll error: ${err}`);
-        await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
-        continue;
-      }
-
-      const dbgSteps = this.extractItems(conv);
-      // trajectory의 step 카운트 + 마지막 step body size를 같이 추적
-      // — sub-agent chain 마지막 PLANNER_RESPONSE의 response가 batch로 채워질 때
-      // step.length는 안 변해도 마지막 step body가 커지는 패턴을 잡기 위함
-      const lastStep = dbgSteps && dbgSteps.length > 0 ? dbgSteps[dbgSteps.length - 1] : null;
-      const lastStepSize = lastStep ? JSON.stringify(lastStep).length : 0;
-      lastEndedOnError = lastStep?.type === "CORTEX_STEP_TYPE_ERROR_MESSAGE";
-      const trajKey = `${dbgSteps?.length ?? 0}:${dbgSteps?.map(s => s.type).join(",") ?? ""}|tail=${lastStepSize}`;
-      if (trajKey !== lastTrajKey) {
-        this.writeLog(`[poll #${iter}] steps=${dbgSteps?.length ?? 0} tail=${lastStepSize}b lastType=${lastStep?.type ?? "n/a"}`);
-        lastTrajKey = trajKey;
-        consecutiveStable = 0;
-      } else {
-        consecutiveStable++;
-      }
-
-      this.emitNewChunks(conv);
-
-      iter++;
-      if (iter % STATUS_CHECK_EVERY === 0) {
-        try {
-          const all = await this.rpc<{ trajectorySummaries?: Record<string, { status?: string; stepCount?: number }> }>("GetAllCascadeTrajectories", {});
-          const status = all.trajectorySummaries?.[this.cascadeId]?.status;
-          const isFinishedStatus =
-            status === "CASCADE_RUN_STATUS_SUCCESS" ||
-            status === "CASCADE_RUN_STATUS_FAILED" ||
-            status === "CASCADE_RUN_STATUS_CANCELLED";
-
-          if (status === "CASCADE_RUN_STATUS_RUNNING") {
-            everSawRunning = true;
-            consecutiveIdle = 0;
-          } else if (status) {
-            consecutiveIdle++;
-            this.writeLog(`[poll #${iter}] status=${status} idle=${consecutiveIdle}/${IDLE_GRACE_TICKS} traj-stable=${consecutiveStable}/${TRAJECTORY_STABLE_TICKS} lastErr=${lastEndedOnError}`);
-            // 정상 흐름: RUNNING 거친 적 있거나 명시적 종료 상태일 때 idle+stable 충족
-            const normalExit =
-              (everSawRunning || isFinishedStatus) &&
-              consecutiveIdle >= IDLE_GRACE_TICKS &&
-              consecutiveStable >= TRAJECTORY_STABLE_TICKS;
-            // 에러 종료: cascade가 RUNNING 없이 ERROR_MESSAGE로 즉사한 케이스
-            // (Pro Low가 도구 호출 invalid_args로 죽거나 모델이 초기 reject한 경우)
-            // → 5분 STUCK_TIMEOUT 대기하지 않고 빠르게 종료
-            const errorExit =
-              lastEndedOnError &&
-              consecutiveIdle >= IDLE_GRACE_TICKS &&
-              consecutiveStable >= ERROR_EXIT_STABLE_TICKS;
-            // 휴리스틱은 fully-idle RPC가 fail로 settle된 후에만 활성화. fully-idle이
-            // 아직 pending이면(= 정상 동작 중) 휴리스틱 무시하고 polling 계속 — 그래야
-            // background task로 잠깐 IDLE 갔다가 PLANNER_RESPONSE 추가하는 패턴을 안 놓침.
-            if (fullyIdleSettled && (normalExit || errorExit)) {
-              this.writeLog(`[poll #${iter}] cascade ${errorExit ? "error-exit" : "idle+stable"} (heuristic fallback) — turn complete`);
-              try {
-                const finalConv = await this.rpc<Record<string, unknown>>("GetCascadeTrajectory", { cascadeId: this.cascadeId });
-                this.emitNewChunks(finalConv);
-              } catch { /* */ }
-              break;
-            }
-          }
-        } catch (err) {
-          this.writeLog(`status check error: ${err}`);
-        }
-      }
-
-      // Safety: trajectory 변화 없이 STUCK_TIMEOUT_MS 경과하면 강제 종료
-      if (consecutiveStable * POLL_INTERVAL_MS > STUCK_TIMEOUT_MS) {
-        this.writeLog(`[poll #${iter}] no trajectory change for ${STUCK_TIMEOUT_MS / 1000}s, forcing turn end`);
-        break;
-      }
-
-      await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
     }
 
-    this.polling = false;
-    this.emit("message", { type: "result", spontaneous: this.currentTurnSpontaneous });
+    if (kind === undefined) {
+      this.spontaneousTurn = false;
+      this.emit("message", { type: "result", spontaneous: true });
+      this.emit("status", "connected");
+      return;
+    }
+
+    // 개입(steer)으로 큐잉된 user 턴이 남아 있으면 논리적으로 같은 턴이다 — 마지막에 한 번만 result.
+    if (this.turnQueue.length > 0) return;
+    this.emit("message", { type: "result" });
     this.emit("status", "connected");
-  }
-
-  private emitNewChunks(conv: Record<string, unknown>): boolean {
-    const items = this.extractItems(conv);
-    if (!items) return false;
-
-    if (items.length > this.lastSeenMessageCount) {
-      for (let i = this.lastSeenMessageCount; i < items.length; i++) {
-        const it = items[i];
-        const role = this.extractRole(it);
-        if (role === "assistant") {
-          const raw = this.extractText(it);
-          const content = raw ? this.stripSystemMessageEcho(raw) : undefined;
-          if (content) {
-            this.emit("message", {
-              type: "assistant",
-              subtype: "text_delta",
-              message: { role: "assistant", content },
-            });
-          }
-        } else if (role === "error") {
-          // Pro Low 등 모델이 도구 호출 invalid_args로 cascade를 죽인 경우,
-          // 침묵 대신 에러 본문을 사용자에게 노출한다 (디버깅·모델 전환 판단용).
-          const errText = this.extractText(it);
-          if (errText) {
-            this.emit("message", {
-              type: "assistant",
-              subtype: "text_delta",
-              message: { role: "assistant", content: `\n\n[Antigravity 모델 에러]\n${errText}\n` },
-            });
-          }
-        }
-      }
-      this.lastSeenMessageCount = items.length;
-      const lastRaw = this.extractText(items[items.length - 1]) ?? "";
-      this.lastSeenTailLength = this.stripSystemMessageEcho(lastRaw).length;
-      return true;
-    }
-
-    if (items.length > 0 && items.length === this.lastSeenMessageCount) {
-      const last = items[items.length - 1];
-      if (this.extractRole(last) === "assistant") {
-        const fullRaw = this.extractText(last) ?? "";
-        const fullText = this.stripSystemMessageEcho(fullRaw);
-        if (fullText.length > this.lastSeenTailLength) {
-          const delta = fullText.slice(this.lastSeenTailLength);
-          this.emit("message", {
-            type: "assistant",
-            subtype: "text_delta",
-            message: { role: "assistant", content: delta },
-          });
-          this.lastSeenTailLength = fullText.length;
-          return true;
-        }
-      }
-    }
-    return false;
   }
 
   /** Flash 등이 SYSTEM_MESSAGE 본문(`An event has occurred. See the following message: ...`)을
@@ -694,10 +436,8 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
     // Sub-agent 메타 인사말 (real narrative 뒤에 trailing으로 붙는 경우)
     const TRAILING_META = /\s*(Oceania,?\s*)?I am (now\s+)?ready to present[\s\S]*?(Let'?s submit it\.?)?\s*$/i;
     // 비동기 comfyui_generate 완료 system event를 모델이 본문에 echo한 메타 텍스트.
-    // wake-up turn 자체는 _sendAsync의 pre-send snapshot이 baseline으로 끌어올려서
-    // 차단하지만(primary defense), 사용자 입력 turn 중간에 task 완료 event가 도착해
-    // 같은 PLANNER_RESPONSE에 prefix/suffix로 박힌 경우 — 그리고 모델이 paraphrase로
-    // 출력한 경우 — 까지 잡는 안전망.
+    // 사용자 입력 turn 중간에 task 완료 event가 도착해 같은 응답에 prefix/suffix로 박힌 경우
+    // — 그리고 모델이 paraphrase로 출력한 경우 — 까지 잡는 안전망.
     // 두 종결구가 보통 함께 등장(`...로드될 것입니다. 사용자의 다음 선택 또는 입력을
     // 기다립니다.`)하지만 짧은 형태(`로드될 것입니다.` 단독)로도 끝난다. lazy match가
     // alternation의 첫 hit에서 멈추기 때문에 긴 형태를 먼저 strip해야 trailing이 남지
@@ -717,107 +457,10 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
       .trim();
   }
 
-  private extractItems(conv: Record<string, unknown>): Record<string, unknown>[] | null {
-    // agy 1.0.0 GetCascadeTrajectory 응답: { trajectory: { steps: [...] } }
-    const traj = conv.trajectory as Record<string, unknown> | undefined;
-    if (traj && Array.isArray(traj.steps)) return traj.steps as Record<string, unknown>[];
-    // 다른 LS 버전 fallback
-    if (Array.isArray(conv.items)) return conv.items as Record<string, unknown>[];
-    if (Array.isArray(conv.messages)) return conv.messages as Record<string, unknown>[];
-    return null;
-  }
-
-  private extractRole(item: Record<string, unknown>): string | undefined {
-    // agy 1.0.0 step.type 으로 user/assistant 구분
-    const type = item.type as string | undefined;
-    if (type === "CORTEX_STEP_TYPE_USER_INPUT") return "user";
-    if (type === "CORTEX_STEP_TYPE_PLANNER_RESPONSE" || type === "CORTEX_STEP_TYPE_ASSISTANT_RESPONSE" || type === "CORTEX_STEP_TYPE_MODEL_OUTPUT") return "assistant";
-    if (type === "CORTEX_STEP_TYPE_ERROR_MESSAGE") return "error";
-    // legacy
-    const r1 = item.role as string | undefined;
-    const r2 = (item.message as Record<string, unknown> | undefined)?.role as string | undefined;
-    return r1 || r2;
-  }
-
-  private extractText(item: Record<string, unknown>): string | undefined {
-    const pr = item.plannerResponse as Record<string, unknown> | undefined;
-    if (pr) {
-      // PLANNER_RESPONSE는 final assistant text(response/modifiedResponse)만 사용자에게 emit한다.
-      // Flash 등 일부 모델은 thinking 필드에 영어 ReAct 사고 trace를 길게 출력하는데,
-      // 이걸 placeholder로 emit하면 사용자 채팅에 thinking + 도구 호출 마커가 누적되어
-      // (a) <dialog_response> 형식이 깨지고 (b) 인증 토큰 등 민감 정보가 노출된다.
-      // 다른 provider(Claude/Codex/Gemini/Kimi)와 동일하게 final 텍스트만 노출한다.
-      if (typeof pr.response === "string" && pr.response.length > 0) return pr.response;
-      if (typeof pr.modifiedResponse === "string" && pr.modifiedResponse.length > 0) return pr.modifiedResponse;
-      return undefined;
-    }
-    // legacy / fallback candidates
-    const candidates: unknown[] = [
-      (item.assistantResponse as Record<string, unknown> | undefined)?.text,
-      (item.modelOutput as Record<string, unknown> | undefined)?.text,
-      (item.response as Record<string, unknown> | undefined)?.text,
-      // agy 1.0.x ERROR_MESSAGE step: step.error (string) — 모델이 cascade를 죽인 직접 사유
-      typeof item.error === "string" ? item.error : undefined,
-      (item.errorMessage as Record<string, unknown> | undefined)?.error
-        && ((item.errorMessage as Record<string, unknown>).error as Record<string, unknown>).userErrorMessage,
-      item.content,
-      (item.message as Record<string, unknown> | undefined)?.content,
-    ];
-    for (const c of candidates) {
-      if (typeof c === "string" && c.length > 0) return c;
-      if (Array.isArray(c)) {
-        const texts = c
-          .map(x => (typeof x === "object" && x !== null && "text" in x ? (x as { text: unknown }).text : null))
-          .filter((t): t is string => typeof t === "string");
-        if (texts.length) return texts.join("");
-      }
-    }
-    return undefined;
-  }
-
-  respawn(): void {
-    const cid = this.cascadeId;
-    this.spawn(this.spawnCwd, cid || undefined, this.spawnModelString);
-  }
-
-  isRunning(): boolean {
-    return this.agyPid !== null;
-  }
-
-  get running(): boolean {
-    return this.agyPid !== null;
-  }
-
-  async waitForReady(timeoutMs = 60000): Promise<boolean> {
-    if (!this.initPromise) return this.isRunning();
-    try {
-      await Promise.race([
-        this.initPromise,
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("waitForReady timeout")), timeoutMs)),
-      ]);
-      return this.isRunning() && !!this.cascadeId;
-    } catch {
-      return false;
-    }
-  }
-
-  kill(): void {
-    if (!this.agyPid) return;
-    try { execSync(`taskkill /T /F /PID ${this.agyPid}`, { stdio: "pipe" }); } catch { /* */ }
-    this.writeLog(`killed pid=${this.agyPid}`);
-    forgetAgyPid(this.agyPid);
-    this.agyPid = null;
-    this.lsPort = null;
-    this.polling = false;
-    this.idleWatching = false;
-    this.initPromise = null;
-    this.emit("status", "disconnected");
-    if (this.logStream) { try { this.logStream.end(); } catch { /* */ } this.logStream = null; }
-  }
+  // --- model ---
 
   /** 모델 선택 문자열(antigravity-flash[-medium|-low]/-pro[-low])을 agy displayName 패턴으로 매핑.
-   *  버전이 올라도 안 깨지게 세대 숫자("3.5") 대신 등급("Flash (High)"/"Pro (High)")으로 매칭.
-   *  세대가 여러 개 남아 있으면 resolveModelKeyDynamic이 최신 세대를 고른다. */
+   *  버전이 올라도 안 깨지게 세대 숫자("3.5") 대신 등급("Flash (High)"/"Pro (High)")으로 매칭. */
   private modelPattern(model?: string): string {
     if (!model) return "Flash (High)";
     const lower = model.toLowerCase();
@@ -828,52 +471,70 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
     return "Flash (High)";
   }
 
-  /** agy 1.0.5+는 모델 키가 동적 인덱스(MODEL_PLACEHOLDER_M{N})라 버전마다 바뀐다.
-   *  GetAvailableModels(로컬 LS)로 displayName을 매칭해 현재 모델 키 문자열을 조회한다.
-   *  agy는 cascade의 requestedModel.model을 lookup 키로 그대로 쓰므로(숫자만 보내면
-   *  "unknown model key 37" 실패) `model` 필드 전체 문자열을 반환한다.
-   *  실패 시 null → requestedModel 생략(agy default 모델). */
-  private async resolveModelKeyDynamic(model?: string): Promise<string | null> {
+  /** `agy models`에서 등급이 일치하는 항목 중 최신 세대의 slug(`gemini-3.8-flash-high`)를 고른다.
+   *  agy는 같은 등급의 구세대를 목록에 계속 남긴다(2026-09-14 실측: Flash 3.6~3.8 공존).
+   *  실패 시 null → `--model` 생략(agy 기본 모델). */
+  private async resolveModelSlug(model?: string): Promise<string | null> {
     const pattern = this.modelPattern(model);
-    try {
-      const resp = await this.rpc<Record<string, unknown>>("GetAvailableModels", {});
-      const models = this.collectModels(resp);
-      // 같은 등급의 구세대가 목록에 함께 남는다(2026-09-03 실측: Flash (High)가
-      // 3.5/3.6/3.7/3.8 4개 공존). 첫 매치를 쓰면 walk 순서에 따라 구세대가 잡히므로
-      // displayName의 세대 번호("Gemini 3.8 …")가 가장 높은 것을 고른다.
-      const candidates = models.filter(m => m.displayName.includes(pattern));
-      const match = candidates.reduce<{ displayName: string; model: string } | null>(
-        (best, m) => (best === null || generationOf(m.displayName) > generationOf(best.displayName) ? m : best),
-        null,
-      );
-      if (match) {
-        this.writeLog(`model resolved: "${pattern}" → "${match.displayName}" = "${match.model}" (${candidates.length} candidates)`);
-        return match.model;
-      }
-      const avail = models.map(m => `${m.displayName}=${m.model}`).join(", ");
-      this.writeLog(`model "${pattern}" not found among ${models.length} [${avail.slice(0, 400)}] — agy default`);
-    } catch (err) {
-      this.writeLog(`GetAvailableModels failed: ${err} — agy default`);
+    const models = await listAgyModels();
+    const match = models
+      .filter(m => m.displayName.includes(pattern))
+      .reduce<AgyModel | null>((best, m) => (best === null || generationOf(m.displayName) > generationOf(best.displayName) ? m : best), null);
+    if (match) {
+      this.writeLog(`model resolved: "${pattern}" → ${match.slug} (${match.displayName})`);
+      return match.slug;
     }
+    this.writeLog(`model "${pattern}" not found among ${models.length} models — agy default`);
     return null;
   }
 
-  /** GetAvailableModels 응답을 재귀 walk해 {displayName, model} 쌍을 수집(중복 제거). */
-  private collectModels(obj: unknown): Array<{ displayName: string; model: string }> {
-    const out: Array<{ displayName: string; model: string }> = [];
-    const seen = new Set<string>();
-    const walk = (o: unknown): void => {
-      if (!o || typeof o !== "object") return;
-      const rec = o as Record<string, unknown>;
-      if (typeof rec.displayName === "string" && typeof rec.model === "string") {
-        const key = `${rec.model}|${rec.displayName}`;
-        if (!seen.has(key)) { seen.add(key); out.push({ displayName: rec.displayName, model: rec.model }); }
-      }
-      for (const v of Object.values(rec)) walk(v);
-    };
-    walk(obj);
-    return out;
+  // --- MCP ---
+
+  /** 세션 `.agents/mcp_config.json`(runtime-config `writeAntigravityMcpConfig` 산출물)의 claude-play 항목. */
+  private readSessionMcpServer(cwd: string): BridgeMcpServer | null {
+    try {
+      const cfg = JSON.parse(fs.readFileSync(path.join(cwd, ".agents", "mcp_config.json"), "utf-8")) as {
+        mcpServers?: Record<string, { command?: unknown; args?: unknown; env?: unknown }>;
+      };
+      const server = cfg.mcpServers?.[BRIDGE_MCP_SERVER];
+      if (!server || typeof server.command !== "string" || !Array.isArray(server.args)) return null;
+      const env = server.env && typeof server.env === "object" ? server.env as Record<string, unknown> : {};
+      return {
+        command: server.command,
+        args: server.args.filter((a): a is string => typeof a === "string"),
+        env: Object.fromEntries(Object.entries(env).filter((e): e is [string, string] => typeof e[1] === "string")),
+      };
+    } catch {
+      return null;
+    }
   }
+
+  /** 전역 mcp_config.json에 env 없는 claude-play 항목을 병합한다. 사용자 항목은 보존하고,
+   *  파싱할 수 없는 파일(주석 등)은 건드리지 않는다. BOM 없이 쓴다(Go 파서). */
+  private ensureGlobalMcpServer(server: BridgeMcpServer): void {
+    let cfg: Record<string, unknown> = {};
+    try {
+      const text = fs.existsSync(GLOBAL_MCP_CONFIG) ? fs.readFileSync(GLOBAL_MCP_CONFIG, "utf-8").replace(/^﻿/, "") : "";
+      if (text.trim()) cfg = JSON.parse(text) as Record<string, unknown>;
+    } catch (err) {
+      this.writeLog(`global mcp_config.json unparseable — left untouched, MCP tools unavailable: ${err}`);
+      return;
+    }
+    const servers = (cfg.mcpServers && typeof cfg.mcpServers === "object" ? cfg.mcpServers : {}) as Record<string, unknown>;
+    const desired = { command: server.command, args: server.args };
+    if (JSON.stringify(servers[BRIDGE_MCP_SERVER]) === JSON.stringify(desired)) return;
+    servers[BRIDGE_MCP_SERVER] = desired;
+    cfg.mcpServers = servers;
+    try {
+      fs.mkdirSync(path.dirname(GLOBAL_MCP_CONFIG), { recursive: true });
+      fs.writeFileSync(GLOBAL_MCP_CONFIG, JSON.stringify(cfg, null, 2), "utf-8");
+      this.writeLog(`global mcp_config.json: registered ${BRIDGE_MCP_SERVER}`);
+    } catch (err) {
+      this.writeLog(`global mcp_config.json write failed: ${err}`);
+    }
+  }
+
+  // --- settings ---
 
   private ensureAntigravitySettings(dir: string): void {
     // 글로벌 `~/.gemini/antigravity-cli/settings.json` ensure:
@@ -931,9 +592,7 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
   /** Remove the permissions entries we previously wrote to the GLOBAL settings.json
    *  (back when this wrapper patched the user's `~/.gemini/antigravity-cli/settings.json`
    *  directly — superseded 2026-06-03 by the isolated profile approach). Idempotent.
-   *  Called once on first spawn so the user's global config is restored to whatever
-   *  it was before our intrusion. trustedWorkspaces entries we added are intentionally
-   *  left alone (the user may have grown to trust those dirs through normal IDE use). */
+   *  trustedWorkspaces entries we added are intentionally left alone. */
   private cleanupLegacyGlobalSettings(): void {
     const globalPath = path.join(os.homedir(), ".gemini", "antigravity-cli", "settings.json");
     if (!fs.existsSync(globalPath)) return;
@@ -951,8 +610,6 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
     };
     stripRule("deny", "command(*)");
     stripRule("allow", "mcp(*)");
-    // If all three lists now empty/absent, drop the `permissions` key entirely so the
-    // user's settings file looks pristine.
     const allEmpty = (["deny", "allow", "ask"] as const).every(k => {
       const v = perms[k];
       return !Array.isArray(v) || v.length === 0;
@@ -966,77 +623,7 @@ export class AntigravityProcess extends EventEmitter<AntigravityProcessEvents> {
     }
   }
 
-  private async discoverLsPort(): Promise<number | null> {
-    if (!this.agyPid) return null;
-    for (let i = 0; i < 15; i++) {
-      // 매 iter마다 재체크 — agy.exe가 즉시 exit하거나 외부에서 kill되면 agyPid가
-      // null로 바뀐 상태에서 Get-NetTCPConnection -OwningProcess null 호출되어 PS 에러.
-      if (!this.agyPid) {
-        this.writeLog(`discoverLsPort: agyPid became null at iter ${i} — aborting`);
-        return null;
-      }
-      try {
-        const out = execSync(
-          `powershell -NoProfile -Command "Get-NetTCPConnection -OwningProcess ${this.agyPid} -State Listen -ErrorAction SilentlyContinue | Select-Object LocalPort | ConvertTo-Json -Compress"`,
-          { encoding: "utf-8" },
-        ).trim();
-        if (out) {
-          const parsed = JSON.parse(out) as { LocalPort: number } | { LocalPort: number }[];
-          const arr = Array.isArray(parsed) ? parsed : [parsed];
-          const ports = arr.map(r => r.LocalPort).sort((a, b) => a - b);
-          if (ports.length >= 1) {
-            // PoC 확정: 두 포트 중 작은 게 HTTPS 메인 (gRPC), 큰 게 extension_server HTTP.
-            this.writeLog(`ls ports discovered: ${ports.join(",")} (using https=${ports[0]})`);
-            return ports[0];
-          }
-        }
-      } catch { /* */ }
-      // 비동기 sleep — 이전엔 execSync(Start-Sleep)로 node event loop를 700ms씩
-      // 15회 = 10.5초 동안 통째로 블로킹했음. 다른 세션 요청까지 모두 hang.
-      await new Promise(r => setTimeout(r, 700));
-    }
-    return null;
-  }
-
-  private async rpc<T = unknown>(method: string, payload: Record<string, unknown>, timeoutMs = 30000): Promise<T> {
-    if (!this.lsPort) throw new Error("LS port not discovered");
-    const https = await import("https");
-    const body = JSON.stringify(payload);
-    return new Promise<T>((resolve, reject) => {
-      const req = https.request(
-        {
-          hostname: "127.0.0.1",
-          port: this.lsPort!,
-          path: `/exa.language_server_pb.LanguageServerService/${method}`,
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Content-Length": Buffer.byteLength(body),
-          },
-          rejectUnauthorized: false,
-          timeout: timeoutMs,
-        },
-        (res) => {
-          const chunks: Buffer[] = [];
-          res.on("data", (c) => chunks.push(c));
-          res.on("end", () => {
-            const text = Buffer.concat(chunks).toString("utf-8");
-            this.writeLog(`rpc ${method} → ${res.statusCode} (${text.length}b)`);
-            if (res.statusCode === 200) {
-              try { resolve(JSON.parse(text) as T); }
-              catch { reject(new Error(`${method}: invalid JSON response`)); }
-            } else {
-              reject(new Error(`${method}: HTTP ${res.statusCode} -- ${text.slice(0, 200)}`));
-            }
-          });
-        },
-      );
-      req.on("error", reject);
-      req.on("timeout", () => { req.destroy(new Error("timeout")); });
-      req.write(body);
-      req.end();
-    });
-  }
+  // --- log ---
 
   private openLogStream(cwd: string): void {
     if (this.logStream) { try { this.logStream.end(); } catch { /* */ } }

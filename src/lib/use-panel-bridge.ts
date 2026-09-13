@@ -8,7 +8,7 @@ import { formatInlineHtml, type FormatInlineHtmlOptions } from "./inline-formatt
 const EVT_PREFIX = "__bridge_evt:";
 
 /** Supported panel bridge event names */
-type BridgeEvent = "turnStart" | "turnEnd" | "imageUpdated";
+type BridgeEvent = "turnStart" | "turnEnd" | "imageUpdated" | "stateChanged";
 
 /**
  * Dispatch a bridge event from the app to panel scripts.

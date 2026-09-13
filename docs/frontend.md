@@ -56,6 +56,7 @@ Accessibility conventions (2026-06 a11y wave): modal components share `useFocusT
 
 | Component | Role |
 |-----------|------|
+| `AppSlot.tsx` | 앱 모드 메인 슬롯. PanelSlot과 같은 shadow DOM이지만 정책이 반대 — **1회만 마운트하고 이후 `innerHTML`을 쓰지 않는다**. 상태 변경은 `stateChanged` 브리지 이벤트로만 전달되므로 앱의 rAF 루프·캔버스·리스너가 살아남는다. 앱 스크립트 실행은 try/catch로 격리 (iframe을 쓰지 않는 이유는 설계 문서 §4.2). |
 | `PanelSlot.tsx` | Side panel rendering with Shadow DOM CSS isolation. Exports `PANEL_DEFENSIVE_STYLE` — 좁은 뷰포트 방어 CSS(`:host max-width:100%; overflow-x:auto` + img/table/pre clamp). PanelSlot/ModalPanel/DockPanel 세 컨테이너가 공통 주입, 저자 `<style>`이 뒤에 로드되어 우선 |
 | `PanelArea.tsx` | Container managing panel layout (position: right/left/bottom/hidden) |
 | `PanelDrawer.tsx` | Drawer wrapper for panels with open/close state |

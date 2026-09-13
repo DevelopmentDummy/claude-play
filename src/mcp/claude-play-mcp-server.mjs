@@ -1573,10 +1573,13 @@ server.registerTool(
       respawn: z.boolean().optional().describe("Whether to respawn after build (default: true)"),
     },
   },
-  async ({ mode, respawn }) => {
+  // NOTE: the input is named `respawnMode` on purpose — destructuring it as `mode` used to
+  // shadow the module-level runtime `mode` ("session"/"builder"), which made the builder
+  // branch below dead code (marker never written → no restart notification for builders).
+  async ({ mode: respawnMode, respawn }) => {
     try {
       const data = await requestJson("POST", "/api/service/restart", {
-        ...(mode ? { mode } : {}),
+        ...(respawnMode ? { mode: respawnMode } : {}),
         ...(respawn === false ? { respawn: false } : {}),
         ...(sessionId ? { sessionId, triggeredBy: "mcp:bridge_restart_service" } : {}),
         // Builder sessions have no sessionId (path.basename only set for "session" mode);
@@ -1634,16 +1637,117 @@ server.registerTool(
       const idx = manifest.subagents.findIndex((s) => s && s.name === input.name);
       if (idx >= 0) manifest.subagents[idx] = { ...manifest.subagents[idx], ...entry };
       else manifest.subagents.push(entry);
-      // Keep in sync with MAX_SUBAGENTS in src/lib/subagent-manifest.ts (can't import .ts here).
-      const maxSubs = Number(process.env.SUBAGENT_MAX) > 0 ? Number(process.env.SUBAGENT_MAX) : 6;
-      if (manifest.subagents.length > maxSubs) {
-        return fail(`Too many sub-agents (${manifest.subagents.length} > cap ${maxSubs}).`);
+      // Keep in sync with THREAD_MAX in src/lib/thread-manifest.ts (can't import .ts here).
+      // 상한은 v1 subagents[]와 v2 threads[]의 **합계**에 걸어야 한다 — 파서가 둘을 합쳐
+      // 검사하고 초과 시 throw하며, spawnAll은 그걸 잡고 bail하므로 한 개만 넘겨도
+      // 그 세션의 서브·스레드가 전부 안 뜬다.
+      const maxThreads = Number(process.env.THREAD_MAX) > 0 ? Number(process.env.THREAD_MAX) : 12;
+      const threadCount = manifest.subagents.length
+        + (Array.isArray(manifest.threads) ? manifest.threads.length : 0);
+      if (threadCount > maxThreads) {
+        return fail(
+          `Too many sub-agents/threads (${threadCount} > cap ${maxThreads}). ` +
+          `이 페르소나는 앱 모드 스레드를 포함할 수 있다 — subagents.json의 threads[]도 상한에 포함된다.`
+        );
       }
       const subDir = path.join(sessionDir, "subagents", input.name);
       fs.mkdirSync(subDir, { recursive: true });
       fs.writeFileSync(path.join(subDir, "instructions.md"), input.instructions, "utf-8");
       fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n", "utf-8");
       return ok({ defined: input.name, total: manifest.subagents.length });
+    } catch (error) {
+      return fail(error);
+    }
+  }
+);
+
+server.registerTool(
+  "bridge_define_role",
+  {
+    description:
+      "[Builder mode] Define an app-mode ROLE and its THREADS in subagents.json (v2 schema). " +
+      "A role is a template (instructions + model + loop config); threads are its instances, each " +
+      "identified by `params` (e.g. { entityId: 'villager_03' }). Several threads can share one role — " +
+      "the instructions are written once to roles/<name>.md. Use this ONLY for app-mode personas " +
+      "(layout.json has an `app` block); for ordinary always-on sub-agents use bridge_define_subagent. " +
+      "Read app-spec.md before calling. Merges by role name and preserves everything else in the manifest.",
+    inputSchema: {
+      name: z.string().regex(/^[a-z0-9][a-z0-9-]{0,31}$/).describe("Role id (lowercase, dashes). Used as roles/<name>.md"),
+      role: z.string().min(1).describe("Short human description of what this role does"),
+      instructions: z.string().min(1).describe(
+        "Role instructions shared by every thread of this role (saved to roles/<name>.md). " +
+        "Describe the ROLE, never a specific individual — identity comes from each thread's params."
+      ),
+      threads: z.array(z.object({
+        threadId: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,47}$/).describe("Instance id. No dots. Used as observerId."),
+        params: z.record(z.string(), z.unknown()).optional().describe("Identity parameters, e.g. { entityId: 'villager_03' }"),
+      })).min(1).describe("Instances to spawn from this role"),
+      loopMode: z.enum(["loop", "onAssistantTurn", "none"]).optional().describe("'loop' = ticks on its own schedule (default for app mode). Default 'loop'."),
+      intervalMs: z.number().optional().describe("Tick interval in ms. Clamped to >= 5000. Default 8000."),
+      resetEveryTurns: z.number().optional().describe("Drop and re-prime the thread's context every N turns. Default 40."),
+      scope: z.string().optional().describe("Visibility tag the engine interprets (e.g. 'local', 'global'). Free-form."),
+      model: z.string().optional().describe("Optional: pin threads of this role to a model id. Omit to follow the session. Frequent loops favor cheaper models."),
+      emitSummary: z.boolean().optional().describe("Thread calls report_to_main when done. Default FALSE for app mode (the main narrator stays quiet)."),
+    },
+  },
+  async (input) => {
+    if (mode !== "builder") return fail("bridge_define_role is only available in builder mode");
+    try {
+      const manifestPath = path.join(sessionDir, "subagents.json");
+      let manifest = { version: 2, subagents: [] };
+      if (fs.existsSync(manifestPath)) {
+        try { manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8")); } catch { /* reset on corrupt */ }
+      }
+      if (!Array.isArray(manifest.subagents)) manifest.subagents = [];
+      if (!Array.isArray(manifest.roles)) manifest.roles = [];
+      if (!Array.isArray(manifest.threads)) manifest.threads = [];
+      manifest.version = 2;
+
+      const roleEntry = {
+        name: input.name,
+        role: input.role,
+        instructions: `roles/${input.name}.md`,
+        scope: input.scope,
+        loop: {
+          mode: input.loopMode || "loop",
+          // 하한은 src/lib/thread-manifest.ts의 MIN_INTERVAL_MS와 맞춘다 (.ts를 import할 수 없음).
+          intervalMs: Math.max(5000, Math.floor(Number(input.intervalMs) > 0 ? Number(input.intervalMs) : 8000)),
+          resetEveryTurns: Math.max(1, Math.floor(Number(input.resetEveryTurns) > 0 ? Number(input.resetEveryTurns) : 40)),
+        },
+        emitSummary: input.emitSummary === true,
+        delegable: false,
+        ...(input.model && input.model.trim() ? { model: input.model.trim() } : {}),
+      };
+      const rIdx = manifest.roles.findIndex((r) => r && r.name === input.name);
+      if (rIdx >= 0) manifest.roles[rIdx] = { ...manifest.roles[rIdx], ...roleEntry };
+      else manifest.roles.push(roleEntry);
+
+      // 이 역할의 스레드를 교체한다 (다른 역할의 스레드는 건드리지 않는다).
+      const others = manifest.threads.filter((t) => t && t.role !== input.name);
+      const mine = input.threads.map((t) => ({
+        threadId: t.threadId,
+        role: input.name,
+        params: t.params && typeof t.params === "object" ? t.params : {},
+      }));
+      const seen = new Set();
+      for (const t of [...others, ...mine]) {
+        if (seen.has(t.threadId)) return fail(`Duplicate threadId "${t.threadId}".`);
+        seen.add(t.threadId);
+      }
+      manifest.threads = [...others, ...mine];
+
+      // 상한은 subagents[] + threads[] 합계다 — 넘기면 파서가 throw하고 세션의
+      // 서브·스레드가 전부 안 뜬다. Keep in sync with THREAD_MAX in thread-manifest.ts.
+      const maxThreads = Number(process.env.THREAD_MAX) > 0 ? Number(process.env.THREAD_MAX) : 12;
+      const total = manifest.subagents.length + manifest.threads.length;
+      if (total > maxThreads) {
+        return fail(`Too many sub-agents/threads (${total} > cap ${maxThreads}).`);
+      }
+
+      fs.mkdirSync(path.join(sessionDir, "roles"), { recursive: true });
+      fs.writeFileSync(path.join(sessionDir, "roles", `${input.name}.md`), input.instructions, "utf-8");
+      fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n", "utf-8");
+      return ok({ role: input.name, threads: mine.map((t) => t.threadId), totalThreads: total });
     } catch (error) {
       return fail(error);
     }

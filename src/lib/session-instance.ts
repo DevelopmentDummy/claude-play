@@ -10,6 +10,9 @@ import { getGpuManagerUrl } from "./endpoints";
 import { buildHintSnapshotLine } from "./hint-snapshot";
 import { spawnBackgroundAI } from "./background-session";
 import { SubAgentManager } from "./subagent-manager";
+import { resolveAppMode, type AppModeConfig } from "./app-mode";
+import { ThreadLoop } from "./thread-loop";
+import { countSessionClients } from "./ws-server";
 import { historyDraftPath, isHistoryMessage, nextHistorySequence, readHistoryJson, recoverHistoryDraft, writeHistoryJson } from "./history-storage";
 import {
   mutateSessionJsonSync, readSessionJson, applyPatch, loadSessionData,
@@ -237,6 +240,10 @@ export class SessionInstance {
   private _provider: AIProvider;
   readonly panels: PanelEngine;
   readonly subAgents: SubAgentManager;
+  /** 앱 모드 설정. null이면 기존 채팅 중심 셸이고 아래 경로는 전부 꺼진다. */
+  appMode: AppModeConfig | null = null;
+  /** 앱 모드에서만 존재하는 스레드 루프 런타임. */
+  threadLoop: ThreadLoop | null = null;
   readonly sessions: SessionManager;
   private readonly broadcastFn: BroadcastFn;
 
@@ -330,6 +337,50 @@ export class SessionInstance {
 
     this.subAgents = new SubAgentManager(id, () => this.getDir(), (ev, data) => this.broadcast(ev, data));
     this.bindProcessEvents(this._process);
+  }
+
+  /**
+   * 앱 모드면 스레드 루프를 (재)기동한다. layout.app이 없으면 루프를 멈추고 null로 되돌린다.
+   * 세션 open 경로에서 subAgents.spawnAll 직후에 호출된다.
+   */
+  syncThreadLoop(provider: AIProvider, model?: string, effort?: string): void {
+    const dir = this.getDir();
+    const layout = dir ? this.sessions.readLayout(dir) : null;
+    this.appMode = resolveAppMode(layout);
+
+    if (!this.appMode) {
+      if (this.threadLoop) {
+        try { this.threadLoop.stop(); } catch { /* ignore */ }
+        this.threadLoop = null;
+      }
+      return;
+    }
+
+    // 재open이면 기존 루프를 버리고 새로 만든다 — provider/model이 바뀌었을 수 있다.
+    if (this.threadLoop) {
+      try { this.threadLoop.stop(); } catch { /* ignore */ }
+    }
+    const app = this.appMode;
+    this.threadLoop = new ThreadLoop({
+      sessionId: this.id,
+      app,
+      loopThreads: () => this.subAgents.loopThreads(),
+      isBusy: (threadId) => this.subAgents.isBusy(threadId),
+      dispatch: (threadId, task) => this.subAgents.dispatch(threadId, task, "auto"),
+      applyOps: (ops) => this.subAgents.applyOps(ops, provider, model, effort),
+      hasClients: () => countSessionClients(this.id) > 0,
+      resetThread: (threadId) => this.subAgents.resetThread(threadId),
+      broadcast: (ev, data) => this.broadcast(ev, data),
+    });
+    this.threadLoop.start();
+  }
+
+  /** 메인 턴에 붙일 월드 브리핑. 앱 모드가 아니면 빈 문자열 (기존 동작). */
+  private async buildWorldBriefing(): Promise<string> {
+    if (!this.threadLoop) return "";
+    const brief = await this.threadLoop.briefMain();
+    return brief.trim() ? `[WORLD]
+${brief.trim()}` : "";
   }
 
   // --- Accessors ---
@@ -484,6 +535,8 @@ export class SessionInstance {
     }
 
     const eventHeaders = this.flushEvents();
+    // 앱 모드에서는 밀린 델타 재생이 아니라 현재 월드 상태를 붙인다 (spec §8.3).
+    const worldBriefing = await this.buildWorldBriefing();
     const hintSnapshot = this.buildHintSnapshot();
     const actionHistory = this.flushActions();
     const jsonLint = this.buildJsonLint();
@@ -491,7 +544,7 @@ export class SessionInstance {
     // 가상의 supervisor에게 제출하는 메타 인사말로 끝내는 패턴 방지.
     // 매 user turn마다 role을 명시적으로 reanchor.
     const orchestratorReminder = this.orchestratorReminder;
-    const parts = [orchestratorReminder, eventHeaders, jsonLint, hintSnapshot, actionHistory, text].filter(Boolean);
+    const parts = [orchestratorReminder, eventHeaders, worldBriefing, jsonLint, hintSnapshot, actionHistory, text].filter(Boolean);
     this._pendingTurn = true;
     this.claude.send(parts.join("\n"));
   }
@@ -603,10 +656,11 @@ export class SessionInstance {
 
     const directive = "[BACKGROUND_RESUME] fire_ai 결과 콜백입니다.";
     const eventHeaders = this.flushEvents();
+    const worldBriefing = await this.buildWorldBriefing();
     const jsonLint = this.buildJsonLint();
     const hintSnapshot = this.buildHintSnapshot();
     const actionHistory = this.flushActions();
-    const parts = [this.orchestratorReminder, directive, eventHeaders, jsonLint, hintSnapshot, actionHistory].filter(Boolean);
+    const parts = [this.orchestratorReminder, directive, eventHeaders, worldBriefing, jsonLint, hintSnapshot, actionHistory].filter(Boolean);
 
     this._pendingTurn = true;
     this._spontaneousResume = true;
@@ -2170,6 +2224,8 @@ export class SessionInstance {
     if (this.resultFinalizeTimer) { clearTimeout(this.resultFinalizeTimer); this.resultFinalizeTimer = null; }
     this.heldResultMsg = null;
     this.pendingTaskCount = 0;
+    try { this.threadLoop?.stop(); } catch (err) { console.error(`[session:${this.id}] threadLoop.stop failed:`, err); }
+    this.threadLoop = null;
     try { this.subAgents.destroyAll(); } catch (err) { console.error(`[session:${this.id}] subAgents.destroyAll failed:`, err); }
     this._process.kill();
     this._process.removeAllListeners();

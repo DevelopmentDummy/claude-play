@@ -73,7 +73,7 @@
     },
     "detailer_anus": {
       "type": "boolean",
-      "default": true,
+      "default": false,
       "description": "Enable/disable anus detailer"
     }
   }

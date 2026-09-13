@@ -17,6 +17,7 @@ LoRA 룩업은 **2단계**다. 매번 풀 마크다운(35KB)을 통째로 읽지
 - `illustrious.manifest.txt` — Illustrious/SDXL anime 워크플로우 (`portrait`/`scene`/`scene-real`/`scene-couple`/`profile`)
 - `anima.manifest.txt` — Anima 계열 워크플로우 (`anima-mixed-scene`)
 - `qwen-image.manifest.txt` — Qwen-Image 워크플로우
+- `h3.manifest.txt` — MiniMax H3 영상 워크플로우 (이미지 LoRA와 비호환)
 
 활성 워크플로의 매니페스트 **한 개만** 로드한다. 모델 간 LoRA 비호환.
 
@@ -33,6 +34,7 @@ LoRA 룩업은 **2단계**다. 매번 풀 마크다운(35KB)을 통째로 읽지
 - `anima.md` — 혼합형 프롬프트 (자연어 + 핵심 태그). baseLoras 정책, 운영 노트 포함
 - `illustrious.md` — Danbooru 태그 우선. [BASE]/[NSFW-BASE] 체인 포함
 - `qwen-image.md` — 문장형 지시 우선
+- `h3.md` — MiniMax H3 영상+오디오. fl2va/ref2va 학습모드 매칭, 터보 distill 체인 정책 포함
 - `anima.compat-log.md` — Anima 호환성 시점 기록 (참조 빈도 낮음)
 
 **갱신:** `.md` 수정 후 `node build-manifest.mjs` 실행. 모든 매니페스트 자동 재생성.

@@ -113,36 +113,40 @@ curl -H "x-bridge-token: anything" http://127.0.0.1:3340/api/service/status
 
 ### 4.4 Antigravity (agy) — 가장 특이한 런타임
 
-agy는 persistent stream이 아니라 **폴링 래퍼**다: PowerShell로 백그라운드 spawn한 agy.exe의 in-process Language Server(HTTPS+ConnectRPC, 랜덤 포트)에 직접 RPC를 친다 — agy가 `--prompt-interactive`로 자동 생성한 캐스케이드를 `GetAllCascadeTrajectories`로 발견 → `SendUserCascadeMessage` → `GetCascadeTrajectory` ~700ms 폴링 (`POLL_INTERVAL_MS`).
+agy는 **파이프 상주 헤드리스 프로세스**다 (2026-09-14 전환, agy 1.2.2): `agy --input-format stream-json --output-format stream-json --dangerously-skip-permissions --print-timeout 720h [--model <slug>] [--conversation <id>] -p ""`. `claude -p` stream-json과 같은 모양 — stdin 한 줄이 한 턴, stdout `init`/`step_update`/`result`.
 
-#### 4.4.1 spawn — 절대 다른 프로바이더와 통일하지 말 것
-agy.exe는 Go bubbletea TUI라 Windows CONIN$/CONOUT$ 콘솔 핸들이 필요하다. Node `child_process.spawn`은 detached/windowsHide 모든 조합에서 실패 (`could not open TTY`, **exit 0이라 성공처럼 보임**). 유일한 해법: **PowerShell `Start-Process -WindowStyle Hidden`**. 한글/비ASCII cwd는 두 겹 대응 필수: ① 생성하는 `.ps1`에 UTF-8 BOM 부착 (없으면 PS 5.1이 CP949로 읽어 mojibake) ② `Start-Process -WorkingDirectory` 대신 `Set-Location -LiteralPath` (전자는 와일드카드 해석을 해서 mojibake 경로에서 실패). spawn 실패 진단: 세션 디렉토리 `antigravity-stream.log`의 `spawn powershell failed:` 라인 (Start-Process 방식이라 agy 자체 stdout은 캡처되지 않는다).
+#### 4.4.1 전환 배경 — LS RPC로 되돌리지 말 것
+옛 구현은 bubbletea TUI 콘솔 요구 때문에 PowerShell `Start-Process`로 detached spawn하고, agy in-process Language Server(ConnectRPC over HTTPS, 랜덤 포트)를 ~700ms 폴링했다. **agy 1.2.2가 LS에 CSRF 인터셉터를 추가**(`x-codeium-csrf-token` 헤더, 토큰은 프로세스 내부 생성)해 전 RPC가 `401 {"code":"unauthenticated","message":"missing CSRF token"}` → 캐스케이드 발견 15초 타임아웃 → init 실패 → `send()`가 `AntigravityProcess not initialized` 에러를 냈다. 토큰 획득 시도 결과: `ANTIGRAVITY_CSRF_TOKEN` env 주입은 무시됨(자체 생성), 디스크 파일 없음, sidecar(`~/.gemini/config/sidecars/`)는 CLI 모드에서 로드 안 됨. 헤드리스 `-p` stream-json은 TTY도 토큰도 필요 없어 이 모든 문제를 없앤다. **agy 자동 업데이트(bg-updater)가 조용히 깨는 전력이 반복**되니 업데이트 후 신규 세션 스모크 필수.
 
-#### 4.4.2 모델 키는 버전마다 바뀐다 — 하드코딩 금지
-모델 id는 `MODEL_PLACEHOLDER_M{N}` 형식인데 N이 agy 버전마다 바뀐다 (1.0.2: Pro High=165 → 1.0.5: 37; 하드코딩했다가 `unknown model key` 로 캐스케이드 전멸). `resolveModelKeyDynamic()`이 매 spawn마다 `GetAvailableModels`의 displayName 매칭으로 재해석하고, **전체 문자열을 그대로** `requestedModel.model`에 넣는다 (숫자만 보내면 실패). 로그와 trajectory에서 같은 캐스케이드가 다른 M-인덱스로 보일 수 있음 — LS 인스턴스별 동적 렌더링이지 에러가 아님.
+#### 4.4.2 stream-json 프로토콜 함정
+- 입력은 **`{"event":"user","message":{"content":[{"type":"text","text":…}]}}`만** 된다. `message`를 문자열로 주면 `cannot unmarshal string into … streamInputUserMessage`, `event` 누락은 `missing the "event" field` — 둘 다 `result.status:"ERROR"`로 그 턴만 실패.
+- `-p`는 인자가 필수이고 stream-json 입력 모드는 명령줄 프롬프트를 거부한다 → **`-p ""`** 고정.
+- 턴 진행 중 들어온 stdin 메시지는 **큐잉되어 다음 턴**으로 실행된다(`result` 2회). `turnQueue`가 `result`와 짝짓고, 개입(steer)은 큐가 비었을 때만 `result`를 내보내 한 턴으로 합친다. primer 턴은 출력 억제.
+- 큐가 빈 상태의 `step_update` = async 도구 완료 wake-up 턴 → 라이브 emit + `result.spontaneous:true`.
+- `step_update.conversation_id`가 다른 것(서브에이전트 대화)은 무시.
 
-#### 4.4.3 RPC 입력 스키마 — 조용한 유실 주의
-`SendUserCascadeMessage`의 `items`는 `TextOrScopeItem[]` — 정답은 **`items:[{text}]`**. 옛 `items:[{chunk:{text:{content}}}]` 형태는 protobuf DiscardUnknown으로 **200 OK를 반환하면서 조용히 버려져** USER_REQUEST가 비고, 모델은 빈 턴을 받아 파일을 뒤지며 환각한다. **agy 마이너 업그레이드 후에는 반드시** 신규 세션 스모크 + brain transcript의 `<USER_REQUEST>` 비어있지 않음 확인 (1.0.2→1.0.5에서 payload 형태와 모델 키 형식이 둘 다 조용히 깨진 전력).
+#### 4.4.3 모델 slug·MCP
+- `--model`은 `agy models` 출력의 slug(`gemini-3.8-flash-high`). 같은 등급의 구세대가 목록에 남으므로 `resolveModelSlug()`가 displayName 세대 번호 최대를 고른다. 하드코딩 금지(버전마다 바뀜).
+- **헤드리스 agy는 workspace `.agents/`를 전혀 로드하지 않는다** — `mcp_config.json`, `plugins/`, `skills/` 모두(2026-09-14 실측: workspace 플러그인의 스킬도 안 보임, trust 등록과 무관). 읽히는 건 **전역 `~/.gemini/config/mcp_config.json`뿐**이다. 그래서 `AntigravityProcess`가 세션 `.agents/mcp_config.json`(= `writeAntigravityMcpConfig` 산출물)을 원천으로 삼아 ① env 없는 `claude-play` 항목을 전역 파일에 병합(사용자 항목 보존, 파싱 불가 파일은 미변경)하고 ② 그 항목의 env(세션 dir·토큰·모드·페르소나)를 agy 프로세스 env로 넘긴다. agy가 띄우는 MCP 자식은 그 env를 상속하고 cwd도 세션 dir이다(실측). 부작용: 사용자의 개인 agy에도 `claude-play` 서버가 보인다(env 없으면 API 401로 무해). **페르소나 전용 MCP 서버(`runtime-mcp.json`)는 agy에서 쓸 수 없다.**
+- **MCP 검증 함정**: 모델은 MCP가 없으면 서버 **소스 파일을 grep해서** 반환값을 "맞힌다". MCP 동작 판정은 응답이 아니라 `[recv]`의 `"tool_name":"call_mcp_tool"` step 또는 서버 기동 부수효과로 할 것(첫 드라이버 검증이 이걸로 오판). MCP 서버는 첫 호출 시 지연 기동, 시스템 프롬프트에는 "Lazy-loaded tool"로만 노출되며 cli 로그의 `empty component: prompt section "mcp_servers"` 경고는 정상.
 
-#### 4.4.4 디버깅 — brain이 진실의 원천
-1. 세션 디렉토리 `antigravity-stream.log`는 **우리 래퍼의 폴링 메타데이터만** 담는다 — 실제 스텝 내용 없음.
-2. 진실은 agy brain 저장소: `~/.gemini/antigravity-cli/brain/{cascadeId}/.system_generated/logs/transcript.jsonl` + `transcript_full.jsonl` — 에러 포함 전체 스텝 본문, 그리고 모델이 자기 행동을 영어로 해설하는 `thinking` 필드 (이 자기해설이 wake-up echo·첫응답 중복 버그를 풀었다).
-3. 라이브 LS 프로브: `curl -sk -X POST -H "Content-Type: application/json" -d '{"cascadeId":"<cascadeId>"}' https://127.0.0.1:{port}/exa.language_server_pb.LanguageServerService/GetCascadeTrajectory` — 스텝별 plannerResponse·타임스탬프 (타임스탬프가 중복응답 버그의 결정적 증거였다).
-4. LS RPC 메서드 열거: agy.exe 바이너리를 latin1로 읽어 `LanguageServerService/[A-Z]\w+` 패턴 grep. proto 필드명도 같은 방식 (rawDesc 근처 ASCII).
-5. **외부에서 LS에 직접 SendUserCascadeMessage를 쏘는 프로브는 무효** — dev 인스턴스가 캐스케이드를 관리 중이라 레이스로 스텝이 안 생긴다. 반드시 우리 경로(`POST /api/sessions/{id}/open` + `POST /api/chat/send`)로 실험할 것.
-6. 실험용 spike 스크립트들이 `scripts/spike-agy-*.ts`로 보존돼 있다 (spawn 방식 비교, 프라이머 주입 검증, roundtrip 스모크 등).
+#### 4.4.4 디버깅
+1. 세션 디렉토리 `antigravity-stream.log`(또는 spawn logName)에 **모든 `[send]`/`[recv]` NDJSON 라인과 agy `[stderr]`**가 남는다 — 턴 내용 자체를 여기서 본다.
+2. agy 자체 로그: `~/.gemini/antigravity-cli/log/cli-*.log` (모델 해소·MCP·인증). "You are not logged into Antigravity" 경고는 1.1.28부터 늘 찍히는 노이즈.
+3. 대화 전문: `~/.gemini/antigravity-cli/brain/{conversationId}/.system_generated/logs/transcript*.jsonl` — `thinking` 필드의 모델 자기해설이 wake-up echo·중복 버그를 풀었다.
+4. 프로토콜 조사: `agy --help`, `agy changelog`, 내장 문서 `~/.gemini/antigravity-cli/builtin/skills/agy-customizations/docs/*.md`, 바이너리 latin1 grep(`printmode.streamInput*` 등).
+5. 수동 재현은 `-p "prompt" --output-format stream-json` 한 방이면 된다 — 파이프라 브리지 없이 셸에서 바로 확인 가능.
 
 #### 4.4.5 알려진 미해결·주의 사항
 - **wake-up echo**: async 도구(이미지 등) 완료 시 agy가 task-completion 이벤트를 주입하고 모델이 이를 복창하며 `$IMAGE:...$`를 반복 → 직전 이미지가 다음 응답에 또 렌더. `stripSystemMessageEcho`(4종 정규식, 한/영·장/단)가 제거하되, **영어 변형 1종이 미포착** ("All background tasks related to the initial API calls have now completed...") — 단 이 문장이 ERROR_MESSAGE 본문 안에서 발견됐으므로 **나이브하게 strip 패턴을 추가하면 에러 컨텍스트를 삭제할 수 있다**. 수정 시 재시작+라이브 검증 필수. 또한 closing phrase는 별도 패턴이어야 함 (alternation에 넣으면 lazy quantifier가 첫 히트에서 멈춤).
-- **primer 선행 플레이**: 신규 세션의 `--prompt-interactive` primer 턴에서 모델이 유저 입력 전에 오프닝 선택지를 먼저 플레이할 수 있고 **실제 MCP 도구 호출까지 한다** (scout_market이 실데이터를 변조한 사례). 중복 누출은 `syncTailBaseline` 3개소로 수정됐지만 **엔진 부수효과는 여전히 가능** — primer를 "짧은 준비 완료 응답만 하라"로 강화하는 것이 후속 과제.
-- **GEMINI.md는 agy가 자동 로드하지 않는다** (988스텝 transcript 검증). 지시문은 primer(USER_INPUT step 0)로 전달되고 resume에도 cascade 히스토리로 살아남는다. resumed agy 세션에 영향을 주려고 GEMINI.md를 고치는 것은 no-op일 가능성이 높다. 실제 결함은 primer 28,000자 절단(`MAX_PRIMER_CHARS`, Windows CreateProcess 32767자 한계)과 장기 캐스케이드 compaction. 관련 미머지 브랜치 주의사항은 HANDOVER 참고.
+- **primer 선행 플레이**: 신규 세션의 primer 턴에서 모델이 유저 입력 전에 오프닝 선택지를 먼저 플레이할 수 있고 **실제 MCP 도구 호출까지 한다** (scout_market이 실데이터를 변조한 사례). 중복 누출은 `syncTailBaseline` 3개소로 수정됐지만 **엔진 부수효과는 여전히 가능** — primer를 "짧은 준비 완료 응답만 하라"로 강화하는 것이 후속 과제.
+- **GEMINI.md는 agy가 자동 로드하지 않는다** (988스텝 transcript 검증). 지시문은 primer(신규 대화 첫 턴)로 전달되고 resume에도 대화 히스토리로 살아남는다. resumed agy 세션에 영향을 주려고 GEMINI.md를 고치는 것은 no-op일 가능성이 높다. primer 28,000자 절단은 stdin 전달 전환(2026-09-14)으로 사라졌고, 남은 결함은 장기 대화 compaction. 관련 미머지 브랜치 주의사항은 HANDOVER 참고.
 - **격리 시도 금지**: `--gemini_dir`/`--app_data_dir`로 agy를 격리하면 cascade-ID 호환이 깨지고 모델이 환경 탐사 폭주 — 이미 시도·revert됨. 재시도하지 말 것.
 - **버전 민감 사항**: 1.0.2에서 Pro Low 티어는 tool-call 인자 손상으로 불안정 (Flash·Pro High는 안정) — agy 업데이트 후 티어 안정성 재확인. agy에는 빌트인 `default_api:generate_image`가 있어 우리 MCP 이미지 도구가 거부/부재면 조용히 그쪽으로 폴백한다.
-- **개선 리드**: LS에 스트리밍 RPC가 존재한다 (`StreamCascadeReactiveUpdates` 등) — 폴링 전면 대체 후보.
 
 ### 4.5 공통 패턴
 
-- **fire_ai/서브 readiness**: `waitForReady(20s)===false`는 실패가 아니다 — agy는 primer 응답 대기로 20초를 상습 초과한다. **`!isRunning()`일 때만 abort**하고, 살아있으면 `send()`를 그냥 호출 (각 프로바이더의 send가 자체 readiness 대기를 수행). child PID는 spawn 직후 1회 캡처해 둘 것 (settle 시 내부 proc이 null로 바뀌어 나중에 재계산하면 -1).
+- **fire_ai/서브 readiness**: `waitForReady(20s)===false`는 실패가 아니다 — agy는 primer 턴 완료를 ready로 보므로 20초를 넘길 수 있다(send는 그 전에도 stdin 큐에 쌓여 안전). **`!isRunning()`일 때만 abort**하고, 살아있으면 `send()`를 그냥 호출 (각 프로바이더의 send가 자체 readiness 대기를 수행). child PID는 spawn 직후 1회 캡처해 둘 것 (settle 시 내부 proc이 null로 바뀌어 나중에 재계산하면 -1).
 - **`await waitForIdle()` 후에는 macrotask(`setImmediate`) yield 후 가드 재검사** — 공유 idle/이벤트 신호로 깨어난 코드가 공유 상태(큐, pending 플래그)를 검사하기 전에 microtask들을 전부 배수시켜야 co-waking 유저 턴이 먼저 flush된다. microtask hop 수는 안정된 순서 보장이 아니다 (autoResume 이중발화 버그의 교훈, `9286e18`).
 
 ## 5. 서브시스템 지뢰
@@ -188,6 +192,17 @@ Node의 전역 `fetch`(undici)는 `headersTimeout` 기본값이 **300초 고정*
 - **규칙**: 수 분 이상 걸릴 수 있는 로컬 요청은 `longRequest()`를 쓴다. 새 홉을 추가할 때 전역 `fetch`를 그대로 복사하지 말 것.
 - **동반 함정 (같은 날 실경로 스모크에서 발견)**: `seed_randomize` 기능은 파라미터 정의의 `field`를 읽어 seed 계열 필드만 랜덤화한다. 예전에는 `field === "seed"`로 하드코딩돼 있어, RandomNoise 노드의 `noise_seed`를 쓰는 MiniMax H3 패키지는 기본값 -1이 그대로 제출되어 `value_smaller_than_min`(400)으로 **seed 미지정 호출이 전부 실패**했다. wan/zimage 계열은 resolver.mjs가 -1을 자체 랜덤화해 무증상이었다 — 새 영상 패키지를 추가하면 seed 경로가 코어와 resolver 중 어디에 있는지 확인할 것.
 - **대기 예산 판정**: `ComfyUIClient.timeoutBudget(filename, prompt)` — 제출 그래프에 영상 출력 노드(`SaveVideo`/`CreateVideo`/`SaveAnimatedWEBP`/`VHS_*`)가 있으면 영상 예산(60분), 없으면 이미지 예산. 확장자는 fallback이다 (SaveAnimatedWEBP 영상이 `.webp`라 확장자만 믿으면 이미지 예산에 걸린다).
+
+### 5.11 `readLayout()`은 최상위 키를 화이트리스트로 재조립한다 — 새 layout.json 최상위 키는 여기에 반드시 추가
+`src/lib/session-config-io.ts:readLayout()`은 `layout.json`을 통째로 돌려주지 않고 `panels`/`chat`/`theme`/`customCSS`(+`app`)만 기본값과 병합해 **새 객체로 재구성**한다. 중첩 키(`panels.placement`, `chat.mode`)는 spread로 살아남지만 **최상위 새 키는 조용히 사라진다**.
+- **실제 사고 (2026-09-12, kingdom)**: 앱 모드 블록 `app`이 누락돼 세션이 일반 채팅으로 열렸다. 이 함수 하나가 ① open 응답의 초기 레이아웃 ② 파일 변경 시 `layout:update` 브로드캐스트 ③ `SessionInstance.syncThreadLoop()`의 `resolveAppMode()` 입력을 전부 먹이므로, 세 경로가 동시에 죽는다. 반면 `PATCH /api/sessions/[id]/layout`은 파일 원본을 deepMerge해 돌려주므로 그 응답에는 키가 보여 **증상이 경로마다 달라** 헷갈린다.
+- **왜 단위 테스트가 못 잡았나**: `app-mode.test.ts`는 파싱된 JSON을 `resolveAppMode()`에 직접 넣었고, 페르소나 쪽 브라우저 스모크는 가짜 bridge로 레이아웃 읽기를 우회했다. 서비스 경로 회귀는 `src/lib/session-config-io.test.ts`(`readLayout` → `resolveAppMode` 합성)가 담당한다.
+- **규칙**: `layout.json`에 최상위 키를 추가하면 `readLayout()`·서버 `LayoutConfig`(`session-manager.ts`)·클라이언트 `LayoutConfig`(`hooks/useLayout.ts`) 세 곳을 같이 고치고, `session-config-io.test.ts`에 보존 케이스를 추가한다. 검증은 `readLayout`에서 하지 말 것 — `app`은 원본 그대로 통과시키고 `resolveAppMode()`가 단일 검증자다.
+
+### 5.12 빌더 세션의 서버 재시작 복구 — 두 군데가 같이 살아 있어야 한다
+빌더 페이지가 재시작 후 "나갔다 다시 와야" 했던 원인은 둘이었다 (2026-09-12).
+- **클라이언트 자동 재기동**: `useWebSocket`은 재연결 시 서버의 `connected.sessionActive=false`를 보고 `onSessionLost`를 부른다. 빌더도 `sessionId=페르소나명`으로 바인드하므로 이 신호는 오지만, `builder/[name]/page.tsx`가 콜백을 안 넘겨 아무 일도 안 났다(채팅 페이지는 `/open`을 다시 친다). 지금은 `handleSessionLost`가 모델 없이 `/api/builder/edit`를 다시 쳐 같은 resume id로 프로세스를 되살린다. 새 페이지 타입을 만들면 이 콜백을 빠뜨리지 말 것.
+- **재시작 마커(AI에게 "재시작 끝났다" 알림)**: MCP `bridge_restart_service`의 입력 `mode`("dev"/"start")를 `{ mode }`로 구조분해하면 모듈 상수 `mode`("session"/"builder")를 **가려서** 빌더 분기가 죽은 코드가 된다 — 응답의 `notificationMarker:false`가 그 증상. 지금은 `mode: respawnMode`로 받는다. MCP 서버 파일에서 핸들러 인자 이름을 모듈 상수(`mode`/`persona`/`sessionId`/`sessionDir`)와 겹치게 짓지 마라.
 
 ## 6. 작업 방법론
 

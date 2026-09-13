@@ -1,0 +1,86 @@
+<style>
+  :host { display: block; height: 100%; }
+  .wrap {
+    padding: 20px;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: var(--text, #e0e0e0);
+  }
+  h2 { margin: 0 0 12px; font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
+  #hud { font-variant-numeric: tabular-nums; font-size: 13px; opacity: 0.9; }
+  #actors { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .tile {
+    padding: 6px 10px;
+    border: 1px solid var(--border, rgba(255,255,255,0.15));
+    border-radius: 6px;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+  .tile b { font-weight: 600; }
+  button {
+    margin-top: 16px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--border, rgba(255,255,255,0.15));
+    background: var(--surface-light, rgba(255,255,255,0.06));
+    color: inherit;
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  button:hover { filter: brightness(1.2); }
+  #log { margin-top: 10px; font-size: 12px; opacity: 0.65; min-height: 1.4em; }
+</style>
+
+<div class="wrap">
+  <h2>스텁 월드</h2>
+  <div id="hud">로딩…</div>
+  <div id="actors"></div>
+  <button id="take">밀 집기 (유저)</button>
+  <p id="log"></p>
+</div>
+
+<script>
+  // 1회 마운트 검증: 이 카운터는 상태가 바뀌어도 절대 리셋되면 안 된다.
+  // 리셋된다면 AppSlot이 재마운트하고 있다는 뜻이고, 그러면 게임 루프가 못 산다.
+  let updates = 0;
+  const mountedAt = new Date().toLocaleTimeString();
+
+  const hud = shadow.getElementById("hud");
+  const actorsEl = shadow.getElementById("actors");
+  const log = shadow.getElementById("log");
+
+  function draw(world) {
+    updates += 1;
+    hud.textContent =
+      `tick=${world.tick ?? "?"}  밀=${world.wheat ?? "?"}  ` +
+      `| 갱신 ${updates}회 · ${mountedAt}에 1회 마운트 (재마운트 없음)`;
+    const actors = world.actors || {};
+    actorsEl.innerHTML = Object.keys(actors).length === 0
+      ? '<span class="tile">아직 행동한 행위자 없음</span>'
+      : Object.entries(actors)
+          .map(([id, a]) => `<span class="tile"><b>${id}</b> 보유 ${a.held ?? 0}</span>`)
+          .join("");
+  }
+
+  // 상태는 재렌더가 아니라 이벤트로 온다.
+  window.addEventListener("__bridge_evt:stateChanged", (e) => {
+    const d = (e.detail || {});
+    draw(d.world || {});
+  });
+
+  shadow.getElementById("take").addEventListener("click", async () => {
+    log.textContent = "제출 중…";
+    try {
+      const r = await window.__panelBridge.runTool("world", {
+        action: "submit",
+        observerId: "user",
+        intent: { type: "take_wheat" },
+      });
+      log.textContent = "제출: " + JSON.stringify(r && r.result ? r.result : r);
+    } catch (err) {
+      log.textContent = "제출 실패: " + err;
+    }
+  });
+
+  draw({});
+</script>

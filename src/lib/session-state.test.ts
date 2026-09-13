@@ -51,11 +51,15 @@ test("applyPatch: 빈 패치는 no-op 복제", () => {
   assert.deepEqual(applyPatch({ a: 1 }, {}), { a: 1 });
 });
 
-test("SSOT: SYSTEM_JSON union(18) + LINT_SKIP_JSON은 variables.json 미포함", () => {
+test("SSOT: SYSTEM_JSON union(19) + LINT_SKIP_JSON은 variables.json 미포함", () => {
   assert.equal(SYSTEM_JSON.has("comfyui-config.json"), true);
   assert.equal(SYSTEM_JSON.has("style-check.json"), true);
-  assert.equal(SYSTEM_JSON.size, 18);
+  assert.equal(SYSTEM_JSON.size, 19);
   assert.ok(SYSTEM_JSON.has("runtime-mcp.json"));
+  // 앱 모드 런타임 장부는 시스템 파일 — 페르소나 데이터로 새면 패널 컨텍스트·JSON lint에 노출된다.
+  assert.ok(SYSTEM_JSON.has("threads.json"));
+  // world.json은 반대로 데이터여야 한다 (앱이 패널 컨텍스트로 읽고, 엔진이 ctx.data.world로 받는다).
+  assert.equal(SYSTEM_JSON.has("world.json"), false);
   assert.equal(LINT_SKIP_JSON.has("variables.json"), false);
   assert.equal(LINT_SKIP_JSON.has("voice.json"), false);
 });

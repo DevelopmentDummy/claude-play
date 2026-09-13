@@ -83,10 +83,12 @@
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `NEXT_PUBLIC_DISABLE_GEMINI` | `true` (in `.env.example`) | When `true`, Gemini CLI is retired: the model picker hides the Gemini group and `gemini-*` model ids route to the Antigravity provider. Does NOT affect Gemini image generation (`GEMINI_API_KEY`) |
-| `ANTIGRAVITY_IDLE_WATCH` | (enabled) | Set `false` to disable the post-turn idle-watch polling that live-emits delayed async-tool responses in Antigravity sessions (`antigravity-process.ts`) |
 | `FIRE_AI_TIMEOUT_MS` | `600000` | Kill timeout (ms) for a background `fire_ai` turn — persistent provider processes don't self-exit on a hung turn (`background-session.ts`) |
 | `FIRE_AI_AUTORESUME_MAX` | `5` | Runaway guard: cap on consecutive `fire_ai` autoResume spontaneous-turn chains without user input (`session-instance.ts`) |
 | `SUBAGENT_MAX` | `6` | Max persona subagents per session (`subagent-manifest.ts`) |
+| `THREAD_MAX` | `12` | 앱 모드 세션당 살아있는 스레드 상한 (`thread-manifest.ts`). `SUBAGENT_MAX`를 대체한다 |
+| `THREAD_CONCURRENCY` | `3` | 동시에 턴을 도는 스레드 수 상한 (`thread-loop.ts`). 프리워밍 스왑도 이 예산을 먹는다. 월드 시계 주기는 env가 아니라 `layout.app.worldTickMs` |
+
 | `CLAUDE_CODE_WORKFLOWS` | (set internally) | Set to `1` on spawned Claude processes when the `:ultracode` pseudo-effort is selected — gates the multi-agent Workflow tool (`claude-process.ts` / `resolveClaudeEffort()`) |
 
 ### Codex External Gateway (optional)

@@ -41,6 +41,11 @@ interface StatusBarProps {
   onCloseSession?: () => void;
   /** Names of sub-agents currently working a task — drives the ambient activity indicator. */
   busySubNames?: string[];
+  /** 앱 모드에서만 전달된다. 없으면 월드 컨트롤을 렌더하지 않는다. */
+  threadStatus?: { running: boolean; paused: boolean; speed: number; threads: number } | null;
+  onThreadControl?: (action: "pause" | "resume" | "speed", value?: number) => void;
+  /** 앱 모드 `chat.mode: "hidden"`에서만 — 숨겨둔 메인 채팅을 디버깅용으로 잠깐 꺼내는 토글. */
+  debugChat?: { open: boolean; onToggle: () => void } | null;
   /** Version snapshot (builder mode) */
   onVersionSave?: () => void;
   onVersionHistory?: () => void;
@@ -100,6 +105,9 @@ export default function StatusBar({
   onSubAgents,
   onCloseSession,
   busySubNames,
+  threadStatus,
+  onThreadControl,
+  debugChat,
   onVersionSave,
   onVersionHistory,
   versionSaving,
@@ -271,6 +279,52 @@ export default function StatusBar({
               <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-accent" />
             </span>
             <span className="truncate max-w-[140px]">{busySubNames.join(" · ")} 작업 중</span>
+          </button>
+        )}
+
+        {/* 월드 진행 컨트롤 — 앱 모드에서만. 사용자가 언제든 세계를 멈출 수 있어야 한다. */}
+        {threadStatus && (
+          <div className="flex items-center gap-1 px-2 py-1 rounded-md text-xs border border-border/60 text-text-dim">
+            <span title="살아있는 루프 스레드 수">스레드 {threadStatus.threads}</span>
+            <button
+              type="button"
+              onClick={() => onThreadControl?.(threadStatus.paused ? "resume" : "pause")}
+              className="px-1.5 py-0.5 rounded hover:bg-surface-light hover:text-text transition-colors cursor-pointer"
+              aria-label={threadStatus.paused ? "월드 재개" : "월드 일시정지"}
+              title={threadStatus.paused ? "월드 재개" : "월드 일시정지"}
+            >
+              {threadStatus.paused ? "재개" : "일시정지"}
+            </button>
+            <select
+              value={String(threadStatus.speed)}
+              onChange={(e) => onThreadControl?.("speed", Number(e.target.value))}
+              className="bg-transparent rounded px-1 py-0.5 cursor-pointer"
+              aria-label="월드 진행 속도"
+              title="월드 진행 속도"
+            >
+              <option value="0.5">0.5×</option>
+              <option value="1">1×</option>
+              <option value="2">2×</option>
+              <option value="4">4×</option>
+            </select>
+          </div>
+        )}
+
+        {/* 숨긴 메인 채팅 토글 — 앱 모드 hidden에서만. 플레이 입력은 앱이 담당하고 채팅은 디버깅 창구다. */}
+        {debugChat && (
+          <button
+            type="button"
+            onClick={debugChat.onToggle}
+            className={`px-2 py-1 rounded-md text-xs border transition-colors cursor-pointer ${
+              debugChat.open
+                ? "border-accent/60 text-accent bg-accent/10"
+                : "border-border/60 text-text-dim hover:bg-surface-light hover:text-text"
+            }`}
+            aria-pressed={debugChat.open}
+            aria-label={debugChat.open ? "디버그 채팅 닫기" : "디버그 채팅 열기"}
+            title="숨겨둔 메인 채팅을 디버깅용으로 열고 닫습니다"
+          >
+            {debugChat.open ? "채팅 닫기" : "디버그 채팅"}
           </button>
         )}
 

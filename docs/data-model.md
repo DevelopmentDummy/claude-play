@@ -79,6 +79,10 @@ data/
 │   ├── chat-history.json            # Persisted chat history
 │   ├── pending-events.json          # Persisted event queue (system-event headers merged into next user turn; fire_ai disk-first fallback)
 │   ├── pending-actions.json         # Queued panel actions (POST /api/sessions/[id]/panel-actions)
+│   ├── world.json                   # [앱 모드] 월드 상태 — **엔진 전용 writer**. 파일별 뮤텍스가 곧 월드 뮤텍스라 한 파일에 모은다. 의도 큐는 배열이 아니라 키 있는 객체(`intents["<observerId>__<seq>"]`)이며 `$merge:"deep"`로 쓰고 `$unset` dot-path로 드레인한다 (배열은 applyPatch가 교체하므로 동시 제출이 유실된다). 파일명은 layout.app.worldFile
+│   ├── threads.json                 # [앱 모드] 살아있는 스레드 레지스트리 — 매니페스트가 아니라 이 파일이 진실. 재open 복원 + 엔진의 spawn/despawn 반영
+│   ├── app/                         # [앱 모드] 앱 슬롯 번들 (index.html + 자산). layout.app.entry가 가리킨다
+│   ├── roles/                       # [앱 모드] 역할 지침 — 같은 역할의 스레드들이 한 파일을 공유하고, 정체성은 스폰 시 주입되는 params가 갖는다
 │   ├── {provider}-stream.log        # NDJSON stream log (claude-/codex-/gemini-/kimi-/antigravity-stream.log per active runtime)
 │   ├── CLAUDE.md                    # Assembled from session-instructions + profile + opening + style
 │   ├── AGENTS.md                    # Same content as CLAUDE.md (for Codex CLI)

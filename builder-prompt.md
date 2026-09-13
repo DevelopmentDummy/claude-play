@@ -123,6 +123,7 @@
 - ./variables.json: 현재 상태 변수. 대화 진행에 따라 업데이트하라.
 - ./memory.md: 대화 기억. 중요한 사건이나 정보를 기록하라.
 - ./panel-spec.md: 패널 기술 명세. 패널 수정 시 참조하라.
+- ./app-spec.md: **앱 모드** 페르소나(전용 화면 + 자율 스레드 루프) 기술 명세. 앱형 페르소나를 만들거나 수정할 때 반드시 참조하라.
 - ./panels/ 아래의 HTML 파일: 사용자에게 보여지는 정보 패널.
 - ./publish-guide.md: GitHub 퍼블리시 절차 가이드. 사용자가 퍼블리시를 요청하면 참조하라.
 - ./security-review-guide.md: 임포트 페르소나 보안 검토 가이드. 보안 검토 요청 시 참조하라.
@@ -230,6 +231,10 @@ CLAUDE.md의 "사용자 정보" 섹션을 참고하여 사용자를 올바른 �
 ### 6. `layout.json` — 세션 레이아웃 커스터마이징 (선택)
 
 세션 화면의 색상 테마와 패널 배치를 커스터마이즈한다. **이 파일은 선택적이다** — 생략하면 기본 레이아웃이 적용된다.
+
+> ⚠️ **기존 `layout.json`을 수정할 때는 모르는 키를 지우지 마라.** 특히 최상위 `app` 블록과 `chat.mode`는
+> **앱 모드**(채팅 대신 전용 앱 화면 + 자율 스레드 루프로 도는 페르소나) 설정이다. 이 키들이 사라지면
+> 그 페르소나는 앱이 아니라 평범한 채팅 세션으로 퇴화한다. 파일을 통째로 새로 쓰지 말고 필요한 키만 고쳐라.
 
 ```json
 {
@@ -1252,7 +1257,7 @@ research-dump.json
 ```
 
 **자동 제외 항목 (적을 필요 없음):**
-시스템이 이미 제외하는 항목 — `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `session-instructions.md`, `panel-spec.md`, `builder-session.json`, `chat-history.json`, `gallery.json`, `images/`(단 `profile.png`/`icon.png`은 별도 복사), `skills/`, `.claude/`, `.agents/`, `.codex/`, `.gemini/`, `.kimi/`, `.mcp.json`.
+시스템이 이미 제외하는 항목 — `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `session-instructions.md`, `panel-spec.md`, `app-spec.md`, `builder-session.json`, `chat-history.json`, `gallery.json`, `images/`(단 `profile.png`/`icon.png`은 별도 복사), `skills/`, `.claude/`, `.agents/`, `.codex/`, `.gemini/`, `.kimi/`, `.mcp.json`.
 
 **주의:**
 - 제외하려는 항목이 세션 동작에 필요하지 않은지 반드시 확인하라 — `variables.json`, `panels/`, `tools/`, `voice.json` 같은 파일을 잘못 등록하면 세션이 깨진다
@@ -1277,6 +1282,7 @@ research-dump.json
 - [ ] 패널에 `<style>` 태그가 포함되어 있는가?
 - [ ] 패널이 다크 테마와 조화되는가?
 - [ ] `panel-spec.md` 스타일 가이드를 따르는가?
+- [ ] (앱 모드인 경우) `app-spec.md` §9 체크리스트를 통과하는가? — 특히 의도 큐가 키 있는 객체인지, 규칙이 `step()`에만 있는지, `observe`가 기억과 기각 사유를 싣는지
 - [ ] `layout.json`을 생성했다면 유효한 JSON인가?
 - [ ] `layout.json`의 `theme` 색상이 패널 HTML의 다크 테마 색상과 조화되는가?
 - [ ] `layout.json`의 `panels.position`이 유효한 값(`right`/`left`/`bottom`/`hidden`)인가?
@@ -1329,6 +1335,72 @@ research-dump.json
 
 ---
 
+## 앱 모드 (선택) — 채팅 대신 전용 화면 + 자율 스레드
+
+### 언제 만드는가
+
+사용자가 이런 걸 요구하면 앱 모드다:
+
+- "림월드/스타듀 밸리 같은", "작은 마을을 시뮬레이션", "NPC들이 알아서 살아가는"
+- "채팅 말고 화면에서 조작하는", "게임처럼 만들고 싶다", "대시보드/보드/맵을 띄우고"
+- "내가 안 보고 있어도 세계가 굴러갔으면"
+
+**아니면 만들지 마라.** 앱 모드는 일반 페르소나보다 훨씬 복잡하다. 대화가 본체인 RP,
+패널 몇 개로 상태를 보여주면 되는 것, 서브에이전트 하나로 부기가 해결되는 것 — 전부 일반 페르소나로 하라.
+애매하면 **사용자에게 물어라**: "채팅이 메인인가요, 아니면 화면 조작이 메인이고 대화는 보조인가요?"
+
+### 만들기 전에
+
+**`./app-spec.md`를 반드시 먼저 읽어라.** 거기에 월드 엔진 계약(4개 액션), 의도 큐를 배열로 두면
+안 되는 이유, 관측 계층, 앱 화면 제약, 체크리스트가 전부 있다. 이 절은 개요일 뿐이다.
+
+동작하는 최소 예제가 `scripts/fixtures/app-mode-stub/`에 있다 — 구조가 막히면 그걸 읽어라.
+
+### 무엇을 만드는가
+
+| 파일 | 만드는 법 |
+|---|---|
+| `layout.json`의 `app` 블록 + `chat.mode` | 직접 작성 (app-spec §2) |
+| `tools/world.js` — 월드 엔진 | 직접 작성 (app-spec §3). **가장 중요한 파일** |
+| `roles/*.md` + `subagents.json`의 역할/스레드 | **`bridge_define_role` 도구로.** JSON을 손으로 쓰지 마라 |
+| `app/index.html` — 앱 화면 | 직접 작성 (app-spec §6) |
+| `world.json` — 초기 상태 | 직접 작성 |
+
+### `bridge_define_role` 도구
+
+역할(템플릿) 하나와 그 인스턴스인 스레드 여러 개를 한 번에 정의한다. `roles/<name>.md`를 쓰고
+`subagents.json`의 `roles`/`threads`를 갱신하며, 나머지 내용은 보존한다.
+
+- `name`·`role`·`instructions`: 역할 id, 한 줄 설명, 공유 지침
+- `threads`: `[{ threadId, params }]` — **같은 역할에서 여러 개**를 띄운다.
+  `params`가 정체성이다(예: `{ entityId: "villager_03" }`). 지침에 특정 개인을 쓰지 말고 역할을 써라
+- `loopMode`(기본 `"loop"`) · `intervalMs`(하한 5000, 기본 8000) · `resetEveryTurns`(기본 40)
+- `scope`: 엔진이 해석하는 가시 범위 태그 (`"local"`/`"global"` 등 자유)
+- `model`: 생략하면 세션 상속. **빈번한 루프에는 가벼운 모델**이 유리하다
+- `emitSummary`: 앱 모드에선 **기본 false** — 메인 서술자를 깨우지 않는다
+
+⚠️ **상한은 `threads[]` + (구형) `subagents[]`의 합계 12개다.** 넘기면 매니페스트 전체가 로드에 실패해
+서브도 스레드도 **하나도 안 뜬다**. 스레드 수 × 틱 빈도가 곧 토큰 소모라는 것도 사용자에게 알려라.
+
+### 설계 순서 (이 순서를 지켜라)
+
+1. **월드의 규칙을 사용자와 합의한다** — 어떤 개체가 있고, 무엇을 할 수 있고, 무엇이 금지되는가.
+   이게 `step()`이 된다. 여기가 흐릿하면 나머지가 전부 흔들린다
+2. `world.json` 스키마 + 시드
+3. `tools/world.js` — app-spec §3.2의 **세 가지 금기**를 지켜라
+4. `bridge_define_role`로 역할·스레드
+5. `app/index.html` — 처음엔 텍스트 HUD로 충분하다. 그림은 나중에
+6. `layout.json`에 `app` 블록, `chat.mode`는 `"dock"`으로 시작 (디버깅하려면 챗이 필요하다)
+7. `session-instructions.md`에 메인의 새 역할을 적는다: **조용한 해설자**. 유저가 물을 때만 답하고,
+   월드 상태는 `[WORLD]` 헤더로 오며, 월드를 고치려면 자기도 `submit`을 타야 한다
+
+### 기존 앱 페르소나를 수정할 때
+
+- `layout.json`을 통째로 새로 쓰지 마라 — `app` 블록과 `chat.mode`가 사라지면 앱이 죽는다
+- `subagents.json`을 직접 쓰지 마라 — `roles`/`threads`를 날리면 그 월드의 스레드가 전부 죽는다.
+  `bridge_define_role`/`bridge_define_subagent`를 쓰면 보존된다
+- 엔진(`tools/world.js`)을 고쳤으면 사용자에게 **세션 재-open**이 필요하다고 알려라
+
 ## 서브에이전트 (선택) — 멀티 에이전트 오케스트레이션
 
 메인 서사가 직접 챙기기 번거롭고 반복적인 부기(패널 변수 갱신·흐름 제어·설정/로어 일관성 점검 등)를 **전담 서브에이전트**에게 위임할 수 있다. 서브는 세션에서 메인 내레이터와 **함께 상주(always-on)**하며, 세션 상태를 직접 갱신하고 변경 요약을 메인의 **다음 턴에 비동기로** 돌려준다. 메인 컨텍스트를 깨끗하게 유지하면서 무거운 상태 관리를 분리하는 게 목적이다.
@@ -1339,6 +1411,15 @@ research-dump.json
 
 ### 어떻게 만드는가 — `bridge_define_subagent` 도구
 빌더 모드에서 `bridge_define_subagent`를 호출하면 `subagents.json` 매니페스트(이름 기준 병합)와 `subagents/<name>/instructions.md`가 페르소나 디렉토리에 작성된다. 세션 생성 시 자동 복사되고, 세션 Open 시 상주 프로세스로 spawn된다. (기존 라이브 세션은 닫았다 다시 열어야 반영됨 — 사용자에게 안내하라.)
+
+> ⚠️ **앱 모드 페르소나의 `subagents.json`을 건드릴 때**: 이 파일에는 v2 스키마인 `roles[]`(역할 템플릿)와
+> `threads[]`(역할에서 스폰된 인스턴스)가 들어 있을 수 있다. `bridge_define_subagent`는 `subagents[]`만
+> 건드리고 나머지는 보존하므로 도구를 쓰는 한 안전하다. **하지만 파일을 직접 쓰지는 마라** — `roles`/`threads`를
+> 날리면 그 월드의 스레드가 전부 죽는다. 또 상한(기본 12)은 `subagents[]` + `threads[]`의 **합계**에 걸리며,
+> 넘기면 매니페스트 전체가 로드에 실패해 **서브에이전트가 하나도 안 뜬다**.
+>
+> 앱 모드 페르소나를 **새로 만드는 것**은 아직 빌더 도구로 지원되지 않는다. 사용자가 요청하면
+> `scripts/fixtures/app-mode-stub/`를 참조 구현으로 안내하고, 설계는 `docs/specs/2026-09-12-app-mode-platform-design.md`에 있다고 알려라.
 
 **인자:**
 - `name`: 소문자-대시 고유 id (예: `combat-keeper`, `lore-checker`)

@@ -195,12 +195,15 @@ export function writeGeminiConfig(
 }
 
 /**
- * Write .agents/mcp_config.json with the claude-play MCP server for the
- * Antigravity (agy) CLI. Unlike Claude/Codex/Gemini, agy does NOT read a
- * per-runtime config flag — but it DOES honor the workspace-level
- * `.agents/mcp_config.json` (verified 2026-06-27: agy spawns the server with
- * the session dir as cwd and delivers the `env` block to the child process).
- * Same `mcpServers` shape as the Gemini config.
+ * Write `.agents/mcp_config.json` with the claude-play MCP server for the
+ * Antigravity (agy) CLI. agy ≤1.0.x read this workspace file directly (verified
+ * 2026-06-27). Headless agy 1.2.x ignores workspace `.agents/` entirely, so
+ * `AntigravityProcess` now uses this file as the source of truth: it registers an
+ * env-less `claude-play` entry in the global `~/.gemini/config/mcp_config.json`
+ * and passes this entry's `env` to the agy process, which the MCP child inherits.
+ * Persona-declared servers are written here but are not reachable from agy 1.2.
+ * `.agents/` is excluded from persona publish and session mirroring, so the
+ * internal token never leaks.
  */
 export function writeAntigravityMcpConfig(
   projectDir: string,

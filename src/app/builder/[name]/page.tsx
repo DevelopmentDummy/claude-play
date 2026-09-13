@@ -76,10 +76,16 @@ export default function BuilderPage() {
   const initRef = useRef(false);
   const initialMsgSent = useRef(false);
 
+  // 서버 재시작 후 WS가 재연결되면 `connected.sessionActive=false`가 오고 훅이 onSessionLost를 부른다.
+  // 채팅 페이지는 여기서 /open을 다시 쳐서 자동 복구하지만 빌더는 이 콜백이 없어 "나갔다 다시 와야" 했다.
+  // 핸들러는 아래에서 정의되므로 ref로 우회한다.
+  const sessionLostRef = useRef<(() => void) | null>(null);
+
   // WebSocket connection — only connect after init completes
   const { sendChat, sendCancel, send: wsSend } = useWebSocket({
     sessionId: name,
     isBuilder: true,
+    onSessionLost: () => sessionLostRef.current?.(),
     handlers: {
       "claude:message": (data) => {
         handleClaudeMessage(data);
@@ -217,6 +223,27 @@ export default function BuilderPage() {
       setError("Failed to reinitialize builder");
     }
   }, [mode, decodedName, builderModel, setStatus, setError]);
+
+  // 서버 재시작 자동 복구: 모델을 보내지 않는 "plain reopen"으로 /api/builder/edit를 다시 쳐서
+  // 죽은 빌더 프로세스를 같은 대화(resume id)로 되살린다. 재시작 마커가 있으면 그때 소비된다.
+  const handleSessionLost = useCallback(async () => {
+    setStatus("disconnected");
+    const res = await fetch("/api/builder/edit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: decodedName }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.model) setBuilderModel(data.model);
+      if (data.displayName) setDisplayName(data.displayName);
+      setStatus("connected");
+      setRefreshTrigger((n) => n + 1);
+    } else {
+      setError("서버 재시작 후 빌더 재연결에 실패했습니다. 상단 메뉴의 Reinit을 눌러주세요.");
+    }
+  }, [decodedName, setStatus, setError]);
+  sessionLostRef.current = handleSessionLost;
 
   // Model switch: clear history only if provider changes
   const handleBuilderModelChange = useCallback(async (newModel: string) => {

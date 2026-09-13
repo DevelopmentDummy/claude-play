@@ -44,5 +44,62 @@ export default function resolve(workflow, params, context) {
   if (typeof params?.turbo_strength === 'number' && wf['200']) wf['200'].inputs.strength = params.turbo_strength;
   if (typeof params?.turbo_low_vram === 'boolean' && wf['200']) wf['200'].inputs.low_vram = params.turbo_low_vram;
 
+  
+
+  // ── style_loras — 터보 LoRA(200) 뒤에 H3 전용 LoRA를 추가로 체인한다 ────────
+  // MiniMaxH3TurboLoRA는 이름만 Turbo일 뿐 범용 H3 LoRA 로더다(MODEL→MODEL).
+  // generic LoraLoaderModelOnly는 pruned 베이스에서 int8-fused fc2를 놓치므로 쓰지 않는다.
+  // 터보 distill은 이미 node 200이 담당하므로 여기에 또 넣는 것은 거부한다.
+  const rawLoras = params?.style_loras ?? params?.loras;
+  const entries = (Array.isArray(rawLoras) ? rawLoras : [])
+    .map((e) => (typeof e === "string" ? { name: e, strength: 1.0 } : e))
+    .filter((e) => e && typeof e.name === "string" && e.name.trim().length > 0)
+    .map((e) => ({
+      name: e.name.trim(),
+      strength: typeof e.strength === "number" ? e.strength : 1.0,
+      low_vram: e.low_vram === true,
+    }))
+    .filter((e) => e.strength !== 0);
+
+  if (entries.length > 0) {
+    const turbo = entries.filter((e) => /turbo/i.test(e.name));
+    if (turbo.length > 0) {
+      throw new Error(
+        `[minimax-h3-video-turbo] 터보 LoRA는 node 200이 이미 담당한다: ${turbo
+          .map((t) => t.name)
+          .join(", ")} — 교체하려면 workflow.json의 200.lora_name을 고쳐라.`
+      );
+    }
+
+    const available = context?.models?.loras;
+    if (Array.isArray(available) && available.length > 0) {
+      const missing = entries.filter((e) => !available.includes(e.name));
+      if (missing.length > 0) {
+        throw new Error(
+          `[minimax-h3-video-turbo] 존재하지 않는 LoRA: ${missing.map((m) => m.name).join(", ")}`
+        );
+      }
+    }
+
+    // 터보(200) 출력을 받아 그 위에 스타일을 얹는다.
+    let src = ["200", 0];
+    let nextId = 300;
+    for (const e of entries) {
+      const nid = String(nextId++);
+      wf[nid] = {
+        class_type: "MiniMaxH3TurboLoRA",
+        inputs: {
+          model: src,
+          lora_name: e.name,
+          strength: e.strength,
+          low_vram: e.low_vram,
+        },
+      };
+      src = [nid, 0];
+    }
+    wf["9"].inputs.model = src;
+    wf["16"].inputs.model = src;
+  }
+
   return wf;
 }

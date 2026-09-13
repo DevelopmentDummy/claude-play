@@ -12,13 +12,16 @@ export const SYSTEM_JSON: ReadonlySet<string> = new Set([
   "package.json", "tsconfig.json", "voice.json", "chat-options.json",
   "comfyui-config.json", "character-tags.json", ".mcp.json", "style.json",
   "policy-context.json", "style-check.json", "runtime-mcp.json",
+  // 앱 모드 런타임 장부 — 페르소나 데이터가 아니다. world.json은 여기 넣지 않는다(앱이 패널
+  // 컨텍스트로 읽어야 하고, 엔진도 ctx.data.world로 받아야 하므로).
+  "threads.json",
 ]);
 
 /** buildJsonLint 전용 스킵 (현행 9 — SYSTEM_JSON과 의도적으로 별개). */
 export const LINT_SKIP_JSON: ReadonlySet<string> = new Set([
   "session.json", "builder-session.json", "layout.json", "chat-history.json",
   "pending-events.json", "pending-actions.json", "package.json",
-  "tsconfig.json", "chat-options.json",
+  "tsconfig.json", "chat-options.json", "threads.json",
 ]);
 
 // ── 순수 패치 의미론 ─────────────────────────────────────────
@@ -121,7 +124,7 @@ export function resolveSessionFilePath(sessionDir: string, fileName: string): st
 let tmpSeq = 0;
 
 /** tmp+rename 원자적 쓰기(동기). 실패 시 tmp 정리 후 throw. */
-function atomicWriteJsonSync(filePath: string, value: unknown): void {
+export function atomicWriteJsonSync(filePath: string, value: unknown): void {
   const tmp = `${filePath}.${process.pid}.${tmpSeq++}.tmp`;
   try {
     fs.writeFileSync(tmp, JSON.stringify(value, null, 2), "utf-8");
