@@ -368,17 +368,16 @@ function cleanupManagedProcesses(): void {
 }
 
 /** Kill any stale agy.exe processes left behind from prior runs (Windows only).
- *  AntigravityProcess spawns agy with `--prompt-interactive spike-init` via
- *  `Start-Process -WindowStyle Hidden`, which detaches the child from Node's
- *  process tree. If Node crashes or hot-reloads while a turn is in flight, the
- *  agy LS host survives with no parent to clean it up. We match by the marker
- *  arg so non-bridge agy invocations (e.g. user running `agy` manually) are
- *  untouched. */
+ *  AntigravityProcess runs agy as a piped headless process
+ *  (`--input-format stream-json ... -p ""`); if Node crashes or hot-reloads the
+ *  child can outlive its parent. Legacy builds spawned it detached with
+ *  `--prompt-interactive` via `Start-Process`. We match by those bridge-specific
+ *  args so a user's interactive `agy` is untouched. */
 function killStaleAntigravityProcesses(): void {
   if (process.platform !== "win32") return;
   try {
     const out = execSync(
-      `powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \\"Name='agy.exe'\\" | Where-Object { $_.CommandLine -like '*spike-init*' } | Select-Object -ExpandProperty ProcessId"`,
+      `powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \\"Name='agy.exe'\\" | Where-Object { $_.CommandLine -like '*--input-format stream-json*' -or $_.CommandLine -like '*spike-init*' } | Select-Object -ExpandProperty ProcessId"`,
       { encoding: "utf8", stdio: ["pipe", "pipe", "ignore"] },
     );
     const pids = out.split(/\r?\n/).map(s => parseInt(s.trim(), 10)).filter(n => n > 0);

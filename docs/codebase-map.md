@@ -56,7 +56,7 @@
 | Claude 프로세스, stream-json, AskUserQuestion 카드 | 프로바이더 | `src/lib/claude-process.ts` → `src/lib/session-instance.ts` (`submitToolAnswer`) → `src/components/InteractiveQuestionCard.tsx` | `tool:answered`, `[질문 응답]`, `content_block_delta` | 플레이북 §4.1 (헤드리스 자동 거부·카드 연쇄 함정) | 세션 런타임 | hot-path |
 | Codex, app-server, thread/start, turn 실패 | 프로바이더 | `src/lib/codex-process.ts` | `turn/completed`, `extractCodexErrorMessage`, `CODEX_HOME`, `[steer]` | 플레이북 §4.2, `codex-process.test.mts` 실행, [external-llm-routing.md](external-llm-routing.md) | Codex 런타임 설정 | hot-path |
 | Kimi, --wire, sticky session id | 프로바이더 | `src/lib/kimi-process.ts` | `findKimiSessionId`, `ApprovalRequest`, `sticky` | 플레이북 §4.3 | 세션 런타임 | hot-path |
-| Antigravity, agy, Gemini 모델, 캐스케이드, 폴링, wake-up echo | 프로바이더 | `src/lib/antigravity-process.ts` → `src/lib/antigravity-pid-registry.ts` | `GetCascadeTrajectory`, `SendUserCascadeMessage`, `stripSystemMessageEcho`, `syncTailBaseline`, `resolveModelKeyDynamic` | **플레이북 §4.4 전체** (spawn·모델 키·RPC 스키마·brain 디버깅) | Antigravity 배관 | hot-path |
+| Antigravity, agy, Gemini 모델, stream-json, CSRF 401, wake-up echo | 프로바이더 | `src/lib/antigravity-process.ts` → `src/lib/antigravity-pid-registry.ts` | `turnQueue`, `handleStepUpdate`, `handleResult`, `stripSystemMessageEcho`, `resolveModelSlug` | **플레이북 §4.4 전체** (전환 배경·stream-json 함정·모델 slug·플러그인 MCP·디버깅) | Antigravity 배관 | hot-path |
 | 이미지 생성, ComfyUI, 워크플로 패키지, LoRA, 체크포인트 | 이미지 | `src/lib/comfyui-client.ts` → `comfyui-graph.ts`/`comfyui-checkpoint.ts`/`comfyui-history.ts` → `src/lib/workflow-resolver.ts` → `src/app/api/tools/comfyui/generate/route.ts` | `generate_image`, `timeoutBudget`, `seed_randomize`, `resolver.mjs`, `params.json` | 플레이북 §5.4 (4개소 게이트)·§5.10 (undici 절벽·seed) | 이미지 워크플로 행 | hot-path + re-open |
 | 영상 생성, H3, Range 재생, 긴 렌더 | 이미지/미디어 | `src/lib/long-http.ts` → `src/lib/comfyui-client.ts` → `src/lib/static-file.ts` → `src/components/InlineImage.tsx` | `longRequest`, `SaveVideo`, `fileResponseWithRange`, `VIDEO_RE` | 플레이북 §5.10, HANDOVER §4-15 | 이미지 + API | hot-path |
 | GPT 이미지, Codex image_gen, OpenAI 이미지 | 이미지 | `src/lib/codex-image.ts` (기본) / `src/lib/openai-image.ts` (api) → `src/app/api/tools/openai/generate/route.ts` | `OPENAI_IMAGE_BACKEND`, `IG_OUTPUT_RE`, `generated_images` | **플레이북 §5.5** (파일명 규칙이 codex 버전마다 바뀜) | 이미지 백엔드 게이팅 | hot-path |
@@ -103,7 +103,7 @@
 | `src/lib/session-manager.ts` (~1,900) | `createSession` · `refreshToolSkills` · `patchSessionMeta` (원자 쓰기 경고 주석) · `mirrorNewPersonaFiles` · builder-session 관련은 `builder-session.json` grep |
 | `src/app/chat/[sessionId]/page.tsx` (~1,400) | `useChat(` 호출부 · `handleCloseSession` · `onSubAgents` · dock/modal 승격 분기는 `dock-bottom` grep · TTS 언락은 `audio` grep |
 | `src/lib/comfyui-client.ts` (~1,360) | `generate(` · `timeoutBudget` · `pollHistory`/`waitAndDownload` · 그래프 수술은 `comfyui-graph.ts`로 이미 분리됨 |
-| `src/lib/antigravity-process.ts` (~1,040) | `spawn` (PowerShell ps1 생성) · `resolveModelKeyDynamic` · `emitNewChunks`/`syncTailBaseline` (tail delta) · `stripSystemMessageEcho` · `waitForIdle`/`WaitForConversationFullyIdle` · `startIdleWatch` |
+| `src/lib/antigravity-process.ts` (~580) | `spawn`/`launch` (stream-json 파이프 spawn) · `resolveModelSlug` (`agy models`) · `turnQueue` (primer/user 턴 ↔ `result` 짝짓기) · `handleStepUpdate` (text_delta·spontaneous 턴) · `handleResult` · `stripSystemMessageEcho` |
 | `src/mcp/claude-play-mcp-server.mjs` (~1,600) | `server.registerTool(` 24개 — 이름으로 grep |
 
 ## 5. 이 문서의 유지

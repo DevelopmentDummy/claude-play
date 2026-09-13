@@ -48,7 +48,7 @@
 
 - **의도**: agy 세션의 immersion 룰셋을 GEMINI.md에 영속화해 resume/primer-절단에서 살아남게 하기.
 - **전제가 반박됨**: agy는 GEMINI.md를 자동 로드하지 않는다 (988스텝 transcript 적대적 분석으로 확인 — 플레이북 §4.4.5). 이 변경은 resume에 대해 no-op일 가능성이 높다.
-- **재개한다면**: ① 먼저 codeword 런타임 테스트 (지시를 GEMINI.md 룰셋 섹션에만 심고 resume 후 준수 확인) ② 실패하면 실제 결함 — primer 28,000자 절단(`MAX_PRIMER_CHARS`)과 캐스케이드 compaction — 을 겨냥해 재설계 ③ 구현 위치는 `src/lib/runtime-instructions.ts`(`writeAntigravityInstructions`) + `respawn-helpers.ts` 콜사이트 — 옛 브랜치 diff는 참고자료로만.
+- **재개한다면**: ① 먼저 codeword 런타임 테스트 (지시를 GEMINI.md 룰셋 섹션에만 심고 resume 후 준수 확인) ② 실패하면 실제 결함 — 캐스케이드 compaction (primer 28,000자 절단은 2026-09-14 stdin 전달 전환으로 해소) — 을 겨냥해 재설계 ③ 구현 위치는 `src/lib/runtime-instructions.ts`(`writeAntigravityInstructions`) + `respawn-helpers.ts` 콜사이트 — 옛 브랜치 diff는 참고자료로만.
 
 ## 4. 라이브 스모크 백로그 — 머지·푸시됐지만 런타임 미검증
 
@@ -59,9 +59,9 @@
 | 1 | fire_ai `autoResume` (9286e18) | 백그라운드 잡 완료 시 idle이면 즉시 자발 턴, busy면 턴 종료 직후 발동. 체인 상한 `FIRE_AI_AUTORESUME_MAX`(기본 5) |
 | 2 | 서브에이전트 v2.1 모델 고정 (6b4362a, 6a43f56) | 세션과 다른 프로바이더 pin (예: claude 세션 + gpt-5.4 서브) → `subagents/{name}/sub.log`에 해당 프로바이더 + `.resume-codex` 생성; 미지정 서브는 세션 상속; gemini pin은 세션 폴백 + console.warn |
 | 3 | 서브 대화 모달 (e3876d5) | tools 메뉴 → 모달; 직접 메시지 → 대화형 응답 + `transcript.jsonl` 기록; auto 디스패치 흐릿한 라인; report 칩 + 다음 턴 `[SUB:]`; 서브 작업 중엔 StatusBar '작업 중' 펄스 칩에 이름 표시 (안읽음 배지는 5234c38에서 ambient 인디케이터로 대체됨) |
-| 4 | agy idle-watch (`ANTIGRAVITY_IDLE_WATCH`) | async 이미지 후 (a) 대기 → 후속이 라이브 등장 (b) 빠르게 입력 → stale 중복 없음. `antigravity-stream.log`에 `idle-watch: async wake-up detected` |
+| 4 | agy stream-json 전환 (2026-09-14) | agy 1.2.2 CSRF로 LS RPC 전멸 → `-p "" --input-format stream-json` 파이프 상주로 교체. **서버 재시작 후** agy 세션 신규 1개 + 기존 1개 re-open: (a) 첫 응답 정상·primer 비노출 (b) MCP 이미지 생성 1회 (`.agents/plugins/claude-play`) (c) async 이미지 완료 후 wake-up 턴이 라이브 등장 (`antigravity-stream.log`에 `spontaneous turn started`) (d) 개입(steer) 1회 (e) fire_ai·서브 agy 1회. 단독 드라이버로는 primer·플러그인 MCP·steer·resume 검증 완료 |
 | 5 | kimi 첫-open sticky id | 서브 있는 kimi 세션 첫 open에서 `session.json.kimiSessionId`가 메인 대화 것인지 (`kimi-stream.log`의 sticky 라인) — 플레이북 §4.3 |
-| 6 | agy MCP (.agents/mcp_config.json, 19ac8a4) | **기존 agy 세션은 재-open해야 반영.** 세션에서 MCP 도구 목록 + 실제 이미지 생성 1회 |
+| 6 | agy MCP (workspace plugin `.agents/plugins/claude-play/`) | agy 1.2는 `.agents/mcp_config.json`을 안 읽음 → 플러그인으로 등록. **기존 agy 세션은 재-open해야 파일이 생성됨.** 위 #4와 함께 확인 |
 | 7 | ultracode Workflow 도구 | 헤드리스 빌더 spawn(`claude -p`)의 도구 목록에 Workflow가 실제로 나타나는지 |
 | 8 | fire_ai 멀티 프로바이더 (260cf99) | Claude 외 모델 id로 fire_ai 1회 (예: kimi) → 결과 정상 회수 |
 | 9 | variables.json 원자화 (4a7e128) | 변수를 바꾸는 행동 → 패널 라이브 갱신 확인 — per-file `fs.watch`가 rename-replace를 견디는지 (플레이북 §5.1) |
@@ -117,7 +117,7 @@
 
 ## 7. 개선 로드맵 리드 (우선순위 제안)
 
-1. **agy 폴링 → 스트리밍 전환**: LS의 `StreamCascadeReactiveUpdates` 등 스트리밍 RPC로 500ms 폴링 대체 — 가장 큰 구조 개선 후보.
+1. ~~agy 폴링 → 스트리밍 전환~~ — 2026-09-14 headless stream-json 파이프로 완료 (라이브 스모크는 §4-4).
 2. **agy primer 강화**: "짧은 준비 완료 응답만" 지시로 primer 선행 플레이(실제 도구 호출 부수효과) 차단.
 3. **shared tool 패널 watcher**: `data/tools/` watch + SPA 네비게이션 시 frontend `_instances` destroy — templateCache stale 해소 (플레이북 §5.3).
 4. **서브에이전트 role 재주입**: 장기 세션 compaction에서 leading-message 희석 대응 (session-lifecycle v2 한계 ⓐ).

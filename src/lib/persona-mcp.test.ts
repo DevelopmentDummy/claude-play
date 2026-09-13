@@ -20,7 +20,7 @@ test("persona MCP: approved manifest survives all writers, untrusted import fail
     assert.equal(readPersonaMcpServers(project, root, "blender_master").blender_studio.args[0], `${project}/mcp/server.mjs`);
     assert.equal(Object.keys(readPersonaMcpServers(project, root, "other")).length, 0);
     ensureClaudeRuntimeConfig(project, root, "blender_master");
-    for (const name of [".mcp.json", ".gemini/settings.json", ".agents/mcp_config.json"]) {
+    for (const name of [".mcp.json", ".gemini/settings.json", ".agents/mcp_config.json", ".agents/plugins/claude-play/mcp_config.json"]) {
       assert.ok(JSON.parse(fs.readFileSync(path.join(project, name), "utf8")).mcpServers.blender_studio);
     }
     const toml = fs.readFileSync(path.join(project, ".codex/config.toml"), "utf8");

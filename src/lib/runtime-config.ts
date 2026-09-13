@@ -195,12 +195,14 @@ export function writeGeminiConfig(
 }
 
 /**
- * Write .agents/mcp_config.json with the claude-play MCP server for the
- * Antigravity (agy) CLI. Unlike Claude/Codex/Gemini, agy does NOT read a
- * per-runtime config flag — but it DOES honor the workspace-level
- * `.agents/mcp_config.json` (verified 2026-06-27: agy spawns the server with
- * the session dir as cwd and delivers the `env` block to the child process).
- * Same `mcpServers` shape as the Gemini config.
+ * Write the claude-play MCP server config for the Antigravity (agy) CLI.
+ * agy has no per-runtime config flag. Two copies are written:
+ * - `.agents/mcp_config.json` — honored by agy ≤1.0.x (verified 2026-06-27).
+ * - `.agents/plugins/claude-play/{plugin.json,mcp_config.json}` — agy 1.2.x only
+ *   documents global and plugin-scoped MCP config; a workspace plugin under
+ *   `.agents/plugins/` is the per-session way to register servers (2026-09-14).
+ * Same `mcpServers` shape as the Gemini config. `.agents/` is excluded from
+ * persona publish and session mirroring, so the internal token never leaks.
  */
 export function writeAntigravityMcpConfig(
   projectDir: string,
@@ -229,6 +231,11 @@ export function writeAntigravityMcpConfig(
     JSON.stringify(config, null, 2),
     "utf-8"
   );
+
+  const pluginDir = path.join(agentsDir, "plugins", "claude-play");
+  fs.mkdirSync(pluginDir, { recursive: true });
+  fs.writeFileSync(path.join(pluginDir, "plugin.json"), JSON.stringify({ name: "claude-play" }, null, 2), "utf-8");
+  fs.writeFileSync(path.join(pluginDir, "mcp_config.json"), JSON.stringify(config, null, 2), "utf-8");
 }
 
 export function ensurePolicyContext(projectDir: string): void {
