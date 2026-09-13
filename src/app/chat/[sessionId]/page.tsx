@@ -1004,8 +1004,16 @@ export default function ChatPage() {
     setMinimizedModals((prev) => { const next = new Set(prev); next.delete(name); return next; });
   }, []);
 
-  // Filter OOC messages unless toggle is on
-  const visibleMessages = showOOC ? messages : messages.filter((m) => !m.ooc);
+  // Filter OOC messages unless toggle is on.
+  // useMemo 필수 — filter()는 매 렌더마다 새 배열을 만든다. 앱 모드는 월드 틱마다
+  // setPanelData로 리렌더되므로(5Hz), 참조가 계속 바뀌면 ChatMessages의 자동 스크롤
+  // effect가 초당 다섯 번 발화한다. 그러면 scrollToBottom이 programmatic 윈도를
+  // 계속 연장해 사용자의 스크롤까지 프로그램 스크롤로 오인하고, 위로 올린 즉시
+  // 바닥으로 끌려 내려간다.
+  const visibleMessages = useMemo(
+    () => (showOOC ? messages : messages.filter((m) => !m.ooc)),
+    [showOOC, messages],
+  );
 
   // choices를 useMemo로 캐싱하여 ChatInput 불필요한 리렌더 방지
   const currentChoices = useMemo(() => {
