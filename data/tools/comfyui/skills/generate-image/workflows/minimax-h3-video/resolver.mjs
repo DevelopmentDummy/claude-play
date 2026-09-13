@@ -40,5 +40,68 @@ export default function resolve(workflow, params, context) {
     delete wf["33"];
   }
 
+  
+
+  // ── style_loras — H3 전용 LoRA 로더 체인 (선택) ──────────────────────────
+  // ⚠️ generic LoraLoaderModelOnly를 쓰면 안 된다. pruned/양자화 베이스
+  // (MiniMax_H3_FL2VA_pruned_nvfp4)에서는
+  //   ① adaln_proj delta가 weight patch로 표현되지 않아 런타임 재주입이 필요하고
+  //   ② int8-fused fc2 모듈이 bypass hook에 보이지 않아 조용히 누락된다.
+  // MiniMaxH3TurboLoRA 노드가 이 둘을 처리한다(이름만 Turbo일 뿐 범용 H3 LoRA 로더).
+  // payload 최상위 loras는 features.lora_injection=false라 무시된다 —
+  // Illustrious용 baseLoras가 끌려 들어오는 걸 막으려고 그 경로는 닫아뒀다.
+  const rawLoras = params?.style_loras ?? params?.loras;
+  const entries = (Array.isArray(rawLoras) ? rawLoras : [])
+    .map((e) => (typeof e === "string" ? { name: e, strength: 1.0 } : e))
+    .filter((e) => e && typeof e.name === "string" && e.name.trim().length > 0)
+    .map((e) => ({
+      name: e.name.trim(),
+      strength: typeof e.strength === "number" ? e.strength : 1.0,
+      low_vram: e.low_vram === true,
+    }))
+    .filter((e) => e.strength !== 0);
+
+  if (entries.length > 0) {
+    // 이 패키지는 풀스텝(기본 25)이다. 터보 distill을 섞으면 스케줄이 어긋난다.
+    const turbo = entries.filter((e) => /turbo/i.test(e.name));
+    if (turbo.length > 0) {
+      throw new Error(
+        `[minimax-h3-video] 터보 distill LoRA는 이 패키지에 얹지 마라: ${turbo
+          .map((t) => t.name)
+          .join(", ")} — 전용 샘플러가 함께 필요하다. minimax-h3-video-turbo를 사용하라.`
+      );
+    }
+
+    // 조용한 무시 방지 — 없는 파일이면 생성 자체를 실패시킨다.
+    const available = context?.models?.loras;
+    if (Array.isArray(available) && available.length > 0) {
+      const missing = entries.filter((e) => !available.includes(e.name));
+      if (missing.length > 0) {
+        throw new Error(
+          `[minimax-h3-video] 존재하지 않는 LoRA: ${missing.map((m) => m.name).join(", ")}`
+        );
+      }
+    }
+
+    let src = ["6", 0];
+    let nextId = 300;
+    for (const e of entries) {
+      const nid = String(nextId++);
+      wf[nid] = {
+        class_type: "MiniMaxH3TurboLoRA",
+        inputs: {
+          model: src,
+          lora_name: e.name,
+          strength: e.strength,
+          low_vram: e.low_vram,
+        },
+      };
+      src = [nid, 0];
+    }
+    // UNETLoader(6)를 직접 물고 있던 두 소비처를 체인 끝으로 갈아끼운다.
+    wf["9"].inputs.model = src;
+    wf["16"].inputs.model = src;
+  }
+
   return wf;
 }

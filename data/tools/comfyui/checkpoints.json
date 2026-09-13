@@ -97,10 +97,10 @@
       "family": "anima",
       "notes": "BoleromixAnima v0.21 (3.90GB fp16, CivitAI 2575161@2960574). Anima 베이스 머지. gemma_3_12B 인코더 + qwen_image VAE 페어. 2026-06-04 도입."
     },
-    "tekitoMix_v31.safetensors": {
+    "tekitoMix_v321.safetensors": {
       "loader": "unet_only",
       "family": "anima",
-      "notes": "Tekito-Mix v3.1 (3.90GB, CivitAI 2639779@3147432). Anima 베이스. 트리거 워드 없음. 2026-08-01 도입 — 프로파일 미정이라 resolver auto 시 cat_tower 폴백 적용됨."
+      "notes": "Tekito-Mix v3.21 (3.90GB, CivitAI 2639779@3283768). Anima 베이스. 트리거 워드 없음. 2026-09-13 도입 — v3.1에서 v3.2(화면이 조금 더 클리어해짐)를 거친 누적 마이너 체인지판. 작가 본인이 v3.2 대비 차분은 거의 없다고 명시. 전용 프로파일 없어 resolver auto 시 cat_tower 폴백(v3.1과 동일). seed 880126 A/B 완료(2026-09-13) — v3.1 대비 셔츠 주름·스커트 플리츠·손가락·다리 음영의 디테일 밀도가 오르고 구도 드리프트는 거의 없음. 화풍(셀화 성향)은 동일 계열."
     },
     "tekito29_previewV1.safetensors": {
       "loader": "unet_only",

@@ -91,6 +91,11 @@
     "last_frame": {
       "type": "string",
       "description": "선택 — 끝 프레임 파일명(ComfyUI input 기준). 지정하면 FLF2V로 동작해 클립이 이 이미지로 수렴한다. 15초 후반부 드리프트 억제 + 체이닝 이음새 고정용. 비우면 노드가 제거된다."
+    },
+    "style_loras": {
+      "type": "array",
+      "required": false,
+      "description": "선택 — UNET에 얹을 스타일/컨셉 LoRA 체인. `[{\"name\":\"파일.safetensors\",\"strength\":0.8}]` 형식이며 문자열만 주면 강도 1.0으로 해석한다. 비우면 노드가 아예 생성되지 않아 기존 동작과 100% 동일하다.\n\n⚠️ payload **최상위** `loras`는 이 패키지에서 무시된다(`features.lora_injection=false`). 최상위 loras를 켜면 Illustrious용 baseLoras까지 끌려 들어와 가중치가 오염되므로 의도적으로 막아둔 것이다. 반드시 `params.style_loras`로 넘겨라.\n\n⚠️ 이름에 `turbo`가 포함된 distill LoRA는 resolver가 거부한다 — generic `LoraLoaderModelOnly`로 얹으면 time-conditioning이 깨져 붕괴한다. 터보는 전용 노드를 쓰는 `minimax-h3-video-turbo` 패키지를 써라.\n\nLoRA는 `lora_unet_*` 키만 가지므로 CLIP에는 적용하지 않는다(ModelOnly). 체인은 UNETLoader(6) 뒤에 순서대로 붙고, 그 출력이 BasicScheduler(9)와 BasicGuider(16) 양쪽 model 입력을 대체한다.\n\n학습모드 매칭 주의: 이 패키지는 fl2va 디퓨전을 쓰므로 `ss_h3_training_mode=fl2va`로 학습된 LoRA가 정합한다."
     }
   },
   "benchmarks": {
