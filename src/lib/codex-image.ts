@@ -82,6 +82,25 @@ function listIgImages(root: string): Set<string> {
   return out;
 }
 
+/**
+ * 동시 생성 직렬화 큐.
+ *
+ * Codex의 image_gen은 대화 디렉토리 아래 공용 폴더에 `ig_*.png`를 떨군다.
+ * 우리가 "내 결과"를 식별하는 유일한 수단은 "실행 전후로 새로 생긴 파일 중 최신"
+ * 이라는 휴리스틱인데, 두 호출이 겹치면 둘 다 같은 파일을 집어 **파일명이 뒤바뀐다**
+ * (실측: 2초 간격 호출 두 건이 동일 md5로 저장됨).
+ *
+ * CLI가 출력 경로를 지정하는 인자를 주지 않으므로 식별자를 심을 자리가 없다.
+ * 따라서 호출을 직렬화해 원인 자체를 없앤다. 이미지 생성은 어차피 순차로
+ * 처리되므로 처리량 손해는 없다.
+ */
+let imageQueue: Promise<unknown> = Promise.resolve();
+function serializeGeneration<T>(fn: () => Promise<T>): Promise<T> {
+  const run = imageQueue.then(fn, fn);
+  imageQueue = run.catch(() => undefined);
+  return run;
+}
+
 export class CodexImageClient {
   /** Resolve+validate a reference image path inside the session dir. */
   private resolveReferenceImage(sessionDir: string, refPath: string): string | null {
@@ -92,6 +111,10 @@ export class CodexImageClient {
   }
 
   async generate(req: GenerateRequest): Promise<GenerateResult> {
+    return serializeGeneration(() => this.generateExclusive(req));
+  }
+
+  private async generateExclusive(req: GenerateRequest): Promise<GenerateResult> {
     // Validate reference image early (edit mode).
     let refAbs: string | null = null;
     if (req.referenceImage) {
@@ -178,8 +201,8 @@ export class CodexImageClient {
       if (fresh.length === 0) {
         return { success: false, error: exit.err || `Codex produced no image (no new .png under ${genRoot} after grace window)` };
       }
-      // NOTE: with concurrent generations this newest-new heuristic can mis-assign
-      // between simultaneous calls; acceptable for a single-user service.
+      // 호출이 직렬화되어 있으므로 이 시점의 새 파일은 이번 실행의 결과다.
+      // (직렬화 이전에는 동시 호출끼리 파일이 뒤바뀌는 버그가 있었다.)
       fresh.sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
       const buffer = fs.readFileSync(fresh[0]);
       const filepath = writeSessionImage(req.sessionDir, req.filename, buffer);
