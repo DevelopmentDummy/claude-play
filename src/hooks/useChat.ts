@@ -98,7 +98,11 @@ function mergeUtf8Texts(a: string, b: string): string {
 }
 
 export function useChat(rawSessionId?: string) {
-  const sessionId = rawSessionId ? decodeURIComponent(rawSessionId) : undefined;
+  // Callers may pass either the raw (URL-encoded) route segment or an
+  // already-decoded id — decode defensively so both shapes land on the raw id.
+  const sessionId = rawSessionId
+    ? (() => { try { return decodeURIComponent(rawSessionId); } catch { return rawSessionId; } })()
+    : undefined;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [status, setStatus] = useState<string>("disconnected");

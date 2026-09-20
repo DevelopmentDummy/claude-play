@@ -42,7 +42,15 @@ interface Panel {
 }
 
 export default function ChatPage() {
-  const { sessionId } = useParams<{ sessionId: string }>();
+  const { sessionId: rawSessionId } = useParams<{ sessionId: string }>();
+  // Next.js useParams() returns URL-encoded route segments (Korean → %EC%84%9C...).
+  // Decode once here so `encodeURIComponent(sessionId)` call sites (and children
+  // that encode, e.g. SessionListModal / AppSlot / InlineImage) don't double-encode.
+  // Raw `${sessionId}` interpolations stay correct — fetch() encodes them itself.
+  // Same defensive try/catch as useWebSocket: a literal '%' in the id must not throw.
+  const sessionId = (() => {
+    try { return decodeURIComponent(rawSessionId); } catch { return rawSessionId; }
+  })();
   const router = useRouter();
   const searchParams = useSearchParams();
   const {
@@ -84,6 +92,9 @@ export default function ChatPage() {
   // 디버그 챗 높이(px). null이면 기본 비율(55%)을 쓴다. 드래그 핸들로 조절, localStorage에 세션별 저장.
   const [debugChatHeight, setDebugChatHeight] = useState<number | null>(null);
   const [title, setTitle] = useState("");
+  // 부모 페르소나 이름 — InlineImage가 페르소나 스코프 이미지(persona images/)까지
+  // 동시에 폴링할 수 있게 ChatMessages로 내려준다 (playbook §5.13).
+  const [personaName, setPersonaName] = useState<string | undefined>(undefined);
   const [memo, setMemo] = useState("");
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [wsEnabled, setWsEnabled] = useState(false);
@@ -711,6 +722,7 @@ export default function ChatPage() {
 
       const data = await res.json();
       setTitle(data.displayName || data.title || data.persona);
+      setPersonaName(typeof data.persona === "string" ? data.persona : undefined);
       setMemo(typeof data.memo === "string" ? data.memo : "");
       setLayout(data.layout);
       if (data.model) setCurrentModel(data.model);
@@ -1215,6 +1227,7 @@ export default function ChatPage() {
               isStreaming={isStreaming}
               hideTools
               sessionId={sessionId}
+              personaName={personaName}
               panels={inlinePanels}
               hasMore={hasMore}
               onLoadMore={loadMore}

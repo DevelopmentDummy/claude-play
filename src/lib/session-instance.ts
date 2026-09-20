@@ -1950,6 +1950,16 @@ ${brief.trim()}` : "";
     // Flush idle waiters (scheduler sendMessage)
     this.flushIdleWaiters();
 
+    // Turn finished — drop the "streaming" status back to "connected".
+    // The Claude CLI only ever emits "streaming" (on send) and "disconnected"
+    // (on exit); it has no terminal idle status. Live clients hide the badge
+    // themselves on the result message, but _currentStatus stayed "streaming"
+    // forever, so a client that reloaded after a finished turn replayed a stale
+    // streaming badge via ws-server's getStatus() handshake.
+    if (this._currentStatus === "streaming" && this.claude.isRunning()) {
+      this.setStatus("connected");
+    }
+
     // Antigravity 모델이 응답 없이 turn을 끝냈으면 silent system prompt로 한 번만 재시도.
     // 단, idle-watch가 재진입한 자발적 wake-up turn은 사용자 응답 누락이 아니므로 제외.
     // 누출/메타 모두 silentRetryDone으로 턴당 1회만 재시도(무한루프 방지). 누출 스트립

@@ -378,7 +378,12 @@ export function listConversationsForSession(sessionId: string): {
 }
 
 /** Update session.json's provider conversation id for resume. */
-export function relinkConversation(sessionId: string, conversationId: string): { ok: true } | { ok: false; error: string } {
+/**
+ * Link the session to an existing provider conversation, or — when
+ * `conversationId` is null — unlink entirely so the next spawn starts a fresh
+ * conversation (no `--resume`).
+ */
+export function relinkConversation(sessionId: string, conversationId: string | null): { ok: true } | { ok: false; error: string } {
   const sessionDir = path.join(getDataDir(), "sessions", sessionId);
   const metaPath = path.join(sessionDir, "session.json");
   let meta: SessionMeta;
@@ -388,7 +393,15 @@ export function relinkConversation(sessionId: string, conversationId: string): {
     return { ok: false, error: `cannot read session.json: ${(e as Error).message}` };
   }
   const provider = detectProvider(meta.model);
-  if (provider === "claude") meta.claudeSessionId = conversationId;
+  if (conversationId === null) {
+    // Fresh start: drop every provider link so nothing can resume.
+    delete meta.claudeSessionId;
+    delete meta.codexThreadId;
+    delete meta.kimiSessionId;
+    delete meta.geminiSessionId;
+    delete meta.antigravityCascadeId;
+  }
+  else if (provider === "claude") meta.claudeSessionId = conversationId;
   else if (provider === "codex") meta.codexThreadId = conversationId;
   else if (provider === "kimi") meta.kimiSessionId = conversationId;
   else meta.geminiSessionId = conversationId;
@@ -500,9 +513,13 @@ function listCodexConversationsByCwdWindow(
   return items;
 }
 
+/**
+ * Builder counterpart of {@link relinkConversation}. `conversationId: null`
+ * clears the link so the next builder spawn starts a brand-new conversation.
+ */
 export function relinkPersonaConversation(
   name: string,
-  conversationId: string,
+  conversationId: string | null,
 ): { ok: true } | { ok: false; error: string } {
   const personaDir = path.join(getDataDir(), "personas", name);
   if (!fs.existsSync(personaDir)) {
@@ -515,7 +532,14 @@ export function relinkPersonaConversation(
   }
   const provider = meta.provider || detectProvider(meta.model);
   meta.provider = provider;
-  if (provider === "claude") meta.claudeSessionId = conversationId;
+  if (conversationId === null) {
+    delete meta.claudeSessionId;
+    delete meta.codexThreadId;
+    delete meta.kimiSessionId;
+    delete meta.geminiSessionId;
+    delete meta.antigravityCascadeId;
+  }
+  else if (provider === "claude") meta.claudeSessionId = conversationId;
   else if (provider === "codex") meta.codexThreadId = conversationId;
   else if (provider === "kimi") meta.kimiSessionId = conversationId;
   else meta.geminiSessionId = conversationId;

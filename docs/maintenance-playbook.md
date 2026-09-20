@@ -204,6 +204,36 @@ Node의 전역 `fetch`(undici)는 `headersTimeout` 기본값이 **300초 고정*
 - **클라이언트 자동 재기동**: `useWebSocket`은 재연결 시 서버의 `connected.sessionActive=false`를 보고 `onSessionLost`를 부른다. 빌더도 `sessionId=페르소나명`으로 바인드하므로 이 신호는 오지만, `builder/[name]/page.tsx`가 콜백을 안 넘겨 아무 일도 안 났다(채팅 페이지는 `/open`을 다시 친다). 지금은 `handleSessionLost`가 모델 없이 `/api/builder/edit`를 다시 쳐 같은 resume id로 프로세스를 되살린다. 새 페이지 타입을 만들면 이 콜백을 빠뜨리지 말 것.
 - **재시작 마커(AI에게 "재시작 끝났다" 알림)**: MCP `bridge_restart_service`의 입력 `mode`("dev"/"start")를 `{ mode }`로 구조분해하면 모듈 상수 `mode`("session"/"builder")를 **가려서** 빌더 분기가 죽은 코드가 된다 — 응답의 `notificationMarker:false`가 그 증상. 지금은 `mode: respawnMode`로 받는다. MCP 서버 파일에서 핸들러 인자 이름을 모듈 상수(`mode`/`persona`/`sessionId`/`sessionDir`)와 겹치게 짓지 마라.
 
+### 5.13 `$IMAGE` 토큰 경로는 저장 스코프를 따른다 (페르소나 스코프 = `persona:` 접두사)
+`comfyui_generate`/`generate_image`에 `persona: "<이름>"` 을 주면 출력은 **페르소나** `images/`에 저장된다(라우트가 `targetDir`을 페르소나 dir로 잡는다). 그런데 세션 채팅 렌더러는 `ChatMessages`에 `personaName` prop을 **넘기지 않는다** (`src/app/chat/[sessionId]/page.tsx`에 해당 prop이 없다). 그래서 `InlineImage`의 candidateSources가 `["session"]` 하나뿐이고, `$IMAGE:images/foo.png$` 는 `/api/sessions/{id}/files/images/foo.png` 로만 조회된다 → 404 → **무한 "이미지 생성 중..." 스피너**(MAX_POLLS 60 소진 후 에러). 파일은 디스크에 멀쩡히 존재하므로 파일 존재만 확인하면 원인을 못 찾는다.
+
+- 페르소나 스코프 산출물: **`$IMAGE:persona:foo.png$`** (`isPersonaPath()` → `/api/sessions/{id}/persona-images?file=foo.png`). `persona:` 뒤에 `images/` 를 또 붙이지 말 것.
+- 세션 스코프(= `persona` 파라미터 미지정) 산출물만 `$IMAGE:images/foo.png$`.
+- `InlineImage`의 `VIDEO_RE`는 `mp4|webm|mov`만 매칭한다 — `SaveAnimatedWEBP` 산출 `.webp` 영상은 `<img>`로 렌더되며 애니메이션 재생은 정상이다(버그 아님).
+- 지침 사본이 흩어져 있다: `session-shared.md`, `data/tools/comfyui/skills/generate-image{,-gemini}/SKILL.md`, 각 페르소나의 `session-instructions.md` 및 `skills/*/SKILL.md`. 규칙을 바꾸면 이들을 함께 고쳐야 하며, 스킬/지침 변경은 **세션 재-open에만 반영**된다(§5.6).
+**근본 수정 적용됨 (2026-09-17)** — 세션 채팅도 이제 `personaName`을 내려주므로 `$IMAGE:images/foo.png$` 가 세션·페르소나 두 엔드포인트를 병렬 HEAD로 조회해 어느 쪽에 있든 뜬다. 그래도 **페르소나 스코프 산출물은 `persona:` 접두사를 쓰는 것을 권장**한다 (폴링 1회로 끝나고 의도가 명시적이다).
+
+🚨 **`builderMode` 플래그가 유일한 모드 판별자다.** 빌더 채팅(`src/app/builder/[name]/page.tsx`)은 `sessionId`에 **페르소나 이름**을 넣어 넘긴다 (`InteractiveQuestionCard`가 그 값을 쓴다). 따라서 `sessionId` 유무로 빌더/세션을 구분하려는 시도는 **반드시 빌더를 깨뜨린다** (`/api/sessions/{페르소나명}/files/...` → 404). `InlineImage`/`ChatMessages`의 `builderMode` prop을 지우거나 "sessionId 없으면 빌더" 같은 추론으로 대체하지 마라. 배선 경로: `builder/page.tsx` → `ChatMessages` → `renderMarkdown` → `renderInline` → `InlineImage.buildFileUrl` + `candidateSources`.
+
+### 5.14 JS `String.replace(문자열, 치환문자열)`의 `$` 특수 시퀀스 — 문서 패치 스크립트가 파일을 통째로 복제한다
+`replace`/`replaceAll`의 **치환 문자열**에서 `$&`, `` $` ``, `$'`, `$1` 은 특수 시퀀스다. 이 리포는 문서에 `` `$IMAGE:images/foo.png$` `` 같은 토큰이 자주 등장하는데, 여기서 `$` 바로 뒤에 백틱이 오면 `` $` `` 로 해석되어 **매치 이전의 문자열 전체**가 삽입된다. 실제로 이 패턴 때문에 `maintenance-playbook.md`가 자기 자신을 통째로 복제한 사고가 있었다 (2026-09-17).
+
+- 문서/지침을 스크립트로 패치할 때는 `t.split(from).join(to)` 를 써라 — `join`은 특수 시퀀스를 해석하지 않는다.
+- 굳이 `replace`를 쓰려면 치환값을 함수로 넘겨라: `t.replace(from, () => to)`.
+- 패치 후에는 `wc -l`과 핵심 문자열 grep으로 **길이·내용을 반드시 검증**하라. 이 사고는 조용히 성공한 것처럼 보인다.
+- bash에서 `node -e "..."` 로 한글·백틱·`$` 이 섞인 문서를 쓰는 것도 금지 — 셸이 백틱을 명령 치환으로, `$X`를 변수로 먹는다. 반드시 quoted heredoc(`<<'EOF'`)으로 `.js` 파일을 만들어 실행할 것.
+
+### 5.15 useParams()는 인코딩된 세그먼트를 준다 (한글 세션 id 이중 인코딩)
+Next.js App Router의 `useParams()`는 라우트 세그먼트를 **URL 인코딩된 상태**로 돌려준다. 한글 페르소나/세션 이름이면 `%EC%84%9C...` 형태다. 여기에 `encodeURIComponent()`를 한 번 더 걸면 `%25EC%2584%259C...`가 되어 서버가 존재하지 않는 세션 폴더를 조회한다 — 대부분의 라우트가 404가 아니라 **빈 결과를 200으로** 반환하므로 "목록이 비어 보이는" 무증상 버그가 된다(2026-09-20 `SessionListModal` "대화 기록이 없습니다" 사건).
+- 증상 확인: `curl /api/sessions/<이중인코딩 id>/conversations` → `{"items":[]}`, 단일 인코딩 → 정상 목록.
+- 규칙: `chat/[sessionId]/page.tsx`는 진입 시 `decodeURIComponent`를 **한 번만** 적용해 내려보낸다. `${sessionId}` 직접 보간은 fetch가 알아서 인코딩하므로 그대로 두어도 된다.
+- 디코드는 항상 `try/catch`로 감싼다(id에 리터럴 `%`가 있으면 `URIError`). `useWebSocket.ts`/`useChat.ts`가 같은 패턴을 쓴다.
+
+### 5.16 새로고침 후 상태 배지가 "스트리밍"으로 굳는 현상
+`ws-server.ts`는 WS 핸드셰이크에서 `instance.getStatus()`(`_currentStatus`)를 리플레이한다. 그런데 **Claude CLI는 턴 종료 상태를 emit하지 않는다** — `claude-process.ts`는 send 시 `"streaming"`, 종료 시 `"disconnected"`만 보낸다(codex/kimi/antigravity는 턴 끝에 `"connected"`를 보냄). 라이브 클라이언트는 result 메시지를 받고 자체적으로 배지를 내리므로 정상으로 보이지만, `_currentStatus`는 `"streaming"`에 머물러 새로고침한 클라이언트가 유령 스트리밍 배지를 받는다.
+- 수정(2026-09-20): `session-instance.ts:processResult()` 끝에서 `_currentStatus === "streaming" && claude.isRunning()`이면 `"connected"`로 되돌린다.
+- 유사 증상이 또 보이면 먼저 `getStatus()` 리플레이 값과 실제 프로세스 상태를 대조하라 — 프론트 상태 머신이 아니라 서버의 기억이 어긋난 경우가 많다.
+
 ## 6. 작업 방법론
 
 ### 6.1 대형 파일 분해 규율 (waves 6–12에서 무회귀 검증된 방법)

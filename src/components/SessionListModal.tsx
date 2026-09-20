@@ -78,12 +78,14 @@ export default function SessionListModal({ open, onClose, apiBase }: SessionList
   const [data, setData] = useState<ConversationsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [relinking, setRelinking] = useState<string | null>(null);
+  const [confirmFresh, setConfirmFresh] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     if (!apiBase) return;
     setData(null);
     setError(null);
+    setConfirmFresh(false);
     const ctrl = new AbortController();
     fetch(`${apiBase}/conversations`, { signal: ctrl.signal })
       .then((r) => r.json())
@@ -99,9 +101,10 @@ export default function SessionListModal({ open, onClose, apiBase }: SessionList
 
   if (!open) return null;
 
-  const handlePick = async (conversationId: string) => {
+  // conversationId === null → unlink: the next spawn starts a fresh conversation.
+  const handlePick = async (conversationId: string | null) => {
     if (relinking) return;
-    setRelinking(conversationId);
+    setRelinking(conversationId ?? "__fresh__");
     try {
       const res = await fetch(`${apiBase}/relink`, {
         method: "POST",
@@ -145,13 +148,31 @@ export default function SessionListModal({ open, onClose, apiBase }: SessionList
               이 채팅 폴더에서 시작된 모든 대화입니다. 항목을 누르면 해당 대화로 다시 연결됩니다.
             </p>
           </div>
-          <button
-            onClick={onClose}
-            className="text-text-dim hover:text-text text-lg leading-none px-2 cursor-pointer"
-            aria-label="Close"
-          >
-            ×
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={relinking !== null}
+              onClick={() => {
+                if (!confirmFresh) { setConfirmFresh(true); return; }
+                handlePick(null);
+              }}
+              className={`px-2.5 py-1 rounded-md text-[11px] border cursor-pointer transition-colors duration-fast
+                disabled:opacity-50 disabled:cursor-default
+                ${confirmFresh
+                  ? "border-warning/60 text-warning bg-warning/10"
+                  : "border-accent/40 text-accent hover:bg-accent/10"}`}
+              title="현재 대화 연결을 끊고, 컨텍스트 없이 새 대화를 시작합니다"
+            >
+              {relinking === "__fresh__" ? "시작 중…" : confirmFresh ? "정말 새로 시작?" : "+ 새 대화 시작"}
+            </button>
+            <button
+              onClick={onClose}
+              className="text-text-dim hover:text-text text-lg leading-none px-2 cursor-pointer"
+              aria-label="Close"
+            >
+              ×
+            </button>
+          </div>
         </header>
 
         <div className="flex-1 overflow-y-auto p-2">
