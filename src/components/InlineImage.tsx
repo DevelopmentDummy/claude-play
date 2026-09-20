@@ -6,6 +6,10 @@ import ImageModal from "./ImageModal";
 interface InlineImageProps {
   sessionId?: string;
   personaName?: string;
+  /** 빌더 채팅에서만 true. 빌더는 `sessionId`에 *페르소나 이름*을 넣어 넘기므로
+   *  (InteractiveQuestionCard가 그 값을 쓴다) sessionId 유무로는 모드를 구분할 수 없다.
+   *  이 플래그가 유일한 판별자다 — playbook §5.13. */
+  builderMode?: boolean;
   path: string;
   onReady?: () => void;
 }
@@ -74,10 +78,11 @@ function buildFileUrl(
   sessionId?: string,
   personaName?: string,
   source: ImageSource = "session",
+  builderMode = false,
 ): string {
   if (source === "persona") {
     const file = personaFileName(imgPath);
-    if (sessionId) {
+    if (!builderMode && sessionId) {
       return `/api/sessions/${encodeURIComponent(sessionId)}/persona-images?file=${encodeURIComponent(file)}`;
     }
     if (personaName) {
@@ -85,7 +90,12 @@ function buildFileUrl(
     }
   }
 
-  if (personaName) {
+  // 빌더 모드 전용 분기 — 세션 모드에서는 절대 타면 안 된다.
+  // 세션 모드에서 personaName이 넘어오면 source별로 갈라져야 한다:
+  //   source "session" → /api/sessions/{id}/files/images/...
+  //   source "persona" → /api/sessions/{id}/persona-images?file=...  (위 분기에서 처리)
+  // 여기서 personaName만 보고 페르소나 엔드포인트로 보내면 세션 로컬 이미지가 전부 404가 난다.
+  if (builderMode && personaName) {
     // Builder mode: strip "images/" prefix for persona images API
     const file = imgPath.startsWith("images/") ? imgPath.slice(7) : imgPath;
     return `/api/personas/${encodeURIComponent(personaName)}/images?file=${encodeURIComponent(file)}`;
@@ -115,7 +125,7 @@ function readyCacheKey(imgPath: string, sessionId?: string, personaName?: string
   return `${sessionId || ""}|${personaName || ""}|${imgPath}`;
 }
 
-export default function InlineImage({ sessionId, personaName, path: imgPath, onReady }: InlineImageProps) {
+export default function InlineImage({ sessionId, personaName, builderMode = false, path: imgPath, onReady }: InlineImageProps) {
   const kind = mediaKindOf(imgPath);
   const ck = readyCacheKey(imgPath, sessionId, personaName);
   const cachedSource = readyCache.get(ck);
@@ -160,7 +170,7 @@ export default function InlineImage({ sessionId, personaName, path: imgPath, onR
     // wrong on first 404" failure mode (async gens write to session/images/
     // and weren't ready on the first poll, but the previous code immediately
     // switched to the persona endpoint and then polled there forever).
-    const candidateSources: ImageSource[] = explicitPersona
+    const candidateSources: ImageSource[] = explicitPersona || builderMode
       ? ["persona"]
       : sessionId && personaName
         ? ["session", "persona"]
@@ -175,7 +185,7 @@ export default function InlineImage({ sessionId, personaName, path: imgPath, onR
 
       // Fire HEAD for every candidate URL in parallel; the first OK wins.
       const checks = candidateSources.map((src) =>
-        fetch(buildFileUrl(imgPath, sessionId, personaName, src), {
+        fetch(buildFileUrl(imgPath, sessionId, personaName, src, builderMode), {
           method: "HEAD",
           cache: "no-store",
           headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
@@ -267,7 +277,7 @@ export default function InlineImage({ sessionId, personaName, path: imgPath, onR
     );
   }
 
-  const src = withRetryMarker(buildFileUrl(imgPath, sessionId, personaName, source), imgRetryCount);
+  const src = withRetryMarker(buildFileUrl(imgPath, sessionId, personaName, source, builderMode), imgRetryCount);
   const handleImageLoad = () => {
     if (readyNotifiedRef.current) return;
     readyNotifiedRef.current = true;

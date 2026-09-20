@@ -24,6 +24,8 @@ interface ChatMessagesProps {
   hideTools?: boolean;
   sessionId?: string;
   personaName?: string;
+  /** 빌더 채팅에서만 true — InlineImage의 페르소나/세션 엔드포인트 판별에 쓰인다 (playbook §5.13). */
+  builderMode?: boolean;
   panels?: PanelInfo[];
   hasMore?: boolean;
   onLoadMore?: () => Promise<number>;
@@ -225,6 +227,7 @@ function renderInline(
   panels?: PanelInfo[],
   onMediaReady?: () => void,
   personaName?: string,
+  builderMode?: boolean,
   mediaKey: (kind: string, id: string) => string = makeMediaKeyer(),
 ): React.ReactNode[] {
   const tokens = tokenize(text);
@@ -294,6 +297,7 @@ function renderInline(
             key={mediaKey("media", tok.path)}
             sessionId={sessionId}
             personaName={personaName}
+            builderMode={builderMode}
             path={tok.path}
             onReady={onMediaReady}
           />
@@ -323,6 +327,7 @@ function renderMarkdown(
   panels?: PanelInfo[],
   onMediaReady?: () => void,
   personaName?: string,
+  builderMode?: boolean,
 ): React.ReactNode[] {
   // Split first on scene-break tags. Accepts <break>, <break/>, <scene_break>, <scene_break/> (case-insensitive).
   // Trims surrounding whitespace/newlines so the ornament sits cleanly without extra blank lines.
@@ -353,7 +358,7 @@ function renderMarkdown(
           </pre>
         );
       } else {
-        nodes.push(...renderInline(part, partKey, sessionId, panels, onMediaReady, personaName, mediaKey));
+        nodes.push(...renderInline(part, partKey, sessionId, panels, onMediaReady, personaName, builderMode, mediaKey));
       }
     });
   });
@@ -383,6 +388,7 @@ export default function ChatMessages({
   hideTools,
   sessionId,
   personaName,
+  builderMode,
   panels,
   hasMore,
   onLoadMore,
@@ -748,7 +754,7 @@ export default function ChatMessages({
             {msg.ooc && (
               <div className="text-[10px] font-semibold text-yellow-500/70 uppercase tracking-wider mb-1">OOC</div>
             )}
-            {renderMarkdown(displayContent, sessionId, panels, handleMediaReady, personaName)}
+            {renderMarkdown(displayContent, sessionId, panels, handleMediaReady, personaName, builderMode)}
             {isLastAssistant && <StreamingDots />}
             {!hideTools && msg.tools && msg.tools.length > 0 && (
               <div className="flex flex-wrap items-start gap-1.5 mt-2">
