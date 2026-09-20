@@ -34,7 +34,7 @@ Accessibility conventions (2026-06 a11y wave): modal components share `useFocusT
 | `ChatInput.tsx` | Message input with OOC mode toggle, `*` insert button, voice-chat mode (STT auto-start/auto-send), autoplay toggle + "오토 메시지 프리셋" entry, 턴 중 개입 토글(ON이면 스트리밍 중에도 Send/Stop 동시 노출), choice buttons, embedded `UsageIndicator` |
 | `InteractiveQuestionCard.tsx` | Renders AskUserQuestion tool calls as interactive answer cards (choice buttons + freeform input); answers POST to `/api/sessions/[id]/tool-answer` and are relayed as plain user messages (headless `claude -p` auto-rejects the tool), synced via `tool:answered` WS event |
 | `ToolBlock.tsx` | Collapsible tool invocation display showing tool name and details |
-| `InlineImage.tsx` | Inline media component for `$IMAGE$` tokens — image by default, `<video>` for `.mp4/.webm/.mov`, `<audio>` for `.flac/.mp3/.wav/.ogg/.m4a` (`VIDEO_RE`/`AUDIO_RE`); polling + error card for not-yet-generated files; stable keys so OOC toggles don't re-fetch every image |
+| `InlineImage.tsx` | Inline media component for `$IMAGE$` tokens — image by default, `<video>` for `.mp4/.webm/.mov`, `<audio>` for `.flac/.mp3/.wav/.ogg/.m4a` (`VIDEO_RE`/`AUDIO_RE`); polling + error card for not-yet-generated files; stable keys so OOC toggles don't re-fetch every image. Resolves `$IMAGE:images/...$` against **both** the session files endpoint and the parent persona's images endpoint in parallel (first OK wins); `persona:` prefix forces persona-only. `builderMode` prop is the sole builder/session discriminator — builder passes a *persona name* as `sessionId`, so never infer mode from `sessionId` (playbook §5.13) |
 | `InlinePanel.tsx` | Panel that renders HTML in Shadow DOM with image modal support |
 | `ThinkingIndicator.tsx` | Animated loading indicator with bouncing dots for AI thinking state |
 
@@ -74,7 +74,7 @@ Accessibility conventions (2026-06 a11y wave): modal components share `useFocusT
 | `ChatOptionsModal.tsx` | Configurable chat/persona options (sliders, toggles, selects, text inputs) with grouping |
 | `VersionHistoryModal.tsx` | Git-like version history for personas with restore capability |
 | `SteeringPresetsModal.tsx` | Autoplay preset management (load, add, update, delete) — UI 제목은 "오토 메시지 프리셋" (턴 중 개입/steer와 혼동을 피하려고 개명; 코드 식별자는 `SteeringPreset` 유지) |
-| `SessionListModal.tsx` | Provider conversation picker for resume / relink flows |
+| `SessionListModal.tsx` | Provider conversation picker for resume / relink flows (+ `새 대화 시작` = relink with `conversationId: null` → unlink, next spawn has no `--resume`) |
 | `ModelSelect.tsx` | Shared separate model/effort dropdowns derived from `MODEL_GROUPS`. Preserves supported effort on model changes, falls back to the first catalog option otherwise, retains existing custom values/advisor suffixes, and supports a locked provider. Emits the existing `model:effort` format. Used by StatusBar, NewPersonaDialog, and PersonaStartModal. |
 | `NewPersonaDialog.tsx` | New persona creation with name input validation + separate builder model/effort selectors (`ModelSelect`, `onCreate(name, model?)`) |
 | `ClonePersonaDialog.tsx` | Duplicate an existing persona under a new folder name |

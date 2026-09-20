@@ -62,7 +62,17 @@ curl -s -X POST "http://localhost:{{PORT}}/api/tools/gemini/generate" \
 
 ### 3단계: 응답에 이미지 삽입
 
-`<dialog_response>` 안에 `$IMAGE:images/파일명.png$` 토큰을 포함한다.
+`<dialog_response>` 안에 `$IMAGE:...$` 토큰을 포함한다.
+
+**⚠ 토큰 경로는 저장 스코프를 따른다 — 틀리면 무한 "생성 중..." 스피너(404)다.**
+
+| 생성 호출 | 실제 저장 위치 | 채팅에 쓸 토큰 |
+|---|---|---|
+| `persona: "<이름>"` 지정 | `data/personas/<이름>/images/foo.png` | `$IMAGE:persona:foo.png$` |
+| `persona` 미지정 (세션 스코프) | `data/sessions/<세션>/images/foo.png` | `$IMAGE:images/foo.png$` |
+
+세션 채팅 렌더러(`InlineImage`)는 `personaName`을 받지 않아 `images/...` 를 **세션 디렉토리에서만** 찾는다. 페르소나 폴더 파일은 `persona:` 접두사가 있어야 `/api/sessions/{id}/persona-images` 로 라우팅된다. `persona:` 뒤에 `images/` 를 또 붙이지 마라 (`$IMAGE:persona:foo.png$` ✅ / `$IMAGE:persona:images/foo.png$` ❌).
+
 이미지는 비동기 생성되므로 사용자 화면에서 로딩 스피너 → 완성 후 자동 교체.
 
 ---

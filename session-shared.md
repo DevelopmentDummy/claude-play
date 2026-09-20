@@ -250,7 +250,20 @@ mcp__claude_play__run_tool({
 - Gemini: 영어 자연어 서술형 프롬프트. 아트 스타일을 명시하면 더 좋은 결과. **유료 API이므로 호출을 최소화하라.**
 - OpenAI/GPT (기본 Codex 구독 백엔드): 영어 자연어 프롬프트. 긴 지시문도 잘 따르며 텍스트 렌더링이 강하다. `referenceImage` 파라미터로 기존 이미지를 편집/변형할 수 있다. **건당 과금은 없지만 한 장에 수십 초 걸리니 호출을 최소화하라.**
 
-세 도구 모두 결과는 `images/` 디렉토리에 저장되며, `$IMAGE:images/파일명.png$` 토큰으로 응답에 삽입한다. 한번 생성한 이미지는 반드시 재사용한다.
+세 도구 모두 결과는 `images/` 디렉토리에 저장되며, `$IMAGE:...$` 토큰으로 응답에 삽입한다. 한번 생성한 이미지는 반드시 재사용한다.
+
+**⚠ `$IMAGE` 토큰 경로는 파일이 저장된 스코프에 따라 다르다 — 틀리면 이미지가 영원히 "생성 중..." 스피너로 남는다(404).**
+
+| 생성 호출 | 실제 저장 위치 | 채팅에 쓸 토큰 |
+|---|---|---|
+| `persona: "<페르소나명>"` 지정 | `data/personas/<페르소나명>/images/foo.png` | `$IMAGE:persona:foo.png$` |
+| `persona` 미지정 (세션 스코프) | `data/sessions/<세션>/images/foo.png` | `$IMAGE:images/foo.png$` |
+
+이유: 세션 채팅 렌더러(`InlineImage`)는 `personaName` prop을 받지 않으므로, `images/...` 경로를 **세션 디렉토리 기준으로만** 조회한다. 페르소나 폴더에 저장된 파일은 `persona:` 접두사가 있어야 `/api/sessions/{id}/persona-images` 로 라우팅되어 보인다.
+
+- `persona:` 접두사에는 `images/` 를 **붙이지 마라**: `$IMAGE:persona:images/foo.png$` ❌ → `$IMAGE:persona:foo.png$` ✅
+- 헷갈리면 규칙은 하나다 — **`persona` 파라미터를 넣고 생성했으면 토큰도 `persona:` 로 시작한다.**
+
 
 **⚠ `filename` 파라미터에는 `images/` 접두사를 붙이지 마라.** 세 도구 모두 자동으로 `images/` 디렉토리 아래에 저장한다. `filename: "images/foo.png"` 로 호출하면 실제 저장 경로가 `images/images/foo.png` 가 되어 챗 토큰(`$IMAGE:images/foo.png$`)의 경로와 어긋나 404가 난다. 항상 파일명만 — `filename: "foo.png"` → 자동 저장 위치 `images/foo.png` → 챗 토큰 `$IMAGE:images/foo.png$`.
 

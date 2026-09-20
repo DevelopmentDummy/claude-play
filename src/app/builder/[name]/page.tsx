@@ -343,6 +343,7 @@ export default function BuilderPage() {
             onLoadMore={loadMore}
             personaName={decodedName}
             sessionId={name}
+            builderMode
             onAnswerSubmitted={() => setStreamingManually(true)}
           />
           <ChatInput

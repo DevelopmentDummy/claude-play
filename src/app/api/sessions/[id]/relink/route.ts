@@ -19,10 +19,13 @@ export async function POST(
   } catch {
     return NextResponse.json({ error: "invalid body" }, { status: 400 });
   }
-  const conversationId = body.conversationId;
-  if (typeof conversationId !== "string" || !conversationId) {
+  // null = unlink (next spawn starts a fresh conversation, no --resume)
+  const raw = body.conversationId;
+  const isUnlink = raw === null;
+  if (!isUnlink && (typeof raw !== "string" || !raw)) {
     return NextResponse.json({ error: "conversationId required" }, { status: 400 });
   }
+  const conversationId: string | null = isUnlink ? null : (raw as string);
 
   // Tear down the live SessionInstance so the next /open spawns afresh with
   // the newly-linked conversation id. Without this, the in-memory AI process
