@@ -128,7 +128,7 @@ export interface ModelGroup {
 
 /** Default model per provider (used when no model is specified) */
 const DEFAULT_MODELS: Record<AIProvider, string> = {
-  claude: "claude-opus-5[1m]",
+  claude: "opus[1m]",
   codex: "gpt-5.6-sol",
   gemini: "gemini-3.1-pro-preview",
   kimi: "kimi-auto",
@@ -175,15 +175,14 @@ function buildModelGroups(): ModelGroup[] {
         { value: "sonnet:low", label: "Sonnet Low" },
         { value: "sonnet:medium", label: "Sonnet Medium" },
         { value: "sonnet:high", label: "Sonnet High" },
-        // Opus 5 (2026-07-25 출시). Opus 4.8 및 xhigh/max effort는 미사용으로 제거(2026-07-25).
-        // "opus" 별칭은 아직 4.8을 가리킬 수 있어 전체 id를 명시. 사용자 선호에 따라
-        // 1M 컨텍스트 변형([1m])만 노출. dated 스냅샷 id는 미공개.
+        // Opus: `opus[1m]` 별칭만 노출 — CLI가 최신 Opus로 해석(2.1.283에서 claude-opus-5-5[1m] 확인, 2026-09-27).
+        // 버전별 id(claude-opus-5[1m] 등)는 선택기에서 제거했지만 기존 세션 값은 그대로 동작. 1M 변형만 노출(사용자 선호).
         // advisor 프리셋은 아직 모델 카탈로그에 advisor rank가 없어(경고 발생) 제외.
-        { value: "claude-opus-5[1m]", label: "Opus 5" },
-        { value: "claude-opus-5[1m]:low", label: "Opus 5 Low" },
-        { value: "claude-opus-5[1m]:medium", label: "Opus 5 Medium" },
-        { value: "claude-opus-5[1m]:high", label: "Opus 5 High" },
-        { value: "claude-opus-5[1m]:ultracode", label: "Opus 5 Ultracode" },
+        { value: "opus[1m]", label: "Opus" },
+        { value: "opus[1m]:low", label: "Opus Low" },
+        { value: "opus[1m]:medium", label: "Opus Medium" },
+        { value: "opus[1m]:high", label: "Opus High" },
+        { value: "opus[1m]:ultracode", label: "Opus Ultracode" },
         // Fable: `fable` 별칭만 노출 — CLI가 최신 Fable로 해석(2.1.283에서 claude-fable-5-1 확인, 2026-09-27).
         // 버전별 id(claude-fable-5 / claude-fable-5-1)는 선택기에서 제거했지만 기존 세션 값은 그대로 동작.
         { value: "fable", label: "Fable" },

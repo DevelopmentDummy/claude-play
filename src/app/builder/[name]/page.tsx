@@ -53,7 +53,7 @@ export default function BuilderPage() {
 
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [wsEnabled, setWsEnabled] = useState(false);
-  const [builderModel, setBuilderModel] = useState("claude-opus-5[1m]:medium");
+  const [builderModel, setBuilderModel] = useState("opus[1m]:medium");
   const [displayName, setDisplayName] = useState(decodedName);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [voiceChat, setVoiceChat] = useState(false);
