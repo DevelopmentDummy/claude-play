@@ -168,9 +168,11 @@ function buildModelGroups(): ModelGroup[] {
         // Haiku 4.5 (별칭 `haiku` → claude-haiku-4-5-20251001, 2026-09-13 로컬 CLI 확인).
         // 서브에이전트/스레드 role처럼 판단 폭이 좁고 호출이 잦은 저비용 용도를 위해 노출.
         { value: "haiku", label: "Haiku" },
+        { value: "haiku:low", label: "Haiku Low" },
         { value: "haiku:medium", label: "Haiku Medium" },
         { value: "haiku:high", label: "Haiku High" },
         { value: "sonnet", label: "Sonnet" },
+        { value: "sonnet:low", label: "Sonnet Low" },
         { value: "sonnet:medium", label: "Sonnet Medium" },
         { value: "sonnet:high", label: "Sonnet High" },
         // Opus 5 (2026-07-25 출시). Opus 4.8 및 xhigh/max effort는 미사용으로 제거(2026-07-25).
@@ -178,42 +180,43 @@ function buildModelGroups(): ModelGroup[] {
         // 1M 컨텍스트 변형([1m])만 노출. dated 스냅샷 id는 미공개.
         // advisor 프리셋은 아직 모델 카탈로그에 advisor rank가 없어(경고 발생) 제외.
         { value: "claude-opus-5[1m]", label: "Opus 5" },
+        { value: "claude-opus-5[1m]:low", label: "Opus 5 Low" },
         { value: "claude-opus-5[1m]:medium", label: "Opus 5 Medium" },
         { value: "claude-opus-5[1m]:high", label: "Opus 5 High" },
         { value: "claude-opus-5[1m]:ultracode", label: "Opus 5 Ultracode" },
-        // Fable re-enabled 2026-07-02 (access restored; the "fable" alias still requires the full id).
-        // Fable 5.1 (2026-09-02 출시, CLI 2.1.257 카탈로그 확인). 이전 세대 Fable 5도 유지.
-        { value: "claude-fable-5-1", label: "Fable 5.1" },
-        { value: "claude-fable-5-1:medium", label: "Fable 5.1 Medium" },
-        { value: "claude-fable-5-1:high", label: "Fable 5.1 High" },
-        { value: "claude-fable-5-1:xhigh", label: "Fable 5.1 XHigh" },
-        { value: "claude-fable-5-1:max", label: "Fable 5.1 Max" },
-        { value: "claude-fable-5-1:ultracode", label: "Fable 5.1 Ultracode" },
-        { value: "claude-fable-5", label: "Fable" },
-        { value: "claude-fable-5:medium", label: "Fable Medium" },
-        { value: "claude-fable-5:high", label: "Fable High" },
-        { value: "claude-fable-5:xhigh", label: "Fable XHigh" },
-        { value: "claude-fable-5:max", label: "Fable Max" },
-        { value: "claude-fable-5:ultracode", label: "Fable Ultracode" },
+        // Fable: `fable` 별칭만 노출 — CLI가 최신 Fable로 해석(2.1.283에서 claude-fable-5-1 확인, 2026-09-27).
+        // 버전별 id(claude-fable-5 / claude-fable-5-1)는 선택기에서 제거했지만 기존 세션 값은 그대로 동작.
+        { value: "fable", label: "Fable" },
+        { value: "fable:low", label: "Fable Low" },
+        { value: "fable:medium", label: "Fable Medium" },
+        { value: "fable:high", label: "Fable High" },
+        { value: "fable:xhigh", label: "Fable XHigh" },
+        { value: "fable:max", label: "Fable Max" },
+        { value: "fable:ultracode", label: "Fable Ultracode" },
       ],
     },
     {
       label: "Codex",
       provider: "codex",
       options: [
+        { value: "gpt-6-astra:low", label: "GPT-6 Astra Low" },
         { value: "gpt-6-astra:medium", label: "GPT-6 Astra Medium" },
         { value: "gpt-6-astra:high", label: "GPT-6 Astra High" },
         { value: "gpt-6-astra:xhigh", label: "GPT-6 Astra XHigh" },
         { value: "gpt-6-astra:max", label: "GPT-6 Astra Max" },
         // GPT-5.6 (2026-07-09): Sol=플래그십(bare `gpt-5.6` 별칭이 Sol로 라우팅), Terra=균형, Luna=최속·최저가.
+        { value: "gpt-5.6-sol:low", label: "GPT-5.6 Sol Low" },
         { value: "gpt-5.6-sol:medium", label: "GPT-5.6 Sol Medium" },
         { value: "gpt-5.6-sol:high", label: "GPT-5.6 Sol High" },
         { value: "gpt-5.6-sol:xhigh", label: "GPT-5.6 Sol XHigh" },
+        { value: "gpt-5.6-terra:low", label: "GPT-5.6 Terra Low" },
         { value: "gpt-5.6-terra:medium", label: "GPT-5.6 Terra Medium" },
         { value: "gpt-5.6-terra:high", label: "GPT-5.6 Terra High" },
         { value: "gpt-5.6-terra:xhigh", label: "GPT-5.6 Terra XHigh" },
+        { value: "gpt-5.6-luna:low", label: "GPT-5.6 Luna Low" },
         { value: "gpt-5.6-luna:medium", label: "GPT-5.6 Luna Medium" },
         { value: "gpt-5.6-luna:high", label: "GPT-5.6 Luna High" },
+        { value: "gpt-5.5:low", label: "GPT-5.5 Low" },
         { value: "gpt-5.5:medium", label: "GPT-5.5 Medium" },
         { value: "gpt-5.5:high", label: "GPT-5.5 High" },
         { value: "gpt-5.5:xhigh", label: "GPT-5.5 XHigh" },
