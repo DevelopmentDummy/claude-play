@@ -10,6 +10,10 @@ allowed-tools: Read
 
 `comfyui_workflow` 도구로 워크플로우 패키지를 CRUD한다. 각 패키지는 `workflow.json` + `params.json` + 선택적 `resolver.mjs`로 구성된다.
 
+## LoRA를 포함한 패키지 설계
+
+LoRA를 추가·변경할 때는 [이미지 생성 스킬](../generate-image/SKILL.md)의 「모델별 LoRA 치트시트 확인」 절차로 모델 호환성·권장 강도·트리거·기본 체인 중복을 확인한다. 참조 경로는 이 SKILL.md 기준이다. 단순 목록 조회나 LoRA와 무관한 패키지 수정에는 치트시트 조회가 필요 없다.
+
 ## Action별 사용법
 
 ### list — 패키지 목록 조회

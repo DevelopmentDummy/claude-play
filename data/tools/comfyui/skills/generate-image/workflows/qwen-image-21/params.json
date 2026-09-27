@@ -1,0 +1,54 @@
+{
+  "description": "Qwen Image 2.1 INT8 텍스트→이미지. 실사·한글 문자·분필 손글씨 생성 확인. 전용 Qwen3-VL 인코더와 RGBA VAE 사용, LoRA·후처리 없음. 투명 배경과 편집은 미검증.",
+  "features": {
+    "checkpoint_auto": false,
+    "lora_injection": false,
+    "lora_couple_branches": false,
+    "seed_randomize": true,
+    "trigger_tags": false
+  },
+  "params": {
+    "prompt": {
+      "node": "4",
+      "field": "prompt",
+      "type": "string",
+      "required": true
+    },
+    "negative_prompt": {
+      "node": "4",
+      "field": "negative_prompt",
+      "type": "string",
+      "default": ""
+    },
+    "width": {
+      "node": "5",
+      "field": "width",
+      "type": "number",
+      "default": 1024
+    },
+    "height": {
+      "node": "5",
+      "field": "height",
+      "type": "number",
+      "default": 1024
+    },
+    "seed": {
+      "node": "6",
+      "field": "seed",
+      "type": "number",
+      "default": 922001
+    },
+    "steps": {
+      "node": "6",
+      "field": "steps",
+      "type": "number",
+      "default": 25
+    },
+    "cfg": {
+      "node": "6",
+      "field": "cfg",
+      "type": "number",
+      "default": 1
+    }
+  }
+}

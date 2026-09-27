@@ -1,0 +1,93 @@
+{
+  "description": "Qwen Image 2.1 INT8 이미지 지시 편집. input_image가 첫 이미지와 출력 비율 기준. 선택 reference_image ~ reference_image_9로 총 10장까지 연결. 다중 참조는 메모리 부담 증가. 비편집 영역 픽셀 보존은 보장하지 않음.",
+  "features": {
+    "checkpoint_auto": false,
+    "lora_injection": false,
+    "lora_couple_branches": false,
+    "seed_randomize": true,
+    "trigger_tags": false
+  },
+  "params": {
+    "prompt": {
+      "node": "4",
+      "field": "prompt",
+      "type": "string",
+      "required": true,
+      "description": "바꿀 내용과 유지할 내용을 명시하는 편집 지시"
+    },
+    "negative_prompt": {
+      "node": "4",
+      "field": "negative_prompt",
+      "type": "string",
+      "default": ""
+    },
+    "seed": {
+      "node": "6",
+      "field": "seed",
+      "type": "number",
+      "default": 922001
+    },
+    "steps": {
+      "node": "6",
+      "field": "steps",
+      "type": "number",
+      "default": 40
+    },
+    "cfg": {
+      "node": "6",
+      "field": "cfg",
+      "type": "number",
+      "default": 1
+    },
+    "input_image": {
+      "node": "5",
+      "field": "image",
+      "type": "string",
+      "required": true,
+      "description": "편집할 이미지. 세션 images 상대경로 또는 ComfyUI input 파일명"
+    },
+    "resolution": {
+      "node": "4",
+      "field": "resolution",
+      "type": "number",
+      "default": 1024,
+      "description": "참조 이미지 목표 해상도. 비율 유지, 32배수. 0은 원본 크기 기준"
+    },
+    "reference_image": {
+      "type": "string",
+      "description": "선택 참조 1 (모델 입력 이미지 2). 세션 images 상대경로 또는 ComfyUI input 파일명"
+    },
+    "reference_image_2": {
+      "type": "string",
+      "description": "선택 참조 2 (모델 입력 이미지 3). 세션 images 상대경로 또는 ComfyUI input 파일명"
+    },
+    "reference_image_3": {
+      "type": "string",
+      "description": "선택 참조 3 (모델 입력 이미지 4). 세션 images 상대경로 또는 ComfyUI input 파일명"
+    },
+    "reference_image_4": {
+      "type": "string",
+      "description": "선택 참조 4 (모델 입력 이미지 5). 세션 images 상대경로 또는 ComfyUI input 파일명"
+    },
+    "reference_image_5": {
+      "type": "string",
+      "description": "선택 참조 5 (모델 입력 이미지 6). 세션 images 상대경로 또는 ComfyUI input 파일명"
+    },
+    "reference_image_6": {
+      "type": "string",
+      "description": "선택 참조 6 (모델 입력 이미지 7). 세션 images 상대경로 또는 ComfyUI input 파일명"
+    },
+    "reference_image_7": {
+      "type": "string",
+      "description": "선택 참조 7 (모델 입력 이미지 8). 세션 images 상대경로 또는 ComfyUI input 파일명"
+    },
+    "reference_image_8": {
+      "type": "string",
+      "description": "선택 참조 8 (모델 입력 이미지 9). 세션 images 상대경로 또는 ComfyUI input 파일명"
+    },
+    "reference_image_9": {
+      "type": "string",
+      "description": "선택 참조 9 (모델 입력 이미지 10). 세션 images 상대경로 또는 ComfyUI input 파일명"
+    }
+  }
+}

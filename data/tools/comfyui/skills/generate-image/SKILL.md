@@ -1,6 +1,6 @@
 ---
 name: generate-image
-description: 장면이나 캐릭터의 시각적 묘사가 필요할 때 ComfyUI 워크플로우 패키지를 사용해 이미지를 생성한다. 서사적으로 의미 있는 장면에서만 사용하라.
+description: ComfyUI로 장면·캐릭터 이미지를 생성하고 모델별 LoRA 치트시트에서 조합·강도·트리거를 확인한다. generate_image/comfyui_generate 호출 전 사용한다. 서사적으로 의미 있는 장면에서만 생성한다.
 allowed-tools: Bash, Read, Write, Edit
 ---
 
@@ -21,7 +21,7 @@ ComfyUI 이미지 생성은 **워크플로우 패키지(workflow package)** 단�
 
 ## 기본 원칙
 
-- **MCP 도구를 우선 사용하라.** 가능하면 `generate_image` 또는 `comfyui_generate`를 먼저 사용한다.
+- **스킬의 사전 확인을 마친 뒤 MCP 도구를 우선 사용하라.** `generate_image` 또는 `comfyui_generate`를 직접 호출할 때도 아래 LoRA 확인 단계를 생략하지 않는다.
 - `generate-image.sh`는 빠른 수동 테스트용 보조 스크립트로만 간주한다.
 - 새 워크플로우가 필요하면 `manage-workflows` 스킬과 `comfyui_workflow` 도구를 사용해 패키지를 등록/수정한다.
 - 단순 파라미터 매핑이면 `params.json`만으로 처리하고, 복잡한 조건 분기나 다중 노드 동시 제어가 필요할 때만 `resolver.mjs`를 사용한다.
@@ -122,9 +122,24 @@ black leather corset with silver buckles, white off-shoulder blouse with lace tr
 { "action": "get", "name": "portrait" }
 ```
 
+### 2-1단계: 모델별 LoRA 치트시트 확인
+
+LoRA를 지원하는 이미지 생성 패키지는 **프롬프트 구성 전에** 베이스 모델에 맞는 매니페스트 하나를 읽는다. 아래 경로는 세션 cwd가 아니라 **이 SKILL.md가 있는 디렉토리 기준**이다.
+
+- Illustrious / SDXL anime: [illustrious.manifest.txt](lora-cheatsheets/illustrious.manifest.txt)
+- Anima: [anima.manifest.txt](lora-cheatsheets/anima.manifest.txt)
+- Qwen-Image: [qwen-image.manifest.txt](lora-cheatsheets/qwen-image.manifest.txt)
+- 다른 모델 또는 분류가 불명확하면 [인덱스](lora-cheatsheets/index.md)와 패키지 `get` 결과로 호환성을 먼저 확인한다. 이름이 비슷하다고 다른 모델용 LoRA를 적용하지 않는다.
+
+장면에 맞는 후보의 파일명·권장 강도·경고·기본 체인 포함 여부를 확인하고, 상세 조건은 같은 디렉토리의 모델별 `.md`에서 해당 항목만 읽는다. 스킬 목록이 보이는 것만으로 치트시트를 읽었다고 간주하지 않는다.
+
+- `auto-trig`: 서버 자동 주입 대상. `trig?:`: 장면에 필요한 옵션만 프롬프트에 직접 넣는다. 세부 규칙은 아래 「참조: LoRA 치트시트」를 따른다.
+- 적합한 추가 LoRA가 없으면 추가하지 않는다. `lora_injection: false`인 패키지나 LoRA 미사용 후처리에는 이 단계를 적용하지 않는다.
+- 파일이 없으면 읽은 척하거나 트리거를 추측하지 말고, 서비스 원본 `data/tools/comfyui/skills/generate-image/lora-cheatsheets/`를 확인한다. 그래도 확인할 수 없는 추가 LoRA는 사용하지 않는다.
+
 ### 3단계: 프롬프트 구성
 순서: `identity, accessories, outfit 태그, 감정/표정, 포즈, 장면 묘사`
-(quality/style/trigger 태그는 서버가 comfyui-config.json에서 자동 삽입한다)
+(quality/style은 패키지 설정을 따른다. LoRA 트리거는 자동 주입되는 `auto`와 직접 선택하는 `options`를 구분한다.)
 
 **1인 장면** (`portrait`, `scene`, `scene-real`, `profile`):
 ```
@@ -686,7 +701,7 @@ node lora-cheatsheets/build-manifest.mjs
 - MCP `comfyui_generate`의 `buildComfyPrompt`는 더 이상 자동 prepend하지 않는다 — 본문만 통과시킨다.
 - `anima-mixed-scene` 같이 자체 resolver.mjs를 가진 패키지는 별도 quality 조립을 하므로 영향 없음.
 
-> 레거시 `./lora-cheatsheet.md`는 Illustrious 전용 내용이 남아 있으나, 정식 참조는 `lora-cheatsheets/illustrious.md` (Stage 2) 또는 `illustrious.manifest.txt` (Stage 1)를 사용하라.
+> 레거시 `./lora-cheatsheet.md` 경로를 사용하거나 재생성하지 마라. 정식 참조는 `lora-cheatsheets/illustrious.md` (Stage 2) 또는 `lora-cheatsheets/illustrious.manifest.txt` (Stage 1)다.
 
 ### 기타 주의사항
 
