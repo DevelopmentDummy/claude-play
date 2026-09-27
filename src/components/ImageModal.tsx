@@ -11,14 +11,18 @@ interface ImageModalProps {
 export default function ImageModal({ src, onClose }: ImageModalProps) {
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key !== "Escape") return;
+      // 확대 창이 최상위 — 같은 Esc가 아래 모달(useEscapeKey 등 window/document 리스너)까지
+      // 닫지 않도록 window capture 단계에서 먼저 받아 전파를 끊는다.
+      e.stopPropagation();
+      onClose();
     },
     [onClose]
   );
 
   useEffect(() => {
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [handleKeyDown]);
 
   return createPortal(

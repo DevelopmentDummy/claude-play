@@ -539,6 +539,9 @@ export function parsePanelActions(
           if (typeof raw.available_when === "string") {
             meta.available_when = raw.available_when;
           }
+          if (typeof raw.needs_ui === "boolean") {
+            meta.needs_ui = raw.needs_ui;
+          }
           results.push(meta);
         }
       }
