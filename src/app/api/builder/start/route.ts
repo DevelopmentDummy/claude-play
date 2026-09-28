@@ -12,6 +12,10 @@ export async function POST(req: Request) {
   const resolved = resolveBuilderModel(body.model);
   const svc = getServices();
 
+  // 디렉터리 생성(=중복 검사)을 먼저 — addOpeningToHistory의 saveHistory가 mkdir -p로
+  // chat-history.json을 써서 폴더를 미리 만들면 createPersonaDir가 "already exists"로 실패한다.
+  const personaDir = svc.sessions.createPersonaDir(name);
+
   // Close any existing builder instance for this persona
   closeSessionInstance(name);
 
@@ -22,7 +26,6 @@ export async function POST(req: Request) {
   const opening = "안녕하세요! 새로운 페르소나를 함께 만들어볼까요?\n\n이름, 성격, 말투, 배경 설정 등 원하는 것을 자유롭게 알려주세요. 구체적일수록 좋지만, 간단한 아이디어만 있어도 괜찮아요 — 대화하면서 함께 다듬어 나갈 수 있습니다.";
   instance.addOpeningToHistory(opening);
 
-  const personaDir = svc.sessions.createPersonaDir(name);
   svc.sessions.ensureClaudeRuntimeConfig(personaDir, name, "builder");
 
   // Check Local TTS availability for conditional builder prompt
