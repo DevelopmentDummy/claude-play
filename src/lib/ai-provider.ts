@@ -171,10 +171,12 @@ function buildModelGroups(): ModelGroup[] {
         { value: "haiku:low", label: "Haiku Low" },
         { value: "haiku:medium", label: "Haiku Medium" },
         { value: "haiku:high", label: "Haiku High" },
-        { value: "sonnet", label: "Sonnet" },
-        { value: "sonnet:low", label: "Sonnet Low" },
-        { value: "sonnet:medium", label: "Sonnet Medium" },
-        { value: "sonnet:high", label: "Sonnet High" },
+        // Sonnet: `sonnet[1m]` 별칭만 노출 — CLI가 최신 Sonnet 1M으로 해석(2.1.284에서 claude-sonnet-5-5[1m] 확인, 2026-09-29).
+        // 기존 세션에 저장된 `sonnet` 값은 그대로 동작.
+        { value: "sonnet[1m]", label: "Sonnet" },
+        { value: "sonnet[1m]:low", label: "Sonnet Low" },
+        { value: "sonnet[1m]:medium", label: "Sonnet Medium" },
+        { value: "sonnet[1m]:high", label: "Sonnet High" },
         // Opus: `opus[1m]` 별칭만 노출 — CLI가 최신 Opus로 해석(2.1.283에서 claude-opus-5-5[1m] 확인, 2026-09-27).
         // 버전별 id(claude-opus-5[1m] 등)는 선택기에서 제거했지만 기존 세션 값은 그대로 동작. 1M 변형만 노출(사용자 선호).
         // advisor 프리셋은 아직 모델 카탈로그에 advisor rank가 없어(경고 발생) 제외.
