@@ -14,9 +14,11 @@ export async function POST(
     source?: string;
     requestedBy?: string;
     note?: string;
+    keepAlive?: boolean;
   };
 
-  if (countSessionClients(sessionId) <= 0) {
+  // keepAlive 스케줄러(에셋 워처 등)는 탭이 없어도 시작할 수 있다 — 세션 인스턴스만 있으면 된다
+  if (body.keepAlive !== true && countSessionClients(sessionId) <= 0) {
     return NextResponse.json({ error: "No connected clients for this session" }, { status: 409 });
   }
 
@@ -26,7 +28,7 @@ export async function POST(
       return NextResponse.json({ error: "Session is not active" }, { status: 409 });
     }
 
-    const result = await startPipelineScheduler(sessionId, body);
+    const result = await startPipelineScheduler(sessionId, { ...body, keepAlive: body.keepAlive === true });
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {
     return NextResponse.json(

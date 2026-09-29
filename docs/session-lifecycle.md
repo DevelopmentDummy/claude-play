@@ -13,7 +13,7 @@ Optional persona MCP servers are merged by runtime config writers on open when `
 7. **Sync** (수동): `POST /api/sessions/[id]/sync` — 양방향. Forward(페르소나→세션)는 OOC 알림 전송, Reverse(세션→페르소나)는 페르소나 템플릿에 역기록
 8. **Leave/Disconnect**: 마지막 클라이언트 연결 해제 후 6시간 유예 (`CLEANUP_GRACE_MS`, `SESSION_CLEANUP_GRACE_MS`로 조절 — `0`/`never`면 자동 정리 없이 수동 종료만; 모바일에서 브라우저를 닫았다 한참 뒤 돌아오는 패턴 대비) → AI 프로세스 종료, PanelEngine 중지, 파이프라인 스케줄러 정지, 서브에이전트 전체 종료 (`SubAgentManager.destroyAll()`)
 9. **Close** (수동): `POST /api/sessions/[id]/close` — StatusBar 도구 메뉴의 "세션 종료". 유예를 기다리지 않고 `closeSessionInstance()`로 즉시 정리한다. 뒤로가기(`session:leave`)는 세션을 살려둔 채 나가는 것이므로 둘은 다르다. 대화 기록은 파일에 남아 다음 `open`에서 resume된다
-   - ⚠️ 파이프라인 스케줄러는 유예와 무관하게 **연결 해제 즉시** 정지하며(`ws-server.ts` `detachClient`/`session:leave`), 재접속(`session:bind`)으로는 되살아나지 않는다 — `POST /api/sessions/[id]/pipeline-scheduler/start` 또는 MCP `bridge_scheduler_restart`로 명시적 재시작이 필요하다
+   - ⚠️ 파이프라인 스케줄러는 유예와 무관하게 **연결 해제 즉시** 정지하며(`ws-server.ts` `detachClient`/`session:leave`), 재접속(`session:bind`)으로는 되살아나지 않는다 — `POST /api/sessions/[id]/pipeline-scheduler/start` 또는 MCP `bridge_scheduler_restart`로 명시적 재시작이 필요하다. 단 `keepAlive: true`로 시작한 스케줄러(start 라우트 body / MCP `bridge_scheduler_restart {keepAlive:true}`)는 연결 해제에도 살아 있고 클라이언트 0이어도 시작할 수 있으며, 세션 인스턴스가 닫힐 때(`closeSessionInstance`)만 정지한다 — 에셋 워처 같은 가벼운 폴링 전용 opt-in (2026-09-28)
 
 ## Builder history checkpoints
 

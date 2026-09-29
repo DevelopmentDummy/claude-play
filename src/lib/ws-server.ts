@@ -8,7 +8,7 @@ import {
   scheduleSessionCleanup,
   cancelSessionCleanup,
 } from "./session-registry";
-import { stopPipelineScheduler } from "./pipeline-scheduler";
+import { stopPipelineSchedulerOnDisconnect } from "./pipeline-scheduler";
 import { isAuthEnabled, verifyAuthToken, parseCookieToken } from "./auth";
 import { consumeRestartMarker } from "./restart-notification";
 import { getServices } from "./services";
@@ -90,7 +90,7 @@ function detachClient(client: WSClient): void {
   clients.delete(client);
   client.sessionId = null;
   if (closedSessionId && countSessionClients(closedSessionId) === 0) {
-    void stopPipelineScheduler(closedSessionId);
+    void stopPipelineSchedulerOnDisconnect(closedSessionId);
     scheduleSessionCleanup(closedSessionId);
   }
 }
@@ -451,7 +451,7 @@ function handleMessage(
         const remaining = countSessionClients(leavingSession);
         console.log(`[ws] Client left session ${leavingSession} — ${remaining} client(s) remaining`);
         if (remaining === 0) {
-          void stopPipelineScheduler(leavingSession);
+          void stopPipelineSchedulerOnDisconnect(leavingSession);
           scheduleSessionCleanup(leavingSession);
         }
       }

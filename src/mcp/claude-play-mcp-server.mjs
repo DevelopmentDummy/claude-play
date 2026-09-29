@@ -518,9 +518,10 @@ server.registerTool(
       source: z.string().optional(),
       requestedBy: z.string().optional(),
       note: z.string().optional(),
+      keepAlive: z.boolean().optional().describe("true면 브라우저 탭이 모두 닫혀도 워처를 멈추지 않는다(세션 인스턴스가 살아 있는 동안). 가벼운 폴링 워처 전용"),
     },
   },
-  async ({ sessionId: targetSessionId, label, source, requestedBy, note }) => {
+  async ({ sessionId: targetSessionId, label, source, requestedBy, note, keepAlive }) => {
     try {
       const resolvedSessionId = resolveTargetSessionId(targetSessionId);
       const stopResult = await requestJson(
@@ -532,6 +533,7 @@ server.registerTool(
         source: pickString(source) || "mcp",
         requestedBy: pickString(requestedBy) || "bridge_scheduler_restart",
         note: pickString(note) || "restart requested from MCP",
+        keepAlive: keepAlive === true,
       };
       const startResult = await requestJson(
         "POST",

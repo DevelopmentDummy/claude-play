@@ -10,6 +10,8 @@ interface SchedulerMetadata {
   source: string | null;
   requestedBy: string | null;
   note: string | null;
+  /** true면 마지막 WS 클라이언트가 끊겨도 정지하지 않는다(세션 인스턴스가 닫힐 때만 정지). 에셋 워처처럼 가벼운 폴링 전용 opt-in */
+  keepAlive: boolean;
 }
 
 interface SchedulerHandle {
@@ -180,6 +182,16 @@ export function isPipelineSchedulerRunning(sessionId: string): boolean {
   return !!getPipelineSchedulerState(sessionId)?.running;
 }
 
+/** 마지막 WS 클라이언트가 끊겼을 때 호출 — keepAlive 스케줄러는 살려 둔다(세션 인스턴스 종료 시 closeSessionInstance가 정지) */
+export async function stopPipelineSchedulerOnDisconnect(sessionId: string): Promise<void> {
+  const handle = getPipelineSchedulerState(sessionId);
+  if (handle?.running && handle.metadata.keepAlive) {
+    console.log(`[scheduler:${sessionId}] keepAlive — client disconnect ignored (${handle.metadata.label ?? "unlabeled"})`);
+    return;
+  }
+  await stopPipelineScheduler(sessionId);
+}
+
 export async function startPipelineScheduler(
   sessionId: string,
   metadata?: Partial<SchedulerMetadata>,
@@ -192,6 +204,7 @@ export async function startPipelineScheduler(
       source: metadata?.source?.trim() || existing.metadata.source || null,
       requestedBy: metadata?.requestedBy?.trim() || existing.metadata.requestedBy || null,
       note: metadata?.note?.trim() || existing.metadata.note || null,
+      keepAlive: metadata?.keepAlive ?? existing.metadata.keepAlive,
     };
     return { started: false, alreadyRunning: true };
   }
@@ -212,6 +225,7 @@ export async function startPipelineScheduler(
       source: metadata?.source?.trim() || null,
       requestedBy: metadata?.requestedBy?.trim() || null,
       note: metadata?.note?.trim() || null,
+      keepAlive: metadata?.keepAlive === true,
     },
   };
 
