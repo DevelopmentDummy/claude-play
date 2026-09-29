@@ -54,7 +54,7 @@ test("skill refresh refuses linked destination without touching the linked direc
   assert.equal(fs.readFileSync(path.join(outside, "SKILL.md"), "utf8"), "private");
 });
 
-test("session reopen refresh: four providers receive new and edited persona skills; global precedence and RP state survive", () => {
+test("session reopen refresh: four providers receive new and edited persona skills; persona overrides same-named global skills; RP state survives", () => {
   const { root, put } = fixture();
   const oldDataDir = process.env.DATA_DIR;
   process.env.DATA_DIR = root;
@@ -65,6 +65,12 @@ test("session reopen refresh: four providers receive new and edited persona skil
     put(path.join(source, "robot-skill", "SKILL.md"), "v1");
     put(path.join(source, "collision", "SKILL.md"), "persona");
     put(path.join(root, "skills", "collision", "SKILL.md"), "global");
+    put(path.join(root, "tools", "sometool", "skills", "collision", "SKILL.md"), "tool");
+    put(path.join(root, "skills", "global-only", "SKILL.md"), "global-only");
+    // 예전 동작(전역 우선)으로 이미 덮어써진 세션 사본 — 재오픈 시 페르소나 원본으로 복구돼야 한다
+    for (const provider of [".agents", ".claude", ".gemini", ".kimi"]) {
+      put(path.join(session, provider, "skills", "collision", "SKILL.md"), "global");
+    }
     put(path.join(session, "variables.json"), '{"progress":7}');
     manager.refreshToolSkills(session, "robot");
     put(path.join(source, "robot-skill", "SKILL.md"), "v2");
@@ -73,7 +79,9 @@ test("session reopen refresh: four providers receive new and edited persona skil
     for (const provider of [".agents", ".claude", ".gemini", ".kimi"]) {
       assert.equal(fs.readFileSync(path.join(session, provider, "skills", "robot-skill", "SKILL.md"), "utf8"), "v2");
       assert.equal(fs.readFileSync(path.join(session, provider, "skills", "new-skill", "references", "note.md"), "utf8"), "new reference");
-      assert.equal(fs.readFileSync(path.join(session, provider, "skills", "collision", "SKILL.md"), "utf8"), "global");
+      assert.equal(fs.readFileSync(path.join(session, provider, "skills", "collision", "SKILL.md"), "utf8"), "persona");
+      assert.equal(fs.readFileSync(path.join(session, provider, "skills", "global-only", "SKILL.md"), "utf8"), "global-only");
+      assert.equal(fs.readdirSync(path.join(session, ".skill-backups", provider, "skills", "collision")).length, 1);
       assert.equal(fs.readdirSync(path.join(session, ".skill-backups", provider, "skills", "robot-skill")).length, 1);
     }
     assert.equal(fs.readFileSync(path.join(session, "variables.json"), "utf8"), '{"progress":7}');

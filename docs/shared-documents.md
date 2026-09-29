@@ -59,7 +59,7 @@ session-primer{,-codex,-gemini}.yaml + session-shared.md
     Gemini CLI  → session-primer-gemini.yaml, GEMINI.md에 병합 (retired 경로)
 panels/_actions.meta.json → 패널 액션 스펙 markdown으로 직렬화 → 시스템 프롬프트에 주입
 panel-spec.md → 세션 디렉토리에 갱신 (최신본)
-글로벌 + 도구 스킬 → 세션 skills 디렉토리에 갱신 (refreshToolSkills — .gemini 포함 4곳)
+글로벌 + 도구 스킬 → 세션 skills 디렉토리에 갱신 (refreshToolSkills — .gemini 포함 4곳, 페르소나 동명 스킬은 건너뜀 = 페르소나 우선)
 persona에 새로 추가된 파일 → 세션에 additive mirror (mirrorNewPersonaFiles, 기존 파일 미덮어씀)
 런타임 config 갱신 (.claude/settings.json, .mcp.json, .codex/config.toml,
   .gemini/settings.json, .agents/mcp_config.json, policy-context.json — runtime-config.ts)

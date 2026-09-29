@@ -30,6 +30,19 @@ import {
 } from "./prompt-assembly";
 
 /** Read the selected writing style content for a persona, if any */
+/** 페르소나 skills/ 의 최상위 스킬 디렉토리 이름 집합 — 전역/도구 스킬이 같은 이름을 덮어쓰지 않게 한다. */
+function listSkillNames(skillsDir: string): Set<string> {
+  try {
+    return new Set(
+      fs.readdirSync(skillsDir, { withFileTypes: true })
+        .filter((e) => e.isDirectory())
+        .map((e) => e.name),
+    );
+  } catch {
+    return new Set();
+  }
+}
+
 function readPersonaStyleContent(personaDir: string): string | null {
   const stylePath = path.join(personaDir, "style.json");
   if (!fs.existsSync(stylePath)) return null;
@@ -722,10 +735,11 @@ export class SessionManager {
       copyDirRecursive(personaSkillsSrc, kimiSkillsDest);
     }
 
-    // Copy global tool skills (data/tools/*/skills/*) to session
-    this.copyToolSkills(claudeSkillsDest);
-    this.copyToolSkills(agentsSkillsDest);
-    this.copyToolSkills(kimiSkillsDest);
+    // Copy global tool skills (data/tools/*/skills/*) to session — 페르소나에 같은 이름이 있으면 페르소나 우선
+    const personaSkillNames = listSkillNames(personaSkillsSrc);
+    this.copyToolSkills(claudeSkillsDest, personaSkillNames);
+    this.copyToolSkills(agentsSkillsDest, personaSkillNames);
+    this.copyToolSkills(kimiSkillsDest, personaSkillNames);
 
     // Strip any sub-agent runtime artifacts copied from the persona template.
     // subagents.json + subagents/*/instructions.md are intentionally copied above;
@@ -1828,11 +1842,14 @@ export class SessionManager {
     mirrorAdditive(personaDir, sessionDir, SKIP_FILES);
   }
 
-  /** Persona source wins over session edits (backed up), then global tool skills
-   * retain their existing precedence. Called before CLI spawn on open/resume. */
+  /** Persona source wins over session edits (backed up); global/tool skills are then
+   * copied only for names the persona does not define (persona skills override
+   * same-named global skills). Called before CLI spawn on open/resume. */
   refreshToolSkills(sessionDir: string, personaName?: string): void {
+    let personaSkillNames = new Set<string>();
     if (personaName) {
       const source = path.join(this.getPersonaDir(personaName), "skills");
+      personaSkillNames = listSkillNames(source);
       for (const provider of [".claude", ".agents", ".gemini", ".kimi"]) {
         refreshDirectoryWithBackups(source, path.join(sessionDir, provider, "skills"),
           path.join(sessionDir, ".skill-backups", provider, "skills"));
@@ -1846,14 +1863,15 @@ export class SessionManager {
     fs.mkdirSync(agentsSkillsDest, { recursive: true });
     fs.mkdirSync(geminiSkillsDest, { recursive: true });
     fs.mkdirSync(kimiSkillsDest, { recursive: true });
-    this.copyToolSkills(claudeSkillsDest);
-    this.copyToolSkills(agentsSkillsDest);
-    this.copyToolSkills(geminiSkillsDest);
-    this.copyToolSkills(kimiSkillsDest);
+    this.copyToolSkills(claudeSkillsDest, personaSkillNames);
+    this.copyToolSkills(agentsSkillsDest, personaSkillNames);
+    this.copyToolSkills(geminiSkillsDest, personaSkillNames);
+    this.copyToolSkills(kimiSkillsDest, personaSkillNames);
   }
 
-  /** Copy global shared skills (data/skills/) and tool-specific skills (data/tools/X/skills/) into the session skills dir */
-  private copyToolSkills(skillsDest: string): void {
+  /** Copy global shared skills (data/skills/) and tool-specific skills (data/tools/X/skills/) into the session skills dir.
+   * Names in `skipNames` (the persona's own skills) are left untouched so the persona version wins. */
+  private copyToolSkills(skillsDest: string, skipNames: ReadonlySet<string> = new Set()): void {
     const dataDir = getDataDir();
     const port = String(getPort());
 
@@ -1888,6 +1906,7 @@ export class SessionManager {
     // Copy all collected skills into destination
     for (const src of skillSources) {
       const skillName = path.basename(src);
+      if (skipNames.has(skillName)) continue;
       const dest = path.join(skillsDest, skillName);
       fs.mkdirSync(dest, { recursive: true });
       copyDirRecursive(src, dest);
