@@ -17,6 +17,7 @@ from comfyui_proxy import ComfyUIProxy
 from tts_engine import TTSEngine
 from voice_creator import VoiceCreator
 from voxcpm_engine import VoxCPMEngine
+from asr_engine import ASREngine
 
 # ── TTS availability check ────────────────────────────────
 try:
@@ -30,6 +31,12 @@ try:
     VOXCPM_AVAILABLE = True
 except ImportError:
     VOXCPM_AVAILABLE = False
+
+try:
+    import qwen_asr  # noqa: F401
+    ASR_AVAILABLE = True
+except ImportError:
+    ASR_AVAILABLE = False
 
 # ── Logging ──────────────────────────────────────────────
 logging.basicConfig(
@@ -51,6 +58,7 @@ comfyui = ComfyUIProxy(args.comfyui_url)
 tts_engine = TTSEngine(model_path=os.environ.get("TTS_MODEL_PATH"))
 voice_creator = VoiceCreator(tts_engine)
 voxcpm_engine = VoxCPMEngine(model_path=os.environ.get("VOXCPM_MODEL_PATH"))
+asr_engine = ASREngine(model_path=os.environ.get("ASR_MODEL_PATH"))
 
 
 # ── ComfyUI handler ─────────────────────────────────────
@@ -103,6 +111,7 @@ async def lifespan(app):
     # Shutdown
     await tts_engine.unload_model()
     await voxcpm_engine.unload_model()
+    await asr_engine.unload_model()
     await comfyui.close()
     logger.info("GPU Manager shut down")
 
@@ -117,6 +126,7 @@ async def health() -> dict:
         "ready": True,
         "tts_available": TTS_AVAILABLE,
         "voxcpm_available": VOXCPM_AVAILABLE,
+        "asr_available": ASR_AVAILABLE,
     }
 
 
@@ -131,6 +141,8 @@ async def status() -> dict:
         "qwen3_size": tts_engine.loaded_size,
         "voxcpm_loaded": voxcpm_engine.is_loaded,
         "voxcpm_size": voxcpm_engine.loaded_size,
+        "asr_loaded": asr_engine.is_loaded,
+        "asr_size": asr_engine.loaded_size,
         "comfyui_connected": connected,
     }
 
@@ -244,6 +256,38 @@ async def tts_create_voice(request: Request) -> JSONResponse:
     except Exception as e:
         logger.error("Voice creation error: %s", e)
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ── ASR (Qwen3-ASR) ─────────────────────────────────────
+# Bypasses the serial queue on purpose — see asr_engine.py docstring.
+_ASR_MISSING = {"error": "Qwen3-ASR not installed. Install with: pip install -r requirements-asr.txt"}
+
+
+@app.post("/asr/transcribe")
+async def asr_transcribe(request: Request) -> JSONResponse:
+    if not ASR_AVAILABLE:
+        return JSONResponse(status_code=503, content=_ASR_MISSING)
+    body = await request.json()
+    if not body.get("audio"):
+        return JSONResponse(status_code=400, content={"error": "No audio provided"})
+    try:
+        result = await asyncio.wait_for(asr_engine.transcribe(body), timeout=120.0)
+        return JSONResponse(result)
+    except asyncio.TimeoutError:
+        return JSONResponse({"error": "ASR timed out after 120s"}, status_code=408)
+    except Exception as e:
+        logger.error("ASR transcribe error: %s", e)
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/asr/warmup")
+async def asr_warmup(request: Request) -> JSONResponse:
+    """Preload the model while the user is still speaking (fire-and-forget from the client)."""
+    if not ASR_AVAILABLE:
+        return JSONResponse(status_code=503, content=_ASR_MISSING)
+    body = await request.json()
+    asyncio.create_task(asr_engine.warmup(body.get("model_size", "1.7B")))
+    return JSONResponse({"ok": True, "loaded": asr_engine.is_loaded})
 
 
 # ── Graceful shutdown on signals ─────────────────────────

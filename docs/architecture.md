@@ -12,11 +12,12 @@ Python FastAPI child process (port 3342 by default) for serial GPU task queueing
 
 | File | Role |
 |------|------|
-| `server.py` | FastAPI app with `/health`, `/status`, `/comfyui/generate`, `/tts/synthesize`, `/tts/synthesize-stream`, `/tts/create-voice` endpoints |
+| `server.py` | FastAPI app with `/health`, `/status`, `/comfyui/generate`, `/tts/synthesize`, `/tts/synthesize-stream`, `/tts/create-voice`, `/asr/transcribe`, `/asr/warmup` endpoints |
 | `queue_manager.py` | Serial asyncio queue — FIFO, one task at a time, per-type timeouts |
 | `comfyui_proxy.py` | Proxies image generation requests to ComfyUI API |
 | `tts_engine.py` | Qwen3-TTS direct inference — on-demand loading, idle timeout, model size switching |
 | `voxcpm_engine.py` | VoxCPM2 TTS inference — second local TTS engine, on-demand loading, persistent torch.compile cache (deps in `requirements-voxcpm.txt`) |
+| `asr_engine.py` | Qwen3-ASR speech-to-text with conversation-context biasing (`transcribe(context=…)`). **Bypasses the serial queue** (own lock) so STT never waits behind a ComfyUI job; PyAV decodes webm/m4a; idle unload after `ASR_IDLE_TIMEOUT` (600s). Deps in `requirements-asr.txt` |
 | `voice_creator.py` | Voice embedding (.pt) generator from design prompt or reference audio |
 
 ## Core Libraries (`src/lib/`)
@@ -112,6 +113,7 @@ Python FastAPI child process (port 3342 by default) for serial GPU task queueing
 | File | Role |
 |------|------|
 | `tts-handler.ts` | TTS request handler (runs in plain Node via server.ts). Routes to Edge TTS or GPU Manager for local TTS. Handles chat TTS and voice creation/testing. |
+| `stt.ts` | STT for `/api/tools/comfyui/stt`: `buildSttContext()` turns the last 4 chat messages (markup stripped) into Qwen3-ASR context, `transcribeWithQwenAsr()` calls GPU Manager `/asr/transcribe` (returns `unavailable` → route falls back to ComfyUI Whisper), `warmupQwenAsr()` preloads on record start. |
 | `edge-tts-client.ts` | Edge TTS voice synthesis client via standalone TTS server. `generateEdgeTts()`, `EDGE_TTS_VOICES` array (Korean, English, Japanese, Chinese voices). |
 
 ### Authentication, Setup & Service Control

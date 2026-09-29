@@ -76,6 +76,9 @@
 | `GPU_MANAGER_PORT` | `PORT+2` | GPU Manager port |
 | `GPU_MANAGER_PYTHON` | `python` | Python executable for GPU Manager |
 | `TTS_MODEL_PATH` | (auto) | Local model path override for the GPU Manager Qwen3-TTS engine (read by `gpu-manager/server.py`) |
+| `ASR_MODEL_SIZE` | `1.7B` | Qwen3-ASR size (`1.7B` / `0.6B`) sent by `src/lib/stt.ts` |
+| `ASR_MODEL_PATH` | (auto) | Local model path override for the GPU Manager Qwen3-ASR engine (read by `gpu-manager/server.py`) |
+| `ASR_IDLE_TIMEOUT` | `600` | Seconds of STT inactivity before the ASR model is unloaded (read by `gpu-manager/asr_engine.py`) |
 | `VOXCPM_MODEL_PATH` | (auto) | Local model path override for the GPU Manager VoxCPM engine (read by `gpu-manager/server.py`) |
 
 ### Provider Routing & Background AI

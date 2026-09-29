@@ -13,6 +13,7 @@ export async function GET() {
         gpuManagerAvailable: true,
         ttsAvailable: data.tts_available ?? false,
         voxcpmAvailable: data.voxcpm_available ?? false,
+        asrAvailable: data.asr_available ?? false,
       });
     }
     return NextResponse.json({ gpuManagerAvailable: false, ttsAvailable: false });

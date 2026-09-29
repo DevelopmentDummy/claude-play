@@ -182,15 +182,15 @@ function ChatInput({ disabled, isStreaming, onSend, onCancel, sessionId, choices
   const handleSend = useCallback(() => {
     // Suppress any pending STT results before clearing input
     clearAutoSendTimer();
-    const wasSTT = !!(recognitionRef.current || mediaRecorderRef.current);
+    const wasSTT = !!(recognitionRef.current || mediaRecorderRef.current) || recorderTextInsertedRef.current;
+    recorderTextInsertedRef.current = false;
     sttSuppressRef.current = true;
     if (recognitionRef.current) {
       recognitionRef.current.stop();
       recognitionRef.current = null;
     }
     if (mediaRecorderRef.current) {
-      mediaRecorderRef.current.stop();
-      mediaRecorderRef.current = null;
+      discardRecorder();
     }
     setSttActive(false);
     const raw = inputRef.current?.value.trim();
@@ -421,10 +421,16 @@ function ChatInput({ disabled, isStreaming, onSend, onCancel, sessionId, choices
 
   // --- Speech-to-Text ---
   // Mode A: Web Speech API (Chrome desktop, etc.) — real-time streaming
-  // Mode B: MediaRecorder → server Whisper (iPad Safari, Firefox, etc.) — record then transcribe
+  // Mode B: MediaRecorder → server STT — record then transcribe.
+  //   Server = Qwen3-ASR with recent-conversation context (falls back to ComfyUI Whisper).
+  //   Preferred over Mode A whenever GPU Manager reports asr_available, since Web Speech
+  //   cannot take context and mangles character names / proper nouns.
   const recognitionRef = useRef<ISpeechRecognition | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const silenceCleanupRef = useRef<(() => void) | null>(null);
+  const recorderTextInsertedRef = useRef(false); // recorder 결과가 입력창에 들어감 → 전송 시 [STT] 태그
   const [sttActive, setSttActive] = useState(false);
   const [sttTranscribing, setSttTranscribing] = useState(false);
   const [sttMode, setSttMode] = useState<"none" | "web" | "recorder">("none");
@@ -434,11 +440,20 @@ function ChatInput({ disabled, isStreaming, onSend, onCancel, sessionId, choices
   const AUTO_SEND_DELAY = autoSendDelay;
 
   useEffect(() => {
+    const hasRecorder = typeof MediaRecorder !== "undefined" && !!navigator.mediaDevices?.getUserMedia;
     if (window.SpeechRecognition || window.webkitSpeechRecognition) {
       setSttMode("web");
-    } else if (typeof MediaRecorder !== "undefined") {
+    } else if (hasRecorder) {
       setSttMode("recorder");
     }
+    if (!hasRecorder) return;
+    let cancelled = false;
+    fetch("/api/setup/tts-status")
+      .then((r) => r.json())
+      // 응답 전에 이미 Web Speech로 마이크를 켰다면 모드를 뒤집지 않는다 (toggle이 엉뚱한 stop을 부름)
+      .then((d: { asrAvailable?: boolean }) => { if (!cancelled && d.asrAvailable && !recognitionRef.current) setSttMode("recorder"); })
+      .catch(() => { /* keep Web Speech */ });
+    return () => { cancelled = true; };
   }, []);
 
   // -- Mode A: Web Speech API --
@@ -554,10 +569,33 @@ function ChatInput({ disabled, isStreaming, onSend, onCancel, sessionId, choices
   // Keep ref in sync
   startWebSTTRef.current = startWebSTT;
 
-  // -- Mode B: MediaRecorder → server Whisper --
-  const stopRecorderSTT = useCallback(async () => {
+  // -- Mode B: MediaRecorder → server STT (Qwen3-ASR w/ context, Whisper fallback) --
+  /** Release mic + silence detector. Safe to call repeatedly. */
+  const releaseMic = useCallback(() => {
+    silenceCleanupRef.current?.();
+    silenceCleanupRef.current = null;
+    mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
+    mediaStreamRef.current = null;
+  }, []);
+
+  /** Stop recording and throw the audio away (send / disable / unmount). */
+  const discardRecorder = useCallback(() => {
+    const recorder = mediaRecorderRef.current;
+    mediaRecorderRef.current = null;
+    audioChunksRef.current = [];
+    if (recorder && recorder.state !== "inactive") {
+      recorder.ondataavailable = null;
+      recorder.onstop = null;
+      recorder.stop();
+    }
+    releaseMic();
+  }, [releaseMic]);
+
+  /** Stop recording, transcribe, and either insert into input or (voice chat) send directly. */
+  const stopRecorderSTT = useCallback(async (opts?: { autoSend?: boolean }) => {
     const recorder = mediaRecorderRef.current;
     if (!recorder || recorder.state === "inactive") return;
+    clearAutoSendTimer();
 
     // Wrap stop in a promise to wait for final data
     const blob = await new Promise<Blob>((resolve) => {
@@ -572,6 +610,7 @@ function ChatInput({ disabled, isStreaming, onSend, onCancel, sessionId, choices
 
     mediaRecorderRef.current = null;
     audioChunksRef.current = [];
+    releaseMic();
     setSttActive(false);
 
     if (blob.size < 1000) return; // too short, ignore
@@ -581,22 +620,85 @@ function ChatInput({ disabled, isStreaming, onSend, onCancel, sessionId, choices
       const form = new FormData();
       form.append("audio", blob, `stt.${blob.type.includes("webm") ? "webm" : "m4a"}`);
       form.append("language", "ko");
-      form.append("model_size", "base");
+      form.append("model_size", "base"); // Whisper fallback only
+      if (sessionId) form.append("sessionId", sessionId);
 
       const res = await fetch("/api/tools/comfyui/stt", { method: "POST", body: form });
       const data = await res.json();
-      if (data.text) {
-        insertAtCursor(data.text);
+      const text = typeof data.text === "string" ? data.text.trim() : "";
+      if (!text) return;
+      if (opts?.autoSend && !sttSuppressRef.current) {
+        const el = inputRef.current;
+        const pending = el?.value.trim();
+        const tagged = `[STT] ${pending ? `${pending} ${text}` : text}`;
+        const sendText = oocModeRef.current && !tagged.startsWith("OOC:") ? `OOC: ${tagged}` : tagged;
+        if (el) { el.value = ""; el.style.height = "auto"; }
+        onSend(sendText);
+      } else {
+        insertAtCursor(text);
+        recorderTextInsertedRef.current = true;
       }
     } catch (err) {
       console.error("[stt] Transcribe failed:", err);
     } finally {
       setSttTranscribing(false);
     }
-  }, [insertAtCursor]);
+  }, [insertAtCursor, releaseMic, clearAutoSendTimer, sessionId, onSend]);
+
+  const stopRecorderSTTRef = useRef(stopRecorderSTT);
+  stopRecorderSTTRef.current = stopRecorderSTT;
+
+  /**
+   * Voice chat on the recorder path: RMS-based end-of-speech detection.
+   * Once the user has spoken, AUTO_SEND_DELAY of continuous silence → stop, transcribe, send.
+   * Speech resuming during the countdown cancels it (mirrors Mode A's behavior).
+   */
+  const attachSilenceDetector = useCallback((stream: MediaStream) => {
+    const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 2048;
+    ctx.createMediaStreamSource(stream).connect(analyser);
+    const buf = new Float32Array(analyser.fftSize);
+    const SPEECH_RMS = 0.02;
+    let spoken = false;
+    let silentSince = 0;
+    let countdownShown = false;
+
+    const timer = setInterval(() => {
+      analyser.getFloatTimeDomainData(buf);
+      let sum = 0;
+      for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+      const rms = Math.sqrt(sum / buf.length);
+      const now = Date.now();
+      if (rms >= SPEECH_RMS) {
+        spoken = true;
+        silentSince = 0;
+        if (countdownShown) { countdownShown = false; setAutoSendCountdown(false); }
+        return;
+      }
+      if (!spoken) return;
+      if (!silentSince) silentSince = now;
+      if (!countdownShown) { countdownShown = true; setAutoSendCountdown(true); }
+      if (now - silentSince >= AUTO_SEND_DELAY) {
+        setAutoSendCountdown(false);
+        void stopRecorderSTTRef.current({ autoSend: true });
+      }
+    }, 100);
+
+    silenceCleanupRef.current = () => {
+      clearInterval(timer);
+      setAutoSendCountdown(false);
+      void ctx.close().catch(() => { /* ignore */ });
+    };
+  }, [AUTO_SEND_DELAY]);
 
   const startRecorderSTT = useCallback(async () => {
+    if (mediaRecorderRef.current) return;
     try {
+      // Preload the model while the user is still talking (cold load ≈ a few seconds)
+      void fetch("/api/tools/comfyui/stt?warmup=1", { method: "POST" }).catch(() => { /* ignore */ });
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       // Prefer webm for smaller size; fall back to whatever is supported
       const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
@@ -610,18 +712,21 @@ function ChatInput({ disabled, isStreaming, onSend, onCancel, sessionId, choices
         if (e.data.size > 0) audioChunksRef.current.push(e.data);
       };
       recorder.start(1000); // collect chunks every 1s
+      mediaStreamRef.current = stream;
       mediaRecorderRef.current = recorder;
+      sttSuppressRef.current = false;
+      if (voiceChat) attachSilenceDetector(stream);
       setSttActive(true);
     } catch (err) {
       console.error("[stt] Mic access denied:", err);
     }
-  }, []);
+  }, [voiceChat, attachSilenceDetector]);
 
   // -- Unified toggle --
   const toggleSTT = useCallback(() => {
     if (sttActive) {
       if (sttMode === "web") stopWebSTT();
-      else stopRecorderSTT();
+      else void stopRecorderSTT();
     } else {
       if (sttMode === "web") startWebSTT();
       else startRecorderSTT();
@@ -635,27 +740,28 @@ function ChatInput({ disabled, isStreaming, onSend, onCancel, sessionId, choices
     if (disabled && sttActive) {
       clearAutoSendTimer();
       if (sttMode === "web") stopWebSTT();
-      else { mediaRecorderRef.current?.stop(); setSttActive(false); }
+      else { discardRecorder(); setSttActive(false); }
     }
 
     // Voice chat: auto-start STT when ready
-    if (voiceChat && !disabled && !sttActive && sttMode === "web") {
+    if (voiceChat && !disabled && !sttActive && !sttTranscribing && sttMode !== "none") {
       const wasBusy = prevDisabledRef.current || prevTtsPlayingRef.current;
       const isReady = !ttsPlaying;
       if (wasBusy && isReady) {
-        startWebSTT();
+        if (sttMode === "web") startWebSTT();
+        else void startRecorderSTT();
       }
     }
 
     prevDisabledRef.current = disabled;
     prevTtsPlayingRef.current = ttsPlaying;
-  }, [disabled, ttsPlaying, sttActive, sttMode, stopWebSTT, voiceChat, startWebSTT, clearAutoSendTimer]);
+  }, [disabled, ttsPlaying, sttActive, sttTranscribing, sttMode, stopWebSTT, voiceChat, startWebSTT, startRecorderSTT, discardRecorder, clearAutoSendTimer]);
 
   useEffect(() => () => {
     recognitionRef.current?.stop();
-    mediaRecorderRef.current?.stop();
+    discardRecorder();
     if (autoSendTimerRef.current) clearTimeout(autoSendTimerRef.current);
-  }, []);
+  }, [discardRecorder]);
 
   const btnBase = "w-9 h-9 flex items-center justify-center rounded-lg border cursor-pointer text-xs font-medium shrink-0 transition-all duration-fast";
 

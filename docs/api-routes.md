@@ -137,7 +137,7 @@ Next.js 밖에서 `server.ts`가 직접 처리하는 라우트: `/ws?sessionId=&
 | `/api/tools/comfyui/generate` | POST | Trigger ComfyUI image generation. `outputDir`(절대경로, 내부 토큰 전용) 지정 시 세션 대신 해당 디렉토리 직하에 저장 — 외부 MCP 경유 |
 | `/api/tools/comfyui/models` | GET | List ComfyUI models |
 | `/api/tools/comfyui/health` | GET | ComfyUI + GPU Manager connectivity status |
-| `/api/tools/comfyui/stt` | POST | Speech-to-text via ComfyUI |
+| `/api/tools/comfyui/stt` | POST | Speech-to-text. Qwen3-ASR (GPU Manager) biased with the last chat turns of `sessionId` (form field); falls back to ComfyUI Whisper when ASR is unavailable. `?warmup=1` preloads the model. Response `{ text, engine }` |
 | `/api/tools/comfyui/update-profile` | POST | Update profile image via ComfyUI |
 | `/api/tools/gemini/generate` | POST | Trigger Gemini image generation. `outputDir`(내부 토큰 전용) 분기는 완료 대기 후 절대경로 응답 |
 | `/api/tools/openai/generate` | POST | Trigger OpenAI image generation. `outputDir`(내부 토큰 전용) 분기는 완료 대기 후 절대경로 응답 |

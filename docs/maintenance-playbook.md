@@ -177,6 +177,9 @@ agy는 **파이프 상주 헤드리스 프로세스**다 (2026-09-14 전환, agy
 ### 5.8 TTS는 독립 서버로 남겨둘 것
 `node-edge-tts`의 `ws` 의존성이 Next.js 런타임과 충돌한다 (in-process·child 모두 실패) — 그래서 `tts-server.mjs`가 완전 독립 HTTP 서버(PORT+1)이고 server.ts가 TTS 라우트를 인터셉트해 plain Node 컨텍스트에서 실행한다. Next 프로세스로 되돌리려 하지 말 것. `session-instance.ts`의 TTS 엔진 추출(~220줄)도 평가 후 **의도적으로 보류** — job 클로저가 매 await마다 live `this.*`를 읽어 verbatim-move 검증이 불가능한 설계 수준 리팩터다.
 
+### 5.10 qwen-tts ↔ qwen-asr transformers 정확 핀 충돌
+`qwen-tts 0.1.1`은 `transformers==4.57.3`, `qwen-asr 0.0.6`은 `transformers==4.57.6`을 **정확 핀**한다 — `pip check`가 경고를 내지만 2026-09-28 4.57.6에서 Qwen3-TTS 합성 정상 확인. **`pip install -r requirements-tts.txt`를 나중에 다시 돌리면 4.57.3으로 내려가 ASR이 깨질 수 있다** → 항상 ASR을 마지막에 설치(`setup.js` 순서가 그렇게 돼 있음). 패키지는 `GPU_MANAGER_PYTHON`(미설정 시 PATH의 `python`)이 가리키는 환경에 설치해야 한다 — 2026-09-28 기준 이 머신은 미설정이라 시스템 Python 3.12가 돌고 `gpu-manager/venv`는 안 쓰인다. ASR은 직렬 큐를 **의도적으로 우회**한다(ComfyUI 잡 무기한 대기 방지) — 대신 상주 VRAM 약 3.8GB(1.7B)가 ComfyUI와 공존하므로 OOM이 보이면 `ASR_MODEL_SIZE=0.6B` 또는 `ASR_IDLE_TIMEOUT` 단축.
+
 ### 5.9 빌드 file tracer가 data/를 삼키지 않게 하라 (경로 리터럴 금지)
 `next build`의 file tracer(@vercel/nft)는 번들된 라우트 코드에서 `path.join(process.cwd(), "data", ...)` 같은 **정적으로 평가 가능한 경로 표현식을 에셋 참조로 간주해 해당 디렉터리를 통째로 걷는다.** data/가 15GB(파일 수백만)라 이것만으로 빌드가 55초→4분대로 폭증했다 (2026-07-12 진단: nft.json에 691만 항목, deleted_sessions만 531만).
 - **방어**: `src/lib/data-dir.ts`의 `DATA_DIR_NAME = Buffer.from([0x64,0x61,0x74,0x61]).toString()` — "data" 리터럴을 런타임 조립해 nft 정적 분석을 차단한다. **이상해 보여도 지우지 말 것.** personas images 라우트의 `IMAGES_SEG`도 동일 방어(부분 글롭 `**/images/*` 차단).

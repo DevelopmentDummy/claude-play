@@ -158,6 +158,13 @@ async function stepLocalTTS(pip, gpuInfo) {
     run(`"${pip}" install -r "${path.join(__dirname, "gpu-manager", "requirements-voxcpm.txt")}"`);
     info("VoxCPM2 installed");
   }
+
+  // STT (Qwen3-ASR). transformers 핀이 qwen-tts와 충돌하므로 TTS 뒤에 설치해야 한다 — playbook §5.10
+  if (installQwen || installVoxcpm) {
+    info("Installing Qwen3-ASR (speech-to-text) dependencies...");
+    run(`"${pip}" install -r "${path.join(__dirname, "gpu-manager", "requirements-asr.txt")}"`);
+    info("Qwen3-ASR installed");
+  }
 }
 
 async function stepComfyUI(gpuInfo) {
