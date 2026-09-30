@@ -58,6 +58,8 @@
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
+| `TYPESAFE_API_KEY` | (none) | Jev(TypeSafe System One) API 키. `src/lib/jev-client.ts`만 읽는다 — MCP `jev_ask`, `/api/jev`, 페르소나 도구 `context.jev` 전부 이 키를 쓴다. 없으면 해당 경로가 503 |
+| `TYPESAFE_API_BASE` | `https://api.typesafe.ai` | Jev API 베이스 URL (테스트·프록시용) |
 | `GEMINI_API_KEY` | (none) | Gemini image generation API key |
 | `GEMINI_IMAGE_MODEL` | `gemini-3.1-flash-image-preview` | Gemini image model |
 | `OPENAI_IMAGE_BACKEND` | `codex` | OpenAI/GPT image backend: `codex` (Codex CLI built-in `image_gen`, ChatGPT-subscription-covered, no per-call cost) or `api` (metered OpenAI Responses API) |

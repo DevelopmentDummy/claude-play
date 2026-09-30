@@ -500,6 +500,7 @@ AI가 받게 되는 메시지:
 | `__panelBridge.updateLayout(patch)` | `layout.json`을 deep merge로 부분 업데이트한다. 패널 배치, 독 크기, 테마 등을 실시간 변경할 수 있다. `patch`는 `layout.json`과 동일한 구조의 객체. 예: `{ panels: { dockWidth: 500 } }`. |
 | `__panelBridge.queueEvent(header)` | 다음 사용자 메시지에 이벤트 헤더를 첨부한다. 큐에 쌓이며, 사용자가 다음 메시지를 보낼 때 AI에게 전달되는 텍스트 앞에 자동 prepend된다. OOC 메시지에는 첨부되지 않는다. **async** (서버 fetch). |
 | `__panelBridge.runTool(name, args)` | 서버사이드 커스텀 툴을 실행한다. `name`은 `tools/` 폴더 내 `.js` 파일명 (확장자 제외). `args`는 툴에 전달할 인자 객체. 반환값은 `{ ok, result }`. |
+| `__panelBridge.jev(state, questions, model?)` | Jev(TypeSafe System One) 빠른 판단을 요청한다. 글 대신 확률이 붙은 타입 답(choice/score/noul)을 받는다. 키는 서버에만 있고 `/api/jev`를 거친다. **async**, 실패 시 throw — 반드시 규칙 기반 기본값으로 폴백하라. 질문 설계 규칙은 공용 스킬 `jev` 참조. |
 | `__panelBridge.showPopup(template, opts?)` | 팝업 이펙트를 큐에 추가한다. `template`은 `popups/` 폴더 내 `.html` 파일명 (확장자 제외). `opts`는 `{ duration?: number, vars?: object }`. 현재 큐에 append되어 순차 재생된다. |
 | `__panelBridge.showToast(text, opts?)` | 토스트 알림을 표시한다. 화면 우측 하단에 비차단형으로 나타나며, 여러 개가 스택으로 쌓인다. 클릭하면 즉시 닫힌다. `opts`는 `{ duration?: number }` (기본 3000ms). CSS 변수 `--toast-bg`, `--toast-color`, `--toast-border`, `--toast-shadow`로 스타일 커스터마이즈 가능. |
 | `__panelBridge.confirm(message, opts?)` | 확인 다이얼로그를 표시한다. `Promise<boolean>`을 반환 (true = 확인, false = 취소). `message`는 HTML 지원. `opts`는 `{ yesText?: string, noText?: string }` (기본 "확인"/"취소"). 배경 클릭 시 취소. 테마 색상 자동 적용 (`--accent`). 사용 예: `var ok = await __panelBridge.confirm('이동하시겠습니까?', { yesText: '이동', noText: '취소' })` |

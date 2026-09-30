@@ -94,6 +94,7 @@ Python FastAPI child process (port 3342 by default) for serial GPU task queueing
 | `comfyui-history.ts` | Pure parsers for ComfyUI history/outputs (image/audio filename extraction). Extracted from ComfyUIClient. |
 | `workflow-resolver.ts` | ComfyUI workflow package management. Loads packages, validates `ParamDef` defs, merges prefix/suffix, supports custom `resolver.mjs` plugins. `loadPackage()`, `listPackages()`, `resolveWorkflow()`, `validateParams()`. |
 | `gemini-image.ts` | Gemini image generation via `generativelanguage.googleapis.com` API. Configurable model (`GEMINI_IMAGE_MODEL`). Supports multiple reference images and aspect ratio. |
+| `jev-client.ts` | Jev(TypeSafe System One) 단일 클라이언트 `askJev(state, questions, opts)`. 키(`TYPESAFE_API_KEY`)는 서버 밖으로 나가지 않는다. 요청 전 질문 형식 검증(400), 키 없음 503, 429·5xx·네트워크 오류는 지수 백오프 재시도(`retry-after` 우선), 타임아웃 504. 응답은 가공 없이 반환. 소비 경로: `/api/jev`(MCP `jev_ask`·패널 브리지) + 페르소나 도구 `context.jev`. 설계: `docs/specs/2026-10-01-jev-core-design.md` |
 | `openai-image.ts` | OpenAI image generation via the metered Responses API `image_generation` tool (orchestration model `gpt-5.5` by default, overridable via `OPENAI_IMAGE_MODEL`; actual renderer `gpt-image-2`, overridable via `OPENAI_IMAGE_TOOL_MODEL`; a misconfig guard treats a `gpt-image-*` value passed to `OPENAI_IMAGE_MODEL` as the renderer). Reference images are sent as `input_image` (base64 data URL) for editing (`action: edit`). Used only when `OPENAI_IMAGE_BACKEND=api`. |
 | `codex-image.ts` | **Default** OpenAI/GPT image backend (`OPENAI_IMAGE_BACKEND=codex`). Drives `codex exec` whose built-in `image_gen` tool renders via the ChatGPT subscription (no per-call cost / no `OPENAI_API_KEY`). Snapshots `$CODEX_HOME/generated_images`, harvests the new output png (`call_*.png` on codex-cli 0.144.x, legacy `ig_*.png`), copies into the session `images/`. Editing via `codex exec -i <reference>`. Slower (a full agent turn) and bound by the plan's rate limits. |
 
@@ -105,7 +106,7 @@ Python FastAPI child process (port 3342 by default) for serial GPU task queueing
 | `panel-image-polling.ts` | Auto-polls failed image loads via HEAD requests in Shadow DOM. `installImagePolling()`, `bustImageCache()` for deferred image generation retry. |
 | `panel-action-registry.ts` | Client-side singleton that tracks panel action specs/handlers, evaluates `available_when`, builds the `[AVAILABLE]` header, honours per-action `needs_ui` (default `true`; `false` skips the modal open/close POST when choice-dispatched and a handler is already registered — `parsePanelActions()` must copy every meta field or it silently reverts to the default), executes/records actions, and surfaces `[정의]` reminders when an action shape is wrong. `getPanelActionRegistry()`. |
 | `panel-actions-meta.ts` | Server-side reader for `panels/_actions.meta.json`. `readPanelActionsMeta()`, `formatSpecAsLine()`, `formatPanelActionsAsMarkdown()` — emits the action-spec markdown injected into the system prompt at session open. |
-| `use-panel-bridge.ts` | React hook for panel-to-app communication. `usePanelBridge()` hook, `dispatchBridgeEvent()`, sendMessage/fillInput/updateVariables. |
+| `use-panel-bridge.ts` | React hook for panel-to-app communication. `usePanelBridge()` hook, `dispatchBridgeEvent()`, sendMessage/fillInput/updateVariables/jev (`/api/jev` 프록시, 키는 서버에만). |
 | `hint-snapshot.ts` | Hint rule engine for variable display with formatting & tiering. `buildSnapshot()`, `readHintRules()`. Used by MCP `run_tool` responses. |
 
 ### TTS & Audio
@@ -183,6 +184,7 @@ MCP registration is the **only** viable tool channel for the AI processes — "j
 | `update_profile` | Replace persona profile image and auto-crop a 256×256 icon |
 | `policy_review` | Local content-policy review (allow / deny / uncertain) with decision logging |
 | `policy_context` | Read roleplay policy context (extreme traits, reviewed scenarios, intimacy policy) |
+| `jev_ask` | Jev(TypeSafe System One) 빠른 판단 — `{ state, questions: { id: choice|score|noul }, model? }` → 확률이 붙은 타입 있는 답. `POST /api/jev` 경유. 사용 규칙은 공용 스킬 `jev` |
 | `run_tool` | Execute custom session tools — single or chained, with state snapshot |
 | `fire_ai` | Spawn a detached background AI run (long-form generation, side jobs). Exit-time hooks: `notify` (silent system event queued for next user turn), `autoResume` (fire a spontaneous response turn as soon as the caller AI is idle — immediately if idle, else right after the current turn; subsumes `notify`), `onExit.broadcast` (WS to caller session's clients — UI updates without AI turn), `onExit.script` (JS module inside session dir for dynamic broadcast/queueEvent). |
 | `bridge_delegate` | (세션 모드) 메인 AI가 상시 서브에이전트에게 태스크를 위임. `{ to: name, task: string }` → `SubAgentManager.dispatch()`. |

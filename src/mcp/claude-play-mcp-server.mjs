@@ -1372,6 +1372,36 @@ async function executeOneTool(toolName, toolArgs) {
 }
 
 server.registerTool(
+  "jev_ask",
+  {
+    description:
+      "Ask Jev (TypeSafe System One) for fast, typed judgments instead of generating text. " +
+      "Send `state` (string or JSON) and a map of questions; get back calibrated answers " +
+      "(~0.2s, very cheap). Question types: " +
+      "choice {type:'choice', instructions, criteria:{option: description}} → picked option + probabilities; " +
+      "score {type:'score', instructions, criteria:[level1, level2, ...]} (2-10 ordered levels) → weighted score; " +
+      "noul {type:'noul', instructions, criteria?:{true, false}} → probability of yes. " +
+      "Rules: write instructions and criteria in English; convert numbers into descriptive levels in code " +
+      "(Jev does not do arithmetic/counting); give every option an explicit criterion and include a " +
+      "'none/continue' option when nothing may fit; one judgment per question; batch independent questions " +
+      "over the same state into one call. Refer to state fields with backticks, e.g. `actor.mood`. " +
+      "See the `jev` skill for patterns.",
+    inputSchema: {
+      state: z.any().describe("The content to judge: a string, or a JSON object/array of named fields"),
+      questions: z.record(z.string(), z.any()).describe("Map of question id → question object (choice/score/noul)"),
+      model: z.string().optional().describe("Default 'jev-latest'. Pin e.g. 'jev-1.13.0' if you tuned thresholds"),
+    },
+  },
+  async ({ state, questions, model }) => {
+    try {
+      return ok(await requestJson("POST", "/api/jev", { state, questions, ...(model ? { model } : {}) }));
+    } catch (error) {
+      return fail(error);
+    }
+  }
+);
+
+server.registerTool(
   "run_tool",
   {
     description:

@@ -140,6 +140,7 @@ Next.js 밖에서 `server.ts`가 직접 처리하는 라우트: `/ws?sessionId=&
 | `/api/tools/comfyui/stt` | POST | Speech-to-text. Qwen3-ASR (GPU Manager) biased with the last chat turns of `sessionId` (form field); falls back to ComfyUI Whisper when ASR is unavailable. `?warmup=1` preloads the model. Response `{ text, engine }` |
 | `/api/tools/comfyui/update-profile` | POST | Update profile image via ComfyUI |
 | `/api/tools/gemini/generate` | POST | Trigger Gemini image generation. `outputDir`(내부 토큰 전용) 분기는 완료 대기 후 절대경로 응답 |
+| `/api/jev` | POST | Jev(TypeSafe System One) 프록시. 본문 `{ state, questions, model? }` → `askJev()` → Jev 응답 그대로(`model`/`answers`/`usage`). 256KB 초과 413, 키 없음 503, 질문 형식 오류 400, 타임아웃 504. 소비자: MCP `jev_ask`, 패널·앱 `__panelBridge.jev()` |
 | `/api/tools/openai/generate` | POST | Trigger OpenAI image generation. `outputDir`(내부 토큰 전용) 분기는 완료 대기 후 절대경로 응답 |
 
 ## Debug

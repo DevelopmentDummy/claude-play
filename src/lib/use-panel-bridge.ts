@@ -39,6 +39,17 @@ export function usePanelBridge(
         }
         window.dispatchEvent(new CustomEvent("__panel_send_message", { detail }));
       },
+      /** Jev(TypeSafe System One) 빠른 판단. 키는 서버에만 있고 /api/jev 프록시를 거친다. */
+      async jev(state: unknown, questions: Record<string, unknown>, model?: string) {
+        const res = await fetch("/api/jev", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ state, questions, ...(model ? { model } : {}) }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error || `Jev request failed (${res.status})`);
+        return data;
+      },
       fillInput(text: string) {
         window.dispatchEvent(new CustomEvent("__panel_fill_input", { detail: text }));
       },
