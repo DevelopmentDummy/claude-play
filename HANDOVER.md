@@ -95,6 +95,10 @@
 
 **2026-09-12 라이브 스모크 1차 통과 (kingdom 페르소나, 세션 `kingdom-2026-09-12T12-50-17`)**: 앱 슬롯 마운트, world tick 진행, 주민 스레드 3개 90초 주기 정책 제출, 메인 `dialogue_reply` 제출까지 실세션에서 확인. 전제 조건이었던 `readLayout()`의 `app` 누락 버그 수정(`session-config-io.ts` + 회귀 테스트, 플레이북 §5.11). 상세는 `data/personas/kingdom/HANDOVER.md` §9. **남은 갭**: ① `chat.mode: hidden` 경로 미검증(dock으로만 확인) ② `emitSummary:false`가 `report_to_main` 도구를 막지 않아 스레드가 자발 호출하면 `[SUB:*]`가 메인에 큐잉됨 — 코어 게이트 필요 ③ 위 "특히 확인해야 할 것" 4항목(1회 마운트 시각·resetEveryTurns·고아 PID·비앱 세션 무영향)은 아직 미확인.
 
+### 4-B. Jev(TypeSafe System One) 코어 통합 (main `773155a`·`2cc11c9`, 2026-10-01)
+
+단위 테스트 8건(`src/lib/jev-client.test.ts`)과 실제 API 직접 호출(curl, 모델 목록 200 · Choice 1건 0.23초/414토큰)은 통과. **서비스 경로는 라이브 미검증** — 커밋 시점에 재시작하지 않았다(다른 세션 2개 접속 중 + 작업 트리에 타 세션 WIP). 재시작 후 확인: ① `POST /api/jev`(쿠키 또는 `x-bridge-token`) 200 + `usage` ② 재-open한 세션에서 MCP `jev_ask` 노출·호출 ③ 페르소나 도구 `await context.jev(...)` 1회 ④ 패널 `__panelBridge.jev(...)` 1회. 키는 `.env.local`의 `TYPESAFE_API_KEY`. 설계: `docs/specs/2026-10-01-jev-core-design.md`.
+
 ## 5. 사용자 결정 대기
 
 1. **soft-delete 누적**: `data/deleted_sessions` **163개 / 4.47GB** (2026-06-06의 52개/2.4GB에서 3배). 복구 지향 설계라 자율 정리 금지 — 보존 기간/정책 결정 필요. `data/deleted_personas`는 24개/0.13GB.

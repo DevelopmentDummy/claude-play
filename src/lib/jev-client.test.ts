@@ -57,6 +57,17 @@ test("질문 검증 실패는 400 — 빈 questions / 잘못된 type / score 레
   assert.equal(f.calls.length, 0);
 });
 
+test("state가 없으면 400 — TypeSafe까지 가지 않는다", async () => {
+  const f = fakeFetch([]);
+  for (const s of [undefined, null]) {
+    await assert.rejects(
+      askJev(s, Q, { apiKey: "k", fetchImpl: f.impl }),
+      (e: unknown) => e instanceof JevError && e.status === 400 && /state/.test(e.message),
+    );
+  }
+  assert.equal(f.calls.length, 0);
+});
+
 test("정상 응답은 가공 없이 통과하고 Bearer 키·기본 모델을 보낸다", async () => {
   const f = fakeFetch([json(200, OK_BODY)]);
   const r = await askJev({ actor: "Elena" }, Q, { apiKey: "k-123", fetchImpl: f.impl, baseUrl: "https://example.test" });

@@ -88,6 +88,9 @@ export async function askJev(
 ): Promise<JevResponse> {
   const apiKey = opts.apiKey ?? process.env.TYPESAFE_API_KEY ?? "";
   if (!apiKey) throw new JevError("TYPESAFE_API_KEY not configured", 503);
+  if (state === undefined || state === null) {
+    throw new JevError("state is required (a string, or a JSON object/array of named fields)", 400);
+  }
   validateJevQuestions(questions);
 
   const model = opts.model?.trim() || "jev-latest";
@@ -96,7 +99,7 @@ export async function askJev(
   const timeoutMs = opts.timeoutMs ?? 15_000;
   const retries = Math.max(0, opts.retries ?? 2);
   const backoffMs = opts.backoffMs ?? 400;
-  const body = JSON.stringify({ state: state ?? "", model, questions });
+  const body = JSON.stringify({ state, model, questions });
   const started = Date.now();
 
   let lastError: JevError = new JevError("Jev request failed", 502);
