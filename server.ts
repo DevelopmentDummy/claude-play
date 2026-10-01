@@ -234,20 +234,26 @@ function spawnComfyui(): ChildProcess | null {
     return null;
   }
 
-  console.log(`[comfyui] spawning ${python} main.py --listen ${comfyuiHost} --port ${comfyuiPort}`);
+  // stdout/stderr는 파이프가 아니라 로그 파일 fd로 넘긴다. 재시작 오케스트레이터가 서버를 강제 종료하면 ComfyUI는 살아남아
+  // 새 서버가 재사용하는데(포트 사용 중 → 스폰 생략), 파이프였다면 읽는 쪽이 죽어 이후 모든 print/tqdm 쓰기가
+  // "[Errno 22] Invalid argument"로 실패해 KSampler·텍스트 인코더 노드가 전부 에러난다(2026-10-01 실측).
+  const logPath = path.join(process.cwd(), "comfyui-autostart.log");
+  try {
+    if (fs.existsSync(logPath) && fs.statSync(logPath).size > 20 * 1024 * 1024) fs.truncateSync(logPath, 0);
+  } catch {}
+  const logFd = fs.openSync(logPath, "a");
+  console.log(`[comfyui] spawning ${python} main.py --listen ${comfyuiHost} --port ${comfyuiPort} (log: ${logPath})`);
   const child = spawn(python, [
     "main.py",
     "--listen", comfyuiHost,
     "--port", String(comfyuiPort),
   ], {
     cwd: comfyuiDir,
-    stdio: ["ignore", "pipe", "pipe"],
+    stdio: ["ignore", logFd, logFd],
     env: { ...process.env },
     windowsHide: true,
   });
-
-  child.stdout?.on("data", (d: Buffer) => process.stdout.write(d));
-  child.stderr?.on("data", (d: Buffer) => process.stderr.write(d));
+  fs.closeSync(logFd);  // 자식이 fd를 상속받았으므로 부모 쪽 핸들은 닫는다
 
   child.on("exit", (code) => {
     if (!g.__shuttingDown && code !== null && code !== 0) {

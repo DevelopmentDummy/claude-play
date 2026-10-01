@@ -156,3 +156,9 @@
 이 서비스는 잘 설계돼 있고, 남은 함정들은 위와 플레이북에 전부 적어뒀다. 다음 유지보수자에게: 판단이 서지 않을 때는 **철칙 → 검증 사다리 → 해당 서브시스템 문서** 순서로 따라가면 된다. 화려한 수정보다 검증된 작은 수정이 이 리포의 방식이다.
 
 즐거웠다. 좋은 세션들을 만들어줘서 고마워. — Fable
+
+## 2026-10-01 ComfyUI 오디오 출력 + 고아 ComfyUI 수정 (미커밋)
+- `src/lib/comfyui-history.ts` `extractOutputFilenames`가 `audio` 출력도 수집(이미지 다음 순서). `comfyui-client.ts` `downloadImage`에 subfolder/type 전달. → 음악 워크플로 패키지(`minimax-music3`, `ace-step-music`)를 `comfyui_generate`로 생성 가능(mp3가 `images/`에 저장). 라이브 확인 완료.
+- `server.ts` ComfyUI 오토스폰 stdio를 파이프→`comfyui-autostart.log` fd로 변경. 원인: 재시작 오케스트레이터가 서버를 강제 종료하면 ComfyUI는 살아남아 재사용되는데, 파이프 읽는 쪽이 죽어 이후 print/tqdm이 `[Errno 22] Invalid argument`로 실패 → KSampler·텍스트 인코더 노드가 전부 에러. 문서: infrastructure.md·playbook 철칙 표 6번 줄 보강, `.gitignore`에 로그 추가.
+- 같은 재시작 빌드에 사용자 작업 중이던 `src/components/ChatInput.tsx` 변경이 포함됨(typecheck 통과).
+- 남은 일: 커밋(사용자 지시 대기), 오케스트레이터 로그의 'new server child exited early (code=0)'는 정상 분리 동작으로 보이나 미확인.

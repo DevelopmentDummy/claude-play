@@ -892,7 +892,7 @@ export class ComfyUIClient {
   ): Promise<GenerateResult> {
     const outputFiles = extractOutputFilenames(history);
     if (outputFiles.length === 0) {
-      return { success: false, error: "No output image in ComfyUI result" };
+      return { success: false, error: "No output image/audio in ComfyUI result" };
     }
 
     const imagesDir = path.join(sessionDir, "images");
@@ -903,7 +903,7 @@ export class ComfyUIClient {
     const mainDest = path.join(imagesDir, safeName);
     fs.mkdirSync(path.dirname(mainDest), { recursive: true });
 
-    const mainBuffer = await this.downloadImage(mainOutput.filename);
+    const mainBuffer = await this.downloadImage(mainOutput.filename, mainOutput.subfolder, mainOutput.type);
     if (mainBuffer) {
       fs.writeFileSync(mainDest, mainBuffer);
     } else if (!this.copyOutputFileToSession(mainOutput, mainDest)) {
@@ -915,7 +915,7 @@ export class ComfyUIClient {
       for (const [prefix, extraFilename] of Object.entries(extraFiles)) {
         const match = outputFiles.find((o) => o.prefix === prefix);
         if (match) {
-          const buffer = await this.downloadImage(match.filename);
+          const buffer = await this.downloadImage(match.filename, match.subfolder, match.type);
           const safeExtra = safePath(extraFilename);
           const extraDest = path.join(imagesDir, safeExtra);
           fs.mkdirSync(path.dirname(extraDest), { recursive: true });
@@ -1026,10 +1026,12 @@ export class ComfyUIClient {
     }
   }
 
-  private async downloadImage(filename: string): Promise<Buffer | null> {
+  private async downloadImage(filename: string, subfolder?: string, type?: string): Promise<Buffer | null> {
     try {
+      // 하위 폴더 출력(예: SaveAudio의 audio/)은 subfolder·type이 있어야 /view가 찾는다.
+      const extra = (subfolder ? `&subfolder=${encodeURIComponent(subfolder)}` : "") + (type ? `&type=${encodeURIComponent(type)}` : "");
       const res = await this.fetchWithRetry(
-        `${this.baseUrl}/view?filename=${encodeURIComponent(filename)}`,
+        `${this.baseUrl}/view?filename=${encodeURIComponent(filename)}${extra}`,
         {},
         { attempts: 4, timeoutMs: 20_000, baseDelayMs: 200 }
       );

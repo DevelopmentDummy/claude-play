@@ -34,19 +34,22 @@ export function extractOutputFilenames(
   if (!outputs) return [];
 
   const results: Array<{ filename: string; prefix: string; subfolder?: string; type?: string }> = [];
-  for (const nodeOutput of Object.values(outputs)) {
-    const images = nodeOutput.images as
-      | Array<{ filename: string; subfolder?: string; type?: string }>
-      | undefined;
-    if (images && images.length > 0) {
-      for (const img of images) {
+  // 이미지·영상(SaveVideo도 images로 보고)을 먼저, 음악 생성 워크플로(SaveAudio*)의 audio 출력을 그 뒤에 모은다.
+  // 이미지 워크플로의 메인 출력 순서는 그대로 유지된다.
+  for (const key of ["images", "audio"] as const) {
+    for (const nodeOutput of Object.values(outputs)) {
+      const files = nodeOutput[key] as
+        | Array<{ filename: string; subfolder?: string; type?: string }>
+        | undefined;
+      if (!files || files.length === 0) continue;
+      for (const f of files) {
         // ComfyUI filenames are like "profile_00001_.png" — extract prefix before first underscore+digits
-        const prefix = img.filename.replace(/_\d+_?\.\w+$/, "");
+        const prefix = f.filename.replace(/_\d+_?\.\w+$/, "");
         results.push({
-          filename: img.filename,
+          filename: f.filename,
           prefix,
-          subfolder: img.subfolder,
-          type: img.type,
+          subfolder: f.subfolder,
+          type: f.type,
         });
       }
     }
