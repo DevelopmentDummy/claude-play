@@ -594,6 +594,63 @@ export function useChat(rawSessionId?: string) {
     return 0;
   }, [sessionId]);
 
+  /** WS 재연결 시 서버 history와 화면을 다시 맞춘다. 모바일에서 화면을 내려두면
+   *  소켓이 끊긴 동안의 claude:message 브로드캐스트를 통째로 놓치는데, 재연결만으로는
+   *  복구되지 않아 나갔다 다시 들어와야 했다. 이미 로드된 깊이(loadedOffset)부터
+   *  끝까지 다시 받아 교체하고, 내용이 같은 위치의 메시지는 renderKey를 유지해
+   *  불필요한 리마운트를 피한다.
+   *  serverStreaming=true면 서버 턴이 아직 진행 중 → 로컬 라이브 버블을 꼬리에 보존.
+   *  false면 턴이 끝난 상태 → 남아 있는 라이브 버블/스트리밍 상태를 정리한다. */
+  const resyncHistory = useCallback(async (serverStreaming: boolean): Promise<void> => {
+    try {
+      const sid = sessionId ? `&sessionId=${encodeURIComponent(sessionId)}` : "";
+      const offset = loadedOffsetRef.current;
+      const res = await fetch(`/api/chat/history?offset=${offset}&limit=100000${sid}`);
+      if (!res.ok) return;
+      const data = await res.json() as { messages: ChatMessage[]; total: number };
+      const fresh = data.messages;
+      totalRef.current = data.total;
+
+      // 서버 history가 비어 있으면(오프닝만 클라이언트에 있는 새 세션) 화면을 건드리지 않는다.
+      if (fresh.length > 0) setMessages((prev) => {
+        const liveTail = serverStreaming
+          ? prev.filter((m) => m.live)
+          : [];
+        const committed = prev.filter((m) => !m.live);
+        const merged = fresh.map((m, i) => {
+          const old = committed[i];
+          if (old && old.role === m.role && old.content === m.content) {
+            return { ...m, renderKey: old.renderKey || old.id };
+          }
+          return m;
+        });
+        // 변화가 없으면 이전 배열을 그대로 반환해 리렌더를 막는다.
+        const unchanged =
+          liveTail.length === prev.length - committed.length &&
+          merged.length === committed.length &&
+          merged.every((m, i) => m.id === committed[i].id && m.renderKey === committed[i].renderKey);
+        if (unchanged) return prev;
+        return [...merged, ...liveTail];
+      });
+      msgIdRef.current = Math.max(msgIdRef.current, offset + fresh.length);
+
+      if (!serverStreaming) {
+        rawAssistantTextRef.current = "";
+        displayAssistantTextRef.current = "";
+        carryAssistantTextRef.current = "";
+        assistantFullTextRef.current = null;
+        toolsRef.current = [];
+        seenToolKeysRef.current.clear();
+        sawTextDeltaRef.current = false;
+        turnSplitRef.current = false;
+        currentBlockTypeRef.current = "text";
+        pushedTextsByMsgIdRef.current.clear();
+        oocRef.current = false;
+        setIsStreaming(false);
+      }
+    } catch { /* ignore */ }
+  }, [sessionId]);
+
   const loadMore = useCallback(async (): Promise<number> => {
     if (loadedOffsetRef.current <= 0) return 0;
     const TARGET_VISIBLE = 10;
@@ -677,6 +734,7 @@ export function useChat(rawSessionId?: string) {
     addOpeningMessage,
     clearMessages,
     loadHistory,
+    resyncHistory,
     loadMore,
     toggleMessageOOC,
   };

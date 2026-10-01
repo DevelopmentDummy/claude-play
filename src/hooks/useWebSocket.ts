@@ -152,5 +152,16 @@ export function useWebSocket({
     };
   }, [connect, enabled]);
 
+  // 모바일 백그라운드 복귀 시 2초 재연결 타이머를 기다리지 않고 즉시 재접속한다.
+  useEffect(() => {
+    if (!enabled) return;
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      if (!wsRef.current && reconnectTimer.current) connect();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [connect, enabled]);
+
   return { send, sendChat, sendCancel };
 }

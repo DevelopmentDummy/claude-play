@@ -72,6 +72,7 @@ export default function ChatPage() {
     addOpeningMessage,
     clearMessages,
     loadHistory,
+    resyncHistory,
     loadMore,
     hasMore,
     toggleMessageOOC,
@@ -399,6 +400,18 @@ export default function ChatPage() {
       .catch(() => {});
   }, [sessionId]);
 
+  const wsConnectedOnceRef = useRef(false);
+  const resyncAfterTurnRef = useRef(false);
+  useEffect(() => {
+    wsConnectedOnceRef.current = false;
+    resyncAfterTurnRef.current = false;
+  }, [sessionId]);
+  useEffect(() => {
+    if (status !== "connected" || !resyncAfterTurnRef.current) return;
+    resyncAfterTurnRef.current = false;
+    void resyncHistory(false);
+  }, [status, resyncHistory]);
+
   // WebSocket connection — only connect after session open completes
   const { sendChat, sendCancel, send: wsSend } = useWebSocket({
     sessionId,
@@ -411,6 +424,15 @@ export default function ChatPage() {
         const { currentStatus } = d as { currentStatus?: string };
         if (typeof currentStatus === "string") setStatus(currentStatus);
         seedSubBusy();
+        // 재연결(모바일 백그라운드 복귀 등)이면 끊긴 동안 놓친 메시지를 history로 복구.
+        // 최초 연결은 openSession의 loadHistory가 이미 처리했다.
+        if (wsConnectedOnceRef.current) {
+          const inTurn = currentStatus === "streaming" || currentStatus === "compacting";
+          void resyncHistory(inTurn);
+          // 턴 도중 복귀했으면 끊긴 사이 놓친 delta는 복구 불가 → 턴 종료 후 확정본으로 한 번 더 덮는다.
+          resyncAfterTurnRef.current = inTurn;
+        }
+        wsConnectedOnceRef.current = true;
       },
       "chat:user": (d) => {
         const { text, isOOC } = d as { text: string; isOOC?: boolean };
