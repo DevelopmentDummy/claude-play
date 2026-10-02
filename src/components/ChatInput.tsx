@@ -549,7 +549,11 @@ function ChatInput({ disabled, isStreaming, onSend, onCancel, sessionId, choices
       prevFinalCount = finalCount;
     };
 
-    recognition.onerror = () => { clearAutoSendTimer(); stopWebSTT(); };
+    recognition.onerror = (ev) => {
+      console.warn("[stt] web speech error:", (ev as Event & { error?: string }).error);
+      clearAutoSendTimer();
+      stopWebSTT();
+    };
     // If recognition ends before user spoke (silence timeout), create fresh instance to keep listening
     recognition.onend = () => {
       clearAutoSendTimer();
@@ -734,6 +738,7 @@ function ChatInput({ disabled, isStreaming, onSend, onCancel, sessionId, choices
   }, [sttActive, sttMode, stopWebSTT, stopRecorderSTT, startWebSTT, startRecorderSTT]);
 
   const prevTtsPlayingRef = useRef(ttsPlaying);
+  const prevVoiceChatRef = useRef(voiceChat);
 
   // Cleanup on disable; auto-start STT on voiceChat after TTS finishes
   useEffect(() => {
@@ -745,8 +750,11 @@ function ChatInput({ disabled, isStreaming, onSend, onCancel, sessionId, choices
 
     // Voice chat: auto-start STT when ready
     if (voiceChat && !disabled && !sttActive && !sttTranscribing && sttMode !== "none") {
-      const wasBusy = prevDisabledRef.current || prevTtsPlayingRef.current;
+      // 토글을 막 켠 순간도 시작 트리거로 취급 (idle 상태에서 켜도 바로 마이크 진입)
+      const justEnabled = !prevVoiceChatRef.current;
+      const wasBusy = justEnabled || prevDisabledRef.current || prevTtsPlayingRef.current;
       const isReady = !ttsPlaying;
+      console.debug("[stt] voiceChat auto-start check", { sttMode, wasBusy, isReady, justEnabled });
       if (wasBusy && isReady) {
         if (sttMode === "web") startWebSTT();
         else void startRecorderSTT();
@@ -755,6 +763,7 @@ function ChatInput({ disabled, isStreaming, onSend, onCancel, sessionId, choices
 
     prevDisabledRef.current = disabled;
     prevTtsPlayingRef.current = ttsPlaying;
+    prevVoiceChatRef.current = !!voiceChat;
   }, [disabled, ttsPlaying, sttActive, sttTranscribing, sttMode, stopWebSTT, voiceChat, startWebSTT, startRecorderSTT, discardRecorder, clearAutoSendTimer]);
 
   useEffect(() => () => {
