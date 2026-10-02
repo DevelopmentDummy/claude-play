@@ -152,12 +152,16 @@ export interface LayoutConfig {
   panels: {
     position: "right" | "left" | "bottom" | "hidden";
     size: number;
+    /** 패널별 배치 (검증 전 원본). "main"이 있으면 무대 레이아웃 — 판정은 resolveStage()(stage-layout.ts). */
+    placement?: Record<string, string>;
   };
   chat: {
     maxWidth: number | null;
     align: "stretch" | "center";
     /** 앱 모드에서 채팅 영역의 강등 수준. 미지정 = "normal". */
     mode?: "normal" | "dock" | "hidden";
+    /** 무대 레이아웃의 우측 채팅 컬럼 폭(px). 미지정 = 420 (CHAT_WIDTH_DEFAULT). */
+    width?: number;
   };
   /** 앱 모드 설정(검증 전 원본). 해석·검증은 resolveAppMode()가 담당한다. */
   app?: {

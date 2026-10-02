@@ -112,13 +112,14 @@ export default function ToastEffect({ themeColor }: ToastEffectProps) {
         style={{
           position: "fixed",
           bottom: 24,
-          right: 24,
+          // 무대 레이아웃이면 채팅 컬럼 폭만큼 비켜서 무대 우하단에 뜬다 (변수가 없으면 기존과 같다)
+          right: "calc(var(--stage-right-inset, 0px) + 24px)",
           zIndex: 10200,
           display: "flex",
           flexDirection: "column-reverse",
           gap: 8,
           pointerEvents: "none",
-          maxWidth: "min(400px, calc(100vw - 48px))",
+          maxWidth: "min(400px, calc(100vw - 48px - var(--stage-right-inset, 0px)))",
         }}
       >
         {toasts.map((toast) => (

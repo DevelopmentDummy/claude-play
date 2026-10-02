@@ -46,6 +46,8 @@ interface StatusBarProps {
   onThreadControl?: (action: "pause" | "resume" | "speed", value?: number) => void;
   /** 앱 모드 `chat.mode: "hidden"`에서만 — 숨겨둔 메인 채팅을 디버깅용으로 잠깐 꺼내는 토글. */
   debugChat?: { open: boolean; onToggle: () => void } | null;
+  /** 모바일 무대 레이아웃에서만 — 무대/채팅 뷰 전환 세그먼트. null이면 렌더하지 않는다. */
+  stageView?: { view: "stage" | "chat"; onChange: (view: "stage" | "chat") => void } | null;
   /** Version snapshot (builder mode) */
   onVersionSave?: () => void;
   onVersionHistory?: () => void;
@@ -108,6 +110,7 @@ export default function StatusBar({
   threadStatus,
   onThreadControl,
   debugChat,
+  stageView,
   onVersionSave,
   onVersionHistory,
   versionSaving,
@@ -204,17 +207,39 @@ export default function StatusBar({
           </button>
         )
       )}
+      {stageView && (
+        <div role="group" aria-label="화면 전환" className="ml-auto flex shrink-0 rounded-md border border-border/60 p-0.5">
+          {([
+            ["stage", "무대"],
+            ["chat", "채팅"],
+          ] as const).map(([view, label]) => (
+            <button
+              key={view}
+              type="button"
+              aria-pressed={stageView.view === view}
+              onClick={() => stageView.onChange(view)}
+              className={`px-2.5 py-0.5 rounded text-xs cursor-pointer transition-colors duration-fast ${
+                stageView.view === view
+                  ? "bg-accent text-bg font-semibold"
+                  : "text-text-dim hover:text-text"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
       {showPanelButton && onPanelToggle && (
         <button
           onClick={onPanelToggle}
           aria-label="패널 토글"
-          className="ml-auto px-2.5 py-1 border border-border rounded-md bg-transparent text-text-dim cursor-pointer text-sm hover:bg-surface-light hover:text-text transition-all duration-150"
+          className={`${stageView ? "" : "ml-auto "}px-2.5 py-1 border border-border rounded-md bg-transparent text-text-dim cursor-pointer text-sm hover:bg-surface-light hover:text-text transition-all duration-150`}
           title="Toggle panel"
         >
           ☰
         </button>
       )}
-      <div className={`flex items-center gap-2 min-w-0 max-w-full ${showPanelButton ? "" : "ml-auto"}`}>
+      <div className={`flex items-center gap-2 min-w-0 max-w-full ${showPanelButton || stageView ? "" : "ml-auto"}`}>
         {/* TTS auto-play toggle */}
         {onAutoPlayToggle !== undefined && (
           <button

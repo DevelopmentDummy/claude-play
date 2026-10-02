@@ -99,6 +99,26 @@
 
 단위 테스트 8건(`src/lib/jev-client.test.ts`)과 실제 API 직접 호출(curl, 모델 목록 200 · Choice 1건 0.23초/414토큰)은 통과. **서비스 경로는 라이브 미검증** — 커밋 시점에 재시작하지 않았다(다른 세션 2개 접속 중 + 작업 트리에 타 세션 WIP). 재시작 후 확인: ① `POST /api/jev`(쿠키 또는 `x-bridge-token`) 200 + `usage` ② 재-open한 세션에서 MCP `jev_ask` 노출·호출 ③ 페르소나 도구 `await context.jev(...)` 1회 ④ 패널 `__panelBridge.jev(...)` 1회. 키는 `.env.local`의 `TYPESAFE_API_KEY`. 설계: `docs/specs/2026-10-01-jev-core-design.md`.
 
+### 4-C. 무대 레이아웃 + mount-once 패널 (브랜치 `feat/stage-layout`, 워크트리 `C:/repository/cb-stage-layout`, 2026-10-02~03)
+
+`panels.placement`의 `"main"` → `[좌측 사이드바][무대 탭][우측 사이드바][우측 채팅 컬럼]`, `chat.width`, 패널 opt-in
+`<panel-meta>{"mount":"once"}</panel-meta>`, 브리지 `focusPanel`/`emit`, 라이브 `__panelBridge.data`, 선택지 액션 배치 조회 수정.
+설계 `docs/specs/2026-10-02-stage-layout-design.md`, 함정 플레이북 §5.17. 첫 소비자는 `novel_writer` 페르소나(집필 워크벤치 — 페르소나 쪽 개편은 별건).
+단위 테스트(`stage-layout.test.ts`·`use-panel-bridge.test.ts`·`session-config-io.test.ts`)는 있으나 **라이브 미검증**.
+운영 서버가 메인 작업트리 `.next/`를 서빙하므로 빌드·스모크는 feature 워크트리의 격리 서버(`DATA_DIR`·`PORT` 분리)에서 한다.
+
+확인 항목 (데스크톱 Chrome + 모바일 폭):
+- (a) main 패널 2개 페르소나 → 탭 바 표시, 탭 전환 후 돌아와도 스크롤·작성 중 입력 보존, 새로고침 후 마지막 탭 복원(`localStorage` `stageTab:{id}`). main 1개면 탭 바 없음
+- (b) 채팅 컬럼 드래그 → 놓으면 `layout.json`의 `chat.width` 기록 → `layout:update` 왕복 후 폭 유지. 창을 줄이면 무대가 480px 이상 남도록 표시 폭만 줄고 저장값은 그대로
+- (c) 접기 → 44px 레일, 응답 중 펄스 점, 펼치면 입력 중 텍스트·스크롤 보존. 접힌 상태에서 패널 `fillInput()` → 자동 펼침 + 입력창 높이 정상(0px로 찌그러지지 않는지)
+- (d) 압축 입력창 — 320px 폭에서 textarea 사용 가능, 둘째 줄 버튼(OOC·`*`·STT·오토플레이·사용량·개입·오토 메시지) 전부 동작
+- (e) `dock-left`/`dock-right` 패널이 데스크톱 무대에서 모달로 승격, `dock-bottom`은 채팅 컬럼 안 유지. 토스트·최소화 모달 칩이 채팅 컬럼을 피해 무대 우하단에 뜨는지(`--stage-right-inset`), 무대를 벗어나면 변수가 지워지는지
+- (f) 모바일(<768px) — 상태바 `무대 | 채팅` 전환, 두 뷰 모두 상태 보존, `focusPanel` → 무대 뷰, `fillInput` → 채팅 뷰
+- (g) mount-once 패널 — 변수 변경에도 shadow가 다시 그려지지 않고 `stateChanged`로만 갱신(스크롤 유지), dev StrictMode에서도 빈 패널이 되지 않는지. 모달에 쓴 mount-once는 닫았다 다시 열어도 재초기화되지 않는지(의도된 동작), 독 탭 전환 시에는 새로 마운트되는지
+- (h) 선택지 액션 — main 패널 액션이면 모달 없이 탭 전환 + 핸들러 실행, `__open`이면 탭 전환만. 사이드바 패널 액션이 더 이상 `/modals open`을 쏘지 않는지(Network 탭), `modal-dismissible` 패널이 선택지로 열릴 때 닫기 가능 모드인지. 엣지: 상주 패널(left/right/main)은 이제 모달 열기 없이 `waitForHandler`(8초)만 기다린다 — 모바일에서 ☰ 서랍이 닫혀 사이드바 패널이 언마운트돼 있으면 핸들러가 없어 액션이 타임아웃되는지 확인(예전엔 모달로 열어 핸들러를 로드했다)
+- (i) **회귀 — main이 없는 기존 페르소나 1개 + 앱 모드 페르소나 1개**: 레이아웃 불변, 앱 모드에서 `stateChanged` 이중 발송 없음, 기존 패널의 `__panelBridge.data` 후행 읽기가 최신값
+- 패널 문서(`panel-spec.md`/`app-spec.md`)·빌더 프롬프트 변경은 머지 후 빌더 재실행·세션 재-open에서 사본이 갱신된다. `data/skills/panel-design`은 세션 재-open 시 전파.
+
 ## 5. 사용자 결정 대기
 
 1. **soft-delete 누적**: `data/deleted_sessions` **163개 / 4.47GB** (2026-06-06의 52개/2.4GB에서 3배). 복구 지향 설계라 자율 정리 금지 — 보존 기간/정책 결정 필요. `data/deleted_personas`는 24개/0.13GB.

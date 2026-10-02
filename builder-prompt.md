@@ -268,8 +268,16 @@ CLAUDE.md의 "사용자 정보" 섹션을 참고하여 사용자를 올바른 �
 
 - **`panels.position`**: 패널 기본 위치 (fallback). `"right"` (기본), `"left"`, `"bottom"`, `"hidden"` 중 선택. `placement`가 설정되면 무시됨
 - **`panels.size`**: 패널 영역 크기 (px). right/left일 때 너비, bottom일 때 높이
-- **`panels.placement`**: 패널별 위치 지정 (선택). 키는 패널 표시 이름(숫자 prefix 제거, 확장자 제외 — 예: `01-status.html` → `"status"`), 값은 `"left"`, `"right"`, `"modal"`, `"dock"` 중 하나. **여기에 없는 패널은 인라인(채팅 본문 내 `$PANEL:이름$` 형태로 삽입)으로 처리된다.** 이 필드가 비어있거나 생략되면 `position` 값이 모든 패널에 적용됨. 숫자 prefix 포함 키(`"01-status"`)도 호환됨
-- **`panels.dockSize`**: dock 패널의 최대 높이 (px). 생략하면 콘텐츠에 맞춰 자동 크기 (최대 50vh)
+- **`panels.placement`**: 패널별 위치 지정 (선택). 키는 패널 표시 이름(숫자 prefix 제거, 확장자 제외 — 예: `01-status.html` → `"status"`), 값은 아래 중 하나. **여기에 없는 패널은 인라인(채팅 본문 내 `$PANEL:이름$` 형태로 삽입)으로 처리된다.** 이 필드가 비어있거나 생략되면 `position` 값이 모든 패널에 적용됨. 숫자 prefix 포함 키(`"01-status"`)도 호환됨. 목록 밖의 값(오타 포함)을 쓰면 그 패널은 어디에도 표시되지 않는다
+  - `"left"` / `"right"`: 좌/우 사이드바에 상시 표시
+  - `"main"`: **중앙 무대**에 탭으로 상시 표시. 하나라도 있으면 세션 화면이 무대 레이아웃(`[좌측 사이드바][무대][우측 사이드바][우측 채팅 컬럼]`)으로 바뀐다 — 아래 "무대 레이아웃" 참조
+  - `"modal"` / `"modal-dismissible"`: 화면 중앙 오버레이. `variables.json`의 `__modals`로 on/off. 둘의 차이는 선택지 액션이 핸들러 실행을 위해 자동으로 열 때 필수(`true`)로 여느냐 닫기 가능(`"dismissible"`)으로 여느냐뿐이다(빌트인 `__open`은 항상 닫기 가능)
+  - `"full-screen"`: 화면 전체를 덮는 패널 (`__modals`로 on/off)
+  - `"dock"` / `"dock-bottom"`: 채팅과 입력창 사이 전체 너비 (`__modals`로 on/off)
+  - `"dock-left"` / `"dock-right"`: 채팅 영역 안 좌/우 하단 플로팅 (`__modals`로 on/off). 무대 레이아웃·모바일에서는 모달로 승격된다
+- **`panels.dockWidth`**: dock-left/right 패널의 너비 (px). 생략하면 콘텐츠에 맞춰 자동 (최소 280px, 최대 50%)
+- **`panels.dockHeight`**: 모든 dock 패널의 최대 높이 (px). 생략하면 50vh. (`dockSize`는 예전 이름 — 새로 쓰지 말고 `dockHeight`를 써라)
+- **`chat.width`**: **무대 레이아웃에서만** 쓰는 우측 채팅 컬럼 폭 (px, 양의 숫자). 기본 420. 표시 폭은 최소 320px, 최대는 무대가 480px 이상 남도록 잘린다. 사용자가 세션에서 컬럼 가장자리를 드래그하면 그 세션의 `layout.json`에 자동 저장된다(페르소나 원본은 그대로). 앱 모드에서는 무시된다
 - **`chat.maxWidth`**: 채팅 영역 최대 너비. `null`이면 꽉 채움, 숫자면 px 제한
 - **`chat.align`**: 채팅 영역 정렬. `"stretch"` (기본) 또는 `"center"` (가운데 정렬)
 - **`theme`**: 색상 테마. 각 값은 hex 색상 코드. 캐릭터의 분위기에 맞게 설정한다
@@ -285,6 +293,35 @@ CLAUDE.md의 "사용자 정보" 섹션을 참고하여 사용자를 올바른 �
 - **`customCSS`**: 추가 CSS 문자열 (고급 커스터마이징용). `{{__imageBase}}` 플레이스홀더를 사용하면 세션 이미지 경로로 자동 치환된다.
 
 **모든 필드가 선택적이다** — 생략된 필드는 기본값이 사용된다.
+
+**무대 레이아웃 (`placement: "main"`) — 패널이 본체이고 대화가 보조일 때:**
+
+집필 워크벤치, 대시보드, 보드형 도구처럼 **사용자가 주로 패널을 보고 조작하고, 채팅은 곁에서 거드는** 페르소나라면
+본문 패널을 `"main"`에 둔다. 채팅이 가운데에서 우측 컬럼으로 비켜나고 중앙이 패널 무대가 된다.
+
+```json
+{
+  "panels": {
+    "placement": {
+      "목차": "left",
+      "원고": "main",
+      "트리트먼트": "main"
+    },
+    "leftSize": 300
+  },
+  "chat": {
+    "width": 420
+  }
+}
+```
+
+- main 패널은 파일 순서대로 무대의 탭이 된다 (1개면 탭 바 없이 꽉 채움). 비활성 탭도 마운트를 유지해 스크롤·입력이 보존된다
+- 패널 스크립트에서 `__panelBridge.focusPanel('원고')`로 탭을 전환할 수 있고, 선택지 액션의 `panel`이 main 패널이면 그 탭으로 자동 전환된다 (모달을 열지 않는다)
+- 우측 채팅 컬럼은 드래그로 폭 조절·접기가 되고, 모바일에서는 상태바의 `무대 | 채팅` 버튼으로 전환된다
+- 긴 본문 뷰어·편집기처럼 재렌더 때 스크롤·입력이 날아가면 곤란한 패널은 `<panel-meta>{"mount": "once"}</panel-meta>`를 선언하고 `stateChanged` 이벤트로 갱신하라 (`panel-spec.md`의 "mount-once 패널")
+- **대화가 본체인 일반 RP 페르소나에는 쓰지 마라** — 채팅이 좁은 컬럼으로 밀린다
+- 앱 모드(`app` 블록)와 함께 쓰면 앱 모드가 우선하고 main 패널은 표시되지 않는다
+- 상세 동작(활성 규칙·폭 제한·모바일·겹침 요소)은 `panel-spec.md`의 "무대 레이아웃" 섹션을 읽어라
 
 **작성 가이드:**
 - 캐릭터의 분위기에 맞는 색상을 선택한다 (예: 뱀파이어 → 어두운 빨강, 요정 → 부드러운 녹색)
@@ -1287,6 +1324,10 @@ research-dump.json
 - [ ] `layout.json`의 `theme` 색상이 패널 HTML의 다크 테마 색상과 조화되는가?
 - [ ] `layout.json`의 `panels.position`이 유효한 값(`right`/`left`/`bottom`/`hidden`)인가?
 - [ ] `layout.json`의 `panels.placement`에 사이드바에 표시할 패널이 올바르게 지정되어 있는가? (없는 패널은 인라인 처리)
+- [ ] `panels.placement` 값이 허용 집합(`left`/`right`/`main`/`modal`/`modal-dismissible`/`full-screen`/`dock`/`dock-left`/`dock-right`/`dock-bottom`) 안에 있는가? (밖의 값을 쓴 패널은 어디에도 표시되지 않는다)
+- [ ] (무대 레이아웃인 경우) `"main"` 패널이 정말 "패널이 본체, 대화가 보조"인 페르소나인가? `chat.width`를 넣었다면 양의 숫자(px)인가? `app` 블록과 `"main"`을 함께 쓰지 않았는가?
+- [ ] (mount-once 패널이 있다면) 스크립트가 `__panelBridge.data`로 초기 렌더를 하고 `stateChanged`에서 바뀐 부분만 고치는가?
+- [ ] dock 높이를 `dockSize`(예전 이름)가 아니라 `dockHeight`로 지정했는가?
 - [ ] `skills/` 에 최소 update-state, update-panels, update-memory 스킬이 있는가?
 - [ ] 각 스킬의 description이 구체적인가?
 - [ ] 스킬 내용이 이 페르소나의 변수명/패널명과 일치하는가?

@@ -7,6 +7,9 @@ import { formatInlineHtml, type FormatInlineHtmlOptions } from "./inline-formatt
 /** Internal event prefix for bridge events dispatched on window */
 const EVT_PREFIX = "__bridge_evt:";
 
+/** `__panelBridge.focusPanel(name)`이 발송하는 window 이벤트 — detail: `{ name }`. 페이지가 처리한다. */
+export const FOCUS_PANEL_EVENT = "__bridge_focus_panel";
+
 /** Supported panel bridge event names */
 type BridgeEvent = "turnStart" | "turnEnd" | "imageUpdated" | "stateChanged";
 
@@ -16,6 +19,112 @@ type BridgeEvent = "turnStart" | "turnEnd" | "imageUpdated" | "stateChanged";
  */
 export function dispatchBridgeEvent(event: BridgeEvent, detail?: unknown): void {
   window.dispatchEvent(new CustomEvent(`${EVT_PREFIX}${event}`, { detail }));
+}
+
+type BridgeSubscribe = (event: string, handler: (detail?: unknown) => void) => () => void;
+
+/** 브리지 이벤트 구독 — 브리지 객체와 무관하게 window 이벤트만으로 동작한다 (`bridge.on`과 같은 구현). */
+function subscribeBridgeEvent(event: string, handler: (detail?: unknown) => void): () => void {
+  const wrapped = (e: Event) => handler((e as CustomEvent).detail);
+  window.addEventListener(`${EVT_PREFIX}${event}`, wrapped);
+  return () => window.removeEventListener(`${EVT_PREFIX}${event}`, wrapped);
+}
+
+/** createLiveBridgeProxy()가 만든 프록시들 — window.__panelBridge에 프록시가 되꽂혀도 자기 자신을 따라가지 않게 한다. */
+const liveBridgeProxies = new WeakSet<object>();
+/** usePanelBridge가 마지막으로 꽂은 실제 브리지 객체 */
+let lastRealBridge: Record<string | symbol, unknown> | undefined;
+/**
+ * 프록시 트랩 재진입 깊이. 패널 스크립트가 프록시를 프로토타입·대상으로 둔 래퍼를 window.__panelBridge에
+ * 꽂으면(`Object.create(__panelBridge)`, `new Proxy(__panelBridge, {})`) 트랩 → 래퍼 → 트랩으로 무한 재귀가
+ * 날 수 있다. 트랩 안에서 다시 들어오면 실제 브리지로 끊는다.
+ */
+let resolveDepth = 0;
+
+/**
+ * ModalPanel이 최상단 모달의 `sendMessage`를 "보내고 자기 모달 닫기"로 감쌀 때, 감싸기 전 원본을
+ * 브리지 객체에 이 키(열거 불가)로 남긴다. 모달이 아닌 실행기(PanelSlot·DockPanel·InlinePanel)의
+ * 프록시는 `rawSend` 옵션으로 이 원본을 써서, 사이드바·무대 패널의 전송이 엉뚱하게 모달을 닫지 않게 한다.
+ */
+export const RAW_SEND_KEY = "__rawSendMessage";
+
+/** createLiveBridgeProxy의 onSubscribe로 모은 구독 해제 함수들을 모두 호출하고 배열을 비운다 (배열은 재사용). */
+export function releaseBridgeSubs(subs: Array<() => void>): void {
+  for (const unsub of subs.splice(0)) {
+    try { unsub(); } catch { /* 이미 해제됐거나 실패해도 나머지는 계속 */ }
+  }
+}
+
+function currentBridge(): Record<string | symbol, unknown> | undefined {
+  // usePanelBridge가 꽂은 실제 브리지를 우선 따른다. window.__panelBridge는 패널 스크립트가 덮어쓸 수 있어
+  // (예: 프록시나 그 래퍼를 되꽂기) 그대로 따라가면 프록시가 자기 자신을 조회해 무한 재귀에 빠질 수 있다.
+  if (lastRealBridge) return lastRealBridge;
+  const b = (window as unknown as Record<string, unknown>).__panelBridge;
+  if (typeof b !== "object" || b === null || liveBridgeProxies.has(b)) return undefined;
+  return b as Record<string | symbol, unknown>;
+}
+
+/**
+ * 패널 스크립트에 넘기는 `__panelBridge` — **조회 시점의** 브리지(usePanelBridge가 마지막으로 꽂은 객체)를 따르는 프록시.
+ *
+ * `usePanelBridge`는 panelData가 바뀔 때마다 새 브리지 객체를 window에 꽂는다. 스크립트 실행 시점의
+ * 객체를 그대로 넘기면 나중에 읽는 `__panelBridge.data`가 최초 값에 고정된다 (stage-layout spec §6.3).
+ * `onSubscribe`를 주면 `on()` 구독의 해제 함수를 수집해 재렌더·언마운트 때 정리할 수 있다.
+ * `opts.rawSend`면 `sendMessage`가 모달 래핑 전 원본(RAW_SEND_KEY)을 돌려준다 — 모달이 아닌 실행기용.
+ */
+export function createLiveBridgeProxy(
+  onSubscribe?: (unsub: () => void) => void,
+  opts?: { rawSend?: boolean },
+): Record<string, unknown> {
+  const fallback: Record<string | symbol, unknown> = {};
+  // live()는 항상 트랩 안(guarded)에서 불린다 — 바깥 트랩이 깊이 1이므로 1보다 크면 재진입이다
+  const live = () => (resolveDepth > 1 ? lastRealBridge : currentBridge()) ?? fallback;
+  const guarded = <T,>(fn: () => T): T => {
+    resolveDepth++;
+    try { return fn(); } finally { resolveDepth--; }
+  };
+  const proxy = new Proxy(fallback, {
+    get(_target, prop) {
+      return guarded(() => getTrap(prop));
+    },
+    set(_target, prop, value) {
+      return guarded(() => Reflect.set(live(), prop, value));
+    },
+    has(_target, prop) {
+      return guarded(() => prop === "on" || Reflect.has(live(), prop));
+    },
+    ownKeys() {
+      return guarded(() => Reflect.ownKeys(live()));
+    },
+    getOwnPropertyDescriptor(_target, prop) {
+      return guarded(() => {
+        const desc = Reflect.getOwnPropertyDescriptor(live(), prop);
+        // 프록시 불변식: 대상(fallback)에 없는 속성은 configurable이어야 보고할 수 있다.
+        return desc ? { ...desc, configurable: true } : undefined;
+      });
+    },
+  });
+  function getTrap(prop: string | symbol): unknown {
+    const bridge = live();
+    if (prop === "sendMessage" && opts?.rawSend) {
+      const raw = Reflect.get(bridge, RAW_SEND_KEY);
+      if (typeof raw === "function") return raw;
+    }
+    if (prop === "on") {
+      // 브리지가 잠시 없을 때(첫 커밋 전·InlinePanel 단독)도 구독은 window 이벤트로 바로 건다.
+      const on: BridgeSubscribe = typeof bridge.on === "function"
+        ? (bridge.on as BridgeSubscribe).bind(bridge)
+        : subscribeBridgeEvent;
+      return (event: string, handler: (detail?: unknown) => void) => {
+        const unsub = on(event, handler);
+        onSubscribe?.(unsub);
+        return unsub;
+      };
+    }
+    return Reflect.get(bridge, prop);
+  }
+  liveBridgeProxies.add(proxy);
+  return proxy as Record<string, unknown>;
 }
 
 export function usePanelBridge(
@@ -52,6 +161,16 @@ export function usePanelBridge(
       },
       fillInput(text: string) {
         window.dispatchEvent(new CustomEvent("__panel_fill_input", { detail: text }));
+      },
+      /** 패널로 시선을 옮긴다 — main 패널이면 무대 탭 전환, modal 계열이면 dismissible로 열기, 그 외 무시. */
+      focusPanel(name: string) {
+        if (typeof name !== "string" || !name) return;
+        window.dispatchEvent(new CustomEvent(FOCUS_PANEL_EVENT, { detail: { name } }));
+      },
+      /** 패널 간 이벤트. 받는 쪽은 `on("panel:" + name, fn)` — 시스템 이벤트(turnEnd 등)와 네임스페이스가 분리돼 사칭할 수 없다. */
+      emit(name: string, detail?: unknown) {
+        if (typeof name !== "string" || !name) return;
+        window.dispatchEvent(new CustomEvent(`${EVT_PREFIX}panel:${name}`, { detail }));
       },
       async updateVariables(patch: Record<string, unknown>) {
         if (!sessionId) return;
@@ -175,9 +294,7 @@ export function usePanelBridge(
       },
       /** Subscribe to a bridge event. Returns an unsubscribe function. */
       on(event: string, handler: (detail?: unknown) => void): () => void {
-        const wrapped = (e: Event) => handler((e as CustomEvent).detail);
-        window.addEventListener(`${EVT_PREFIX}${event}`, wrapped);
-        return () => window.removeEventListener(`${EVT_PREFIX}${event}`, wrapped);
+        return subscribeBridgeEvent(event, handler);
       },
       /** Register a panel action handler. panelName auto-detected from __currentPanelName or registry lookup. */
       registerAction(actionId: string, handler: PanelActionHandler, panelName?: string): void {
@@ -211,6 +328,7 @@ export function usePanelBridge(
       },
     };
     (window as unknown as Record<string, unknown>).__panelBridge = bridge;
+    lastRealBridge = bridge;
     // sessionId is already set during getPanelActionRegistry(sessionId) creation
   }, [sessionId, panelData]);
 }

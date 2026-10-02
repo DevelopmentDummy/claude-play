@@ -8,7 +8,7 @@
 | `/login` | `login/page.tsx` | Admin login page (shown when `ADMIN_PASSWORD` is set) |
 | `/setup` | `setup/page.tsx` | First-run setup wizard (admin password, ComfyUI, Gemini, Civitai, TTS config) |
 | `/builder/[name]` | `builder/[name]/page.tsx` | Persona builder UI with usage indicator + session resume menu |
-| `/chat/[sessionId]` | `chat/[sessionId]/page.tsx` | Main session chat UI with panels, usage modal, options modal, steering presets, 턴 중 개입 토글(localStorage `bridge_interject_enabled`), 헤더 메모 칩 상태, ☰ 메뉴의 "세션 종료"(`handleCloseSession` → `POST /api/sessions/[id]/close`) |
+| `/chat/[sessionId]` | `chat/[sessionId]/page.tsx` | Main session chat UI with panels, usage modal, options modal, steering presets, 턴 중 개입 토글(localStorage `bridge_interject_enabled`), 헤더 메모 칩 상태, ☰ 메뉴의 "세션 종료"(`handleCloseSession` → `POST /api/sessions/[id]/close`). 무대 레이아웃(`resolveStage` — `panels.placement`에 `"main"`, 앱 모드면 off): `MainStage` + `ChatColumn` 분기, 데스크톱 무대에서 dock-left/right → 모달 승격, `__bridge_focus_panel` 처리(main 탭 전환 / modal 계열 dismissible 열기), 비앱 세션에서 panelData 변경마다 `stateChanged` 1회 발송, 모바일 `무대 | 채팅` 뷰 상태 |
 
 ## Hooks (`src/hooks/`)
 
@@ -31,11 +31,11 @@ Accessibility conventions (2026-06 a11y wave): modal components share `useFocusT
 | Component | Role |
 |-----------|------|
 | `ChatMessages.tsx` | Message rendering with `<dialog_response>` extraction, scene-break (❖❖❖), inline images/panels, infinite scroll; dock panels float over messages (sticky overlay) instead of reserving a band |
-| `ChatInput.tsx` | Message input with OOC mode toggle, `*` insert button, voice-chat mode (STT auto-start/auto-send), STT: MediaRecorder → Qwen3-ASR when `/api/setup/tts-status` reports `asrAvailable` (else Web Speech API); recorder voice-chat uses RMS silence detection for auto-send, autoplay toggle + "오토 메시지 프리셋" entry, 턴 중 개입 토글(ON이면 스트리밍 중에도 Send/Stop 동시 노출), choice buttons, embedded `UsageIndicator` |
+| `ChatInput.tsx` | Message input with OOC mode toggle, `*` insert button, voice-chat mode (STT auto-start/auto-send), STT: MediaRecorder → Qwen3-ASR when `/api/setup/tts-status` reports `asrAvailable` (else Web Speech API); recorder voice-chat uses RMS silence detection for auto-send, autoplay toggle + "오토 메시지 프리셋" entry, 턴 중 개입 토글(ON이면 스트리밍 중에도 Send/Stop 동시 노출), choice buttons (패널 액션은 `resolvePanelPlacement`로 배치를 읽어 left/right/main이면 모달 열기를 생략, main이면 무대 탭 전환), embedded `UsageIndicator`. `compact` prop — 무대 레이아웃 채팅 컬럼용 압축 배치(첫 줄 입력창+전송/중지, 보조 버튼·하단 바는 둘째 줄) |
 | `InteractiveQuestionCard.tsx` | Renders AskUserQuestion tool calls as interactive answer cards (choice buttons + freeform input); answers POST to `/api/sessions/[id]/tool-answer` and are relayed as plain user messages (headless `claude -p` auto-rejects the tool), synced via `tool:answered` WS event |
 | `ToolBlock.tsx` | Collapsible tool invocation display showing tool name and details |
 | `InlineImage.tsx` | Inline media component for `$IMAGE$` tokens — image by default, `<video>` for `.mp4/.webm/.mov`, `<audio>` for `.flac/.mp3/.wav/.ogg/.m4a` (`VIDEO_RE`/`AUDIO_RE`); polling + error card for not-yet-generated files; stable keys so OOC toggles don't re-fetch every image. Resolves `$IMAGE:images/...$` against **both** the session files endpoint and the parent persona's images endpoint in parallel (first OK wins); `persona:` prefix forces persona-only. `builderMode` prop is the sole builder/session discriminator — builder passes a *persona name* as `sessionId`, so never infer mode from `sessionId` (playbook §5.13) |
-| `InlinePanel.tsx` | Panel that renders HTML in Shadow DOM with image modal support |
+| `InlinePanel.tsx` | Panel that renders HTML in Shadow DOM with image modal support (스크립트에 라이브 `__panelBridge` 주입, mount-once는 인스턴스마다 1회) |
 | `ThinkingIndicator.tsx` | Animated loading indicator with bouncing dots for AI thinking state |
 
 > **AskUserQuestion card checklist** — any page/surface that renders `ChatMessages` with question cards needs both: (1) pass `sessionId` to `ChatMessages` (without it the card POSTs to `/api/sessions//tool-answer` → 404 — the answer never reaches the AI and the card surfaces a '제출 실패' error), and (2) handle the `tool:answered` WS event (`handleToolAnswered` from `useChat`) or answered cards never collapse to their summary state. Both are wired in the chat page and the builder page — replicate when adding a new card-rendering surface.
@@ -44,10 +44,10 @@ Accessibility conventions (2026-06 a11y wave): modal components share `useFocusT
 
 | Component | Role |
 |-----------|------|
-| `StatusBar.tsx` | Navigation bar with model selector, Sync button, status indicator, 세션 메모 칩(`memo`/`onMemoSave` — 인라인 편집, Escape로 되돌림), ☰ 메뉴의 "세션 종료"(`onCloseSession`); sub-agent entry point — ambient "busy sub" indicator (`busySubNames`) + menu entry that opens `SubAgentChatModal` (`onSubAgents`) |
+| `StatusBar.tsx` | Navigation bar with model selector, Sync button, status indicator, 세션 메모 칩(`memo`/`onMemoSave` — 인라인 편집, Escape로 되돌림), ☰ 메뉴의 "세션 종료"(`onCloseSession`); sub-agent entry point — ambient "busy sub" indicator (`busySubNames`) + menu entry that opens `SubAgentChatModal` (`onSubAgents`); 모바일 무대 레이아웃이면 `무대 | 채팅` 세그먼트 (`stageView`) |
 | `ErrorBanner.tsx` | Auto-dismissing error display (10 second timeout) |
 | `PopupEffect.tsx` | Animated popup queue with enter/visible/exit phases |
-| `ToastEffect.tsx` | Toast notification system with enter/visible/exit animations (also drives background-job/fire-ai notices) |
+| `ToastEffect.tsx` | Toast notification system with enter/visible/exit animations (also drives background-job/fire-ai notices). `right`가 `calc(var(--stage-right-inset, 0px) + 24px)` — 무대 레이아웃에서 채팅 컬럼을 비켜 뜬다 |
 | `KebabMenu.tsx` | Reusable "···" overflow menu for cards and action rows |
 | `UsageIndicator.tsx` | Compact provider token-usage badge polling `/api/usage` |
 | `UsageModal.tsx` | Detailed provider usage breakdown (windows, resets_at, time progress) |
@@ -57,13 +57,15 @@ Accessibility conventions (2026-06 a11y wave): modal components share `useFocusT
 | Component | Role |
 |-----------|------|
 | `AppSlot.tsx` | 앱 모드 메인 슬롯. PanelSlot과 같은 shadow DOM이지만 정책이 반대 — **1회만 마운트하고 이후 `innerHTML`을 쓰지 않는다**. 상태 변경은 `stateChanged` 브리지 이벤트로만 전달되므로 앱의 rAF 루프·캔버스·리스너가 살아남는다. 앱 스크립트 실행은 try/catch로 격리 (iframe을 쓰지 않는 이유는 설계 문서 §4.2). |
-| `PanelSlot.tsx` | Side panel rendering with Shadow DOM CSS isolation. Exports `PANEL_DEFENSIVE_STYLE` — 좁은 뷰포트 방어 CSS(`:host max-width:100%; overflow-x:auto` + img/table/pre clamp). PanelSlot/ModalPanel/DockPanel 세 컨테이너가 공통 주입, 저자 `<style>`이 뒤에 로드되어 우선 |
+| `PanelSlot.tsx` | Side panel rendering with Shadow DOM CSS isolation. Exports `PANEL_DEFENSIVE_STYLE` — 좁은 뷰포트 방어 CSS(`:host max-width:100%; overflow-x:auto` + img/table/pre clamp). PanelSlot/ModalPanel/DockPanel 세 컨테이너가 공통 주입, 저자 `<style>`이 뒤에 로드되어 우선. `variant="bare"`(무대 탭용, 카드 크롬 없음). `<panel-meta>{"mount":"once"}</panel-meta>` 패널은 한 번만 마운트하고 이후 html 변경을 무시한다(갱신은 `stateChanged` 이벤트로만 — ModalPanel/DockPanel/InlinePanel도 같은 규칙, `<panel-meta>`는 모든 실행기에서 제거) |
+| `MainStage.tsx` | 무대 레이아웃(`panels.placement`에 `"main"`)의 중앙 무대. main 패널을 파일 순서대로 탭(`role="tablist"`, 2개 이상일 때만 탭 바)으로 띄우고 각 패널은 `PanelSlot variant="bare"`. 비활성 탭도 마운트를 유지하고 `display:none`으로만 숨긴다(shadow DOM·스크롤·입력 보존). `useStageTab(sessionId)` — 활성 탭을 `localStorage["stageTab:" + sessionId]`에 기억. |
+| `ChatColumn.tsx` | 무대 레이아웃의 우측 채팅 컬럼(`variant="column"`) / 모바일 채팅 뷰(`variant="fill"`). 폭 박스 + `PanelResizeHandle side="right"`(드래그 종료 시 `PATCH layout { chat: { width } }`), 접기 레일(`localStorage["stageChatCollapsed:" + sessionId]`, 접혀도 채팅은 마운트 유지). 컬럼 폭을 `--stage-right-inset`으로 알린다. `useChatColumnState()` — 폭 clamp·override·접힘 상태·현재 창 폭(`viewportWidth`, 사이드바 표시 폭 맞춤용). |
 | `PanelArea.tsx` | Container managing panel layout (position: right/left/bottom/hidden) |
 | `PanelDrawer.tsx` | Drawer wrapper for panels with open/close state |
-| `PanelResizeHandle.tsx` | Drag handle for resizing panel areas |
-| `DockPanel.tsx` | Collapsible dock panel with image polling and dismissible support |
-| `ModalPanel.tsx` | Modal overlay panel via `createPortal` |
-| `MinimizedModals.tsx` | Minimized/collapsed modal states with restore buttons |
+| `PanelResizeHandle.tsx` | Drag handle for resizing panel areas. 포인터가 실제로 움직였을 때만 `onResizeEnd`(저장)를 부른다. `placement="inside"`면 스트립을 박스 안쪽 가장자리에 둔다(채팅 컬럼 — 무대 스크롤바를 가리지 않게) |
+| `DockPanel.tsx` | Collapsible dock panel with image polling and dismissible support. 같은 방향 독 탭이 shadow 하나를 공유 — mount-once는 탭 이름 단위(`mountedOnceNameRef`), 탭 전환 시 재마운트 |
+| `ModalPanel.tsx` | Modal overlay panel via `createPortal`. 닫혀도 마운트 유지, 재오픈 시 스크립트 재실행 — 단 mount-once 패널은 재실행하지 않는다 |
+| `MinimizedModals.tsx` | Minimized/collapsed modal states with restore buttons (`right: calc(var(--stage-right-inset, 0px) + 16px)`) |
 
 ### Modals & Dialogs
 

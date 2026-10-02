@@ -1,6 +1,6 @@
 ---
 name: panel-design
-description: 패널 생성, 수정, 레이아웃 설정, 커스텀 데이터 구조 설계, 엔진 스크립트 작성, 팝업 이펙트 등 패널 시스템 전반을 다룬다. 패널 HTML을 만들거나 고칠 때, variables.json이나 커스텀 데이터 구조를 설계할 때, layout.json을 변경할 때, tools/engine.js에 액션을 추가할 때, hint-rules.json을 작성할 때, 팝업 템플릿을 만들 때 반드시 이 스킬을 사용하라. "패널 만들어줘", "인벤토리 패널", "레이아웃 변경", "게이지 바", "엔진 액션 추가", "팝업", "dock 패널", "모달", "변수 추가", "상태 패널" 등의 키워드에 트리거된다.
+description: 패널 생성, 수정, 레이아웃 설정, 커스텀 데이터 구조 설계, 엔진 스크립트 작성, 팝업 이펙트 등 패널 시스템 전반을 다룬다. 패널 HTML을 만들거나 고칠 때, variables.json이나 커스텀 데이터 구조를 설계할 때, layout.json을 변경할 때, tools/engine.js에 액션을 추가할 때, hint-rules.json을 작성할 때, 팝업 템플릿을 만들 때 반드시 이 스킬을 사용하라. "패널 만들어줘", "인벤토리 패널", "레이아웃 변경", "게이지 바", "엔진 액션 추가", "팝업", "dock 패널", "모달", "무대 레이아웃", "main 패널", "mount once", "변수 추가", "상태 패널" 등의 키워드에 트리거된다.
 allowed-tools: Read, Write, Edit, Bash
 ---
 
@@ -132,7 +132,9 @@ allowed-tools: Read, Write, Edit, Bash
 </script>
 ```
 
-`window.__panelBridge`가 제공하는 메서드 전체: `sendMessage`, `fillInput`, `updateVariables`, `updateData`, `updateLayout`, `queueEvent`, **`runTool`**, `openModal`, `closeModal`, `closeAllModals`. 모두 `window.__panelBridge.` 프리픽스 필수.
+`window.__panelBridge`가 제공하는 메서드 전체: `sendMessage`, `fillInput`, `updateVariables`, `updateData`, `updateLayout`, `queueEvent`, **`runTool`**, `openModal`, `closeModal`, `closeAllModals`, `focusPanel`, `emit`, `on`, `registerAction`, `executeAction`, `showPopup`, `showToast`, `confirm`, `jev`. 모두 `window.__panelBridge.` 프리픽스 필수 (`<script>` 안에서는 주입된 bare `__panelBridge`도 같다).
+
+**`__panelBridge.data`는 읽는 시점의 최신값이다** — 이벤트 핸들러·타이머 안에서 나중에 읽어도 실행 시점 값에 고정되지 않는다. 단 모달·독·인라인 패널에서 `const B = window.__panelBridge`로 window 객체를 변수에 담아 두면 그 시점 객체에 고정된다 — `<script>`에 주입된 bare `__panelBridge`를 쓰거나 읽을 때마다 다시 조회하라.
 
 ---
 
@@ -142,11 +144,32 @@ allowed-tools: Read, Write, Edit, Bash
 - [ ] `panels/{번호}-{이름}.html` 파일 생성
 - [ ] `layout.json` → `panels.placement.{이름}` = `"left"` 또는 `"right"`
 
+### 무대 패널 (`main`) — 무대 레이아웃
+- [ ] 정말 "패널이 본체, 대화가 보조"인 페르소나인가? (집필 워크벤치·대시보드·보드형 도구). 대화가 본체인 RP면 쓰지 않는다 — 채팅이 우측 좁은 컬럼으로 밀린다
+- [ ] `panels/{번호}-{이름}.html` 파일 생성 — **번호 순서가 곧 탭 순서**다 (main 패널 1개면 탭 바 없음)
+- [ ] `layout.json` → `panels.placement.{이름}` = `"main"` (하나라도 있으면 무대 레이아웃이 켜진다)
+- [ ] `layout.json`에 `app` 블록이 **없는가** — 있으면 앱 모드가 이기고 main 패널은 어디에도 안 뜬다
+- [ ] (선택) `layout.json` → `chat.width` (px, 기본 420, 최소 320으로 clamp) — 우측 채팅 컬럼 폭
+- [ ] `__modals` 초기값 **불필요** — 상시 표시 배치다
+- [ ] 패널 root가 배경·여백을 직접 책임진다 (사이드바 카드 크롬 없음). 세로 스크롤은 무대 칸이 제공 — 툴바 고정이 필요하면 root `height: 100%` + 내부 한 영역만 `overflow-y: auto`
+- [ ] 다른 탭으로 보내려면 `__panelBridge.focusPanel('{이름}')`, 패널 간 신호는 `__panelBridge.emit(...)` / `on('panel:…')`
+- [ ] 긴 본문·편집기면 `<panel-meta>{"mount": "once"}</panel-meta>` + `stateChanged` 갱신 (아래 mount-once 체크리스트)
+
+### mount-once 패널 (배치 무관, opt-in)
+- [ ] HTML 상단에 `<panel-meta>{"mount": "once"}</panel-meta>` (다른 메타 필드가 있으면 같은 블록에 합친다)
+- [ ] 스크립트가 실행 시점에 `__panelBridge.data`로 초기 렌더
+- [ ] 이후 갱신은 `__panelBridge.on('stateChanged', d => …)`로만 — **관심 있는 조각의 서명(id·rev 등)을 비교해 바뀌었을 때만** DOM을 고친다 (초당 여러 번 올 수 있다)
+- [ ] 작성 중인 입력을 서버 값으로 덮어쓰지 않는다 (포커스 중·미저장 변경이면 건너뛰기)
+- [ ] `<!-- deps: ... -->` 주석은 넣지 않는다 — 다시 그리지 않으므로 의미 없다
+- [ ] 템플릿을 고친 뒤 확인할 때는 **브라우저 새로고침** (mount-once는 템플릿 변경도 무시한다)
+- [ ] 모달에 쓰면 닫았다 다시 열어도 재초기화되지 않는다는 점을 감안했는가? 독 탭 전환 시에는 새로 마운트된다
+
 ### 모달 패널
 - [ ] `panels/{번호}-{이름}.html` 파일 생성
 - [ ] `layout.json` → `panels.placement.{이름}`:
   - `"modal"` = 필수 모달 (ESC로 닫을 수 없음, 게임플레이 흐름 패널)
   - `"modal-dismissible"` = 해제 가능 모달 (ESC로 닫기 가능, 보조 UI 패널)
+  - 정확히는: 두 값의 차이는 **선택지 액션이 핸들러 실행을 위해 이 패널을 자동으로 열 때** 필수(`true`)로 여느냐 `"dismissible"`로 여느냐뿐이다(빌트인 `__open`은 항상 `"dismissible"`). 실제로 ESC·X로 닫히는지는 열린 시점의 `__modals` 값(= `openModal(name, mode)`의 mode)이 정한다
 - [ ] `variables.json` → `__modals.{이름}` = `false` (초기값)
 - [ ] 어딘가에 열기 버튼: `__panelBridge.openModal('{이름}', 'dismissible')` 또는 `__panelBridge.openModal('{이름}', true)`
 - [ ] (선택) `layout.json` → `panels.modalGroups`에 그룹 등록 (상호 배타)
@@ -169,6 +192,7 @@ allowed-tools: Read, Write, Edit, Bash
 - 모달 패널은 **항상 마운트**되어 있다 (`display:none`으로 숨김). 닫아도 DOM과 핸들러가 유지된다.
 - 패널 액션 핸들러(`registerAction`)는 모달이 닫혀있을 때도 살아있어서, 선택지 액션이 모달을 열지 않고 직접 실행할 수 있다.
 - **모달이 다시 열릴 때 (active: false→true) 스크립트가 자동 재실행된다.** 따라서 대회, 모험 등 매번 초기화가 필요한 패널도 정상 동작한다.
+  - **예외: `<panel-meta>{"mount": "once"}</panel-meta>` 모달은 다시 열려도 재실행되지 않는다** (상태 보존이 목적이므로). 열릴 때 초기화가 필요하면 `stateChanged`에서 `d.__modals['{이름}']`의 false→truthy 전환을 보고 직접 처리하라.
 - `autoRefresh: false`는 이제 대부분의 모달에서 불필요하다 — 모달이 열릴 때마다 자동으로 재초기화되므로.
 
 **모달 박스 모델 요약:**
@@ -210,7 +234,8 @@ allowed-tools: Read, Write, Edit, Bash
 - [ ] `panels/{번호}-{이름}.html` 파일 생성
 - [ ] `layout.json` → `panels.placement.{이름}` = `"dock"` / `"dock-left"` / `"dock-right"`
 - [ ] `variables.json` → `__modals.{이름}` = `false` (모달과 동일한 on/off)
-- [ ] (선택) `layout.json` → `panels.dockWidth`, `panels.dockHeight` 크기 설정
+- [ ] (선택) `layout.json` → `panels.dockWidth`, `panels.dockHeight` 크기 설정 (`dockSize`는 예전 이름 — `dockHeight`를 쓴다)
+- [ ] `dock-left`/`dock-right`는 **무대 레이아웃(데스크톱)과 모바일에서 모달로 승격**된다 — 그 화면에서도 쓸 만한지 확인 (`dock`/`dock-bottom`은 무대에서도 채팅 컬럼 안에 그대로)
 
 ### 인라인 패널
 - [ ] `panels/{번호}-{이름}.html` 파일 생성 (placement 등록 **안 함**)
@@ -264,7 +289,7 @@ allowed-tools: Read, Write, Edit, Bash
 | `description` | ✅ | 액션의 상세 설명 |
 | `params` | | 파라미터 맵 `{ "param_name": "설명" }`. AI가 선택지에 params를 넣을 수 있음 |
 | `available_when` | | `variables.json` 변수를 참조하는 JS 표현식. 생략 시 항상 available |
-| `needs_ui` | | **기본값: `true`**. 선택지에서 이 액션을 실행할 때 모달을 열어서 UI 연출을 보여준다. `false`로 명시하면 모달을 열지 않고 백그라운드에서 실행한다. 엔진만 호출하고 시각적 피드백이 없는 액션(스케줄 확정, 변수 수정 등)이나 **사이드바·도크처럼 항상 떠 있는 패널의 액션**에 `false`를 설정한다 — 생략하면 선택지로 실행될 때마다 그 패널을 필수 모달로 열었다 닫는다(`__modals` 쓰기 + 재렌더). 예외: `false`여도 핸들러가 아직 등록되지 않았으면(패널 미마운트) 핸들러 로드를 위해 모달을 한 번 연다. boolean만 인정 — `"false"` 같은 문자열은 무시되어 기본값 `true`로 동작한다. |
+| `needs_ui` | | **기본값: `true`**. 선택지에서 이 액션을 실행할 때 모달을 열어서 UI 연출을 보여준다. `false`로 명시하면 모달을 열지 않고 백그라운드에서 실행한다. 엔진만 호출하고 시각적 피드백이 없는 액션(스케줄 확정, 변수 수정 등)이나 **도크처럼 `__modals`로 표시되는 상시 패널의 액션**에 `false`를 설정한다 — 생략하면 선택지로 실행될 때마다 그 패널을 모달로 열었다 닫는다(`__modals` 쓰기 + 재렌더). 예외: `false`여도 핸들러가 아직 등록되지 않았으면(패널 미마운트) 핸들러 로드를 위해 모달을 한 번 연다. **사이드바(`left`/`right`)·무대(`main`) 패널은 상주 배치라 `needs_ui`와 무관하게 시스템이 모달을 열지 않는다** — 핸들러 등록만 기다렸다가 실행하고, main 패널이면 먼저 그 탭으로 전환한다. 무대 패널은 늘 보이므로 연출이 필요하면 패널 안에서 직접 보여주면 된다(의도 표시로 `false`를 적어도 무해). boolean만 인정 — `"false"` 같은 문자열은 무시되어 기본값 `true`로 동작한다. |
 
 ### `registerAction()` 핸들러 등록
 
@@ -346,13 +371,17 @@ await __panelBridge.executeAction('confirm_schedule', {
 | 일회성 선택지 (거래, 퀴즈) | 인라인 (`$PANEL:이름$`) | 대화 흐름에 자연 삽입 |
 | 전체화면 인터랙션 (전투, 모험) | `modal` + `autoRefresh: false` | 복잡한 JS 상태 보존 |
 | 타이틀 / 엔딩 / 컷씬 / 전체화면 연출 | `full-screen` | 배경 대화·패널 완전히 가림, 100vw × 100vh |
+| 패널이 본체인 작업 화면 (원고 뷰어·편집기, 대시보드, 보드) | `main` (무대 레이아웃) | 중앙 무대에 탭으로 상시 표시, 채팅은 우측 컬럼으로 비켜남 |
+| 긴 본문 뷰어·편집기·캔버스 (스크롤·입력 보존 필요) | 아무 배치 + `<panel-meta>{"mount": "once"}</panel-meta>` | 한 번 마운트, `stateChanged`로 부분 갱신 |
 
 **결정 기준:**
 - 항상 보여야 하는가? → 사이드바
+- 사용자가 주로 **패널을 보고 조작하고 대화는 곁들이는가**? → `main` (무대). 대화가 본체인 RP면 쓰지 않는다
 - 필요할 때만 열리는가? → 모달
 - 게임 플레이 중 상시 접근? → 독
 - 대화 흐름에 자연 삽입? → 인라인
 - CSS 애니메이션 / 복잡한 JS 상태? → `autoRefresh: false` 추가
+- 데이터가 바뀔 때마다 다시 그리면 스크롤·작성 중 입력이 날아가는가? → `mount: "once"` + `stateChanged` (템플릿 수정은 새로고침해야 반영된다는 점 감안)
 
 ### Step 2: 데이터 모델 설계
 
@@ -426,6 +455,8 @@ await __panelBridge.executeAction('confirm_schedule', {
 { "__modals": { "inventory": false } }
 ```
 
+`left`/`right`/`main`은 상시 표시라 `__modals`가 필요 없다. 허용 배치 값은 `left`, `right`, `main`, `modal`, `modal-dismissible`, `full-screen`, `dock`, `dock-left`, `dock-right`, `dock-bottom` — 이 밖의 값(오타 포함)을 쓴 패널은 **어디에도 표시되지 않는다** (`npm run lint:data`가 경고).
+
 ### Step 5: 인터랙션 연결
 
 → 아래 "핵심 인터랙티브 패턴" 섹션과 `references/bridge-api.md` 참조
@@ -437,6 +468,54 @@ await __panelBridge.executeAction('confirm_schedule', {
 ### 사이드바 (`left` / `right`)
 - 세션 내내 항상 표시, `panels.size` (기본 300px) 너비
 - `showProfileImage: false` — 좌측 사이드바의 프로필 이미지 숨기기
+- 무대 레이아웃에서는 `right` 사이드바가 채팅 컬럼 바로 왼쪽에 붙는다
+
+### 무대 (`main`) — 무대 레이아웃
+`main`이 하나라도 있으면 화면이 `[좌측 사이드바][중앙 무대][우측 사이드바][우측 채팅 컬럼]`으로 바뀐다. 없으면 기존 화면 그대로.
+
+```json
+{
+  "panels": { "placement": { "목차": "left", "원고": "main", "트리트먼트": "main" }, "leftSize": 300 },
+  "chat": { "width": 420 }
+}
+```
+
+- **탭**: main 패널이 파일 순서대로 탭이 된다. 1개면 탭 바 없이 꽉 채움, 2개 이상이면 상단 탭 바(≈36px, 테마 토큰). ←/→·Home/End 키 이동
+- **마운트 유지**: 비활성 탭도 언마운트하지 않고 `display:none` — 스크롤·입력·스크립트 상태 보존. 숨은 탭의 타이머도 계속 돈다
+- **크롬 없음**: 사이드바 카드(제목·테두리·여백) 없이 무대 칸을 채운다 → 배경·여백·제목은 패널 root 책임. 세로 스크롤은 무대 칸이 제공
+- **탭 기억**: `localStorage["stageTab:" + sessionId]` (목록에 없으면 첫 탭)
+- **탭 전환 API**: `__panelBridge.focusPanel('원고')`. 선택지 액션의 `panel`이 main이면(`__open` 포함) 자동으로 그 탭 전환 — 모달은 열지 않는다
+- **채팅 컬럼**: 폭 `chat.width` (기본 420, 최소 320, 무대가 480px 이상 남도록 상한), 왼쪽 가장자리 드래그로 조절(자동 저장), 접기 버튼 → 44px 레일(`localStorage["stageChatCollapsed:" + sessionId]`). 접혀도 채팅은 마운트 유지, 패널이 `fillInput()`하면 자동 펼침. 입력창은 압축 배치(첫 줄 입력창+전송, 나머지 버튼은 둘째 줄)
+- **채팅 컬럼 안**: 선택지·인라인 패널·`dock`/`dock-bottom`은 그대로. `dock-left`/`dock-right`는 모달로 승격
+- **겹침**: 토스트·최소화 모달 칩은 CSS 변수 `--stage-right-inset`(채팅 컬럼 폭)만큼 비켜서 무대 우하단에 뜬다
+- **모바일(<768px)**: 상태바에 `무대 | 채팅` 전환(기본 무대, 둘 다 마운트 유지). `focusPanel`이면 무대로, `fillInput`이면 채팅으로 자동 전환. 채팅 폭·접기는 미적용
+- **앱 모드 우선**: `layout.app`이 있으면 무대는 켜지지 않고 main 패널은 어디에도 렌더되지 않는다. `chat.width`도 무시
+- 재렌더 때 스크롤·입력이 날아가면 곤란한 무대 패널(원고 뷰어 등)은 `mount: "once"`와 같이 쓴다 (아래)
+
+### mount-once (`<panel-meta>{"mount": "once"}</panel-meta>`) — 배치 무관 opt-in
+- 최초 HTML로 한 번 그리고 스크립트도 **한 번만** 실행. 이후 HTML이 바뀌어도 다시 그리지 않고 타이머·리스너·`on()` 구독은 패널이 사라질 때까지 유지
+- 갱신 채널은 **`stateChanged`** 하나 — 페이지가 패널 데이터가 바뀔 때마다 전역으로 한 번 발송(앱 모드는 AppSlot), detail = 전체 데이터(`__panelBridge.data`와 같은 객체)
+- 계약: 실행 시점에 `__panelBridge.data`로 초기 렌더 → `on('stateChanged', d => …)`에서 **서명 비교 후 바뀐 조각만** DOM 수정 (초당 여러 번 올 수 있다)
+- **템플릿 파일 수정은 브라우저 새로고침 전까지 반영 안 됨**
+- 컨테이너별: 사이드바·무대 = 그대로 / 모달·풀스크린 = 다시 열어도 재실행 안 됨 / 독 = 탭 전환 시 새로 마운트 / 인라인 = 메시지 인스턴스마다 한 번
+- `autoRefresh: false`와 차이: 그쪽은 서버가 재렌더를 안 하는 것(템플릿 수정은 즉시 반영), mount-once는 클라이언트가 바뀐 HTML을 무시하는 것(패널 HTML에 선언 → 패널과 함께 이동)
+
+```html
+<panel-meta>{"mount": "once"}</panel-meta>
+<article class="body"></article>
+<script>
+  var lastSig = null;
+  function render(d) {
+    var ch = (d.manuscript && d.manuscript.current) || {};
+    var sig = ch.id + ':' + ch.rev;
+    if (sig === lastSig) return;   // 관심 있는 조각만 비교
+    lastSig = sig;
+    shadow.querySelector('.body').innerHTML = ch.html || '';
+  }
+  render(__panelBridge.data);
+  __panelBridge.on('stateChanged', render);
+</script>
+```
 
 ### 모달 (`modal`)
 - `__modals.{name}`이 truthy일 때 표시
@@ -511,8 +590,9 @@ function closeMyModal(v) {
 | `dock-left` / `dock-right` | 채팅 영역 안, float + sticky | 겹치는 메시지 너비 축소 |
 
 - `dockWidth` (px) — dock-left/right 너비 (기본 auto, min 280, max 50%)
-- `dockHeight` (px) — 모든 독 최대 높이 (기본 50vh)
+- `dockHeight` (px) — 모든 독 최대 높이 (기본 50vh). `dockSize`는 예전 이름
 - `__modals`로 on/off 제어
+- **모달 승격**: 모바일에서는 모든 독이, 무대 레이아웃(데스크톱)에서는 `dock-left`/`dock-right`가 모달로 승격된다
 
 ### 인라인 (배치 없음)
 - AI가 응답에 `$PANEL:이름$` 토큰 삽입 → 해당 위치에 렌더링
@@ -615,6 +695,21 @@ __panelBridge.on('turnEnd', () => {
 </script>
 ```
 
+### H) 패널 간 신호 + 무대 탭 전환 (`emit` / `focusPanel`)
+사이드바 목차에서 장을 고르면 무대의 원고 패널이 그 장을 띄우는 식의 연계. `emit(name, detail)`은 `panel:` 네임스페이스 이벤트라 시스템 이벤트를 사칭할 수 없고, 사이드바·무대 패널에서는 구독이 자동 정리된다:
+```javascript
+// 목차 패널 (left)
+btn.addEventListener('click', () => {
+  __panelBridge.emit('chapter-select', { id: btn.dataset.chapter });
+  __panelBridge.focusPanel('원고');   // main이면 그 탭 활성화(모바일은 무대 뷰), modal 계열이면 dismissible로 열기
+});
+
+// 원고 패널 (main)
+__panelBridge.on('panel:chapter-select', (detail) => showChapter(detail.id));
+```
+- `emit`의 `name`은 자유로운 채널 이름이다 (패널 이름일 필요 없음). 받는 쪽은 반드시 `'panel:' + name`
+- `focusPanel`은 `left`/`right`/dock/인라인 패널에는 아무 일도 하지 않는다. 이미 열린 모달은 건드리지 않는다(필수 모달을 dismissible로 낮추지 않음)
+
 → Bridge API 전체 메서드: `references/bridge-api.md`
 
 ---
@@ -665,6 +760,8 @@ return { variables: { __popups: [{ template: 'level-up', duration: 4000, vars: {
 - CSS 애니메이션 보존 (진행 도트, 전투 이펙트)
 - 복잡한 JS 상태 유지 (전투 시뮬레이션, 슬롯 진행)
 - `__panelBridge.on('turnEnd')` 로 필요한 데이터만 수동 갱신
+
+템플릿 수정까지 막고 패널 단위로 선언하고 싶거나, 데이터 변경마다 정확히 갱신받고 싶다면 `autoRefresh: false` 대신 **mount-once** (`<panel-meta>{"mount": "once"}</panel-meta>` + `stateChanged`)를 쓴다 — 위 "배치 타입 상세"의 mount-once 절.
 
 ---
 
@@ -836,7 +933,7 @@ async function enterShop() {
 3. **하드코딩**: `style="width:50%"` ❌ → `style="width:{{percentage hp hp_max}}%"` ✅
 4. **연타 방지**: 비동기 버튼에 `btn.disabled = true` 필수
 5. **엔진 반환값 추측 금지**: 엔진 코드를 읽고 실제 반환 구조 확인 후 필드 참조
-6. **이벤트 중복 등록**: `autoRefresh: true` 패널에서 `on(event)` 사용 시 재렌더링마다 리스너 누적
+6. **이벤트 중복 등록**: `autoRefresh: true` 패널에서 `on(event)` 사용 시 재렌더링마다 리스너 누적 — 단 사이드바·무대 패널은 시스템이 재렌더 때 `on()` 구독·`window` 리스너·타이머를 자동 해제한다. 모달·독·인라인은 직접 정리할 것
 7. **모달 직접 조작보다 API 우선**: `updateVariables({ __modals })` 대신 `openModal()`/`closeModal()` → 그룹 로직 자동 적용
 8. **커스텀 데이터 네임스페이스**: `world.json` → `{{world.locations}}` (파일명이 키)
 9. **시스템 파일 접근 불가**: `session.json`, `layout.json`, `chat-history.json` 등은 데이터 로딩에서 제외

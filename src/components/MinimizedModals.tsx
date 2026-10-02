@@ -41,7 +41,8 @@ export default function MinimizedModals({ items, onRestore }: MinimizedModalsPro
   return createPortal(
     <div
       className="fixed flex flex-col-reverse gap-2 pointer-events-none"
-      style={{ bottom: 80, right: 16, zIndex: 9990 }}
+      // 무대 레이아웃이면 채팅 컬럼 폭만큼 비켜서 입력창을 가리지 않는다 (변수가 없으면 기존과 같다)
+      style={{ bottom: 80, right: "calc(var(--stage-right-inset, 0px) + 16px)", zIndex: 9990 }}
     >
       {items.map((item) => {
         const isIn = animatedIn.has(item.name);
