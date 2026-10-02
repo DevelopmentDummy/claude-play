@@ -36,7 +36,7 @@ data/
 │   ├── opening.md                   # Opening message shown at session start
 │   ├── session-instructions.md      # Becomes CLAUDE.md/AGENTS.md/GEMINI.md content in sessions
 │   ├── variables.json               # Handlebars template data
-│   ├── layout.json                  # UI layout & theme config
+│   ├── layout.json                  # UI layout & theme config — panels.placement (incl. "main" = stage layout) / chat.width / chat.mode / theme / customCSS / app (see Notes: layout.json)
 │   ├── style.json                   # Writing style preset link/snapshot
 │   ├── persona.json                 # (optional) Publish manifest (repo URL, version)
 │   ├── import-meta.json             # (import된 페르소나만) 원본 repo URL + 설치 커밋 — check-update가 비교, clone 시 제외
@@ -117,6 +117,13 @@ data/
 
 ## Notes
 
+- **layout.json**: 세션 화면 레이아웃. 서버는 `readLayout()`(`src/lib/session-config-io.ts`)이 `panels`/`chat`/`theme`/`customCSS`(+`app`)만 기본값과 병합해 재조립한다 — 중첩 키는 spread로 보존되지만 **최상위 새 키는 화이트리스트에 추가해야 산다** (playbook §5.11). 타입은 `LayoutConfig` 두 곳(`session-manager.ts` 서버, `hooks/useLayout.ts` 클라). 주요 필드:
+  - `panels.placement` — 패널 표시 이름(숫자 prefix 무관) → `left` / `right` / `main` / `modal` / `modal-dismissible` / `full-screen` / `dock` / `dock-left` / `dock-right` / `dock-bottom`. 키가 없으면 인라인(`$PANEL:`), 허용 밖 값이면 어디에도 표시되지 않는다(`lint:data` 경고). `main`이 하나라도 있으면 **무대 레이아웃**(`src/lib/stage-layout.ts` `resolveStage()` — 앱 모드면 항상 off, 이때 main 패널은 미표시). `modal`/`modal-dismissible`/`full-screen`/dock 계열의 표시 여부는 `variables.json`의 `__modals`가 정한다.
+  - `panels.position`/`size`/`leftSize`/`rightSize` — 사이드바 폴백 위치·폭. `panels.dockWidth`/`dockHeight`(`dockSize`는 deprecated 별칭), `panels.modalSize`, `panels.modalGroups`, `panels.autoRefresh`, `panels.lockDuringStreaming`, `panels.showProfileImage`.
+  - `chat.width` — 무대 레이아웃의 우측 채팅 컬럼 폭(px). 미지정 = 420(`CHAT_WIDTH_DEFAULT`), 표시 폭은 `clampChatWidth()`로 최소 320·무대 최소 480px 확보 상한. 컬럼 드래그 종료 시 `PATCH /api/sessions/[id]/layout { chat: { width } }`로 기록된다. 앱 모드에서는 무시.
+  - `chat.mode` — 앱 모드 채팅 강등 수준(`normal`/`dock`/`hidden`). `chat.maxWidth`/`chat.align`은 레거시.
+  - `app` — 앱 모드 블록(검증은 `resolveAppMode()` 단독). 있으면 앱 모드가 무대 레이아웃보다 우선.
+  - 브라우저 측 UI 상태는 layout.json이 아니라 `localStorage`에 둔다: 무대 활성 탭 `stageTab:{sessionId}`, 채팅 컬럼 접힘 `stageChatCollapsed:{sessionId}`(`"1"`).
 - **Soft delete**: `DELETE /api/personas/[name]` and `DELETE /api/sessions/[id]` move directories into `data/deleted_personas/` and `data/deleted_sessions/` respectively (not hard-deleted).
 - **Antigravity orphan PID registry**: `agy.exe` is spawned detached (PowerShell), so dev-server restarts orphan it while it keeps the session dir as its cwd — the soft-delete `rename` then fails with `EBUSY`. `src/lib/antigravity-pid-registry.ts` persists spawned PIDs to `data/.runtime/agy-procs.json` keyed by cwd; both DELETE routes call `killAgyForDir(dir)` (with a liveness check against process name to avoid PID-recycling misfires) before the move. Orphans spawned before this mechanism (or after the registry file is deleted) are not auto-reaped — kill manually with `taskkill /F /PID`.
 - **Builder workdir = persona dir**: builder sessions run with the persona directory itself as the AI workdir. `CLAUDE.md`/`AGENTS.md`/`GEMINI.md` inside the persona dir are the *builder* meta-prompt and are overwritten on every `/api/builder/start` and `/api/builder/edit`. Session runs use a separate `sessions/{...}` directory with its own assembled instruction files.

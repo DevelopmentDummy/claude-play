@@ -11,6 +11,11 @@ interface PanelResizeHandleProps {
   maxSize?: number;
   /** top 모드에서 핸들 더블클릭 시 기본 크기로 되돌리는 콜백 */
   onResetDefault?: () => void;
+  /**
+   * 세로 스트립 위치. "edge"(기본) = 박스 경계에 걸쳐 바깥쪽 이웃 위로 반쯤 나간다(기존 동작).
+   * "inside" = 박스 안쪽 가장자리에 붙는다 — 이웃 영역의 스크롤바를 가리면 안 될 때(무대 옆 채팅 컬럼).
+   */
+  placement?: "edge" | "inside";
 }
 
 export default function PanelResizeHandle({
@@ -20,11 +25,15 @@ export default function PanelResizeHandle({
   minSize = 180,
   maxSize = 900,
   onResetDefault,
+  placement = "edge",
 }: PanelResizeHandleProps) {
   const vertical = side === "top";
   const [dragging, setDragging] = useState(false);
   const dragRef = useRef<{ start: number; startSize: number } | null>(null);
   const currentSize = useRef(0);
+  // 포인터가 실제로 움직였는지 — 클릭만 하고 놓으면 onResizeEnd(저장)를 부르지 않는다.
+  // (표시 폭이 창에 맞게 줄어 있는 상태에서 클릭만으로 저장값이 덮어써지는 것을 막는다)
+  const movedRef = useRef(false);
   // top 모드는 부모 컨테이너 높이에 맞춰 최대치를 동적으로 잡는다 (앱 영역이 최소 120px는 남도록)
   const maxRef = useRef(maxSize);
 
@@ -49,6 +58,7 @@ export default function PanelResizeHandle({
         currentSize.current = w;
       }
 
+      movedRef.current = false;
       // Keep move/up events firing even if the pointer leaves the 6px strip
       e.currentTarget.setPointerCapture(e.pointerId);
       setDragging(true);
@@ -70,13 +80,15 @@ export default function PanelResizeHandle({
           ? dragRef.current.startSize + delta
           : dragRef.current.startSize - delta;
       const clamped = Math.max(minSize, Math.min(maxRef.current, raw));
+      if (delta !== 0) movedRef.current = true;
       currentSize.current = clamped;
       onResize(clamped);
     };
 
     const handlePointerUp = () => {
       setDragging(false);
-      onResizeEnd(currentSize.current);
+      if (movedRef.current) onResizeEnd(currentSize.current);
+      movedRef.current = false;
       dragRef.current = null;
     };
 
@@ -138,9 +150,9 @@ export default function PanelResizeHandle({
     <div
       onPointerDown={handlePointerDown}
       className={`absolute top-0 bottom-0 z-20 w-[6px] cursor-col-resize group touch-none
-        ${side === "left" ? "left-full" : "right-full"}
+        ${placement === "inside" ? (side === "left" ? "right-0" : "left-0") : side === "left" ? "left-full" : "right-full"}
       `}
-      style={{ transform: "translateX(-50%)" }}
+      style={placement === "inside" ? undefined : { transform: "translateX(-50%)" }}
     >
       {/* Visible indicator on hover / drag */}
       <div

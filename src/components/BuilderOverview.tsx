@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import VoiceSettings from "@/components/VoiceSettings";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
+import { stripPanelActions, stripPanelMeta } from "@/lib/panel-action-registry";
 
 interface FileInfo {
   name: string;
@@ -53,7 +54,8 @@ function PanelPreviewSlot({ name, html }: PanelPreview) {
     if (shadowRef.current) {
       shadowRef.current.innerHTML =
         `<style>:host{display:block;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:12px;line-height:1.7;color:#e0e0e0;}</style>` +
-        html;
+        // 메타 블록(<panel-actions>/<panel-meta>)은 JSON이라 그대로 두면 미리보기에 텍스트로 찍힌다
+        stripPanelMeta(stripPanelActions(html));
     }
   }, [html]);
 

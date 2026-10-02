@@ -6,10 +6,10 @@
 
 | 변경 내용 | 업데이트 대상 |
 |-----------|--------------|
-| 패널 렌더링 동작 변경 (Shadow DOM, 클릭 핸들러, CSS 격리 등) | `panel-spec.md` |
-| panelBridge 메서드 추가/변경 | `panel-spec.md` |
+| 패널 렌더링 동작 변경 (Shadow DOM, 클릭 핸들러, CSS 격리, mount-once 등) | `panel-spec.md` + `data/skills/panel-design/SKILL.md`. ⚠️ 패널 스크립트 실행기가 **4개**다 — `PanelSlot.tsx`(사이드바·무대, 샌드박스 있음) / `ModalPanel.tsx` / `DockPanel.tsx` / `InlinePanel.tsx` (+ 빌더 미리보기 `BuilderOverview.tsx`). `<panel-meta>`·`<panel-actions>` 제거, `__panelBridge` 주입(`createLiveBridgeProxy`), mount-once 규칙을 바꾸면 넷 다 맞춘다 (플레이북 §5.17) |
+| panelBridge 메서드·이벤트 추가/변경 | `src/lib/use-panel-bridge.ts` + `panel-spec.md` (Bridge API·브릿지 이벤트 표) + `data/skills/panel-design/references/bridge-api.md` + `docs/architecture.md` (`use-panel-bridge.ts` 행). 페이지가 처리하는 이벤트(`focusPanel` 등)는 `src/app/chat/[sessionId]/page.tsx` 리스너도 |
 | Handlebars 헬퍼 추가/변경 | `panel-spec.md` |
-| layout.json 스키마 변경 (placement, theme, 새 필드) | `panel-spec.md` |
+| layout.json 스키마 변경 (placement 값, theme, 새 필드) | 저자 문서: `panel-spec.md` (배치 타입 절) + `builder-prompt.md` §6 필드 목록·체크리스트 (⚠️ Handlebars 컴파일 대상 — 중괄호 두 개 연속 금지) + `data/skills/panel-design/SKILL.md` (배치 체크리스트·결정표·배치 타입 상세) + 앱 모드와 얽히면 `app-spec.md` §2. 코드: 타입 `src/hooks/useLayout.ts`·`src/lib/session-manager.ts` (`LayoutConfig` 두 곳) + `src/app/chat/[sessionId]/page.tsx` placement 유니언 3곳(`sharedPlacements` state·open 응답 타입·정규화 `placement`) + 버킷 분기 + `scripts/lint-data.mjs` (`VALID_PLACEMENTS`·헤더 주석) + `src/lib/stage-layout.ts` (`isResidentPlacement`·`resolveFocusTarget` — 상주/모달 판정) + `src/components/ChatInput.tsx` (선택지 액션의 배치별 모달 열기). **최상위 새 키**는 `src/lib/session-config-io.ts` `readLayout()` 화이트리스트에도 추가 (플레이북 §5.11). 회귀: `src/lib/session-config-io.test.ts`에 보존 케이스. 문서: `docs/data-model.md` layout.json 노트 |
 | 패널 관련 WebSocket 이벤트 변경 | `panel-spec.md` |
 | 패널 관련 API 엔드포인트 변경 | `panel-spec.md` + `docs/api-routes.md` |
 | 패널 액션 스펙 (`panels/_actions.meta.json`) 포맷 변경 | `panel-spec.md` + `panel-actions-meta.ts` (직렬화) + `panel-action-registry.ts` (클라이언트 평가) |

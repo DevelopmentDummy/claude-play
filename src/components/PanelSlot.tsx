@@ -3,8 +3,8 @@
 import { useRef, useEffect, useCallback, useState } from "react";
 import ImageModal from "./ImageModal";
 import { installImagePolling } from "@/lib/panel-image-polling";
-import { usePanelBridge } from "@/lib/use-panel-bridge";
-import { getPanelActionRegistry, parsePanelActions, stripPanelActions } from "@/lib/panel-action-registry";
+import { usePanelBridge, createLiveBridgeProxy } from "@/lib/use-panel-bridge";
+import { getPanelActionRegistry, isMountOncePanel, parsePanelActions, stripPanelActions, stripPanelMeta } from "@/lib/panel-action-registry";
 
 /**
  * Default stylesheet injected into every panel's shadow DOM.
@@ -114,6 +114,8 @@ interface PanelSlotProps {
   sessionId?: string;
   panelData?: Record<string, unknown>;
   onSendMessage?: (text: string) => void;
+  /** "card"(기본) = 사이드바 카드 크롬(제목 + 테두리 + 여백). "bare" = 크롬 없이 부모 높이를 채운다 (무대 탭). */
+  variant?: "card" | "bare";
 }
 
 interface PanelSandbox {
@@ -141,7 +143,7 @@ function clearSandbox(sb: PanelSandbox): void {
   sb.windowListeners.length = 0;
 }
 
-export default function PanelSlot({ name, html, sessionId, panelData, onSendMessage }: PanelSlotProps) {
+export default function PanelSlot({ name, html, sessionId, panelData, onSendMessage, variant = "card" }: PanelSlotProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const shadowRef = useRef<ShadowRoot | null>(null);
   const onSendRef = useRef(onSendMessage);
@@ -179,16 +181,21 @@ export default function PanelSlot({ name, html, sessionId, panelData, onSendMess
 
   // Re-render shadow content only when html actually changes
   const prevHtmlRef = useRef<string>("");
+  // mount-once 패널(<panel-meta>{"mount":"once"})이 이미 마운트됐는지. 이후 html 변경은 무시하고
+  // 상태는 stateChanged 이벤트로만 받는다 (stage-layout spec §6.2).
+  const mountedOnceRef = useRef(false);
   useEffect(() => {
     const shadow = shadowRef.current;
     if (!shadow) return;
+    if (mountedOnceRef.current) return;
     if (html === prevHtmlRef.current) return;
     prevHtmlRef.current = html;
+    mountedOnceRef.current = isMountOncePanel(html);
 
     shadow.innerHTML =
       PANEL_BASE_STYLE +
       PANEL_DEFENSIVE_STYLE +
-      stripPanelActions(html);
+      stripPanelMeta(stripPanelActions(html));
 
     // Auto-poll images that haven't loaded yet (deferred generation)
     installImagePolling(shadow);
@@ -249,23 +256,10 @@ export default function PanelSlot({ name, html, sessionId, panelData, onSendMess
     };
 
     // Wrap __panelBridge.on() so unsubscribe is recorded automatically.
-    const realBridge = (window as unknown as Record<string, unknown>).__panelBridge as
-      | (Record<string, unknown> & { on?: (event: string, handler: (detail?: unknown) => void) => () => void })
-      | undefined;
-    const sandboxedBridge: Record<string, unknown> = realBridge
-      ? new Proxy(realBridge, {
-          get(target, prop) {
-            if (prop === "on" && typeof target.on === "function") {
-              return (event: string, handler: (detail?: unknown) => void) => {
-                const unsub = target.on!(event, handler);
-                sandbox.bridgeUnsubs.push(unsub);
-                return unsub;
-              };
-            }
-            return Reflect.get(target, prop);
-          },
-        }) as Record<string, unknown>
-      : {};
+    // 조회 시점의 window.__panelBridge를 따르므로 나중에 읽는 __panelBridge.data도 최신값이다 (spec §6.3).
+    // 사이드바·무대 패널은 모달이 아니므로 sendMessage는 모달 래핑 전 원본을 쓴다(rawSend) —
+    // 위에 모달이 떠 있을 때 이 패널의 전송이 그 모달(필수 모달 포함)을 닫아 버리지 않게.
+    const sandboxedBridge = createLiveBridgeProxy((unsub) => sandbox.bridgeUnsubs.push(unsub), { rawSend: true });
 
     // Wrap window so any window.setTimeout / window.addEventListener / window.dispatchEvent
     // call from panel script also routes through the sandbox. Property access falls back
@@ -367,8 +361,22 @@ export default function PanelSlot({ name, html, sessionId, panelData, onSendMess
     return () => {
       clearSandbox(sandbox);
       if (sessionId) getPanelActionRegistry(sessionId).clearPanel(name);
+      // StrictMode의 모의 언마운트→재마운트에서 렌더 effect가 "같은 html"이라며 건너뛰면
+      // 방금 정리한 스크립트가 다시 돌지 않는다 (mount-once 패널은 영영 죽은 채로 남는다).
+      // 다음 마운트가 처음부터 다시 그리도록 표식을 되돌린다. 실제 언마운트에서는 무해하다.
+      prevHtmlRef.current = "";
+      mountedOnceRef.current = false;
     };
   }, [name, sessionId]);
+
+  if (variant === "bare") {
+    return (
+      <>
+        <div ref={containerRef} className="h-full min-h-0" />
+        {modalSrc && <ImageModal src={modalSrc} onClose={() => setModalSrc(null)} />}
+      </>
+    );
+  }
 
   return (
     <>

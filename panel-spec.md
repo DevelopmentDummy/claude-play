@@ -507,8 +507,10 @@ AI가 받게 되는 메시지:
 | `__panelBridge.openModal(name, mode?)` | 모달/독 패널을 연다. `name`은 패널 이름 (숫자 프리픽스 제외, 예: `"schedule"`). `mode`는 `"dismissible"` (기본) 또는 `true` (필수, 닫기 불가). 모달 그룹이 설정된 경우 같은 그룹의 다른 모달은 자동으로 닫힌다. |
 | `__panelBridge.closeModal(name)` | 모달/독 패널을 닫는다. |
 | `__panelBridge.closeAllModals(except?)` | 모든 모달을 닫는다. `except`는 닫지 않을 패널 이름 (문자열 또는 배열). |
+| `__panelBridge.focusPanel(name)` | 그 패널로 시선을 옮긴다. `name`은 패널 표시 이름(숫자 prefix 무관). **main 패널**이면 무대의 그 탭을 활성화한다(모바일이면 무대 뷰로 전환). **`modal`/`modal-dismissible`/`full-screen`** 패널이면 dismissible 모드로 연다 — 최소화돼 있으면 복원하고, 이미 열려 있으면 아무것도 안 한다(필수 모달을 dismissible로 낮추지 않는다). 그 외(`left`/`right`/dock 계열/인라인)는 무시. 빈 문자열이면 무시. 아래 "무대 레이아웃" 참조. |
+| `__panelBridge.emit(name, detail?)` | 패널 간 이벤트를 보낸다. 받는 쪽은 `__panelBridge.on("panel:" + name, fn)`으로 구독한다. `name`은 자유로운 채널 이름이다(패널 이름일 필요 없음). `panel:` 네임스페이스로 분리돼 있어 `turnEnd` 같은 시스템 이벤트를 사칭할 수 없다. 빈 문자열이면 무시. |
 | `__panelBridge.on(event, handler)` | 브릿지 이벤트를 구독한다. 반환값은 구독 해제 함수. 이벤트 목록은 아래 "브릿지 이벤트" 섹션 참조. |
-| `__panelBridge.data` | 전체 템플릿 컨텍스트 객체 (읽기 전용). `variables.json` 값 + 커스텀 데이터 파일이 합쳐져 있다. |
+| `__panelBridge.data` | 전체 템플릿 컨텍스트 객체 (읽기 전용). `variables.json` 값 + 커스텀 데이터 파일이 합쳐져 있다. **읽는 시점의 최신값**이다 — 스크립트가 나중에(이벤트 핸들러·타이머 안에서) 읽어도 최초 실행 시점 값에 고정되지 않는다. 단, 이것은 스크립트에 주입되는 bare `__panelBridge` 기준이다. 모달·독·인라인 패널에서 `const B = window.__panelBridge`처럼 window의 객체를 변수에 담아 두면 그 시점 객체에 고정되므로, bare `__panelBridge`를 쓰거나 읽을 때마다 다시 조회하라. |
 | `__panelBridge.sessionId` | 현재 세션 ID (읽기 전용) |
 | `__panelBridge.isStreaming` | AI가 현재 응답 중인지 여부 (읽기 전용, boolean) |
 
@@ -543,6 +545,8 @@ AI가 받게 되는 메시지:
 | `turnStart` | 없음 | AI가 응답을 시작했을 때 (스트리밍 시작) |
 | `turnEnd` | 없음 | AI 응답이 완료되어 사용자 턴이 되었을 때 |
 | `imageUpdated` | `{ filename: string }` | 세션 이미지 파일이 새로 생성되거나 덮어씌워졌을 때 |
+| `stateChanged` | 전체 템플릿 컨텍스트 (`__panelBridge.data`와 같은 객체) | 패널 데이터(`variables.json` + 커스텀 데이터 파일)가 바뀔 때마다 페이지가 **한 번** 발송하는 전역 이벤트. 앱 모드 세션에서는 AppSlot이 발송한다. 초당 여러 번 올 수 있으므로 관심 있는 조각만 비교해 바뀌었을 때만 DOM을 고쳐라. `mount: "once"` 패널의 유일한 갱신 채널이다 (아래 "mount-once 패널" 참조). |
+| `panel:{name}` | `emit()`이 넘긴 `detail` | 다른 패널이 `__panelBridge.emit(name, detail)`로 보낸 패널 간 이벤트. 예: `on("panel:원고", fn)` |
 
 ```html
 <script>
@@ -561,6 +565,32 @@ AI가 받게 되는 메시지:
 ```
 
 `on()`의 반환값은 구독 해제 함수다. 패널이 재렌더링되면 스크립트도 다시 실행되므로, `autoRefresh: false`가 아닌 패널에서는 이벤트가 중복 등록될 수 있다. 필요하면 반환된 함수로 이전 구독을 해제하라.
+
+- **사이드바(`left`/`right`)·무대(`main`) 패널**은 시스템이 재렌더·언마운트 때 `on()` 구독과 `window` 리스너·타이머를 자동 해제한다.
+- **모달·독·인라인 패널**은 `on()` 구독만 자동 해제된다(재렌더·독 탭 전환·언마운트 때). 이 패널들의 스크립트가 직접 건 `window` 리스너·타이머는 자동 해제되지 않으니 직접 정리하라.
+
+**패널 간 통신 — `emit` / `on("panel:…")`:**
+
+```html
+<script>
+  // 목차 패널: 장을 고르면 원고 패널에 알리고, 원고 탭으로 시선을 옮긴다
+  shadow.querySelectorAll('[data-chapter]').forEach(function (el) {
+    el.addEventListener('click', function () {
+      __panelBridge.emit('chapter-select', { id: el.dataset.chapter });
+      __panelBridge.focusPanel('원고');
+    });
+  });
+</script>
+
+<script>
+  // 원고 패널: 수신
+  __panelBridge.on('panel:chapter-select', function (detail) {
+    showChapter(detail.id);
+  });
+</script>
+```
+
+`window.dispatchEvent(new CustomEvent(...))` 직접 발송도 여전히 동작하지만, `emit`은 네임스페이스가 분리돼 있고 사이드바·무대 패널에서는 구독이 자동 정리되므로 이쪽을 권장한다.
 
 ### 이미지 클릭 동작
 
@@ -666,6 +696,11 @@ Handlebars와 혼용도 가능하다. 정적 부분은 `{{변수}}`로, 동적 �
 - JS-only 패널은 반드시 `<!-- deps: ... -->` 주석을 포함하라
 - `__panelBridge.data`에서 읽는 변수 중, 변경 시 UI 갱신이 필요한 것만 나열하라
 - Handlebars를 본문에 하나라도 쓰는 패널은 이미 자연스럽게 재렌더되므로 불필요하다
+
+> **대안 — 재렌더 자체를 원하지 않는다면**: deps 주석은 "데이터가 바뀌면 shadow DOM을 통째로 다시 그린다"는 뜻이라
+> 스크롤 위치·작성 중인 입력·JS 상태가 매번 날아간다. 긴 본문 뷰어·편집기처럼 그게 곤란한 패널은 deps 대신
+> `<panel-meta>{"mount": "once"}</panel-meta>`를 선언하고 `stateChanged` 이벤트로 필요한 부분만 고쳐라
+> (아래 "mount-once 패널" 섹션).
 
 **배열·객체 의존성: `pluck` 헬퍼**
 
@@ -1337,8 +1372,10 @@ $PANEL:거래$
 ### 패널 배치 타입 (`layout.json`의 `panels.placement`)
 
 - `"left"` — 좌측 사이드바에 표시된다.
-- `"right"` — 우측 사이드바에 표시된다.
+- `"right"` — 우측 사이드바에 표시된다. (무대 레이아웃에서는 채팅 컬럼 바로 왼쪽.)
+- `"main"` — **중앙 무대**에 탭으로 표시된다. 하나라도 있으면 세션 화면이 무대 레이아웃(`[좌측 사이드바][무대][우측 사이드바][채팅 컬럼]`)으로 바뀐다. 항상 떠 있는 배치라 `__modals`와 무관하다. 앱 모드(`layout.app`)가 있으면 무시되고 어디에도 렌더되지 않는다. 상세는 아래 "무대 레이아웃" 섹션.
 - `"modal"` — 화면 중앙 오버레이로 표시된다. `__modals`로 on/off 제어. `true`이면 필수(닫기 불가), `"dismissible"`이면 자유롭게 닫을 수 있다. 여러 모달이 활성화되면 z-index가 증가하며 겹쳐 표시된다. ESC 키는 최상위 dismissible 모달만 닫는다. `__panelBridge.sendMessage()`는 모달 모드와 무관하게 항상 모달을 자동으로 닫는다.
+- `"modal-dismissible"` — 렌더링·`__modals` 제어는 `"modal"`과 완전히 같다. 차이는 **선택지 액션이 핸들러 실행을 위해 이 패널을 자동으로 열 때의 모드** 하나뿐이다: `"modal"`은 필수(`true`)로, `"modal-dismissible"`은 `"dismissible"`로 연다. (빌트인 `__open`은 배치와 무관하게 항상 `"dismissible"`로 연다.) 실제로 ESC·X로 닫을 수 있는지는 배치가 아니라 그 시점의 `__modals` 값이 정한다 — `openModal(name, true)`로 열면 `modal-dismissible` 패널도 필수 모달이 된다.
 - `"full-screen"` — 화면 전체를 덮는 패널. 배경의 대화창과 다른 모든 패널을 완전히 가린다. 둥근 모서리/그림자/여백 없이 viewport 전체(100vw × 100vh)를 차지하며, 배경은 `--bg` 색으로 불투명. `__modals`로 on/off 제어 (modal과 동일). 일반 모달보다 더 높은 z-index에 렌더링되어 항상 위에 표시된다. 배경 클릭으로는 닫히지 않으며(가려진 게 없으므로), dismissible일 때만 우상단 X 버튼 또는 ESC로 닫을 수 있다. `__panelBridge.sendMessage()`는 마찬가지로 패널을 자동으로 닫는다.
 
 > ⚠️ **필수 모드(`true`) 모달·풀스크린 패널은 반드시 패널 내부에 상태 해제 트리거를 포함해야 한다.** 시스템 X 버튼이 없고 ESC도 막혀 있어서, 패널 내부에 진행 버튼(`__panelBridge.sendMessage(...)`) / 명시적 닫기 버튼(`__panelBridge.closeModal('이름')`) / 상태 전환 액션이 **없으면 유저가 영구히 갇힌다**. 풀스크린은 배경 대화창마저 안 보이므로 특히 치명적이다. 모달은 사이드바·dock 등 다른 UI라도 보이지만, 그래도 같은 원칙이 적용된다.
@@ -1348,8 +1385,11 @@ $PANEL:거래$
 > - 그 버튼은 패널 초기 렌더 상태에서 **즉시 보이고 클릭 가능**해야 한다 (조건부 분기 끝까지 들어가서야 등장하는 형태 금지)
 > - 액션 결과가 비동기로 실패해도 다시 시도하거나 닫을 수 있는 경로가 남아 있어야 한다
 - `"dock"` / `"dock-bottom"` — 채팅 영역과 입력창 사이에 전체 너비로 표시된다. `__modals`로 on/off 제어 (modal과 동일). 같은 방향의 여러 dock 패널이 활성화되면 탭으로 전환된다.
-- `"dock-left"` / `"dock-right"` — 채팅 스크롤 영역 안에서 좌/우 하단에 float 형태로 표시된다. **`__modals`로 on/off 제어 (modal, dock과 동일).** `__modals`에 값이 없으면 표시되지 않는다. 문서에서 이미지 옆으로 텍스트가 밀리듯, 패널과 수직으로 겹치는 메시지들은 자동으로 너비가 줄어들어 패널 옆으로 배치된다. 패널 위쪽 메시지는 전체 너비를 사용한다. `position: sticky`로 스크롤 위치와 무관하게 항상 하단에 고정된다.
+- `"dock-left"` / `"dock-right"` — 채팅 스크롤 영역 안에서 좌/우 하단에 float 형태로 표시된다. **`__modals`로 on/off 제어 (modal, dock과 동일).** `__modals`에 값이 없으면 표시되지 않는다. 문서에서 이미지 옆으로 텍스트가 밀리듯, 패널과 수직으로 겹치는 메시지들은 자동으로 너비가 줄어들어 패널 옆으로 배치된다. 패널 위쪽 메시지는 전체 너비를 사용한다. `position: sticky`로 스크롤 위치와 무관하게 항상 하단에 고정된다. **무대 레이아웃(데스크톱)과 모바일에서는 모달로 승격**된다 — 좁은 채팅 컬럼 안의 플로팅 독은 말풍선을 짓눌러 쓸 수 없기 때문이다. `__modals` 제어는 그대로다. (`dock`/`dock-bottom`은 무대 레이아웃에서도 채팅 컬럼 안에 그대로 붙고, 모바일에서만 모달로 승격된다.)
 - **지정 없음** — 인라인. 채팅 본문 내 `$PANEL:이름$` 태그로 삽입된다.
+
+> 허용 값은 `left`, `right`, `main`, `modal`, `modal-dismissible`, `full-screen`, `dock`, `dock-left`, `dock-right`, `dock-bottom` 열 개뿐이다.
+> 오타 등 그 밖의 값을 쓰면 그 패널은 **어디에도 표시되지 않는다**(인라인으로도 안 나온다). `npm run lint:data`가 `layout.json`의 알 수 없는 배치 값을 경고한다.
 
 ### 모달 그룹 (`layout.json`의 `panels.modalGroups`)
 
@@ -1425,6 +1465,9 @@ return { variables: { __modals: { '훈련세부': 'dismissible' } }, ... };
 
 - `maxWidth` — **패널이 실제로 사용하고 싶은 내용(content) 기준 최대 너비**
 - `maxHeight` — 모달 최대 높이
+- `mount` — `"once"`만 의미가 있다. 배치와 무관하게 패널을 한 번만 마운트한다 (아래 "mount-once 패널" 섹션). 다른 값은 무시된다.
+
+`<panel-meta>` 블록은 JSON 한 덩어리다 — 필드를 여러 개 쓰려면 한 블록 안에 합쳐라. 블록은 모든 패널 컨테이너(사이드바·무대·모달·독·인라인·빌더 미리보기)가 렌더 전에 제거하므로 화면에 텍스트로 찍히지 않는다.
 
 **중요:** `maxWidth`는 바깥 카드 전체 폭이 아니라, 패널이 실제로 쓰고 싶은 내용 폭으로 해석한다. 시스템은 자기 chrome(바깥 inset, 본문 padding)을 고려해 최종 외곽 폭을 계산한다.
 
@@ -1570,6 +1613,78 @@ __panelBridge.on("scheduler:progress", (data) => {
 | `dockSize` | `dockHeight`의 하위호환 별칭. `dockHeight`가 우선한다. | 50vh |
 | `showProfileImage` | 좌측 사이드바에 캐릭터 프로필 이미지를 표시할지 여부. | `true` |
 
+### 무대 레이아웃 (`placement: "main"`)
+
+패널이 본체이고 대화가 보조인 페르소나(집필 워크벤치, 대시보드, 보드형 도구 등)를 위한 화면 구조다.
+`panels.placement`에 `"main"`이 **하나라도** 있으면 세션 화면이 이렇게 바뀐다:
+
+```
+[좌측 사이드바] [중앙 무대 — main 패널 탭] [우측 사이드바] [우측 채팅 컬럼]
+```
+
+```json
+{
+  "panels": {
+    "placement": {
+      "목차": "left",
+      "원고": "main",
+      "트리트먼트": "main"
+    },
+    "leftSize": 300
+  },
+  "chat": {
+    "width": 420
+  }
+}
+```
+
+**활성 규칙**
+
+| 조건 | 결과 |
+|---|---|
+| main 패널 0개 | 무대 꺼짐 — 기존 화면(가운데 채팅 + 사이드바) 그대로. 기존 페르소나는 영향 없음 |
+| main 패널 1개 이상 | 무대 레이아웃 |
+| `layout.app`(앱 모드)이 있음 | **앱 모드가 우선** — 무대는 켜지지 않고 main 패널은 어디에도 렌더되지 않는다 (`lint:data`가 `layout-app-main` 경고). 앱 모드는 `app-spec.md` 참조 |
+
+placement 키는 다른 배치와 마찬가지로 숫자 prefix와 무관하다 (`"01-원고"`·`"원고"` 모두 인정).
+
+**중앙 무대**
+
+- main 패널은 **파일 순서**(`01-`, `02-` …)대로 탭이 된다. 1개면 탭 바 없이 무대를 꽉 채우고, 2개 이상이면 상단에 낮은 탭 바(약 36px, 테마의 `--surface`·`--border`·`--accent` 사용)가 생긴다. 탭은 ←/→·Home/End 키로도 이동한다.
+- 무대 패널은 사이드바 카드 크롬(제목·테두리·여백) **없이** 무대 칸을 그대로 채운다. 배경·여백·제목은 패널 root가 직접 책임진다.
+- 무대 칸이 세로 스크롤을 제공한다. "툴바 고정 + 본문만 스크롤" 같은 구조가 필요하면 root를 `height: 100%`로 두고 **내부 한 영역에만** `overflow-y: auto`를 줘라 — 두 군데서 동시에 스크롤시키면 이중 스크롤바가 생긴다.
+- **비활성 탭도 마운트를 유지**하고 숨기기만 한다(`display: none`). 탭을 오가도 스크롤 위치·작성 중인 입력·스크립트 상태가 보존된다. 그래서 숨은 탭의 스크립트도 계속 돈다 — 무거운 타이머·애니메이션은 필요할 때만 돌려라.
+- 마지막으로 연 탭은 브라우저에 세션별로 기억된다(`localStorage`의 `stageTab:{sessionId}`). 기억한 탭이 목록에 없으면 첫 탭.
+- 패널 스크립트에서 탭을 바꾸려면 `__panelBridge.focusPanel('원고')`. 선택지 액션의 `panel`이 main 패널이면(`__open` 포함) 그 탭으로 자동 전환된다.
+
+**우측 채팅 컬럼 (데스크톱)**
+
+| 항목 | 동작 |
+|---|---|
+| 폭 | `chat.width`(px). 기본 **420**. 표시 폭은 최소 **320**, 최대는 무대가 **480px 이상** 남는 값으로 잘린다(창 크기가 바뀌면 다시 계산, 저장값은 그대로) |
+| 폭 조절 | 컬럼 왼쪽 가장자리를 드래그. 놓는 순간 **세션의** `layout.json`에 `chat.width`로 저장된다(사이드바 리사이즈와 같은 경로 — 페르소나 원본은 그대로) |
+| 접기 | 컬럼 왼쪽 위 가장자리의 `채팅 접기` 버튼(›) → 44px 레일만 남는다. 레일 클릭으로 펼침. 응답 중이면 레일에 펄스 점. 접힘 상태는 브라우저에 세션별로 기억(`localStorage`의 `stageChatCollapsed:{sessionId}`) |
+| 접힌 동안 | 채팅은 **언마운트하지 않고 숨기기만** 한다 — 입력 중이던 텍스트·스크롤 보존. 패널이 `fillInput()`을 부르면 컬럼이 자동으로 펼쳐진다 |
+| 입력창 | 좁은 컬럼용 압축 배치: 첫 줄 `[입력창][중지/전송]`, 보조 버튼(OOC·`*`·음성·오토플레이)과 사용량·턴 중 개입·오토 메시지는 둘째 줄로 내려간다. 기능은 하나도 빠지지 않는다 |
+| 채팅 안 요소 | 선택지·인라인 패널(`$PANEL:`)·`dock`/`dock-bottom` 패널은 컬럼 안에서 그대로 동작. `dock-left`/`dock-right`는 **모달로 승격**된다 |
+| 겹침 요소 | 토스트·최소화된 모달 칩은 채팅 컬럼 폭만큼 비켜 무대 우하단에 뜬다 (페이지가 `document.documentElement`에 CSS 변수 `--stage-right-inset`을 컬럼 폭(px)으로 설정) |
+
+좌·우 사이드바(`left`/`right` 패널, 좌측 프로필 이미지)는 그대로 남는다. 무대를 넓게 쓰고 싶으면 사이드바를 줄이거나 `showProfileImage: false`로 프로필 이미지를 끈다.
+창이 좁아 무대가 480px 아래로 짓눌리면, 시스템이 사이드바의 **표시 폭**을 같은 비율로 줄인다(각 200px까지, 저장값은 그대로). 그래도 모자라면 사이드바가 채팅 컬럼과 겹치지 않는 선까지만 줄인다.
+
+**모달 위 전송**: 최상단 모달은 자기 스크립트의 `sendMessage`를 "보내고 이 모달 닫기"로 감싼다. 사이드바·무대·독·인라인 패널의 `__panelBridge.sendMessage`는 이 래핑을 타지 않는다 — 위에 모달이 떠 있어도 그 모달을 닫지 않는다.
+
+**모바일 (폭 768px 미만)**
+
+- 상단 상태바에 **`무대 | 채팅`** 전환 버튼이 생긴다(라벨은 고정). 기본은 무대. 두 뷰 모두 마운트를 유지하고 하나만 보인다.
+- `focusPanel()`로 main 탭을 부르면 무대 뷰로, 패널이 `fillInput()`을 부르면 채팅 뷰로 자동 전환된다.
+- `left`/`right` 패널은 기존처럼 ☰ 서랍, dock 계열은 기존처럼 모달 승격. 채팅 폭·접기는 적용되지 않는다.
+
+**작성 팁**
+
+- main 패널은 사용자 눈앞에 늘 떠 있다 — 그 패널의 패널 액션은 모달을 열 필요가 없다. 선택지로 실행될 때 시스템이 모달을 열지 않고 그 탭으로 전환한 뒤 핸들러만 실행한다.
+- 긴 본문 뷰어·편집기처럼 재렌더 때 스크롤·입력이 날아가면 곤란한 main 패널은 아래 **mount-once**를 함께 써라.
+
 ### 자동 갱신 제어 (`layout.json`의 `panels.autoRefresh`)
 
 기본적으로 모든 패널은 `variables.json`, 커스텀 데이터 파일 변경, AI 턴 종료 시 자동 재렌더링된다. 하지만 애니메이션, 전환 효과, 또는 스크립트 기반 연출이 있는 패널은 이 자동 갱신이 방해가 될 수 있다.
@@ -1598,6 +1713,69 @@ __panelBridge.on("scheduler:progress", (data) => {
 - 초기 렌더링 시점의 데이터로 Handlebars 템플릿이 한 번만 평가된다
 
 **사용 예시:** 씬 연출 패널, 배경 애니메이션 패널, 복잡한 인터랙티브 UI 등 DOM 초기화가 곤란한 패널에 적합하다.
+
+### mount-once 패널 (`<panel-meta>{"mount": "once"}</panel-meta>`)
+
+기본적으로 패널은 렌더 결과 HTML이 바뀔 때마다 shadow DOM을 **통째로 갈아끼우고 스크립트를 다시 실행**한다.
+긴 본문 뷰어·편집기·캔버스처럼 그게 곤란한 패널은 HTML 상단에 이 선언을 넣는다:
+
+```html
+<panel-meta>{"mount": "once"}</panel-meta>
+```
+
+**동작**
+
+- 최초 HTML로 한 번 그리고 스크립트를 **한 번** 실행한다.
+- 이후 데이터가 바뀌어 HTML이 달라져도 다시 그리지 않고, 스크립트도 다시 실행하지 않는다. 타이머·리스너·`on()` 구독도 패널이 사라질 때까지 살아 있다.
+- 상태 갱신은 **`stateChanged` 이벤트로만** 받는다. 페이지는 패널 데이터가 바뀔 때마다 이 이벤트를 한 번 발송한다(앱 모드에서는 AppSlot이 발송).
+- **템플릿 파일(`panels/*.html`)을 고쳐도 브라우저 새로고침 전까지 반영되지 않는다.** 빌더에서 고친 뒤 확인하려면 세션 화면을 새로고침하라.
+- `maxWidth`·`maxHeight` 등 다른 메타 필드와 함께 쓰려면 한 블록에 합친다: `<panel-meta>{"mount": "once", "maxWidth": "960px"}</panel-meta>`
+
+**스크립트 계약**
+
+```html
+<panel-meta>{"mount": "once"}</panel-meta>
+<div id="root"><h2 class="title"></h2><article class="body"></article></div>
+<script>
+  // 1) 실행 시점에 __panelBridge.data로 초기 렌더
+  var last = {};
+  function render(d) {
+    var ch = (d.manuscript && d.manuscript.current) || {};
+    // 2) 관심 있는 조각의 "서명"만 비교 — 바뀌었을 때만 DOM을 고친다
+    var sig = ch.id + ':' + ch.rev;
+    if (sig === last.sig) return;
+    last.sig = sig;
+    shadow.querySelector('.title').textContent = ch.title || '';
+    shadow.querySelector('.body').innerHTML = ch.html || '';
+  }
+  render(__panelBridge.data);
+
+  // 3) 이후 갱신은 stateChanged로만
+  __panelBridge.on('stateChanged', render);
+</script>
+```
+
+- `stateChanged`는 초당 여러 번 올 수 있다. 매번 전체를 다시 그리면 mount-once의 의미(스크롤·입력 보존)가 없어진다 — **서명(id·revision·길이 등) 비교 후 바뀐 부분만** 고쳐라.
+- 사용자가 작성 중인 입력(`textarea` 등)을 서버 값으로 덮어쓰지 마라. 포커스 중이거나 저장하지 않은 변경이 있으면 갱신을 건너뛰는 식으로 보호한다.
+- mount-once 패널에는 `<!-- deps: ... -->` 주석이 필요 없다(있어도 다시 그리지 않는다). Handlebars 변수는 **최초 렌더에만** 평가된다.
+
+**컨테이너별 차이**
+
+| 컨테이너 | mount-once 동작 |
+|---|---|
+| 사이드바(`left`/`right`)·무대(`main`) | 위 동작 그대로. 무대의 비활성 탭도 마운트 유지 |
+| 모달·풀스크린 | 한 번 그린 뒤 **닫았다 다시 열어도 스크립트를 재실행하지 않는다** (일반 모달은 다시 열릴 때 재초기화된다). 열 때마다 초기화가 필요하면 mount-once를 쓰지 말거나 `stateChanged`에서 `__modals` 값을 보고 직접 처리하라 |
+| 독(`dock` 계열) | 같은 방향의 독 탭은 shadow 하나를 공유한다 — **탭을 바꾸면 새로 마운트**된다. 같은 탭 안에서의 데이터 변경만 무시된다 |
+| 인라인(`$PANEL:`) | 그 메시지에 삽입된 인스턴스마다 한 번 |
+
+**`autoRefresh: false`와의 차이**
+
+| | `autoRefresh: false` (layout.json) | `mount: "once"` (패널 메타) |
+|---|---|---|
+| 어디서 막나 | 서버가 HTML을 다시 렌더하지 않는다 | 클라이언트가 바뀐 HTML을 무시한다 |
+| 템플릿 파일 수정 | 즉시 다시 그린다 | 새로고침 전까지 반영 안 됨 |
+| 최신 데이터 | `__panelBridge.data` 직접 읽기 / `turnEnd` 등에서 갱신 | `stateChanged` 이벤트 (전체 데이터가 detail로 온다) |
+| 선언 위치 | `layout.json`의 `panels.autoRefresh` | 패널 HTML 안 — 패널과 함께 이동한다 |
 
 ---
 

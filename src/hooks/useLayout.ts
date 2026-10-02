@@ -9,7 +9,8 @@ export interface LayoutConfig {
     size: number;
     leftSize?: number;
     rightSize?: number;
-    placement?: Record<string, "left" | "right" | "modal" | "modal-dismissible" | "full-screen" | "dock" | "dock-left" | "dock-right" | "dock-bottom">;
+    /** "main"이 하나라도 있으면 무대 레이아웃 (stage-layout spec §3) */
+    placement?: Record<string, "left" | "right" | "modal" | "modal-dismissible" | "full-screen" | "dock" | "dock-left" | "dock-right" | "dock-bottom" | "main">;
     modalSize?: Record<string, { maxWidth?: string; maxHeight?: string }>;
     dockSize?: number | string;   // deprecated, use dockHeight
     dockHeight?: number | string;
@@ -23,6 +24,8 @@ export interface LayoutConfig {
     align: "stretch" | "center";
     /** 앱 모드에서 채팅 영역의 강등 수준. 미지정 = "normal"(기존 동작). */
     mode?: "normal" | "dock" | "hidden";
+    /** 무대 레이아웃에서 우측 채팅 컬럼 폭(px). 미지정 = 420. 표시 폭은 clampChatWidth()로 제한된다. */
+    width?: number;
   };
   /** 앱 모드 설정. 없으면 기존 채팅 중심 셸. 해석은 resolveAppMode()가 담당. */
   app?: {

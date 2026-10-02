@@ -310,9 +310,25 @@ window.addEventListener('values-chosen', () => {
 });
 ```
 
+**권장 — 브리지 채널 `emit` / `on("panel:…")`:**
+
+```javascript
+// 패널 A: 신호 발송 (detail 동봉 가능)
+__panelBridge.emit('values-chosen', { value: 'honesty' });
+
+// 패널 B: 신호 수신
+__panelBridge.on('panel:values-chosen', (detail) => {
+  btn.disabled = true;
+  btn.style.opacity = '0.4';
+});
+```
+
+`emit`은 `panel:` 네임스페이스로 분리돼 시스템 이벤트(`turnEnd`·`stateChanged`)와 섞이지 않고, 사이드바·무대 패널에서는 재렌더·언마운트 때 구독이 자동 정리된다(모달·독·인라인은 반환된 해제 함수로 직접 정리). 받는 패널이 무대(`main`)의 다른 탭이면 `__panelBridge.focusPanel('패널명')`으로 시선까지 옮길 수 있다.
+
 **사용 예시:**
 - values 모달에서 선택 완료 → values-trigger 인라인 버튼 비활성화
 - competition 모달 완료 → advance 패널 상태 갱신
+- 사이드바 목차에서 장 선택 → 무대 원고 패널이 그 장을 표시 + `focusPanel('원고')`
 
 ---
 

@@ -15,7 +15,9 @@
  *   - variables.json: 객체(object)로 파싱되지 않음
  *   - layout.json: 알 수 없는 placement 값
  *     (src/hooks/useLayout.ts 기준 허용 집합: left, right, modal, modal-dismissible,
- *      full-screen, dock, dock-left, dock-right, dock-bottom)
+ *      full-screen, dock, dock-left, dock-right, dock-bottom, main)
+ *   - layout.json: chat.width가 양의 숫자가 아님 / 앱 모드(app)와 main 배치 공존
+ *     (무대 레이아웃 — docs/specs/2026-10-02-stage-layout-design.md §10)
  *   - voice.json: ttsProvider가 허용 집합 밖
  *     (src/lib/session-config-io.ts 기준: comfyui, edge, local, voxcpm)
  *
@@ -50,6 +52,7 @@ const DATA_DIR = process.env.DATA_DIR
 const VALID_PLACEMENTS = new Set([
   "left", "right", "modal", "modal-dismissible", "full-screen",
   "dock", "dock-left", "dock-right", "dock-bottom",
+  "main", // 무대 레이아웃 — 하나라도 있으면 [좌측][무대][우측 채팅]
 ]);
 
 // src/lib/session-config-io.ts readVoiceConfig 의 실제 허용 집합
@@ -175,6 +178,17 @@ function lintJsonFile(file, basename) {
           && !["normal", "dock", "hidden"].includes(data.chat.mode)) {
         issue("warn", "layout-chat-mode", file,
           `chat.mode "${data.chat.mode}"는 알 수 없는 값 (허용: normal, dock, hidden)`);
+      }
+      // 무대 레이아웃 (docs/specs/2026-10-02-stage-layout-design.md §10)
+      if (isObject(data.chat) && data.chat.width !== undefined
+          && (typeof data.chat.width !== "number" || !Number.isFinite(data.chat.width) || data.chat.width <= 0)) {
+        issue("warn", "layout-chat-width", file,
+          `chat.width "${data.chat.width}"는 양의 숫자(px)여야 함 (기본 420, 표시 폭은 320 이상으로 clamp)`);
+      }
+      const hasMainPlacement = maps.some((map) => Object.values(map).includes("main"));
+      if (isObject(data.app) && hasMainPlacement) {
+        issue("warn", "layout-app-main", file,
+          "layout.app(앱 모드)과 main 배치가 함께 있음 — 앱 모드가 우선하고 main 패널은 무시됨");
       }
     }
   } else if (basename === "voice.json") {

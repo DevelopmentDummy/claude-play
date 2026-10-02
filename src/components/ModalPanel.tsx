@@ -4,8 +4,8 @@ import { useRef, useEffect, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import ImageModal from "./ImageModal";
 import { installImagePolling } from "@/lib/panel-image-polling";
-import { usePanelBridge } from "@/lib/use-panel-bridge";
-import { getPanelActionRegistry, parsePanelActions, stripPanelActions, stripPanelMeta } from "@/lib/panel-action-registry";
+import { usePanelBridge, createLiveBridgeProxy, releaseBridgeSubs, RAW_SEND_KEY } from "@/lib/use-panel-bridge";
+import { getPanelActionRegistry, isMountOncePanel, parsePanelActions, stripPanelActions, stripPanelMeta } from "@/lib/panel-action-registry";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { PANEL_DEFENSIVE_STYLE } from "./PanelSlot";
 
@@ -55,6 +55,10 @@ export default function ModalPanel({
   const containerRef = useRef<HTMLDivElement>(null);
   const shadowRef = useRef<ShadowRoot | null>(null);
   const prevHtmlRef = useRef<string>("");
+  // mount-once 패널이 이미 마운트됐는지 — 이후 html 변경·재활성화·maxWidth 변경에도 다시 그리지 않는다 (stage-layout spec §6.2).
+  const mountedOnceRef = useRef(false);
+  // 패널 스크립트가 __panelBridge.on()으로 건 구독의 해제 함수 — 재렌더·언마운트 때 해제한다
+  const bridgeUnsubsRef = useRef<Array<() => void>>([]);
   const [modalSrc, setModalSrc] = useState<string | null>(null);
   const [visible, setVisible] = useState(false);
   const [closed, setClosed] = useState(false);
@@ -121,9 +125,14 @@ export default function ModalPanel({
     if (!isTopmost) return;
     const bridge = (window as unknown as Record<string, unknown>).__panelBridge as Record<string, unknown> | undefined;
     if (bridge) {
-      const origSend = bridge.sendMessage as (text: string) => void;
-      bridge.sendMessage = (text: string) => {
-        origSend(text);
+      const origSend = bridge.sendMessage as (text: string, opts?: { silent?: boolean }) => void;
+      // 감싸기 전 원본을 남긴다 — 모달이 아닌 패널(사이드바·무대·독·인라인)의 라이브 프록시는 이 원본을 써서
+      // 자기 전송이 최상단 모달을 닫아 버리지 않게 한다 (createLiveBridgeProxy의 rawSend 옵션).
+      if (typeof bridge[RAW_SEND_KEY] !== "function") {
+        Object.defineProperty(bridge, RAW_SEND_KEY, { value: origSend, enumerable: false, configurable: true, writable: true });
+      }
+      bridge.sendMessage = (text: string, opts?: { silent?: boolean }) => {
+        origSend(text, opts);
         window.dispatchEvent(new CustomEvent("__modal_panel_dismiss", { detail: name }));
       };
     }
@@ -173,8 +182,13 @@ export default function ModalPanel({
   useEffect(() => {
     const shadow = shadowRef.current;
     if (!shadow) return;
+    if (mountedOnceRef.current) return;
     if (html === prevHtmlRef.current) return;
     prevHtmlRef.current = html;
+    mountedOnceRef.current = isMountOncePanel(html);
+
+    // 이전 렌더의 스크립트가 건 브리지 구독(on)을 해제한다 — DOM을 갈아끼우면 그 핸들러는 남의 DOM을 만진다
+    releaseBridgeSubs(bridgeUnsubsRef.current);
 
     shadow.innerHTML =
       `<style>:host{display:block;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:14px;line-height:1.6;color:#e0e0e0;}img{cursor:zoom-in;}</style>` +
@@ -200,6 +214,9 @@ export default function ModalPanel({
     // Set panel name context for registerAction calls in panel scripts
     (window as unknown as Record<string, unknown>).__currentPanelName = name;
 
+    // 스크립트의 __panelBridge는 조회 시점의 브리지를 따른다 (spec §6.3).
+    // 모달 스크립트는 rawSend를 쓰지 않는다 — 최상단 모달의 "보내고 닫기" 래핑이 그대로 적용돼야 한다.
+    const liveBridge = createLiveBridgeProxy((unsub) => bridgeUnsubsRef.current.push(unsub));
     const scripts = Array.from(shadow.querySelectorAll("script:not([type]), script[type='text/javascript']"));
     for (const oldScript of scripts) {
       oldScript.remove();
@@ -208,8 +225,8 @@ export default function ModalPanel({
         // Remove full declaration to avoid TDZ collision with Function("shadow", ...) parameter
         code = code.replace(/(?:const|let|var)\s+shadow\s*=\s*document\.currentScript\??\.getRootNode\??\(\)\s*;?/g, "");
         code = code.replace(/document\.currentScript\??\.getRootNode\??\(\)/g, "shadow");
-        const fn = new Function("shadow", code);
-        fn(shadow);
+        const fn = new Function("shadow", "__panelBridge", code);
+        fn(shadow, liveBridge);
       } catch (e) {
         console.warn(`[ModalPanel] Script error in "${name}":`, e);
       }
@@ -218,6 +235,18 @@ export default function ModalPanel({
     // Clear panel name context
     delete (window as unknown as Record<string, unknown>).__currentPanelName;
   }, [html, name, renderEpoch, maxWidth]);
+
+  // 언마운트 시 브리지 구독 해제 (세션 이동 등으로 모달이 사라질 때 다음 세션까지 핸들러가 남지 않게).
+  // StrictMode의 모의 언마운트→재마운트에서는 렌더 effect가 처음부터 다시 그리도록 표식도 되돌린다
+  // (PanelSlot과 같은 처리 — 안 그러면 방금 해제한 구독이 다시 걸리지 않는다).
+  useEffect(() => {
+    const subs = bridgeUnsubsRef.current;
+    return () => {
+      releaseBridgeSubs(subs);
+      prevHtmlRef.current = "";
+      mountedOnceRef.current = false;
+    };
+  }, []);
 
   // No clearPanel on unmount — modal panels stay mounted (hidden via display:none)
   // so that panel action handlers remain alive for choice actions.

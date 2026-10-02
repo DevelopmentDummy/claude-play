@@ -12,6 +12,9 @@ import ChatMessages from "@/components/ChatMessages";
 import AppSlot from "@/components/AppSlot";
 import { resolveAppMode } from "@/lib/app-mode";
 import ChatInput from "@/components/ChatInput";
+import MainStage, { useStageTab } from "@/components/MainStage";
+import ChatColumn, { useChatColumnState } from "@/components/ChatColumn";
+import { fitStageSides, normalizePanelKey, resolveStage, resolveFocusTarget } from "@/lib/stage-layout";
 import { extractChoices } from "@/components/ChatMessages";
 import PanelArea from "@/components/PanelArea";
 import PanelResizeHandle from "@/components/PanelResizeHandle";
@@ -28,7 +31,7 @@ import ToastEffect from "@/components/ToastEffect";
 import UsageModal from "@/components/UsageModal";
 import SubAgentChatModal from "@/components/SubAgentChatModal";
 import type { TranscriptEntry } from "@/lib/subagent-transcript";
-import { dispatchBridgeEvent } from "@/lib/use-panel-bridge";
+import { dispatchBridgeEvent, FOCUS_PANEL_EVENT } from "@/lib/use-panel-bridge";
 import { buildAutoplayMessage, calculateAutoplayDelay, getSelectedPreset, type SteeringPreset } from "@/lib/autoplay";
 import { getPanelActionRegistry, destroyPanelActionRegistry, parsePanelActions, parsePanelMeta } from "@/lib/panel-action-registry";
 import { AIProvider } from "@/lib/ai-provider";
@@ -86,7 +89,7 @@ export default function ChatPage() {
   useEffect(() => {
     if (sessionId) getPanelActionRegistry(sessionId).updateVariables(panelData);
   }, [panelData, sessionId]);
-  const [sharedPlacements, setSharedPlacements] = useState<Record<string, "modal" | "modal-dismissible" | "full-screen" | "dock" | "dock-left" | "dock-right" | "dock-bottom">>({});
+  const [sharedPlacements, setSharedPlacements] = useState<Record<string, "modal" | "modal-dismissible" | "full-screen" | "dock" | "dock-left" | "dock-right" | "dock-bottom" | "main">>({});
   const [layout, setLayout] = useState<LayoutConfig | null>(null);
   // 앱 모드 chat.mode="hidden"에서 메인 채팅을 디버깅용으로 잠깐 꺼내는 스위치. 새로고침하면 다시 닫힌다.
   const [debugChatOpen, setDebugChatOpen] = useState(false);
@@ -457,7 +460,7 @@ export default function ChatPage() {
           panels: Panel[];
           context: Record<string, unknown>;
           panelsUnchanged?: boolean;
-          sharedPlacements?: Record<string, "modal" | "modal-dismissible" | "full-screen" | "dock" | "dock-left" | "dock-right" | "dock-bottom">;
+          sharedPlacements?: Record<string, "modal" | "modal-dismissible" | "full-screen" | "dock" | "dock-left" | "dock-right" | "dock-bottom" | "main">;
           popups?: Array<{ template: string; html: string; duration: number }>;
         };
         // panelsUnchanged면 HTML이 그대로다 — setPanels를 건너뛰어 참조를 유지한다.
@@ -944,14 +947,14 @@ export default function ChatPage() {
 
   // Normalize placement keys: strip numeric prefix (e.g. "01-상태" → "상태") so it matches panel names
   // Merge layout placements with shared panel default placements (shared panels default to modal)
-  const placement: Record<string, "left" | "right" | "modal" | "modal-dismissible" | "full-screen" | "dock" | "dock-left" | "dock-right" | "dock-bottom"> = {};
+  const placement: Record<string, "left" | "right" | "modal" | "modal-dismissible" | "full-screen" | "dock" | "dock-left" | "dock-right" | "dock-bottom" | "main"> = {};
   // Apply shared placements first (lower priority)
   for (const [key, val] of Object.entries(sharedPlacements)) {
     placement[key] = val;
   }
   // Layout placements override shared defaults
   for (const [key, val] of Object.entries(rawPlacement)) {
-    const normalized = key.replace(/^\d+-/, "");
+    const normalized = normalizePanelKey(key);
     placement[normalized] = val;
     if (normalized !== key) placement[key] = val; // keep original too
   }
@@ -987,6 +990,55 @@ export default function ChatPage() {
 
   const showInlinePanel = hasSidebar && !isMobile;
 
+  // 무대 레이아웃 (docs/specs/2026-10-02-stage-layout-design.md): main 배치 패널이 하나라도 있으면
+  // [좌측 사이드바][중앙 무대][우측 채팅 컬럼]. main이 없으면 stage.active=false라 아래 분기는 전부
+  // 기존 경로로 떨어진다. 앱 모드가 있으면 앱이 우선하고 main은 무시된다.
+  const appModeActive = !!appMode;
+  const stage = resolveStage({ panelNames: panels.map((p) => p.name), placement, appModeActive });
+  const mainPanels = stage.active ? panels.filter((p) => stage.mainPanelNames.includes(p.name)) : [];
+  const stageDesktop = stage.active && !isMobile;
+  const stageMobile = stage.active && isMobile;
+  // 사이드바 원래 폭(저장값) — 채팅 폭 clamp에는 이 값을 쓰고, 화면에 그리는 폭은 아래 fitStageSides로 맞춘다
+  const rawStageLeft = showInlinePanel && hasLeftSidebar ? leftPanelSize : 0;
+  const rawStageRight = showInlinePanel && hasRightSidebar ? rightPanelSize : 0;
+  const [stageTab, setStageTab] = useStageTab(sessionId);
+  // 모바일 무대: 무대/채팅 중 하나만 보인다 (둘 다 마운트 유지)
+  const [mobileView, setMobileView] = useState<"stage" | "chat">("stage");
+  const chatCol = useChatColumnState({
+    sessionId,
+    enabled: stageDesktop,
+    layoutWidth: layout?.chat?.width,
+    occupiedSides: rawStageLeft + rawStageRight,
+  });
+  // 좁은 창에서 무대가 STAGE_MIN_WIDTH 아래로 짓눌리거나 사이드바가 겹치지 않도록 사이드바 표시 폭을 줄인다.
+  // 무대 데스크톱이 아니면 원래 폭 그대로라 기존 페르소나의 사이드바는 변하지 않는다.
+  const fittedSides = stageDesktop
+    ? fitStageSides(chatCol.viewportWidth, rawStageLeft, rawStageRight, chatCol.width)
+    : { left: rawStageLeft, right: rawStageRight };
+  const stageLeftInset = fittedSides.left;
+  const stageRightInset = fittedSides.right;
+  const shownLeftSize = stageDesktop ? fittedSides.left : leftPanelSize;
+  const shownRightSize = stageDesktop ? fittedSides.right : rightPanelSize;
+
+  // mount-once 패널의 갱신 채널 — panelData가 바뀔 때마다 stateChanged를 **한 번** 발송한다 (spec §6.2).
+  // 앱 모드에서는 AppSlot이 발송하므로 건너뛴다. 최초 값은 패널이 실행 시점에 __panelBridge.data로 읽는다.
+  // 자식의 usePanelBridge effect가 먼저 돌기 때문에 핸들러가 읽는 __panelBridge.data도 이미 최신이다.
+  const lastStatePushedRef = useRef(panelData);
+  useEffect(() => {
+    if (lastStatePushedRef.current === panelData) return;
+    lastStatePushedRef.current = panelData;
+    if (appModeActive) return;
+    dispatchBridgeEvent("stateChanged", panelData);
+  }, [panelData, appModeActive]);
+
+  // 패널이 입력창을 채우면(fillInput) 모바일에서는 채팅 뷰로 넘겨 입력창을 보게 한다
+  useEffect(() => {
+    if (!stageMobile) return;
+    const handler = () => setMobileView("chat");
+    window.addEventListener("__panel_fill_input", handler);
+    return () => window.removeEventListener("__panel_fill_input", handler);
+  }, [stageMobile]);
+
   // Determine which modal panels are currently active (driven by __modals in variables.json)
   // __modals values: true = required (no dismiss), "dismissible" = user can close freely
   const modalsState = (panelData as Record<string, unknown>)?.__modals as Record<string, boolean | string> | undefined;
@@ -994,10 +1046,13 @@ export default function ChatPage() {
   useEffect(() => {
     (window as unknown as Record<string, unknown>).__panelModalsState = modalsState || {};
   }, [modalsState]);
-  // On mobile, dock panels are promoted to modals for better usability
+  // On mobile, dock panels are promoted to modals for better usability.
+  // 무대 모드에서도 dock-left/right는 모달로 승격한다 — 좁은 채팅 컬럼 안 플로팅 독은 말풍선을 짓눌러 쓸 수 없다.
   const effectiveModalPanels = isMobile
     ? [...modalPanels, ...dockBottomPanels, ...dockLeftPanels, ...dockRightPanels]
-    : modalPanels;
+    : stage.active
+      ? [...modalPanels, ...dockLeftPanels, ...dockRightPanels]
+      : modalPanels;
   const [minimizedModals, setMinimizedModals] = useState<Set<string>>(new Set());
   const activeModalPanels = effectiveModalPanels.filter(
     (p) => !!modalsState?.[p.name] && !minimizedModals.has(p.name)
@@ -1018,8 +1073,8 @@ export default function ChatPage() {
         dismissible: modalsState?.[p.name] === "dismissible",
       }));
   const activeDockBottom = isMobile ? [] : toDockEntries(dockBottomPanels);
-  const activeDockLeft = isMobile ? [] : toDockEntries(dockLeftPanels);
-  const activeDockRight = isMobile ? [] : toDockEntries(dockRightPanels);
+  const activeDockLeft = isMobile || stage.active ? [] : toDockEntries(dockLeftPanels);
+  const activeDockRight = isMobile || stage.active ? [] : toDockEntries(dockRightPanels);
 
   const handleModalClose = useCallback((name: string) => {
     setMinimizedModals((prev) => { const next = new Set(prev); next.delete(name); return next; });
@@ -1037,6 +1092,55 @@ export default function ChatPage() {
   const handleModalRestore = useCallback((name: string) => {
     setMinimizedModals((prev) => { const next = new Set(prev); next.delete(name); return next; });
   }, []);
+
+  // __panelBridge.focusPanel(name) — main 패널이면 무대 탭 전환(+모바일 무대 뷰),
+  // modal 계열이면 dismissible로 열기(최소화돼 있으면 복원), 그 외는 무시 (spec §7).
+  const focusCtxRef = useRef({
+    panelNames: [] as string[],
+    placement: {} as Record<string, string>,
+    mainPanelNames: [] as string[],
+    modalsState: undefined as Record<string, boolean | string> | undefined,
+    isMobile: false,
+  });
+  focusCtxRef.current = {
+    panelNames: panels.map((p) => p.name),
+    placement,
+    mainPanelNames: stage.mainPanelNames,
+    modalsState,
+    isMobile,
+  };
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ name?: unknown } | undefined>).detail;
+      const ctx = focusCtxRef.current;
+      const target = resolveFocusTarget(
+        typeof detail?.name === "string" ? detail.name : "",
+        ctx.panelNames,
+        ctx.placement,
+        ctx.mainPanelNames,
+      );
+      if (!target) return;
+      if (target.kind === "tab") {
+        setStageTab(target.name);
+        if (ctx.isMobile) setMobileView("stage");
+        return;
+      }
+      setMinimizedModals((prev) => {
+        if (!prev.has(target.name)) return prev;
+        const next = new Set(prev);
+        next.delete(target.name);
+        return next;
+      });
+      if (ctx.modalsState?.[target.name]) return; // 이미 열려 있다 — 필수 모달을 dismissible로 낮추지 않는다
+      fetch(`/api/sessions/${sessionId}/modals`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "open", name: target.name, mode: "dismissible" }),
+      }).catch(() => {});
+    };
+    window.addEventListener(FOCUS_PANEL_EVENT, handler);
+    return () => window.removeEventListener(FOCUS_PANEL_EVENT, handler);
+  }, [sessionId, setStageTab]);
 
   // Filter OOC messages unless toggle is on.
   // useMemo 필수 — filter()는 매 렌더마다 새 배열을 만든다. 앱 모드는 월드 틱마다
@@ -1242,7 +1346,7 @@ export default function ChatPage() {
           {/* Chat column */}
           <div
             className="absolute inset-0 flex flex-col min-h-0"
-            style={appMode ? undefined : sidebarOffsetStyle}
+            style={appMode || stage.active ? undefined : sidebarOffsetStyle}
           >
             <ChatMessages
               messages={visibleMessages}
@@ -1326,6 +1430,7 @@ export default function ChatPage() {
                 usageSessionId={sessionId}
                 usageRefreshTrigger={usageTrigger}
                 onUsageClick={() => setShowUsage(true)}
+                compact={stageDesktop}
               />
             </div>
           </div>
@@ -1367,10 +1472,40 @@ export default function ChatPage() {
         threadStatus={threadStatus}
         onThreadControl={(action, value) => wsSend("threads:control", { action, value })}
         debugChat={appMode?.chatMode === "hidden" ? { open: debugChatOpen, onToggle: () => setDebugChatOpen((v) => !v) } : null}
+        stageView={stageMobile ? { view: mobileView, onChange: setMobileView } : null}
       />
       <ErrorBanner error={error} onDismiss={() => setError(null)} />
       <div className="flex-1 relative min-h-0">
-        {appMode ? (
+        {stage.active ? (
+          <>
+            {/* 무대 — 데스크톱: 좌측 사이드바와 (우측 사이드바 + 채팅 컬럼) 사이. 모바일: 채팅 뷰와 토글 */}
+            <div
+              className="absolute top-0 bottom-0"
+              style={
+                isMobile
+                  ? { left: 0, right: 0, ...(mobileView === "stage" ? {} : { display: "none" }) }
+                  : { left: `${stageLeftInset}px`, right: `${chatCol.width + stageRightInset}px` }
+              }
+            >
+              <MainStage
+                panels={mainPanels}
+                sessionId={sessionId}
+                panelData={panelData}
+                onSendMessage={sendMessage}
+                activeName={stageTab}
+                onActiveChange={setStageTab}
+              />
+            </div>
+            <ChatColumn
+              variant={isMobile ? "fill" : "column"}
+              state={chatCol}
+              streaming={isStreaming}
+              hidden={isMobile && mobileView !== "chat"}
+            >
+              {chatColumn}
+            </ChatColumn>
+          </>
+        ) : appMode ? (
           <div className="absolute inset-0 flex flex-col min-h-0" style={sidebarOffsetStyle}>
             {/*
               디버그 챗은 앱 영역을 밀어내지 않고 그 위에 뜬다. 챗을 여닫을 때 앱 슬롯의
@@ -1413,12 +1548,12 @@ export default function ChatPage() {
         {showInlinePanel && hasLeftSidebar && (
           <div
             className="absolute top-0 bottom-0 left-0"
-            style={{ width: `${leftPanelSize}px` }}
+            style={{ width: `${shownLeftSize}px` }}
           >
             <PanelArea
               panels={sidebarLeftPanels}
               position="left"
-              size={leftPanelSize}
+              size={shownLeftSize}
               profileImageUrl={showProfile ? profileImage : null}
               sessionId={sessionId}
               panelData={panelData}
@@ -1438,12 +1573,16 @@ export default function ChatPage() {
         {showInlinePanel && hasRightSidebar && (
           <div
             className="absolute top-0 bottom-0 right-0"
-            style={{ width: `${rightPanelSize}px` }}
+            style={{
+              width: `${shownRightSize}px`,
+              // 무대 모드: 우측 사이드바는 채팅 컬럼 바로 왼쪽
+              ...(stageDesktop ? { right: `${chatCol.width}px` } : {}),
+            }}
           >
             <PanelArea
               panels={sidebarRightPanels}
               position="right"
-              size={rightPanelSize}
+              size={shownRightSize}
               sessionId={sessionId}
               panelData={panelData}
               onSendMessage={sendMessage}

@@ -60,3 +60,22 @@ test("파일이 없거나 파싱 실패면 기본값 — app 없음", () => {
   assert.equal("app" in readLayout(tmpLayout(null)), false);
   assert.equal("app" in readLayout(tmpLayout("{ not json")), false);
 });
+
+test("무대 레이아웃: chat.width와 panels.placement의 main이 보존된다 (stage-layout spec §3)", () => {
+  const dir = tmpLayout(JSON.stringify({
+    panels: { placement: { 목차: "left", "01-원고": "main", 트리트먼트: "main" }, leftSize: 300 },
+    chat: { width: 480 },
+  }));
+  const r = readLayout(dir);
+  assert.equal(r.chat.width, 480);
+  assert.equal(r.chat.align, "stretch");
+  assert.deepEqual(r.panels.placement, { 목차: "left", "01-원고": "main", 트리트먼트: "main" });
+  assert.equal(r.panels.position, "right");
+  assert.equal("app" in r, false);
+});
+
+test("무대 레이아웃 키가 없으면 결과에도 없다 — 기존 페르소나 무영향", () => {
+  const r = readLayout(tmpLayout(JSON.stringify({ panels: { position: "left" } })));
+  assert.equal("width" in r.chat, false);
+  assert.equal("placement" in r.panels, false);
+});

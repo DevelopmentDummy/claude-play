@@ -4,6 +4,8 @@ import { useState, useRef, useCallback, useEffect, memo } from "react";
 import { createPortal } from "react-dom";
 import { showToast } from "./ToastEffect";
 import { getPanelActionRegistry } from "@/lib/panel-action-registry";
+import { FOCUS_PANEL_EVENT } from "@/lib/use-panel-bridge";
+import { isResidentPlacement, resolvePanelPlacement } from "@/lib/stage-layout";
 import UsageIndicator from "./UsageIndicator";
 import type { Choice } from "./ChatMessages";
 
@@ -155,9 +157,11 @@ interface ChatInputProps {
   usageSessionId?: string;
   usageRefreshTrigger?: number;
   onUsageClick?: () => void;
+  /** 좁은 컬럼용 압축 배치 (무대 레이아웃 채팅 컬럼). 메인 행은 [입력창][전송/중지], 나머지 버튼은 둘째 행. */
+  compact?: boolean;
 }
 
-function ChatInput({ disabled, isStreaming, onSend, onCancel, sessionId, choices, pendingEvents, showOOC, onOOCToggle, voiceChat, ttsPlaying, autoSendDelay = 3000, autoplayActive, onAutoplayToggle, interjectActive, onInterjectToggle, steeringPresetName, onSteeringEdit, usageProvider, usageSessionId, usageRefreshTrigger, onUsageClick }: ChatInputProps) {
+function ChatInput({ disabled, isStreaming, onSend, onCancel, sessionId, choices, pendingEvents, showOOC, onOOCToggle, voiceChat, ttsPlaying, autoSendDelay = 3000, autoplayActive, onAutoplayToggle, interjectActive, onInterjectToggle, steeringPresetName, onSteeringEdit, usageProvider, usageSessionId, usageRefreshTrigger, onUsageClick, compact = false }: ChatInputProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [oocMode, setOocMode] = useState(false);
   const [choiceBusy, setChoiceBusy] = useState(false);
@@ -254,8 +258,23 @@ function ChatInput({ disabled, isStreaming, onSend, onCancel, sessionId, choices
       if (act.panel) {
         // ═══ Panel Action ═══
 
+        // 배치 조회 — __layout은 layout.json 원본이라 placement는 panels.placement에 있다(구형 최상위 placement 폴백).
+        // 사이드바·무대(left/right/main) 패널은 화면에 상주하므로 모달 열기/닫기를 보내지 않는다.
+        // main이면 무대 탭으로 전환한다. dock 계열은 __modals로 표시되므로 기존처럼 연다.
+        const placement = resolvePanelPlacement(registry.getLayout(), act.panel);
+        const resident = isResidentPlacement(placement);
+        const focusStageTab = () => {
+          if (placement === "main") {
+            window.dispatchEvent(new CustomEvent(FOCUS_PANEL_EVENT, { detail: { name: act.panel } }));
+          }
+        };
+
         // Built-in __open / __close: directly control modal without handler
         if (act.action === "__open" || act.action === "__close") {
+          if (resident) {
+            if (act.action === "__open") focusStageTab();
+            continue;
+          }
           await fetch(`/api/sessions/${sessionId}/modals`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -267,6 +286,8 @@ function ChatInput({ disabled, isStreaming, onSend, onCancel, sessionId, choices
           });
           continue;
         }
+
+        focusStageTab();
 
         // Suppress handler's sendMessage — choice text will be sent via onSend instead
         win.__panelActionSuppressSend = true;
@@ -283,10 +304,8 @@ function ChatInput({ disabled, isStreaming, onSend, onCancel, sessionId, choices
         // 2. Open modal if: (a) handler not registered yet, or (b) action needs_ui and modal isn't active
         const modalsState = win.__panelModalsState as Record<string, boolean | string> | undefined;
         const isActive = modalsState ? !!modalsState[act.panel] : false;
-        const needsOpen = !hasHandler || (needsUI && !isActive);
+        const needsOpen = !resident && (!hasHandler || (needsUI && !isActive));
         if (needsOpen) {
-          const layout = registry.getLayout() as Record<string, Record<string, string>> | null;
-          const placement = layout?.placement?.[act.panel];
           const mode = placement === "modal-dismissible" ? "dismissible" : true;
           await fetch(`/api/sessions/${sessionId}/modals`, {
             method: "POST",
@@ -401,10 +420,25 @@ function ChatInput({ disabled, isStreaming, onSend, onCancel, sessionId, choices
     const after = el.value.substring(end);
     el.value = before + text + after;
     el.selectionStart = el.selectionEnd = start + text.length;
-    el.focus();
-    // Trigger height adjustment
-    el.style.height = "auto";
-    el.style.height = Math.min(el.scrollHeight, 150) + "px";
+    const fit = () => {
+      el.focus();
+      // Trigger height adjustment
+      el.style.height = "auto";
+      el.style.height = Math.min(el.scrollHeight, 150) + "px";
+    };
+    // 무대 레이아웃에서 채팅이 접혀 있거나 모바일 무대 뷰라 입력창이 display:none이면
+    // 지금은 높이를 잴 수 없고(scrollHeight 0 → 0px로 찌그러짐) 포커스도 안 된다.
+    // fillInput을 받은 쪽이 채팅을 펼친 뒤(다음 프레임들) 맞춘다.
+    if (el.getClientRects().length > 0) {
+      fit();
+      return;
+    }
+    let frames = 0;
+    const retry = () => {
+      if (el.getClientRects().length > 0) fit();
+      else if (++frames < 10) requestAnimationFrame(retry);
+    };
+    requestAnimationFrame(retry);
   }, []);
 
   // Listen for panel bridge fillInput events
@@ -774,6 +808,216 @@ function ChatInput({ disabled, isStreaming, onSend, onCancel, sessionId, choices
 
   const btnBase = "w-9 h-9 flex items-center justify-center rounded-lg border cursor-pointer text-xs font-medium shrink-0 transition-all duration-fast";
 
+  // 입력 영역 컨트롤 — 기본 배치와 압축 배치(compact)가 같은 요소를 위치만 바꿔 쓴다.
+  const oocButton = (
+    <button
+      type="button"
+      aria-pressed={oocMode}
+      onClick={() => {
+        const next = !oocMode;
+        setOocMode(next);
+        onOOCToggle?.(next);
+      }}
+      className={`${btnBase} ${
+        oocMode
+          ? "border-yellow-500/60 text-yellow-400 bg-yellow-500/15"
+          : showOOC
+            ? "border-yellow-500/30 text-yellow-400/60 bg-transparent hover:border-yellow-500/50 hover:text-yellow-400/80"
+            : "border-border/40 text-text-dim/60 bg-transparent hover:border-border/60 hover:text-text-dim/80"
+      }`}
+      title={oocMode ? "OOC 모드 끄기" : "OOC 모드 켜기"}
+    >
+      OOC
+    </button>
+  );
+  const starButton = (
+    <button
+      onClick={() => insertAtCursor("*")}
+      className={`${btnBase} border-border/40 text-text-dim/60 bg-transparent hover:border-border/60 hover:text-text-dim/80`}
+      title="* 삽입 (행동 묘사)"
+    >
+      *
+    </button>
+  );
+  const sttButton = sttMode !== "none" && (
+    <button
+      type="button"
+      aria-pressed={sttActive}
+      aria-label={sttTranscribing ? "변환 중" : sttActive ? "음성 입력 중지" : "음성 입력"}
+      onClick={toggleSTT}
+      disabled={sttTranscribing}
+      className={`${btnBase} relative ${
+        sttTranscribing
+          ? "border-blue-500/60 text-blue-400 bg-blue-500/15 animate-pulse"
+          : sttActive
+            ? "border-red-500/60 text-red-400 bg-red-500/15 animate-pulse"
+            : "border-border/40 text-text-dim/60 bg-transparent hover:border-border/60 hover:text-text-dim/80"
+      }`}
+      title={sttTranscribing ? "변환 중..." : sttActive ? "음성 입력 중지" : "음성 입력"}
+    >
+      {/* Auto-send countdown ring */}
+      {autoSendCountdown && (
+        <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 36 36">
+          <circle
+            cx="18" cy="18" r="15"
+            fill="none"
+            stroke="rgba(96,165,250,0.3)"
+            strokeWidth="2"
+          />
+          <circle
+            cx="18" cy="18" r="15"
+            fill="none"
+            stroke="rgb(96,165,250)"
+            strokeWidth="2.5"
+            strokeDasharray={`${Math.PI * 30}`}
+            strokeDashoffset="0"
+            strokeLinecap="round"
+            style={{
+              animation: `stt-countdown ${AUTO_SEND_DELAY}ms linear forwards`,
+            }}
+          />
+        </svg>
+      )}
+      {sttTranscribing ? (
+        <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+          <circle cx="12" cy="12" r="3"/>
+        </svg>
+      ) : (
+        <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+          <path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm-1-9a1 1 0 1 1 2 0v6a1 1 0 1 1-2 0V5zm6 6a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.93V21h2v-3.07A7 7 0 0 0 19 11h-2z"/>
+        </svg>
+      )}
+    </button>
+  );
+  const textarea = (
+    <textarea
+      ref={inputRef}
+      aria-label={oocMode ? "OOC 메시지 입력" : "메시지 입력"}
+      disabled={disabled}
+      placeholder={oocMode ? "OOC 메시지..." : "Type a message..."}
+      rows={1}
+      className={`flex-1 px-3.5 py-2.5 border rounded-xl bg-[rgba(15,15,26,0.6)] text-text font-[inherit] text-sm resize-none outline-none max-h-[150px] transition-all duration-fast focus:shadow-[0_0_0_3px_var(--accent-glow)] ${
+        oocMode
+          ? "border-yellow-500/40 focus:border-yellow-500/60"
+          : "border-border focus:border-accent"
+      }${compact ? " min-w-0" : ""}`}
+      onKeyDown={handleKeyDown}
+      onInput={handleInput}
+      onCompositionStart={() => { composingRef.current = true; }}
+      onCompositionEnd={() => { composingRef.current = false; }}
+      autoFocus
+    />
+  );
+  const stopButton = isStreaming && onCancel && (
+    compact ? (
+      <button
+        type="button"
+        onClick={onCancel}
+        aria-label="중지"
+        title="중지"
+        className="w-10 h-10 flex items-center justify-center border border-error/60 rounded-xl bg-error/15 text-error cursor-pointer shrink-0 transition-all duration-fast hover:bg-error/25 hover:-translate-y-px"
+      >
+        <svg viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5" aria-hidden>
+          <rect x="5" y="5" width="14" height="14" rx="2" />
+        </svg>
+      </button>
+    ) : (
+      <button
+        onClick={onCancel}
+        className="px-5 py-2.5 border border-error/60 rounded-xl bg-error/15 text-error cursor-pointer text-sm font-medium shrink-0 transition-all duration-fast hover:bg-error/25 hover:-translate-y-px"
+      >
+        Stop
+      </button>
+    )
+  );
+  const sendButton = !(isStreaming && disabled) && (
+    compact ? (
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={handleSend}
+        aria-label="전송"
+        title="전송"
+        className="w-10 h-10 flex items-center justify-center border-none rounded-xl bg-accent text-white cursor-pointer shrink-0 shadow-[0_2px_12px_var(--accent-glow)] transition-all duration-fast hover:bg-accent-hover hover:-translate-y-px hover:shadow-[0_4px_20px_var(--accent-glow)] disabled:opacity-50 disabled:cursor-not-allowed disabled:translate-y-0 disabled:shadow-none"
+      >
+        <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4" aria-hidden>
+          <path d="M3.4 20.4 21 12 3.4 3.6 3.39 10.1 15 12 3.39 13.9z" />
+        </svg>
+      </button>
+    ) : (
+      <button
+        disabled={disabled}
+        onClick={handleSend}
+        className="px-5 py-2.5 border-none rounded-xl bg-accent text-white cursor-pointer text-sm font-medium shrink-0 shadow-[0_2px_12px_var(--accent-glow)] transition-all duration-fast hover:bg-accent-hover hover:-translate-y-px hover:shadow-[0_4px_20px_var(--accent-glow)] disabled:opacity-50 disabled:cursor-not-allowed disabled:translate-y-0 disabled:shadow-none"
+      >
+        Send
+      </button>
+    )
+  );
+  const autoplayButton = (
+    <button
+      type="button"
+      aria-pressed={!!autoplayActive}
+      aria-label={autoplayActive ? "오토플레이 중지" : "오토플레이 시작"}
+      onClick={onAutoplayToggle}
+      className={`${btnBase} relative ${
+        autoplayActive
+          ? "border-blue-500/60 text-blue-400 bg-blue-500/15 shadow-[0_0_8px_rgba(59,130,246,0.3)]"
+          : "border-border/40 text-text-dim/60 bg-transparent hover:border-border/60 hover:text-text-dim/80"
+      }`}
+      title={autoplayActive ? "오토플레이 중지" : "오토플레이 시작"}
+    >
+      {autoplayActive ? (
+        <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+          <rect x="6" y="4" width="4" height="16" rx="1" />
+          <rect x="14" y="4" width="4" height="16" rx="1" />
+        </svg>
+      ) : (
+        <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+          <path d="M8 5v14l11-7z" />
+        </svg>
+      )}
+    </button>
+  );
+  const usageIndicator = usageProvider && (
+    <UsageIndicator
+      provider={usageProvider}
+      sessionId={usageSessionId}
+      refreshTrigger={usageRefreshTrigger}
+      onClick={onUsageClick}
+    />
+  );
+  const interjectButton = onInterjectToggle && (
+    <button
+      type="button"
+      aria-pressed={!!interjectActive}
+      onClick={onInterjectToggle}
+      title={interjectActive
+        ? "턴 중 개입 켜짐 — AI가 응답하는 도중에도 메시지를 보낼 수 있습니다"
+        : "턴 중 개입 꺼짐 — AI 응답이 끝난 뒤에만 입력할 수 있습니다"}
+      className={`text-[11px] px-2 py-0.5 rounded-full border transition-colors ${
+        interjectActive
+          ? "border-blue-500/50 text-blue-400/90 bg-blue-500/10"
+          : "border-border/40 text-text-dim/50 hover:text-text-dim/80 hover:border-border/60"
+      }`}
+    >
+      턴 중 개입 {interjectActive ? "ON" : "OFF"}
+    </button>
+  );
+  const steeringLabel = <span className="text-[11px] text-text-dim/50">오토 메시지:</span>;
+  const steeringButton = (
+    <button
+      onClick={onSteeringEdit}
+      className={`text-[11px] truncate max-w-[200px] transition-colors ${
+        steeringPresetName
+          ? "text-blue-400/70 hover:text-blue-300"
+          : "text-text-dim/50 hover:text-text-dim/80"
+      }`}
+    >
+      {steeringPresetName || "없음"}
+    </button>
+  );
+
   return (
     <footer className="flex flex-col bg-surface backdrop-blur-[16px] border-t border-border shrink-0">
       {choices && choices.length > 0 && !disabled && (() => {
@@ -799,191 +1043,55 @@ function ChatInput({ disabled, isStreaming, onSend, onCancel, sessionId, choices
           ))}
         </div>
       )}
-      <div className="flex items-end gap-2 px-4 py-3">
+      {/* 메인 행 — 압축 배치(compact)에서는 [입력창][중지/전송]만 남겨 좁은 컬럼에서도 입력창 폭을 확보한다.
+          입력창은 두 배치에서 같은 자리를 유지해 전환돼도 다시 마운트되지 않는다(작성 중 텍스트 보존). */}
+      <div className={compact ? "flex items-end gap-2 px-3 pt-2.5 pb-1.5" : "flex items-end gap-2 px-4 py-3"}>
         {/* Left toolbar: OOC toggle + * insert */}
-        <div className="flex gap-1 shrink-0 pb-0.5">
-          <button
-            type="button"
-            aria-pressed={oocMode}
-            onClick={() => {
-              const next = !oocMode;
-              setOocMode(next);
-              onOOCToggle?.(next);
-            }}
-            className={`${btnBase} ${
-              oocMode
-                ? "border-yellow-500/60 text-yellow-400 bg-yellow-500/15"
-                : showOOC
-                  ? "border-yellow-500/30 text-yellow-400/60 bg-transparent hover:border-yellow-500/50 hover:text-yellow-400/80"
-                  : "border-border/40 text-text-dim/60 bg-transparent hover:border-border/60 hover:text-text-dim/80"
-            }`}
-            title={oocMode ? "OOC 모드 끄기" : "OOC 모드 켜기"}
-          >
-            OOC
-          </button>
-          <button
-            onClick={() => insertAtCursor("*")}
-            className={`${btnBase} border-border/40 text-text-dim/60 bg-transparent hover:border-border/60 hover:text-text-dim/80`}
-            title="* 삽입 (행동 묘사)"
-          >
-            *
-          </button>
-          {sttMode !== "none" && (
-            <button
-              type="button"
-              aria-pressed={sttActive}
-              aria-label={sttTranscribing ? "변환 중" : sttActive ? "음성 입력 중지" : "음성 입력"}
-              onClick={toggleSTT}
-              disabled={sttTranscribing}
-              className={`${btnBase} relative ${
-                sttTranscribing
-                  ? "border-blue-500/60 text-blue-400 bg-blue-500/15 animate-pulse"
-                  : sttActive
-                    ? "border-red-500/60 text-red-400 bg-red-500/15 animate-pulse"
-                    : "border-border/40 text-text-dim/60 bg-transparent hover:border-border/60 hover:text-text-dim/80"
-              }`}
-              title={sttTranscribing ? "변환 중..." : sttActive ? "음성 입력 중지" : "음성 입력"}
-            >
-              {/* Auto-send countdown ring */}
-              {autoSendCountdown && (
-                <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 36 36">
-                  <circle
-                    cx="18" cy="18" r="15"
-                    fill="none"
-                    stroke="rgba(96,165,250,0.3)"
-                    strokeWidth="2"
-                  />
-                  <circle
-                    cx="18" cy="18" r="15"
-                    fill="none"
-                    stroke="rgb(96,165,250)"
-                    strokeWidth="2.5"
-                    strokeDasharray={`${Math.PI * 30}`}
-                    strokeDashoffset="0"
-                    strokeLinecap="round"
-                    style={{
-                      animation: `stt-countdown ${AUTO_SEND_DELAY}ms linear forwards`,
-                    }}
-                  />
-                </svg>
-              )}
-              {sttTranscribing ? (
-                <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
-                  <circle cx="12" cy="12" r="3"/>
-                </svg>
-              ) : (
-                <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
-                  <path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm-1-9a1 1 0 1 1 2 0v6a1 1 0 1 1-2 0V5zm6 6a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.93V21h2v-3.07A7 7 0 0 0 19 11h-2z"/>
-                </svg>
-              )}
-            </button>
-          )}
-        </div>
-        <textarea
-          ref={inputRef}
-          aria-label={oocMode ? "OOC 메시지 입력" : "메시지 입력"}
-          disabled={disabled}
-          placeholder={oocMode ? "OOC 메시지..." : "Type a message..."}
-          rows={1}
-          className={`flex-1 px-3.5 py-2.5 border rounded-xl bg-[rgba(15,15,26,0.6)] text-text font-[inherit] text-sm resize-none outline-none max-h-[150px] transition-all duration-fast focus:shadow-[0_0_0_3px_var(--accent-glow)] ${
-            oocMode
-              ? "border-yellow-500/40 focus:border-yellow-500/60"
-              : "border-border focus:border-accent"
-          }`}
-          onKeyDown={handleKeyDown}
-          onInput={handleInput}
-          onCompositionStart={() => { composingRef.current = true; }}
-          onCompositionEnd={() => { composingRef.current = false; }}
-          autoFocus
-        />
-        {isStreaming && onCancel && (
-          <button
-            onClick={onCancel}
-            className="px-5 py-2.5 border border-error/60 rounded-xl bg-error/15 text-error cursor-pointer text-sm font-medium shrink-0 transition-all duration-fast hover:bg-error/25 hover:-translate-y-px"
-          >
-            Stop
-          </button>
+        {!compact && (
+          <div className="flex gap-1 shrink-0 pb-0.5">
+            {oocButton}
+            {starButton}
+            {sttButton}
+          </div>
         )}
+        {textarea}
+        {stopButton}
         {/* 개입 허용(=스트리밍 중에도 disabled=false)이면 Stop과 Send를 함께 노출 */}
-        {!(isStreaming && disabled) && (
-          <button
-            disabled={disabled}
-            onClick={handleSend}
-            className="px-5 py-2.5 border-none rounded-xl bg-accent text-white cursor-pointer text-sm font-medium shrink-0 shadow-[0_2px_12px_var(--accent-glow)] transition-all duration-fast hover:bg-accent-hover hover:-translate-y-px hover:shadow-[0_4px_20px_var(--accent-glow)] disabled:opacity-50 disabled:cursor-not-allowed disabled:translate-y-0 disabled:shadow-none"
-          >
-            Send
-          </button>
-        )}
+        {sendButton}
         {/* Autoplay toggle */}
-        <button
-          type="button"
-          aria-pressed={!!autoplayActive}
-          aria-label={autoplayActive ? "오토플레이 중지" : "오토플레이 시작"}
-          onClick={onAutoplayToggle}
-          className={`${btnBase} relative ${
-            autoplayActive
-              ? "border-blue-500/60 text-blue-400 bg-blue-500/15 shadow-[0_0_8px_rgba(59,130,246,0.3)]"
-              : "border-border/40 text-text-dim/60 bg-transparent hover:border-border/60 hover:text-text-dim/80"
-          }`}
-          title={autoplayActive ? "오토플레이 중지" : "오토플레이 시작"}
-        >
-          {autoplayActive ? (
-            <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
-              <rect x="6" y="4" width="4" height="16" rx="1" />
-              <rect x="14" y="4" width="4" height="16" rx="1" />
-            </svg>
-          ) : (
-            <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
-              <path d="M8 5v14l11-7z" />
-            </svg>
-          )}
-        </button>
+        {!compact && autoplayButton}
       </div>
-      {/* Bottom bar: usage (left) + steering (right) */}
-      <div className="flex items-center justify-between px-4 pb-2 -mt-1">
-        {/* Usage indicator (left) */}
-        <div className="flex items-center">
-          {usageProvider && (
-            <UsageIndicator
-              provider={usageProvider}
-              sessionId={usageSessionId}
-              refreshTrigger={usageRefreshTrigger}
-              onClick={onUsageClick}
-            />
-          )}
+      {compact ? (
+        /* 둘째 행: 보조 버튼 + 사용량·턴 중 개입·오토 메시지 — 기능은 그대로, 위치만 옮기고 줄바꿈 허용 */
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 px-3 pb-2">
+          <div className="flex gap-1 shrink-0">
+            {oocButton}
+            {starButton}
+            {sttButton}
+            {autoplayButton}
+          </div>
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-x-2 gap-y-1 min-w-0">
+            {usageIndicator}
+            {interjectButton}
+            {steeringLabel}
+            {steeringButton}
+          </div>
         </div>
-        {/* Steering preset (right) */}
-        <div className="flex items-center gap-2">
-          {onInterjectToggle && (
-            <button
-              type="button"
-              aria-pressed={!!interjectActive}
-              onClick={onInterjectToggle}
-              title={interjectActive
-                ? "턴 중 개입 켜짐 — AI가 응답하는 도중에도 메시지를 보낼 수 있습니다"
-                : "턴 중 개입 꺼짐 — AI 응답이 끝난 뒤에만 입력할 수 있습니다"}
-              className={`text-[11px] px-2 py-0.5 rounded-full border transition-colors ${
-                interjectActive
-                  ? "border-blue-500/50 text-blue-400/90 bg-blue-500/10"
-                  : "border-border/40 text-text-dim/50 hover:text-text-dim/80 hover:border-border/60"
-              }`}
-            >
-              턴 중 개입 {interjectActive ? "ON" : "OFF"}
-            </button>
-          )}
-          <span className="text-[11px] text-text-dim/50">오토 메시지:</span>
-          <button
-            onClick={onSteeringEdit}
-            className={`text-[11px] truncate max-w-[200px] transition-colors ${
-              steeringPresetName
-                ? "text-blue-400/70 hover:text-blue-300"
-                : "text-text-dim/50 hover:text-text-dim/80"
-            }`}
-          >
-            {steeringPresetName || "없음"}
-          </button>
+      ) : (
+        /* Bottom bar: usage (left) + steering (right) */
+        <div className="flex items-center justify-between px-4 pb-2 -mt-1">
+          {/* Usage indicator (left) */}
+          <div className="flex items-center">
+            {usageIndicator}
+          </div>
+          {/* Steering preset (right) */}
+          <div className="flex items-center gap-2">
+            {interjectButton}
+            {steeringLabel}
+            {steeringButton}
+          </div>
         </div>
-      </div>
+      )}
     </footer>
   );
 }

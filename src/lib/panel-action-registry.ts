@@ -40,6 +40,8 @@ export interface PanelActionRecord {
 export interface PanelMeta {
   maxWidth?: string;
   maxHeight?: string;
+  /** "once"면 한 번 마운트 후 innerHTML을 갈아끼우지 않고 stateChanged 이벤트로만 갱신한다 (stage-layout spec §6). */
+  mount?: "once";
 }
 
 // ---------------------------------------------------------------------------
@@ -555,7 +557,7 @@ export function parsePanelActions(
 
 /**
  * Extract panel meta from `<panel-meta>...</panel-meta>` tags.
- * Current use: modal sizing defaults for shared or session panels.
+ * Current use: modal sizing defaults for shared or session panels, and `mount: "once"`.
  */
 export function parsePanelMeta(html: string): PanelMeta | null {
   const match = html.match(/<panel-meta[^>]*>([\s\S]*?)<\/panel-meta>/i);
@@ -570,6 +572,10 @@ export function parsePanelMeta(html: string): PanelMeta | null {
     }
     if (typeof parsed.maxHeight === "string" && parsed.maxHeight.trim()) {
       meta.maxHeight = parsed.maxHeight.trim();
+    }
+    // 다른 값은 무시한다 — "once"만 의미가 있다.
+    if (parsed.mount === "once") {
+      meta.mount = "once";
     }
     return Object.keys(meta).length > 0 ? meta : null;
   } catch {
@@ -590,4 +596,9 @@ export function stripPanelActions(html: string): string {
  */
 export function stripPanelMeta(html: string): string {
   return html.replace(/<panel-meta[^>]*>[\s\S]*?<\/panel-meta>/gi, "");
+}
+
+/** `<panel-meta>{"mount": "once"}</panel-meta>`를 선언한 패널인지 */
+export function isMountOncePanel(html: string): boolean {
+  return parsePanelMeta(html)?.mount === "once";
 }

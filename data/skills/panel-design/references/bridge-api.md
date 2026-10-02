@@ -202,6 +202,33 @@ await __panelBridge.showPopup('level-up', {
 });
 ```
 
+### `focusPanel(name: string): void`
+그 패널로 시선을 옮긴다. `name`은 패널 표시 이름(숫자 prefix 무관).
+
+| 대상 패널의 배치 | 동작 |
+|---|---|
+| `main` (무대) | 그 탭을 활성화. 모바일이면 무대 뷰로 전환 |
+| `modal` / `modal-dismissible` / `full-screen` | `"dismissible"`로 연다. 최소화돼 있으면 복원. **이미 열려 있으면 아무것도 안 한다** (필수 모달을 dismissible로 낮추지 않음) |
+| `left` / `right` / dock 계열 / 인라인 / 없는 이름 | 무시 |
+
+```javascript
+__panelBridge.focusPanel('원고');      // 무대의 '원고' 탭으로
+__panelBridge.focusPanel('inventory'); // 모달이면 닫기 가능 모드로 열기
+```
+
+### `emit(name: string, detail?: any): void`
+패널 간 이벤트 발송. 받는 쪽은 `on('panel:' + name, fn)`. `name`은 자유로운 채널 이름(패널 이름일 필요 없음)이며 빈 문자열이면 무시된다. `panel:` 네임스페이스로 분리돼 `turnEnd`·`stateChanged` 같은 시스템 이벤트를 사칭할 수 없다.
+
+```javascript
+// 보내는 패널
+__panelBridge.emit('chapter-select', { id: 'ch03' });
+
+// 받는 패널
+const off = __panelBridge.on('panel:chapter-select', (detail) => showChapter(detail.id));
+```
+
+`window.dispatchEvent(new CustomEvent(...))` 직접 발송(turn-choreography 패턴 9)보다 이쪽을 권장한다 — 사이드바·무대 패널에서는 구독이 자동 정리된다.
+
 ### `on(event: string, handler: function): function`
 브릿지 이벤트 구독. 반환값은 구독 해제 함수.
 
@@ -215,6 +242,8 @@ const off = __panelBridge.on('turnEnd', () => {
 off();
 ```
 
+**자동 정리 범위**: 사이드바(`left`/`right`)·무대(`main`) 패널은 재렌더·언마운트 때 `on()` 구독과 `window` 리스너·타이머가 자동 해제된다. 모달·독·인라인 패널은 `on()` 구독만 자동 해제되고(재렌더·독 탭 전환·언마운트), 스크립트가 직접 건 `window` 리스너·타이머는 반환된 함수·`clearTimeout` 등으로 직접 정리하라.
+
 ---
 
 ## 이벤트
@@ -224,6 +253,8 @@ off();
 | `turnStart` | 없음 | AI가 응답 시작 (스트리밍 시작) |
 | `turnEnd` | 없음 | AI 응답 완료, 사용자 턴 |
 | `imageUpdated` | `{ filename: string }` | 세션 이미지 파일 생성/덮어쓰기 |
+| `stateChanged` | 전체 템플릿 컨텍스트 (`__panelBridge.data`와 같은 객체) | 패널 데이터(`variables.json` + 커스텀 데이터)가 바뀔 때마다 페이지가 전역으로 **한 번** 발송 (앱 모드는 AppSlot이 발송). 초당 여러 번 올 수 있다 — 관심 조각만 비교해 갱신. `mount: "once"` 패널의 유일한 갱신 채널 |
+| `panel:{name}` | `emit()`의 `detail` | 다른 패널이 `emit(name, detail)`로 보낸 패널 간 이벤트 |
 
 ```javascript
 // AI 응답 완료 시 최신 데이터로 DOM 갱신
@@ -239,9 +270,23 @@ __panelBridge.on('imageUpdated', (detail) => {
 });
 ```
 
+```javascript
+// mount-once 패널: 초기 렌더 + stateChanged로 부분 갱신
+let lastSig = null;
+function render(d) {
+  const sig = `${d.chapter_id}:${d.chapter_rev}`;
+  if (sig === lastSig) return;          // 바뀌지 않았으면 DOM을 건드리지 않는다
+  lastSig = sig;
+  shadow.querySelector('.body').innerHTML = d.chapter_html || '';
+}
+render(__panelBridge.data);
+__panelBridge.on('stateChanged', render);
+```
+
 **이벤트 중복 등록 주의:**
 `autoRefresh: true` 패널에서는 재렌더링마다 스크립트가 다시 실행되어 리스너가 누적된다.
-- `autoRefresh: false`인 패널에서만 `on()`을 사용하거나
+- 사이드바·무대 패널은 시스템이 재렌더 때 구독을 자동 해제하므로 괜찮다
+- 모달·독·인라인 패널은 `autoRefresh: false`·`mount: "once"`인 패널에서만 `on()`을 사용하거나
 - 구독 해제 로직을 추가하라
 
 ---
@@ -250,6 +295,8 @@ __panelBridge.on('imageUpdated', (detail) => {
 
 ### `__panelBridge.data`
 전체 템플릿 컨텍스트 객체. `variables.json` 값은 루트 레벨, 커스텀 데이터는 파일명 키.
+
+**읽는 시점의 최신값이다** — 이벤트 핸들러·타이머 안에서 나중에 읽어도 스크립트 실행 시점 값에 고정되지 않는다(`<script>`에 주입된 bare `__panelBridge` 기준). 모달·독·인라인 패널에서 `const B = window.__panelBridge`처럼 window의 객체를 변수에 담아 두면 그 시점 객체에 고정되므로, bare `__panelBridge`를 쓰거나 읽을 때마다 다시 조회하라.
 
 ```javascript
 const d = __panelBridge.data;

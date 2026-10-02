@@ -79,7 +79,8 @@ curl -H "x-bridge-token: anything" http://127.0.0.1:3340/api/service/status
 | "고쳤는데 여전히 안 됨" (dev) | API 라우트면 `.next/` 삭제 후 재시작; 프론트면 브라우저 하드 리프레시 (Ctrl+Shift+R) |
 | agy가 settings 파싱 실패 | JSON 선두 BOM (`npm run lint:data`) |
 | 세션 삭제가 EBUSY | 고아 agy.exe가 세션 폴더 점유 — `data/.runtime/agy-procs.json` 레지스트리 기반 reap이 정상 경로지만, 레지스트리 이전/유실 고아는 수동 `taskkill /F /PID` |
-| 패널이 갱신 안 됨 | §5.3 (variables.json watch / shared 패널 templateCache) |
+| 패널이 갱신 안 됨 | §5.3 (variables.json watch / shared 패널 templateCache). 패널에 `<panel-meta>{"mount":"once"}</panel-meta>`가 있으면 정상 — 그 패널은 `stateChanged`로만 갱신되고 템플릿 수정은 새로고침해야 반영된다 (§5.17) |
+| 패널 하나가 모드/배치에 따라 다르게 동작 (모달에서만·독에서만 이상) | §5.17 — 패널 스크립트 실행기가 넷이고 코드를 공유하지 않는다 |
 | MCP 도구가 안 보임 | 세션 **재-open** 필요 (MCP config·스킬은 open 시에만 재기록/복사). curl 폴백은 해법이 아님 — 브릿지 도구 다수는 REST 등가물이 없고 인증도 MCP 토큰 경유가 정답 |
 | API가 전부 401 | §1.3 |
 | `[system] 직전 응답이 누락되었습니다…` 유령 메시지 | Antigravity 전용 silent retry — 빈 턴(세그먼트 0, 도구 0)에 1회 nudge하는 정상 동작 (`session-instance.ts` processResult) |
@@ -236,6 +237,16 @@ Next.js App Router의 `useParams()`는 라우트 세그먼트를 **URL 인코딩
 `ws-server.ts`는 WS 핸드셰이크에서 `instance.getStatus()`(`_currentStatus`)를 리플레이한다. 그런데 **Claude CLI는 턴 종료 상태를 emit하지 않는다** — `claude-process.ts`는 send 시 `"streaming"`, 종료 시 `"disconnected"`만 보낸다(codex/kimi/antigravity는 턴 끝에 `"connected"`를 보냄). 라이브 클라이언트는 result 메시지를 받고 자체적으로 배지를 내리므로 정상으로 보이지만, `_currentStatus`는 `"streaming"`에 머물러 새로고침한 클라이언트가 유령 스트리밍 배지를 받는다.
 - 수정(2026-09-20): `session-instance.ts:processResult()` 끝에서 `_currentStatus === "streaming" && claude.isRunning()`이면 `"connected"`로 되돌린다.
 - 유사 증상이 또 보이면 먼저 `getStatus()` 리플레이 값과 실제 프로세스 상태를 대조하라 — 프론트 상태 머신이 아니라 서버의 기억이 어긋난 경우가 많다.
+
+### 5.17 패널 스크립트 실행기는 넷이다 — mount-once·라이브 브리지·`<panel-meta>` 제거는 넷 다 맞춰야 한다
+무대 레이아웃(2026-10, [설계](specs/2026-10-02-stage-layout-design.md))과 함께 들어온 패널 갱신 규칙. 패널 HTML을 shadow DOM에 넣고 `<script>`를 `new Function(...)`으로 돌리는 곳이 **`PanelSlot`(사이드바·무대) / `ModalPanel` / `DockPanel` / `InlinePanel`** 네 군데이고(+ 스크립트를 안 돌리는 `BuilderOverview` 미리보기), 서로 코드를 공유하지 않는다. 한 곳만 고치면 배치에 따라 동작이 갈린다.
+- **mount-once(`<panel-meta>{"mount":"once"}</panel-meta>`) 동작이 실행기마다 다르다 — 의도된 차이다.** PanelSlot = `mountedOnceRef`로 이후 html 무시, 샌드박스(타이머·리스너·`on()` 구독)는 언마운트 때만 해제. ModalPanel = 재오픈 시 `renderEpoch` 재실행까지 건너뛴다(일반 모달은 다시 열릴 때 재초기화되지만 mount-once 모달은 안 된다). DockPanel = 같은 방향 독 탭들이 shadow 하나를 공유하므로 `mountedOnceNameRef`가 **이름**을 기억 — 탭을 바꾸면 새로 마운트된다. InlinePanel = 인스턴스마다 한 번. 템플릿 파일 수정은 어디서든 새로고침 전까지 반영 안 된다.
+- **`stateChanged`는 전역 이벤트다 — 패널마다 발송하지 마라.** 비앱 세션은 `page.tsx`가 panelData 참조가 바뀔 때마다 한 번(`lastStatePushedRef`), 앱 모드는 `AppSlot`이 발송한다(그래서 page는 앱 모드에서 건너뛴다). 둘 다 쏘면 앱 패널이 이중 갱신된다. 자식의 `usePanelBridge` effect가 부모 effect보다 먼저 돌기 때문에 핸들러가 읽는 `__panelBridge.data`도 이미 최신이다 — effect 순서를 뒤집는 리팩터를 하면 이 보장이 깨진다.
+- **라이브 브리지 프록시(`createLiveBridgeProxy`)**: `usePanelBridge`는 panelData가 바뀔 때마다 **새 브리지 객체**를 `window.__panelBridge`에 꽂는다. 예전엔 실행기가 실행 시점 객체를 넘겨 `__panelBridge.data`가 최초 값에 고정됐다(Handlebars 의존이 없는 패널은 영영 새 데이터를 못 봄). 지금은 조회 시점의 브리지 — `usePanelBridge`가 마지막으로 꽂은 실제 객체(`lastRealBridge`), 없으면 `window.__panelBridge` — 를 따르는 프록시를 넘긴다. 함정 세 개: ① 패널이 프록시나 그 래퍼(`Object.create(__panelBridge)`, `new Proxy(__panelBridge, {})`)를 `window.__panelBridge`에 되꽂으면 프록시가 자기 자신을 거쳐 무한 재귀할 수 있다 → `lastRealBridge` 우선 + 트랩 재진입 깊이(`resolveDepth`) 가드로 끊는다. 이 가드들을 지우지 말 것. ② ModalPanel은 최상단 모달의 `sendMessage`를 "보내고 닫기"로 **공유 브리지 객체에서** 감싼다. 비모달 실행기(PanelSlot·DockPanel·InlinePanel)는 `createLiveBridgeProxy(onSub, { rawSend: true })`로 감싸기 전 원본(`RAW_SEND_KEY`)을 써야 사이드바·무대 패널의 전송이 필수 모달을 닫지 않는다. 또 모든 실행기는 `onSubscribe`로 `on()` 해제 함수를 모아 **DOM을 갈아끼우기 전·언마운트 때** `releaseBridgeSubs()`로 풀어야 한다(독은 탭들이 shadow 하나를 공유한다). ③ 프록시 `getOwnPropertyDescriptor`는 대상(빈 fallback)에 없는 속성을 `configurable: true`로 보고해야 Proxy 불변식 TypeError가 안 난다. 단, ModalPanel/DockPanel/InlinePanel은 `window`를 감싸지 않으므로 패널이 `const B = window.__panelBridge`로 **실제 객체**를 캐시하면 여전히 고정된다(PanelSlot은 sandboxed window가 프록시를 돌려준다) — 저자 문서(`panel-spec.md`)에 그렇게 적혀 있다.
+- **`<panel-meta>` 제거는 이제 전 실행기 공통**이다. 전에는 ModalPanel만 지워서, 사이드바 패널에 `<panel-meta>`를 넣으면 JSON이 텍스트로 찍혔다. 새 실행기를 만들면 `stripPanelMeta(stripPanelActions(html))`를 빠뜨리지 말 것.
+- **StrictMode 모의 언마운트**: PanelSlot 정리 함수가 `prevHtmlRef`·`mountedOnceRef`를 되돌린다. 안 그러면 dev의 언마운트→재마운트에서 렌더 effect가 "같은 html"이라며 건너뛰어 mount-once 패널 스크립트가 영영 죽은 채로 남는다(빈 패널). 이상해 보여도 지우지 말 것.
+- **선택지 액션의 배치 조회** (`ChatInput.tsx`): `registry.getLayout()`은 layout.json **원본**이라 placement가 `panels.placement`에 있다. 예전 코드는 최상위 `placement`를 읽어 항상 undefined → 사이드바 패널에도 `/modals open`이 나갔고 `modal-dismissible`도 필수로 열렸다. 지금은 `resolvePanelPlacement()`(구형 최상위 `placement` 폴백 + prefix 정규화) → `isResidentPlacement()`(left/right/main이면 모달 열기 생략, main이면 `FOCUS_PANEL_EVENT`로 탭 전환).
+- 검증: `npx tsx --test src/lib/stage-layout.test.ts src/lib/use-panel-bridge.test.ts src/lib/session-config-io.test.ts` + 라이브 스모크(HANDOVER §4-C). 타입체크만으로는 effect 순서·StrictMode·shadow 재마운트를 못 잡는다.
 
 ## 6. 작업 방법론
 
