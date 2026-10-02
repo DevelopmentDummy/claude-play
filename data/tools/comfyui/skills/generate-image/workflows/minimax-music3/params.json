@@ -1,0 +1,76 @@
+{
+  "description": "MiniMax Music 3 텍스트→음악(보컨 곡·연주곡). ComfyUI 공식 템플릿(audio_minimax_music_3)과 같은 그래프, int8 저VRAM 구성(DiT int8_convrot 2.5GB + 텍스트 인코더 pruned int8_convrot 9.2GB + DAV VAE). WildSongBench에서 ACE-Step 1.5보다 종합·음질 우위. prompt(=caption)는 세 단락 형식이 가장 잘 먹힌다: 'Global Metadata: 장르. BPM, 조성. 분위기…' / 'Vocal Details: …(연주곡이면 Instrumental only, no vocals at all.)' / 'Arrangement: 악기·구성…'. 가사는 [Intro]/[Verse]/[Chorus]/[Instrumental]/[Outro] 섹션 태그만 실행 지시. max_duration은 최대치라 곡이 더 일찍 끝날 수 있다. 30초 디스코 실측 33초(2026-10-01, RTX 5070 Ti). 출력 mp3.",
+  "features": {
+    "checkpoint_auto": false,
+    "lora_injection": false,
+    "seed_randomize": true,
+    "trigger_tags": false,
+    "native_audio": true
+  },
+  "params": {
+    "prompt": {
+      "node": "13",
+      "field": "caption",
+      "type": "string",
+      "required": true,
+      "description": "음악 설명 캐션(Global Metadata / Vocal Details / Arrangement 세 단락)"
+    },
+    "lyrics": {
+      "node": "13",
+      "field": "lyrics",
+      "type": "string",
+      "default": "[Instrumental]",
+      "description": "가사 + 섹션 태그. 연주곡이면 [Instrumental]"
+    },
+    "max_duration": {
+      "node": "13",
+      "field": "max_duration",
+      "type": "number",
+      "default": 30,
+      "description": "최대 길이(초), 최대 약 300"
+    },
+    "seed": {
+      "node": "9",
+      "field": "seed",
+      "type": "number",
+      "default": -1,
+      "description": "KSampler 시드(텍스트 인코더 시드는 text_seed)"
+    },
+    "text_seed": {
+      "node": "13",
+      "field": "seed",
+      "type": "number",
+      "default": 0
+    },
+    "steps": {
+      "node": "9",
+      "field": "steps",
+      "type": "number",
+      "default": 30
+    },
+    "cfg": {
+      "node": "9",
+      "field": "cfg",
+      "type": "number",
+      "default": 1.7
+    },
+    "cfg_scale": {
+      "node": "13",
+      "field": "cfg_scale",
+      "type": "number",
+      "default": 1.7
+    },
+    "top_k": {
+      "node": "13",
+      "field": "top_k",
+      "type": "number",
+      "default": 50
+    },
+    "filename_prefix": {
+      "node": "35",
+      "field": "filename_prefix",
+      "type": "string",
+      "default": "audio/minimax_music3"
+    }
+  }
+}

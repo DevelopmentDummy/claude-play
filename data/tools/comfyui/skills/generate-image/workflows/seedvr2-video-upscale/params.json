@@ -1,0 +1,141 @@
+{
+  "description": "SeedVR2 영상 복원 업스케일 — 이미 만든 mp4를 SeedVR2(ByteDance) 디퓨전 복원 모델로 다시 그려 업스케일한다. 단순 확대(ESRGAN)와 달리 모션블러를 복원하고 피부 질감을 새로 채운다(2026-10-01 실측: ESRGAN 대비 압도적). 원본 오디오를 그대로 붙여 저장. 입력은 video 파라미터에 파일명(세션/페르소나 images/ 에서 자동 탐색) 또는 절대경로. 16GB 최적화 기본값: 7B fp8 mixed, blocks_to_swap 20, VAE 인코드/디코드 타일 512(1024 타일은 VRAM이 넘쳐 디코드 배치당 5분 걸렸다).",
+  "features": {
+    "checkpoint_auto": false,
+    "lora_injection": false,
+    "lora_couple_branches": false,
+    "seed_randomize": false,
+    "trigger_tags": false,
+    "detailer_chain": false,
+    "native_audio": true
+  },
+  "benchmarks": {
+    "hardware": "RTX 5070 Ti 16GB / RAM 67.5GB / torch 2.12.0+cu130",
+    "runs": [
+      {
+        "input": "1152x640 L124",
+        "output": "1944x1080",
+        "model": "7b fp8 mixed",
+        "seconds": 2100,
+        "note": "CLI, VAE 타일 1024 → 디코드가 VRAM 초과로 페이징(배치당 5분). DiT는 배치당 11초. 이 패키지는 타일 512로 수정됨"
+      },
+      {
+        "input": "1152x640 L124",
+        "output": "1944x1080",
+        "model": "7b fp8 mixed",
+        "seconds": 341,
+        "note": "이 패키지 기본값(타일 512). 디코드 배치당 ~23초"
+      },
+      {
+        "input": "1152x640 L124",
+        "output": "1944x1080",
+        "model": "3b fp8",
+        "seconds": 295,
+        "note": "다운로드 제외. 병목이 VAE라 7B 대비 13%만 빠름. 화질은 7B가 약간 더 자연스러움 → 7B 기본 유지"
+      },
+      {
+        "input": "1152x640 L124",
+        "output": "1944x1080",
+        "model": "7b fp8 mixed",
+        "seconds": 308,
+        "note": "⭐ 최종 기본값(타일 512/겹침 32). 최초 CLI 2100초 대비 6.8배"
+      }
+    ],
+    "decode_tuning": {
+      "unit": "2배치(42프레임) 디코드 초",
+      "results": {
+        "512/64 cpu": 47.1,
+        "768/64 cpu": 42.9,
+        "512/32 cpu": 40.1,
+        "768/32 cpu": 40.1,
+        "512/64 gpu(offload none)": 92,
+        "768/32 gpu": 53.8
+      },
+      "conclusion": "겹침이 핵심 레버, 타일 크기는 무관. VAE를 GPU 상주시키면 VRAM 압박으로 2배 느려짐 → cpu 오프로드 유지. 기본 512/32 채택 (2026-10-01)"
+    }
+  },
+  "params": {
+    "video": {
+      "type": "string",
+      "required": true,
+      "description": "업스케일할 mp4. 파일명만 주면 <세션>/images → data/personas/*/images 순으로 찾는다. 절대경로도 가능."
+    },
+    "resolution": {
+      "node": "4",
+      "field": "resolution",
+      "type": "number",
+      "default": 1080,
+      "description": "출력 짧은 변 픽셀. 1152x640 입력 → 1080이면 1944x1080."
+    },
+    "batch_size": {
+      "node": "4",
+      "field": "batch_size",
+      "type": "number",
+      "default": 21,
+      "description": "4n+1. 클수록 시간 일관성↑ VRAM↑."
+    },
+    "temporal_overlap": {
+      "node": "4",
+      "field": "temporal_overlap",
+      "type": "number",
+      "default": 3
+    },
+    "color_correction": {
+      "node": "4",
+      "field": "color_correction",
+      "type": "string",
+      "default": "lab"
+    },
+    "seed": {
+      "node": "4",
+      "field": "seed",
+      "type": "number",
+      "default": 42
+    },
+    "model": {
+      "node": "2",
+      "field": "model",
+      "type": "string",
+      "default": "seedvr2_ema_7b_fp8_e4m3fn_mixed_block35_fp16.safetensors",
+      "description": "빠른 버전: seedvr2_ema_3b_fp8_e4m3fn.safetensors (첫 사용 시 자동 다운로드). 선명 강조: seedvr2_ema_7b_sharp_fp8_e4m3fn_mixed_block35_fp16.safetensors"
+    },
+    "blocks_to_swap": {
+      "node": "2",
+      "field": "blocks_to_swap",
+      "type": "number",
+      "default": 20,
+      "description": "DiT 블록 CPU 스왑 수. 7B는 16GB에서 20 권장, 3B는 0."
+    },
+    "decode_tile_size": {
+      "node": "3",
+      "field": "decode_tile_size",
+      "type": "number",
+      "default": 512
+    },
+    "encode_tile_size": {
+      "node": "3",
+      "field": "encode_tile_size",
+      "type": "number",
+      "default": 512
+    },
+    "fps": {
+      "node": "91",
+      "field": "fps",
+      "type": "number",
+      "default": 24
+    },
+    "filename_prefix": {
+      "node": "92",
+      "field": "filename_prefix",
+      "type": "string",
+      "default": "video/seedvr2"
+    },
+    "decode_tile_overlap": {
+      "node": "3",
+      "field": "decode_tile_overlap",
+      "type": "number",
+      "default": 32,
+      "description": "타일 겹침. 64→32로 디코드 15% 단축, 이음새 없음(차분 확대 검증)."
+    }
+  }
+}
