@@ -1588,6 +1588,42 @@ server.registerTool(
   }
 );
 
+// update_variables — 세션 variables.json 얕은 병합 패치. 오랫동안 프롬프트(builder-prompt.md, panel-spec.md,
+// data/style-check/defaults.md, 페르소나 서브 지침)가 호출을 지시했지만 등록되지 않은 "유령 도구"였다(HANDOVER §5-8).
+// 패널 B.updateVariables와 같은 PATCH /api/sessions/{id}/variables 경로를 쓰므로 쓰기 원자성·__modals 병합 규칙이 동일하다.
+// 호출 형태 두 가지를 모두 받는다: { variables: { k: v } } 또는 기존 프롬프트 관례인 평평한 { k: v, ... }.
+server.registerTool(
+  "update_variables",
+  {
+    description:
+      "Shallow-merge keys into this session's variables.json (the [STATE] / panel variables). " +
+      "Pass either { variables: { key: value, ... } } or flat keys { key: value, ... }. " +
+      "Use for bookkeeping variables such as sub-agent reports, alerts, style-check verdicts, __popups. " +
+      "Game/world rules that live in a session engine tool should still go through run_tool.",
+    inputSchema: z
+      .object({
+        variables: z.record(z.string(), z.unknown()).optional().describe("Map of variable name → new value"),
+      })
+      .catchall(z.unknown()),
+  },
+  async (input) => {
+    if (mode !== "session" || !sessionId) return fail("update_variables is only available in session mode");
+    try {
+      const patch = {};
+      for (const [k, v] of Object.entries(input || {})) {
+        if (k !== "variables") patch[k] = v;
+      }
+      if (input && input.variables && typeof input.variables === "object") Object.assign(patch, input.variables);
+      const keys = Object.keys(patch);
+      if (keys.length === 0) return fail("No variables given. Pass { variables: { key: value } } or flat { key: value }.");
+      await requestJson("PATCH", `/api/sessions/${encodeURIComponent(sessionId)}/variables`, patch);
+      return ok({ updated: keys });
+    } catch (error) {
+      return fail(error);
+    }
+  }
+);
+
 server.registerTool(
   "bridge_restart_service",
   {

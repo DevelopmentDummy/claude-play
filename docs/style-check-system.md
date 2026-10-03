@@ -164,7 +164,7 @@ LLM 자가검토 프롬프트에 들어가는 일반 문체 가이드. 페르소
 - 컴팩션 hook: `data/skills/panel-design/references/engine-and-data.md` 참조
 - 코어 hook 실행 위치: `src/lib/session-instance.ts` — `runCompactionResumeHook()` / `runStyleCheckHook()` (함수명으로 검색; 라인 번호는 자주 밀림)
 - fire_ai 백그라운드 세션: `src/lib/background-session.ts:spawnBackgroundAI()`
-- 변수 갱신 경로: 백그라운드 검토 세션이 `update_variables` MCP 도구를 호출하도록 지시받음 (`data/style-check/defaults.md` "출력 형식" 절 + `review-prompt.md`). ⚠️ 2026-07-07 기준 `update_variables`는 `claude-play-mcp-server.mjs` 등록 도구 목록에 없음 — 검토 LLM이 실제로 변수를 어떻게 영속화하는지 런타임 검증 필요 (라이브 버그 가능성)
+- 변수 갱신 경로: 백그라운드 검토 세션이 `update_variables` MCP 도구를 호출하도록 지시받음 (`data/style-check/defaults.md` "출력 형식" 절 + `review-prompt.md`). 2026-10-04부터 `update_variables`가 `claude-play-mcp-server.mjs`에 실제 등록됨(`PATCH /api/sessions/{id}/variables` 경유) — 그전엔 미등록 유령 도구라 검토 LLM이 파일 편집 등으로 우회했다.
 
 ## 변경 영향 파일 (예상)
 
