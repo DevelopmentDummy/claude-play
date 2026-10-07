@@ -132,7 +132,7 @@ allowed-tools: Read, Write, Edit, Bash
 </script>
 ```
 
-`window.__panelBridge`가 제공하는 메서드 전체: `sendMessage`, `fillInput`, `updateVariables`, `updateData`, `updateLayout`, `queueEvent`, **`runTool`**, `openModal`, `closeModal`, `closeAllModals`, `focusPanel`, `emit`, `on`, `registerAction`, `executeAction`, `showPopup`, `showToast`, `confirm`, `jev`. 모두 `window.__panelBridge.` 프리픽스 필수 (`<script>` 안에서는 주입된 bare `__panelBridge`도 같다).
+`window.__panelBridge`가 제공하는 메서드 전체: `sendMessage`, `fillInput`, `updateVariables`, `updateData`, `updateLayout`, `queueEvent`, **`runTool`**, `openModal`, `closeModal`, `closeAllModals`, `focusPanel`, `emit`, `on`, `registerAction`, `executeAction`, `showPopup`, `showToast`, `confirm`, `jev`, `vectors`. 모두 `window.__panelBridge.` 프리픽스 필수 (`<script>` 안에서는 주입된 bare `__panelBridge`도 같다).
 
 **`__panelBridge.data`는 읽는 시점의 최신값이다** — 이벤트 핸들러·타이머 안에서 나중에 읽어도 실행 시점 값에 고정되지 않는다. 단 모달·독·인라인 패널에서 `const B = window.__panelBridge`로 window 객체를 변수에 담아 두면 그 시점 객체에 고정된다 — `<script>`에 주입된 bare `__panelBridge`를 쓰거나 읽을 때마다 다시 조회하라.
 

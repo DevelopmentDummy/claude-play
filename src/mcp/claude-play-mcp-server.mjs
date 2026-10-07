@@ -1401,6 +1401,107 @@ server.registerTool(
   }
 );
 
+// ── 임베딩·벡터 검색 (EmbeddingGemma 2) — 전부 POST /api/sessions/{id}/vectors 경유 ──
+const VECTOR_SCOPE_DESC =
+  "'session' (this session dir, default) | 'persona' (shared by every session of this persona) | 'global' (data/, all personas)";
+async function vectorCall(action, params) {
+  if (!sessionId) throw new Error("vector tools are only available inside a session (not the builder)");
+  const route = `/api/sessions/${encodeURIComponent(sessionId)}/vectors`;
+  return await requestJson("POST", route, { ...params, action });
+}
+
+server.registerTool(
+  "vector_search",
+  {
+    description:
+      "Semantic search over a local vector collection (EmbeddingGemma 2, multilingual text + images). " +
+      "Query by meaning, not keywords: a Korean query finds English text and vice versa; a text query can find images. " +
+      "Use to find earlier generated images to reuse, recall past events/notes (RAG), or look up reference docs. " +
+      "Scores are cosine similarity: compare them only within one modality (text↔text scores run higher than text↔image). " +
+      "Image hits return `source` = path relative to the scope dir (session: $IMAGE:images/x.png$, persona: $IMAGE:persona:x.png$). " +
+      "See the `embedding` skill.",
+    inputSchema: {
+      collection: z.string().describe("Collection name (letters, digits, . _ -)"),
+      query: z.string().optional().describe("Text query (use this or image)"),
+      image: z.string().optional().describe("Image path (relative to the scope dir) to find similar items"),
+      scope: z.enum(["session", "persona", "global"]).optional().describe(VECTOR_SCOPE_DESC),
+      topK: z.number().int().min(1).max(100).optional().describe("Default 5"),
+      minScore: z.number().optional().describe("Drop hits below this cosine score"),
+      filter: z.record(z.string(), z.any()).optional().describe("Exact-match filter on item meta fields"),
+      modality: z.enum(["text", "image"]).optional().describe("Only return this kind of item"),
+      dedupeBySource: z.boolean().optional().describe("Keep only the best hit per source file"),
+      task: z.string().optional().describe("Query prompt. Default 'query' (asymmetric retrieval). Use 'STS' for similar-sentence matching"),
+    },
+  },
+  async (args) => {
+    try {
+      return ok(await vectorCall("search", args));
+    } catch (error) {
+      return fail(error);
+    }
+  }
+);
+
+server.registerTool(
+  "vector_upsert",
+  {
+    description:
+      "Embed items and add/replace them (by id) in a vector collection; the collection is created on first use. " +
+      "Text item: {id, text, meta?, source?}. Image item: {id, image: path relative to scope dir, caption?, meta?}. " +
+      "Keep text items to a passage (a few sentences to ~1000 chars); for whole files use vector_manage index_file. " +
+      "All items in one collection share one dim (default 768; 256/512 for big low-stakes collections). See the `embedding` skill.",
+    inputSchema: {
+      collection: z.string(),
+      items: z.array(z.record(z.string(), z.any())).min(1).describe("[{id, text} | {id, image, caption?}] with optional meta/source"),
+      scope: z.enum(["session", "persona", "global"]).optional().describe(VECTOR_SCOPE_DESC),
+      dim: z.number().int().optional().describe("128 | 256 | 512 | 768. Only used when the collection is created"),
+    },
+  },
+  async (args) => {
+    try {
+      return ok(await vectorCall("upsert", args));
+    } catch (error) {
+      return fail(error);
+    }
+  }
+);
+
+server.registerTool(
+  "vector_manage",
+  {
+    description:
+      "Manage vector collections. Actions: " +
+      "index_dir {collection, dir='images', limit=200, prune=true} — embed every image in a dir incrementally (skips unchanged, prunes deleted; repeat while `remaining` > 0); " +
+      "index_file {collection, file, chunkChars=1000, force?} — chunk a text/markdown file (e.g. memory.md) and replace its chunks (skips if unchanged); " +
+      "list {scope?} — collections per scope; info {collection}; delete {collection, ids? | source?}; drop {collection}; " +
+      "embed {inputs:[{text}|{image}], task?, dim?} — raw vectors; warmup — preload the model (~15s cold start). " +
+      "See the `embedding` skill.",
+    inputSchema: {
+      action: z.enum(["index_dir", "index_file", "list", "info", "delete", "drop", "embed", "warmup"]),
+      scope: z.enum(["session", "persona", "global"]).optional().describe(VECTOR_SCOPE_DESC),
+      collection: z.string().optional(),
+      dir: z.string().optional(),
+      file: z.string().optional(),
+      limit: z.number().int().optional(),
+      prune: z.boolean().optional(),
+      chunkChars: z.number().int().optional(),
+      force: z.boolean().optional(),
+      ids: z.array(z.string()).optional(),
+      source: z.string().optional(),
+      inputs: z.array(z.record(z.string(), z.any())).optional(),
+      task: z.string().optional(),
+      dim: z.number().int().optional(),
+    },
+  },
+  async ({ action, ...params }) => {
+    try {
+      return ok(await vectorCall(action, params));
+    } catch (error) {
+      return fail(error);
+    }
+  }
+);
+
 server.registerTool(
   "run_tool",
   {

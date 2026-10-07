@@ -252,6 +252,8 @@ mcp__claude_play__run_tool({
 
 세 도구 모두 결과는 `images/` 디렉토리에 저장되며, `$IMAGE:...$` 토큰으로 응답에 삽입한다. 한번 생성한 이미지는 반드시 재사용한다.
 
+**재사용할 이미지 찾기 — 의미 검색:** `vector_*` MCP 도구가 있으면(로컬 EmbeddingGemma 2) 이미지 폴더를 `vector_manage { action: "index_dir", collection: "gallery" }`로 인덱싱해 두고, `vector_search { collection: "gallery", query: "장면 설명" }`으로 맞는 기존 이미지를 먼저 찾아라. 같은 도구로 긴 세션의 과거 사건(`memory.md` 등)도 뜻으로 찾을 수 있다. 사용법·점수 해석은 `embedding` 스킬. 도구가 503이면(서버 미설치) 조용히 건너뛴다.
+
 **⚠ `$IMAGE` 토큰 경로는 파일이 저장된 스코프에 따라 다르다 — 틀리면 이미지가 영원히 "생성 중..." 스피너로 남는다(404).**
 
 | 생성 호출 | 실제 저장 위치 | 채팅에 쓸 토큰 |

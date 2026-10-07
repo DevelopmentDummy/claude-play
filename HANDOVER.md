@@ -119,6 +119,12 @@
 - (i) **회귀 — main이 없는 기존 페르소나 1개 + 앱 모드 페르소나 1개**: 레이아웃 불변, 앱 모드에서 `stateChanged` 이중 발송 없음, 기존 패널의 `__panelBridge.data` 후행 읽기가 최신값
 - 패널 문서(`panel-spec.md`/`app-spec.md`)·빌더 프롬프트 변경은 머지 후 빌더 재실행·세션 재-open에서 사본이 갱신된다. `data/skills/panel-design`은 세션 재-open 시 전파.
 
+### 4-C. 임베딩·의미 검색 코어 (EmbeddingGemma 2, 브랜치 `feat/embedding-core`, 2026-10-07)
+`gpu-manager/embed_server.py`(전용 `venv-embed`, PORT+3) → `embedding-client`/`vector-store`/`vector-index` → `/api/sessions/[id]/vectors` + MCP `vector_search`/`vector_upsert`/`vector_manage` + `context.vectors` + `__panelBridge.vectors`. 지침: 공용 스킬 `data/skills/embedding`. 설계 `docs/specs/2026-10-07-embedding-core-design.md`, 함정 playbook §5.19.
+- 검증: 단위 14건 + `scratch/vector-live.ts`(실서버로 lib 전 액션). **남은 라이브**: 서버 재시작 후 spawn 로그 `[embed]` 확인, 세션 재open 후 MCP `vector_*` 1회, 패널 `vectors()` 1회.
+- 부수 변경: 안 쓰이는 `gpu-manager/venv`의 transformers 5.8→5.19 + sentence-transformers·accelerate·torchvision 추가(원복 기준 `scratch/gpu-venv-freeze-before-embed.txt`).
+- 범위 밖(다음 후보): 이미지 생성 시 자동 인덱싱 훅, 기억 자동 주입, 오디오·영상 임베딩, 외부 MCP 노출.
+
 ## 5. 사용자 결정 대기
 
 1. **soft-delete 누적**: `data/deleted_sessions` **163개 / 4.47GB** (2026-06-06의 52개/2.4GB에서 3배). 복구 지향 설계라 자율 정리 금지 — 보존 기간/정책 결정 필요. `data/deleted_personas`는 24개/0.13GB.

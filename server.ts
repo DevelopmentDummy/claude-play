@@ -23,9 +23,11 @@ const port = parseInt(process.env.PORT || "3340", 10);
 const ttsPort = parseInt(process.env.TTS_PORT || String(port + 1), 10);
 const GPU_MANAGER_PORT = parseInt(process.env.GPU_MANAGER_PORT || String(port + 2), 10);
 const GPU_MANAGER_PYTHON = process.env.GPU_MANAGER_PYTHON || "python";
+const EMBED_PORT = parseInt(process.env.EMBED_PORT || String(port + 3), 10);
 interface ServerGlobals extends Record<string, unknown> {
   __ttsPid?: number;
   __gpuManagerPid?: number;
+  __embedPid?: number;
   __comfyuiPid?: number;
   __cleanupRegistered?: boolean;
   __shuttingDown?: boolean;
@@ -172,6 +174,40 @@ async function waitForGpuManager(maxWaitMs = 30_000): Promise<boolean> {
     for (const buf of gpuManagerBuffered) process.stderr.write(buf);
     gpuManagerBuffered.length = 0;
   }
+}
+
+/**
+ * Spawn the EmbeddingGemma 2 server (gpu-manager/embed_server.py). Optional:
+ * runs only when its dedicated venv exists — it cannot share the GPU Manager
+ * interpreter (transformers pin conflict, playbook §5.19). The model itself is
+ * lazy-loaded on first request, so an idle server holds no VRAM.
+ */
+function spawnEmbedServer(): ChildProcess | null {
+  if (process.env.EMBED_ENABLED === "false") {
+    console.log("[embed] disabled via EMBED_ENABLED=false");
+    return null;
+  }
+  const script = path.join(process.cwd(), "gpu-manager", "embed_server.py");
+  const python = process.env.EMBED_PYTHON || (process.platform === "win32"
+    ? path.join(process.cwd(), "gpu-manager", "venv-embed", "Scripts", "python.exe")
+    : path.join(process.cwd(), "gpu-manager", "venv-embed", "bin", "python"));
+  if (!fs.existsSync(script) || (!process.env.EMBED_PYTHON && !fs.existsSync(python))) {
+    console.log("[embed] gpu-manager/venv-embed not installed — embedding features disabled");
+    return null;
+  }
+  const child = spawn(python, [script, "--port", String(EMBED_PORT)], {
+    stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env, HF_HUB_DISABLE_SYMLINKS_WARNING: "1", PYTHONIOENCODING: "utf-8" },
+    windowsHide: true,
+  });
+  child.stdout?.on("data", (d: Buffer) => process.stdout.write(d));
+  child.stderr?.on("data", (d: Buffer) => process.stderr.write(d));
+  child.on("exit", (code) => {
+    if (!g.__shuttingDown && code !== null && code !== 0) {
+      console.error(`[embed] exited with code ${code} — embedding features unavailable until restart`);
+    }
+  });
+  return child;
 }
 
 /**
@@ -367,6 +403,7 @@ function cleanupManagedProcesses(): void {
   g.__shuttingDown = true;
   killPid(g.__ttsPid);
   killPid(g.__gpuManagerPid);
+  killPid(g.__embedPid);
   killPid(g.__comfyuiPid);
   destroyAllBackgroundProcesses();
   // Tree-kill all active session AI processes (Antigravity/Claude/Codex/Gemini/Kimi)
@@ -397,9 +434,11 @@ function killStaleAntigravityProcesses(): void {
 // Kill previous child processes from prior hot-reload cycle
 killPid(g.__ttsPid);
 killPid(g.__gpuManagerPid);
+killPid(g.__embedPid);
 killPid(g.__comfyuiPid);
-// Also kill anything still on GPU Manager port (fallback)
+// Also kill anything still on GPU Manager / embed ports (fallback)
 killProcessOnPort(GPU_MANAGER_PORT);
+killProcessOnPort(EMBED_PORT);
 // Sweep orphan Antigravity agy.exe processes from prior crashes/hot-reloads
 killStaleAntigravityProcesses();
 // Reap any sub-agent PIDs that survived a previous server boot
@@ -407,9 +446,11 @@ reapOrphanSubProcs();
 
 const ttsProcess = spawnTtsServer();
 let gpuManagerProcess = spawnGpuManager();
+const embedProcess = spawnEmbedServer();
 const comfyuiProcess = spawnComfyui();
 g.__ttsPid = ttsProcess?.pid;
 g.__gpuManagerPid = gpuManagerProcess?.pid;
+g.__embedPid = embedProcess?.pid;
 g.__comfyuiPid = comfyuiProcess?.pid;
 g.__shuttingDown = false;
 

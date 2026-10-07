@@ -159,6 +159,18 @@ export function usePanelBridge(
         if (!res.ok) throw new Error(data?.error || `Jev request failed (${res.status})`);
         return data;
       },
+      /** 임베딩·벡터 검색(EmbeddingGemma 2). action: search/upsert/index_dir/index_file/list/info/delete/drop/embed/warmup — `embedding` 스킬 참조. */
+      async vectors(action: string, params?: Record<string, unknown>) {
+        if (!sessionId) throw new Error("vectors() needs an active session");
+        const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/vectors`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...(params ?? {}), action }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error || `vectors(${action}) failed (${res.status})`);
+        return data;
+      },
       fillInput(text: string) {
         window.dispatchEvent(new CustomEvent("__panel_fill_input", { detail: text }));
       },

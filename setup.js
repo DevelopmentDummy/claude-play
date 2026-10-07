@@ -167,6 +167,21 @@ async function stepLocalTTS(pip, gpuInfo) {
   }
 }
 
+async function stepEmbedding(python, gpuInfo) {
+  if (!python || !gpuInfo.hasGpu) return;
+  header("Step 6b: Embedding / Semantic Search (Optional)");
+  info("EmbeddingGemma 2 — 텍스트·이미지 의미 검색, 기억 RAG (VRAM 약 1.5GB, 다운로드 약 4GB)");
+  info("전용 venv(gpu-manager/venv-embed)에 설치한다 — TTS/STT 환경과 transformers 버전이 충돌하기 때문 (playbook §5.19)");
+  const choice = await ask("설치할까요? [y/N]", "n");
+  if (!/^y/i.test(choice)) return;
+  const venvDir = path.join(__dirname, "gpu-manager", "venv-embed");
+  if (!fs.existsSync(venvDir)) run(`${python} -m venv "${venvDir}"`);
+  const pip = os.platform() === "win32" ? path.join(venvDir, "Scripts", "pip") : path.join(venvDir, "bin", "pip");
+  run(`"${pip}" install torch torchvision --index-url https://download.pytorch.org/whl/${gpuInfo.cudaTag}`);
+  run(`"${pip}" install -r "${path.join(__dirname, "gpu-manager", "requirements-embed.txt")}"`);
+  info("Embedding server installed — server.ts가 다음 기동부터 자동으로 띄운다");
+}
+
 async function stepComfyUI(gpuInfo) {
   if (!gpuInfo || !gpuInfo.hasGpu || gpuInfo.vram < 8000) return false;
   header("Step 7: ComfyUI Setup (Optional)");

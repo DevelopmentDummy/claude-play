@@ -229,6 +229,23 @@ const off = __panelBridge.on('panel:chapter-select', (detail) => showChapter(det
 
 `window.dispatchEvent(new CustomEvent(...))` 직접 발송(turn-choreography 패턴 9)보다 이쪽을 권장한다 — 사이드바·무대 패널에서는 구독이 자동 정리된다.
 
+### `vectors(action: string, params?: object): Promise<object>`
+
+로컬 임베딩·의미 검색(EmbeddingGemma 2, 다국어 텍스트 + 이미지). `POST /api/sessions/{id}/vectors` 래퍼. 액션: `search` · `upsert` · `index_dir` · `index_file` · `list` · `info` · `delete` · `drop` · `embed` · `warmup`. 스코프·컬렉션 설계·점수 해석은 공용 스킬 `embedding`.
+
+```js
+// 갤러리 검색 패널 — 열릴 때 모델을 미리 올려 첫 검색의 콜드 로드(10~15초)를 숨긴다
+__panelBridge.vectors('warmup');
+async function find(q) {
+  const { hits } = await __panelBridge.vectors('search', {
+    scope: 'persona', collection: 'gallery', query: q, topK: 12, dedupeBySource: true,
+  });
+  return hits.map((h) => h.source); // persona 스코프 → 이미지 URL은 persona-images 경로
+}
+```
+
+임베딩 서버가 없으면 503 오류를 던진다 — 패널은 검색 UI를 숨기는 식으로 조용히 대응하라.
+
 ### `on(event: string, handler: function): function`
 브릿지 이벤트 구독. 반환값은 구독 해제 함수.
 

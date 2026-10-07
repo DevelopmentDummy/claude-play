@@ -1,7 +1,8 @@
 /**
  * Single source of truth for the service's own ports / base URLs.
  * Mirrors the port relationships defined in server.ts:
- *   TTS = PORT+1, GPU manager = PORT+2 (default PORT 3340 → 3341 / 3342).
+ *   TTS = PORT+1, GPU manager = PORT+2, embedding server = PORT+3
+ *   (default PORT 3340 → 3341 / 3342 / 3343).
  * Every consumer should use these instead of re-deriving the defaults, so a
  * non-default PORT stays consistent everywhere.
  *
@@ -18,6 +19,15 @@ export function getTtsPort(): number {
 
 export function getGpuManagerPort(): number {
   return parseInt(process.env.GPU_MANAGER_PORT || String(getPort() + 2), 10);
+}
+
+export function getEmbedPort(): number {
+  return parseInt(process.env.EMBED_PORT || String(getPort() + 3), 10);
+}
+
+/** EmbeddingGemma 2 server base URL, e.g. http://127.0.0.1:3343 */
+export function getEmbedUrl(): string {
+  return `http://127.0.0.1:${getEmbedPort()}`;
 }
 
 /** Self API base, e.g. http://127.0.0.1:3340 (honors CLAUDE_PLAY_API_BASE; no trailing slash). */

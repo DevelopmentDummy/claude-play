@@ -21,6 +21,9 @@ module.exports = async function(context, args) {
   // context.data       — 커스텀 데이터 파일들 { inventory: {...}, world: {...} }
   //                      (키는 파일명에서 .json 제거)
   // context.sessionDir — 세션 디렉토리 절대 경로 (직접 파일 I/O 가능)
+  // context.jev(state, questions)      — Jev 빠른 판단 (jev 스킬)
+  // context.vectors(action, params)    — 임베딩·의미 검색 (embedding 스킬). 10초 제한 → 먼저 vectors("warmup")
+  //                                       월드 엔진 step() 안에서는 둘 다 호출 금지
 
   const { action, ...params } = args;
   const handler = ACTIONS[action];

@@ -80,6 +80,12 @@
 | `TTS_MODEL_PATH` | (auto) | Local model path override for the GPU Manager Qwen3-TTS engine (read by `gpu-manager/server.py`) |
 | `ASR_MODEL_SIZE` | `1.7B` | Qwen3-ASR size (`1.7B` / `0.6B`) sent by `src/lib/stt.ts` |
 | `ASR_MODEL_PATH` | (auto) | Local model path override for the GPU Manager Qwen3-ASR engine (read by `gpu-manager/server.py`) |
+| `EMBED_ENABLED` | `true` | 임베딩 서버 spawn 여부 (`dev:lite`는 false). venv-embed가 없으면 어차피 건너뛴다 |
+| `EMBED_PORT` | `PORT+3` | EmbeddingGemma 2 서버 포트 (`src/lib/endpoints.ts` `getEmbedPort()`) |
+| `EMBED_PYTHON` | `gpu-manager/venv-embed` python | 임베딩 서버 인터프리터. **GPU Manager 환경을 가리키게 하지 말 것** (transformers 핀 충돌, playbook §5.19) |
+| `EMBED_MODEL_PATH` | `google/embeddinggemma-2` | 모델 id 또는 로컬 경로 (`embed_server.py`) |
+| `EMBED_IDLE_TIMEOUT` | `300` | 미사용 N초 후 모델 언로드 (VRAM ~1.5GB 반환) |
+| `EMBED_MAX_SEQ` | `2048` | 텍스트 입력 최대 토큰 (체크포인트 기본값이 비정상이라 서버가 고정) |
 | `ASR_IDLE_TIMEOUT` | `600` | Seconds of STT inactivity before the ASR model is unloaded (read by `gpu-manager/asr_engine.py`) |
 | `VOXCPM_MODEL_PATH` | (auto) | Local model path override for the GPU Manager VoxCPM engine (read by `gpu-manager/server.py`) |
 

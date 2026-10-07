@@ -1,0 +1,9 @@
+# EmbeddingGemma 2 server (embed_server.py). Install ONLY into gpu-manager/venv-embed —
+# never into the GPU Manager env: qwen-tts/qwen-asr pin transformers==4.57.x (playbook §5.10).
+# torch/torchvision must come from the CUDA index first (setup.js does this).
+transformers>=5.19
+sentence-transformers>=6.1
+accelerate
+fastapi>=0.115.0
+uvicorn>=0.30.0
+pillow

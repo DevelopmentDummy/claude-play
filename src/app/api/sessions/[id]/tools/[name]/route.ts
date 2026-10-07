@@ -6,6 +6,7 @@ import { spawnBackgroundAI } from "@/lib/background-session";
 import { mutateSessionJson, applyPatch, loadSessionData, resolveSessionFilePath } from "@/lib/session-state";
 import { readModalGroups, applyModalChange } from "@/lib/modal-merge";
 import { askJev, type AskJevOptions, type JevQuestion } from "@/lib/jev-client";
+import { runVectorAction } from "@/lib/vector-index";
 
 const PROTECTED_FILES = new Set([
   "session.json", "builder-session.json", "layout.json",
@@ -69,7 +70,10 @@ export async function POST(
   // context.jev: 페르소나 도구가 Jev(빠른 판단 모델)를 await로 부른다. 월드 엔진 step()에서는 쓰지 말 것(월드 시계를 막는다).
   const jev = (state: unknown, questions: Record<string, JevQuestion>, opts?: Pick<AskJevOptions, "model" | "timeoutMs">) =>
     askJev(state, questions, { model: opts?.model, timeoutMs: opts?.timeoutMs });
-  const context = { variables: { ...variables }, data, sessionDir, personaDir, personaName, jev };
+  // context.vectors: 임베딩·벡터 검색(EmbeddingGemma 2). 콜드 로드가 10초 도구 제한을 넘을 수 있으니 먼저 vectors("warmup").
+  const vectors = (vAction: string, vParams?: Record<string, unknown>) =>
+    runVectorAction({ sessionDir, personaDir }, vAction, vParams ?? {});
+  const context = { variables: { ...variables }, data, sessionDir, personaDir, personaName, jev, vectors };
 
   // Execute tool with timeout
   try {
