@@ -49,6 +49,8 @@ export interface VoiceInputOptions {
   onInsert: (text: string) => void;
   /** handsFree 세션의 결과 — 바로 전송. text는 이미 trim 됨. */
   onAutoSend: (text: string) => void;
+  /** 사용자에게 보일 짧은 알림(인식 실패 등). handsFree는 곧 재무장되므로 수동 세션에서만 부른다. */
+  onNotice?: (message: string) => void;
 }
 
 export interface VoiceInput {
@@ -65,15 +67,15 @@ export interface VoiceInput {
   cancel: () => void;
 }
 
-export function useVoiceInput({ inputRef, sessionId, autoSendDelay, onInsert, onAutoSend }: VoiceInputOptions): VoiceInput {
+export function useVoiceInput({ inputRef, sessionId, autoSendDelay, onInsert, onAutoSend, onNotice }: VoiceInputOptions): VoiceInput {
   const [mode, setMode] = useState<VoiceMode>("none");
   const [state, setState] = useState<VoiceState>("idle");
   const [countdown, setCountdown] = useState(false);
   const [handsFree, setHandsFree] = useState(false);
 
   // 콜백·설정은 ref로 들고 있어 엔진 함수들이 매 렌더 새로 만들어지지 않게 한다.
-  const cb = useRef({ onInsert, onAutoSend, sessionId, autoSendDelay });
-  cb.current = { onInsert, onAutoSend, sessionId, autoSendDelay };
+  const cb = useRef({ onInsert, onAutoSend, onNotice, sessionId, autoSendDelay });
+  cb.current = { onInsert, onAutoSend, onNotice, sessionId, autoSendDelay };
 
   const recognitionRef = useRef<ISpeechRecognition | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -151,7 +153,10 @@ export function useVoiceInput({ inputRef, sessionId, autoSendDelay, onInsert, on
       if (gen !== genRef.current) return; // 그 사이 취소·새 세션
       const text = typeof data.text === "string" ? data.text.trim() : "";
       if (data.contextEcho) console.warn("[stt] server dropped a context echo", { recovered: !!text });
-      if (!text) return;
+      if (!text) {
+        if (!autoSend) cb.current.onNotice?.("음성을 알아듣지 못했어요. 다시 말씀해 주세요.");
+        return;
+      }
       if (autoSend) {
         const el = inputRef.current;
         const pending = el?.value.trim();
@@ -285,12 +290,13 @@ export function useVoiceInput({ inputRef, sessionId, autoSendDelay, onInsert, on
             timerRef.current = null;
             setCountdown(false);
             const text = el.value.trim();
-            cancel(); // 엔진 정리(입력창 값은 건드리지 않음)
+            // 보내기(호출측이 재무장 블록을 건다)를 먼저, 엔진 정리(state→idle)는 그다음 — idle이 재무장을 부르기 전에 블록이 서 있게.
             if (text) {
               el.value = "";
               el.style.height = "auto";
               cb.current.onAutoSend(text);
             }
+            cancel();
           }, cb.current.autoSendDelay);
         }
         prevFinal = finalCount;

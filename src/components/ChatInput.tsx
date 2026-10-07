@@ -157,6 +157,7 @@ function ChatInput({ disabled, isStreaming, onSend, onCancel, sessionId, choices
     sessionId,
     autoSendDelay,
     onInsert: (text) => { insertRef.current(text); voiceInsertedRef.current = true; },
+    onNotice: (message) => showToast(message),
     onAutoSend: (text) => {
       autoBlockedRef.current = true;
       const tagged = `[STT] ${text}`;
@@ -444,6 +445,7 @@ function ChatInput({ disabled, isStreaming, onSend, onCancel, sessionId, choices
   //     턴 종료~첫 오디오 사이 틈에 켜면 스피커로 나오는 AI 음성을 녹음해 그대로 전사한다
   //     (2026-10-07 실측 — STT가 AI 대사와 문맥 머리말을 사용자 입력으로 보냈다).
   // 자동 세션은 스트리밍이나 TTS가 시작되면 즉시 버린다. 수동 세션은 사용자가 끈다.
+  // `disabled`는 여기서 compacting 신호로만 쓰인다(스트리밍은 isStreaming이 직접 막는다 — 개입 ON이면 disabled=false라 턴 종료 신호가 못 된다).
   const turnIdle = !isStreaming && !disabled && !ttsPlaying;
   /** 이번 턴이 끝난 뒤 AI 음성이 한 번 재생을 마쳤나 — 사용자 메시지 낭독(스트리밍 중 재생)은 세지 않는다. */
   const ttsHeardRef = useRef(false);
@@ -451,6 +453,8 @@ function ChatInput({ disabled, isStreaming, onSend, onCancel, sessionId, choices
   useEffect(() => {
     if (isStreaming) { ttsHeardRef.current = false; autoBlockedRef.current = false; }
   }, [isStreaming]);
+  // 음성 대화를 켜는 순간도 재무장 계기 — 말없이 마이크를 직접 끈 뒤(턴이 없어 블록이 안 풀림) 다시 켤 수 있게.
+  useEffect(() => { if (voiceChat) autoBlockedRef.current = false; }, [voiceChat]);
   useEffect(() => {
     if (prevTtsPlayingRef.current && !ttsPlaying && !isStreaming) ttsHeardRef.current = true;
     prevTtsPlayingRef.current = !!ttsPlaying;

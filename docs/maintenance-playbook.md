@@ -261,7 +261,7 @@ Next.js App Router의 `useParams()`는 라우트 세그먼트를 **URL 인코딩
 2026-10-07 증상: 음성 대화 중 STT가 사용자 말 대신 **STT 문맥 머리말**("다음은 한국어 롤플레이 대화의 최근 내용이다…")과 **AI 대사**를 사용자 입력으로 보냈다. 원인 둘이 겹쳤다.
 - **마이크가 너무 일찍 켜졌다**: 자동 시작 조건이 `!disabled`였는데, 턴 중 개입 ON이면 스트리밍 중에도 `disabled=false`라 TTS 한 조각이 끝나는 순간 응답 도중에 마이크가 켜졌다. 또 턴 종료~첫 TTS 오디오 사이(`ttsPlaying=false`인 1~2초)에도 켜져 스피커의 AI 음성을 녹음했다. → `useVoiceInput` 훅 분리 + ChatInput 정책(스트리밍·TTS 재생 중 금지, 자동 TTS면 첫 음성까지 대기, 자동 세션은 턴/TTS 시작 시 폐기).
 - **Qwen3-ASR 문맥 누출**: 말소리가 약하거나 녹음된 게 문맥과 같은 AI 음성이면 context(system turn)를 그대로 읽어 낸다. 그 결과가 기록에 남으면 다음 문맥에 다시 들어가 **악순환**(두 번째엔 대화 전체). → `stt.ts` `looksLikeContextEcho()`: 결과가 머리말을 포함하거나 결과 전체가 문맥의 일부면 **문맥 없이 재인식**(실제 발화 복구), 그래도 누출이면 빈 결과(`contextEcho: true`). 문맥을 만들 때 예전에 누출된 메시지는 제외.
-- **규칙**: 자동 마이크 시작 조건에 `disabled`(입력 가능 여부)를 쓰지 마라 — 개입 기능 때문에 "턴 종료"와 다르다. `isStreaming` + `ttsPlaying` + TTS 예정 여부를 봐라.
+- **규칙**: 자동 마이크 시작 조건을 `disabled`(입력 가능 여부)**만으로** 판단하지 마라 — 개입 기능 때문에 "턴 종료"와 다르다. `isStreaming` + `ttsPlaying` + TTS 예정 여부를 봐라(ChatInput의 `disabled`는 compacting 신호로만 함께 쓴다). 음성 대화를 켜는 순간은 재무장 블록을 푼다.
 
 ### 5.19 EmbeddingGemma 2는 GPU Manager 환경에 넣지 마라 (transformers 5.19+ vs 4.57.x 정확 핀)
 `google/embeddinggemma-2`는 **transformers ≥ 5.19**(5.8은 `embedding_gemma2` 미인식)와 **torchvision**(없으면 `EmbeddingGemma2Processor` import 실패 — 에러 메시지가 원인을 숨긴다)이 필요하다. GPU Manager가 실제로 도는 인터프리터(이 머신은 `GPU_MANAGER_PYTHON` 미설정 → 시스템 Python 3.12)는 qwen-tts/qwen-asr 때문에 `transformers==4.57.x` 정확 핀이다(§5.10). **양립 불가** → 전용 `gpu-manager/venv-embed` + 별도 프로세스 `embed_server.py`(PORT+3)로 분리했다 (2026-10-07).
