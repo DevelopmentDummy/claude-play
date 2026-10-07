@@ -58,6 +58,11 @@
       "type": "boolean",
       "default": false,
       "description": "true면 4x-AnimeSharp로 net 2x 업스케일"
+    },
+    "loras": {
+      "type": "array",
+      "required": false,
+      "description": "Z-Image(ZIT) 전용 LoRA 체인 [{name,strength}]. UNET→LoraLoaderModelOnly 체인→ModelSamplingAuraFlow. 최상위 loras는 무시되니 반드시 params.loras로 넘겨라. Illustrious LoRA 비호환."
     }
   }
 }
