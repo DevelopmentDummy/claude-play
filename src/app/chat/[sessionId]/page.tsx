@@ -1419,6 +1419,7 @@ export default function ChatPage() {
                 pendingEvents={pendingEvents}
                 voiceChat={voiceChat}
                 ttsPlaying={ttsPlaying}
+                ttsExpected={autoPlay}
                 autoSendDelay={typeof chatOptions.autoSendDelay === "number" ? chatOptions.autoSendDelay : undefined}
                 autoplayActive={autoplayOn}
                 onAutoplayToggle={handleAutoplayToggle}

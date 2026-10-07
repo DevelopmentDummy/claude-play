@@ -7,42 +7,14 @@ import { getPanelActionRegistry } from "@/lib/panel-action-registry";
 import { FOCUS_PANEL_EVENT } from "@/lib/use-panel-bridge";
 import { isResidentPlacement, resolvePanelPlacement } from "@/lib/stage-layout";
 import UsageIndicator from "./UsageIndicator";
+import { useVoiceInput } from "@/hooks/useVoiceInput";
 import type { Choice } from "./ChatMessages";
 
-// Web Speech API type shim (not in default DOM lib)
-interface SpeechRecognitionEvent extends Event {
-  results: SpeechRecognitionResultList;
-}
-interface SpeechRecognitionResultList {
-  length: number;
-  [index: number]: SpeechRecognitionResult;
-}
-interface SpeechRecognitionResult {
-  isFinal: boolean;
-  length: number;
-  [index: number]: SpeechRecognitionAlternative;
-}
-interface SpeechRecognitionAlternative {
-  transcript: string;
-  confidence: number;
-}
-interface ISpeechRecognition extends EventTarget {
-  lang: string;
-  continuous: boolean;
-  interimResults: boolean;
-  onresult: ((event: SpeechRecognitionEvent) => void) | null;
-  onspeechstart: ((event: Event) => void) | null;
-  onerror: ((event: Event) => void) | null;
-  onend: (() => void) | null;
-  start(): void;
-  stop(): void;
-}
-declare global {
-  interface Window {
-    SpeechRecognition?: { new(): ISpeechRecognition };
-    webkitSpeechRecognition?: { new(): ISpeechRecognition };
-  }
-}
+
+/** 자동 마이크: 조건이 갖춰진 뒤 켜기까지의 지연(연속 이벤트 흡수). */
+const VOICE_ARM_DELAY_MS = 400;
+/** 자동 TTS가 켜져 있을 때 턴 종료 후 첫 음성을 기다리는 최대 시간. 응답에 대사가 없으면 이만큼 늦게 켜진다. */
+const TTS_START_GRACE_MS = 4000;
 
 /** Choice button with portal-based tooltip that escapes overflow clipping */
 function ChoiceButton({ choice, busy, onChoice, sessionId }: { choice: Choice; busy: boolean; onChoice: (c: Choice) => void; sessionId?: string }) {
@@ -138,6 +110,8 @@ interface ChatInputProps {
   voiceChat?: boolean;
   /** TTS is currently playing audio */
   ttsPlaying?: boolean;
+  /** 자동 TTS가 켜져 있음 — 턴 종료 후 음성이 곧 재생될 수 있으니 자동 마이크가 그걸 기다린다 */
+  ttsExpected?: boolean;
   /** Auto-send delay in ms (default 3000) */
   autoSendDelay?: number;
   /** Autoplay mode active */
@@ -161,7 +135,7 @@ interface ChatInputProps {
   compact?: boolean;
 }
 
-function ChatInput({ disabled, isStreaming, onSend, onCancel, sessionId, choices, pendingEvents, showOOC, onOOCToggle, voiceChat, ttsPlaying, autoSendDelay = 3000, autoplayActive, onAutoplayToggle, interjectActive, onInterjectToggle, steeringPresetName, onSteeringEdit, usageProvider, usageSessionId, usageRefreshTrigger, onUsageClick, compact = false }: ChatInputProps) {
+function ChatInput({ disabled, isStreaming, onSend, onCancel, sessionId, choices, pendingEvents, showOOC, onOOCToggle, voiceChat, ttsPlaying, ttsExpected, autoSendDelay = 3000, autoplayActive, onAutoplayToggle, interjectActive, onInterjectToggle, steeringPresetName, onSteeringEdit, usageProvider, usageSessionId, usageRefreshTrigger, onUsageClick, compact = false }: ChatInputProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [oocMode, setOocMode] = useState(false);
   const [choiceBusy, setChoiceBusy] = useState(false);
@@ -173,7 +147,22 @@ function ChatInput({ disabled, isStreaming, onSend, onCancel, sessionId, choices
   const choicesKey = choices?.map(c => c.text).join("\0");
   useEffect(() => { setConsumedDryTexts(new Set()); }, [choicesKey]);
   const composingRef = useRef(false);
-  const sttSuppressRef = useRef(false); // suppress STT onresult after send
+  // --- 음성 입력 (엔진: useVoiceInput) ---
+  const insertRef = useRef<(text: string) => void>(() => {});
+  const voiceInsertedRef = useRef(false); // 음성 결과가 입력창에 들어감 → 전송 시 [STT] 태그
+  /** 자동 마이크 재무장 금지 — 전송 직후(스트리밍 시작 전 틈)와 사용자가 자동 마이크를 직접 끈 경우. 다음 턴 시작 때 풀린다. */
+  const autoBlockedRef = useRef(false);
+  const voice = useVoiceInput({
+    inputRef,
+    sessionId,
+    autoSendDelay,
+    onInsert: (text) => { insertRef.current(text); voiceInsertedRef.current = true; },
+    onAutoSend: (text) => {
+      autoBlockedRef.current = true;
+      const tagged = `[STT] ${text}`;
+      onSend(oocModeRef.current && !tagged.startsWith("OOC:") ? `OOC: ${tagged}` : tagged);
+    },
+  });
 
   // Sync oocMode when showOOC changes externally (e.g. sync OOC message)
   useEffect(() => {
@@ -184,19 +173,11 @@ function ChatInput({ disabled, isStreaming, onSend, onCancel, sessionId, choices
   }, [showOOC]);
 
   const handleSend = useCallback(() => {
-    // Suppress any pending STT results before clearing input
-    clearAutoSendTimer();
-    const wasSTT = !!(recognitionRef.current || mediaRecorderRef.current) || recorderTextInsertedRef.current;
-    recorderTextInsertedRef.current = false;
-    sttSuppressRef.current = true;
-    if (recognitionRef.current) {
-      recognitionRef.current.stop();
-      recognitionRef.current = null;
-    }
-    if (mediaRecorderRef.current) {
-      discardRecorder();
-    }
-    setSttActive(false);
+    // 진행 중인 음성 세션은 버린다(web 엔진이 받아쓴 글은 입력창에 남아 그대로 전송된다).
+    const wasSTT = voice.state === "listening" || voiceInsertedRef.current;
+    voiceInsertedRef.current = false;
+    autoBlockedRef.current = true;
+    voice.cancel();
     const raw = inputRef.current?.value.trim();
     if (!raw) return;
     const tagged = wasSTT ? `[STT] ${raw}` : raw;
@@ -206,7 +187,7 @@ function ChatInput({ disabled, isStreaming, onSend, onCancel, sessionId, choices
       inputRef.current.value = "";
       inputRef.current.style.height = "auto";
     }
-  }, [onSend]);
+  }, [onSend, voice]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -453,358 +434,55 @@ function ChatInput({ disabled, isStreaming, onSend, onCancel, sessionId, choices
     return () => window.removeEventListener("__panel_fill_input", handler);
   }, [insertAtCursor]);
 
-  // --- Speech-to-Text ---
-  // Mode A: Web Speech API (Chrome desktop, etc.) — real-time streaming
-  // Mode B: MediaRecorder → server STT — record then transcribe.
-  //   Server = Qwen3-ASR with recent-conversation context (falls back to ComfyUI Whisper).
-  //   Preferred over Mode A whenever GPU Manager reports asr_available, since Web Speech
-  //   cannot take context and mangles character names / proper nouns.
-  const recognitionRef = useRef<ISpeechRecognition | null>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
-  const mediaStreamRef = useRef<MediaStream | null>(null);
-  const silenceCleanupRef = useRef<(() => void) | null>(null);
-  const recorderTextInsertedRef = useRef(false); // recorder 결과가 입력창에 들어감 → 전송 시 [STT] 태그
-  const [sttActive, setSttActive] = useState(false);
-  const [sttTranscribing, setSttTranscribing] = useState(false);
-  const [sttMode, setSttMode] = useState<"none" | "web" | "recorder">("none");
-  const autoSendTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [autoSendCountdown, setAutoSendCountdown] = useState(false); // true = 3s countdown active
-  const prevDisabledRef = useRef(disabled);
-  const AUTO_SEND_DELAY = autoSendDelay;
+  insertRef.current = insertAtCursor;
 
+  // --- 음성 대화 정책 ---
+  // 자동 마이크는 "턴이 완전히 끝난 뒤"에만 켠다.
+  //  1) 스트리밍 중엔 안 켠다 — 턴 중 개입이 켜져 입력창이 살아 있어도(disabled=false) 마찬가지.
+  //  2) TTS 재생 중엔 안 켠다.
+  //  3) 자동 TTS가 켜져 있으면 턴 종료 후 첫 음성이 시작될 때까지 기다린다(TTS_START_GRACE_MS).
+  //     턴 종료~첫 오디오 사이 틈에 켜면 스피커로 나오는 AI 음성을 녹음해 그대로 전사한다
+  //     (2026-10-07 실측 — STT가 AI 대사와 문맥 머리말을 사용자 입력으로 보냈다).
+  // 자동 세션은 스트리밍이나 TTS가 시작되면 즉시 버린다. 수동 세션은 사용자가 끈다.
+  const turnIdle = !isStreaming && !disabled && !ttsPlaying;
+  /** 이번 턴이 끝난 뒤 AI 음성이 한 번 재생을 마쳤나 — 사용자 메시지 낭독(스트리밍 중 재생)은 세지 않는다. */
+  const ttsHeardRef = useRef(false);
+  const prevTtsPlayingRef = useRef(!!ttsPlaying);
   useEffect(() => {
-    const hasRecorder = typeof MediaRecorder !== "undefined" && !!navigator.mediaDevices?.getUserMedia;
-    if (window.SpeechRecognition || window.webkitSpeechRecognition) {
-      setSttMode("web");
-    } else if (hasRecorder) {
-      setSttMode("recorder");
-    }
-    if (!hasRecorder) return;
-    let cancelled = false;
-    fetch("/api/setup/tts-status")
-      .then((r) => r.json())
-      // 응답 전에 이미 Web Speech로 마이크를 켰다면 모드를 뒤집지 않는다 (toggle이 엉뚱한 stop을 부름)
-      .then((d: { asrAvailable?: boolean }) => { if (!cancelled && d.asrAvailable && !recognitionRef.current) setSttMode("recorder"); })
-      .catch(() => { /* keep Web Speech */ });
-    return () => { cancelled = true; };
-  }, []);
-
-  // -- Mode A: Web Speech API --
-  const stopWebSTT = useCallback(() => {
-    recognitionRef.current?.stop();
-    recognitionRef.current = null;
-    setSttActive(false);
-  }, []);
-
-  const clearAutoSendTimer = useCallback(() => {
-    if (autoSendTimerRef.current) {
-      clearTimeout(autoSendTimerRef.current);
-      autoSendTimerRef.current = null;
-    }
-    setAutoSendCountdown(false);
-  }, []);
-
-  // Ref to allow onend to call a fresh startWebSTT without circular deps
-  const startWebSTTRef = useRef<(() => void) | null>(null);
-
-  const startWebSTT = useCallback(() => {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) return;
-    // Stop any existing recognition first
-    if (recognitionRef.current) {
-      try { recognitionRef.current.stop(); } catch { /* ignore */ }
-      recognitionRef.current = null;
-    }
-    sttSuppressRef.current = false;
-    clearAutoSendTimer();
-    const recognition = new SR();
-    recognition.lang = "ko-KR";
-    recognition.continuous = true;
-    recognition.interimResults = true;
-
-    const el = inputRef.current;
-    const before = el?.value || "";
-    let prevFinalCount = 0;
-    let hasEverSpoken = false;
-
-    // Cancel auto-send as soon as the engine detects new speech (before onresult fires)
-    recognition.onspeechstart = () => {
-      clearAutoSendTimer();
-    };
-
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
-      if (!el || sttSuppressRef.current) return;
-      let final = "";
-      let interim = "";
-      let finalCount = 0;
-      for (let i = 0; i < event.results.length; i++) {
-        const r = event.results[i];
-        if (r.isFinal) {
-          final += r[0].transcript;
-          finalCount++;
-        } else {
-          interim += r[0].transcript;
-        }
-      }
-      const sep = before && !before.endsWith(" ") && !before.endsWith("\n") ? " " : "";
-      el.value = before + sep + final + interim;
-      el.style.height = "auto";
-      el.style.height = Math.min(el.scrollHeight, 150) + "px";
-
-      // Mark that user has actually spoken
-      if (final.trim() || interim.trim()) hasEverSpoken = true;
-
-      // Auto-send: cancel timer when user starts speaking again
-      if (interim) {
-        clearAutoSendTimer();
-      }
-      // Start countdown only after user has spoken at least once, then paused
-      if (hasEverSpoken && finalCount > prevFinalCount && !interim) {
-        clearAutoSendTimer();
-        setAutoSendCountdown(true);
-        autoSendTimerRef.current = setTimeout(() => {
-          autoSendTimerRef.current = null;
-          setAutoSendCountdown(false);
-          const text = el.value.trim();
-          if (text) {
-            sttSuppressRef.current = true;
-            recognition.stop();
-            recognitionRef.current = null;
-            setSttActive(false);
-            const tagged = `[STT] ${text}`;
-            const sendText = oocModeRef.current && !tagged.startsWith("OOC:") ? `OOC: ${tagged}` : tagged;
-            el.value = "";
-            el.style.height = "auto";
-            onSend(sendText);
-          }
-        }, AUTO_SEND_DELAY);
-      }
-      prevFinalCount = finalCount;
-    };
-
-    recognition.onerror = (ev) => {
-      console.warn("[stt] web speech error:", (ev as Event & { error?: string }).error);
-      clearAutoSendTimer();
-      stopWebSTT();
-    };
-    // If recognition ends before user spoke (silence timeout), create fresh instance to keep listening
-    recognition.onend = () => {
-      clearAutoSendTimer();
-      if (!hasEverSpoken && !sttSuppressRef.current) {
-        // User hasn't spoken yet — create new recognition to keep red icon alive
-        recognitionRef.current = null;
-        setTimeout(() => startWebSTTRef.current?.(), 50);
-      } else {
-        setSttActive(false);
-      }
-    };
-    recognition.start();
-    recognitionRef.current = recognition;
-    setSttActive(true);
-  }, [stopWebSTT, clearAutoSendTimer, voiceChat, onSend]);
-
-  // Keep ref in sync
-  startWebSTTRef.current = startWebSTT;
-
-  // -- Mode B: MediaRecorder → server STT (Qwen3-ASR w/ context, Whisper fallback) --
-  /** Release mic + silence detector. Safe to call repeatedly. */
-  const releaseMic = useCallback(() => {
-    silenceCleanupRef.current?.();
-    silenceCleanupRef.current = null;
-    mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
-    mediaStreamRef.current = null;
-  }, []);
-
-  /** Stop recording and throw the audio away (send / disable / unmount). */
-  const discardRecorder = useCallback(() => {
-    const recorder = mediaRecorderRef.current;
-    mediaRecorderRef.current = null;
-    audioChunksRef.current = [];
-    if (recorder && recorder.state !== "inactive") {
-      recorder.ondataavailable = null;
-      recorder.onstop = null;
-      recorder.stop();
-    }
-    releaseMic();
-  }, [releaseMic]);
-
-  /** Stop recording, transcribe, and either insert into input or (voice chat) send directly. */
-  const stopRecorderSTT = useCallback(async (opts?: { autoSend?: boolean }) => {
-    const recorder = mediaRecorderRef.current;
-    if (!recorder || recorder.state === "inactive") return;
-    clearAutoSendTimer();
-
-    // Wrap stop in a promise to wait for final data
-    const blob = await new Promise<Blob>((resolve) => {
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) audioChunksRef.current.push(e.data);
-      };
-      recorder.onstop = () => {
-        resolve(new Blob(audioChunksRef.current, { type: recorder.mimeType }));
-      };
-      recorder.stop();
-    });
-
-    mediaRecorderRef.current = null;
-    audioChunksRef.current = [];
-    releaseMic();
-    setSttActive(false);
-
-    if (blob.size < 1000) return; // too short, ignore
-
-    setSttTranscribing(true);
-    try {
-      const form = new FormData();
-      form.append("audio", blob, `stt.${blob.type.includes("webm") ? "webm" : "m4a"}`);
-      form.append("language", "ko");
-      form.append("model_size", "base"); // Whisper fallback only
-      if (sessionId) form.append("sessionId", sessionId);
-
-      const res = await fetch("/api/tools/comfyui/stt", { method: "POST", body: form });
-      const data = await res.json();
-      const text = typeof data.text === "string" ? data.text.trim() : "";
-      if (!text) return;
-      if (opts?.autoSend && !sttSuppressRef.current) {
-        const el = inputRef.current;
-        const pending = el?.value.trim();
-        const tagged = `[STT] ${pending ? `${pending} ${text}` : text}`;
-        const sendText = oocModeRef.current && !tagged.startsWith("OOC:") ? `OOC: ${tagged}` : tagged;
-        if (el) { el.value = ""; el.style.height = "auto"; }
-        onSend(sendText);
-      } else {
-        insertAtCursor(text);
-        recorderTextInsertedRef.current = true;
-      }
-    } catch (err) {
-      console.error("[stt] Transcribe failed:", err);
-    } finally {
-      setSttTranscribing(false);
-    }
-  }, [insertAtCursor, releaseMic, clearAutoSendTimer, sessionId, onSend]);
-
-  const stopRecorderSTTRef = useRef(stopRecorderSTT);
-  stopRecorderSTTRef.current = stopRecorderSTT;
-
-  /**
-   * Voice chat on the recorder path: RMS-based end-of-speech detection.
-   * Once the user has spoken, AUTO_SEND_DELAY of continuous silence → stop, transcribe, send.
-   * Speech resuming during the countdown cancels it (mirrors Mode A's behavior).
-   */
-  const attachSilenceDetector = useCallback((stream: MediaStream) => {
-    const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!Ctx) return;
-    const ctx = new Ctx();
-    const analyser = ctx.createAnalyser();
-    analyser.fftSize = 2048;
-    ctx.createMediaStreamSource(stream).connect(analyser);
-    const buf = new Float32Array(analyser.fftSize);
-    const SPEECH_RMS = 0.02;
-    let spoken = false;
-    let silentSince = 0;
-    let countdownShown = false;
-
-    const timer = setInterval(() => {
-      analyser.getFloatTimeDomainData(buf);
-      let sum = 0;
-      for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
-      const rms = Math.sqrt(sum / buf.length);
-      const now = Date.now();
-      if (rms >= SPEECH_RMS) {
-        spoken = true;
-        silentSince = 0;
-        if (countdownShown) { countdownShown = false; setAutoSendCountdown(false); }
-        return;
-      }
-      if (!spoken) return;
-      if (!silentSince) silentSince = now;
-      if (!countdownShown) { countdownShown = true; setAutoSendCountdown(true); }
-      if (now - silentSince >= AUTO_SEND_DELAY) {
-        setAutoSendCountdown(false);
-        void stopRecorderSTTRef.current({ autoSend: true });
-      }
-    }, 100);
-
-    silenceCleanupRef.current = () => {
-      clearInterval(timer);
-      setAutoSendCountdown(false);
-      void ctx.close().catch(() => { /* ignore */ });
-    };
-  }, [AUTO_SEND_DELAY]);
-
-  const startRecorderSTT = useCallback(async () => {
-    if (mediaRecorderRef.current) return;
-    try {
-      // Preload the model while the user is still talking (cold load ≈ a few seconds)
-      void fetch("/api/tools/comfyui/stt?warmup=1", { method: "POST" }).catch(() => { /* ignore */ });
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      // Prefer webm for smaller size; fall back to whatever is supported
-      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-        ? "audio/webm;codecs=opus"
-        : MediaRecorder.isTypeSupported("audio/mp4")
-          ? "audio/mp4"
-          : "";
-      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
-      audioChunksRef.current = [];
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) audioChunksRef.current.push(e.data);
-      };
-      recorder.start(1000); // collect chunks every 1s
-      mediaStreamRef.current = stream;
-      mediaRecorderRef.current = recorder;
-      sttSuppressRef.current = false;
-      if (voiceChat) attachSilenceDetector(stream);
-      setSttActive(true);
-    } catch (err) {
-      console.error("[stt] Mic access denied:", err);
-    }
-  }, [voiceChat, attachSilenceDetector]);
-
-  // -- Unified toggle --
-  const toggleSTT = useCallback(() => {
-    if (sttActive) {
-      if (sttMode === "web") stopWebSTT();
-      else void stopRecorderSTT();
-    } else {
-      if (sttMode === "web") startWebSTT();
-      else startRecorderSTT();
-    }
-  }, [sttActive, sttMode, stopWebSTT, stopRecorderSTT, startWebSTT, startRecorderSTT]);
-
-  const prevTtsPlayingRef = useRef(ttsPlaying);
-  const prevVoiceChatRef = useRef(voiceChat);
-
-  // Cleanup on disable; auto-start STT on voiceChat after TTS finishes
+    if (isStreaming) { ttsHeardRef.current = false; autoBlockedRef.current = false; }
+  }, [isStreaming]);
   useEffect(() => {
-    if (disabled && sttActive) {
-      clearAutoSendTimer();
-      if (sttMode === "web") stopWebSTT();
-      else { discardRecorder(); setSttActive(false); }
+    if (prevTtsPlayingRef.current && !ttsPlaying && !isStreaming) ttsHeardRef.current = true;
+    prevTtsPlayingRef.current = !!ttsPlaying;
+  }, [ttsPlaying, isStreaming]);
+
+  const { state: voiceState, handsFree: voiceHandsFree, mode: voiceMode, start: voiceStart, cancel: voiceCancel } = voice;
+
+  // 턴·TTS가 시작되면 자동 세션은 버리고, 입력이 막히면(개입 OFF 스트리밍·compact) 수동 세션도 버린다.
+  useEffect(() => {
+    if (voiceState !== "listening") return;
+    if (disabled || (voiceHandsFree && !turnIdle)) voiceCancel();
+  }, [disabled, turnIdle, voiceState, voiceHandsFree, voiceCancel]);
+
+  // 재무장 — 조건이 유지된 채 지연이 지나야 켠다. 지연 중 조건이 깨지면 cleanup이 타이머를 지운다.
+  useEffect(() => {
+    if (!voiceChat || !turnIdle || voiceState !== "idle" || voiceMode === "none" || autoBlockedRef.current) return;
+    const delay = ttsExpected && !ttsHeardRef.current ? TTS_START_GRACE_MS : VOICE_ARM_DELAY_MS;
+    const t = setTimeout(() => {
+      if (!autoBlockedRef.current) voiceStart({ handsFree: true });
+    }, delay);
+    return () => clearTimeout(t);
+  }, [voiceChat, turnIdle, voiceState, voiceMode, voiceStart, ttsExpected]);
+
+  const toggleVoice = useCallback(() => {
+    if (voiceState === "listening") {
+      // 직접 끈 자동 세션은 다음 턴까지 다시 켜지 않는다. 녹음기는 전사해 입력창에 넣는다.
+      autoBlockedRef.current = true;
+      voice.stop();
+    } else if (voiceState === "idle") {
+      voice.start({ handsFree: !!voiceChat && turnIdle });
     }
-
-    // Voice chat: auto-start STT when ready
-    if (voiceChat && !disabled && !sttActive && !sttTranscribing && sttMode !== "none") {
-      // 토글을 막 켠 순간도 시작 트리거로 취급 (idle 상태에서 켜도 바로 마이크 진입)
-      const justEnabled = !prevVoiceChatRef.current;
-      const wasBusy = justEnabled || prevDisabledRef.current || prevTtsPlayingRef.current;
-      const isReady = !ttsPlaying;
-      console.debug("[stt] voiceChat auto-start check", { sttMode, wasBusy, isReady, justEnabled });
-      if (wasBusy && isReady) {
-        if (sttMode === "web") startWebSTT();
-        else void startRecorderSTT();
-      }
-    }
-
-    prevDisabledRef.current = disabled;
-    prevTtsPlayingRef.current = ttsPlaying;
-    prevVoiceChatRef.current = !!voiceChat;
-  }, [disabled, ttsPlaying, sttActive, sttTranscribing, sttMode, stopWebSTT, voiceChat, startWebSTT, startRecorderSTT, discardRecorder, clearAutoSendTimer]);
-
-  useEffect(() => () => {
-    recognitionRef.current?.stop();
-    discardRecorder();
-    if (autoSendTimerRef.current) clearTimeout(autoSendTimerRef.current);
-  }, [discardRecorder]);
+  }, [voiceState, voice, voiceChat, turnIdle]);
 
   const btnBase = "w-9 h-9 flex items-center justify-center rounded-lg border cursor-pointer text-xs font-medium shrink-0 transition-all duration-fast";
 
@@ -839,24 +517,26 @@ function ChatInput({ disabled, isStreaming, onSend, onCancel, sessionId, choices
       *
     </button>
   );
-  const sttButton = sttMode !== "none" && (
+  const voiceListening = voiceState === "listening";
+  const voiceTranscribing = voiceState === "transcribing";
+  const sttButton = voiceMode !== "none" && (
     <button
       type="button"
-      aria-pressed={sttActive}
-      aria-label={sttTranscribing ? "변환 중" : sttActive ? "음성 입력 중지" : "음성 입력"}
-      onClick={toggleSTT}
-      disabled={sttTranscribing}
+      aria-pressed={voiceListening}
+      aria-label={voiceTranscribing ? "변환 중" : voiceListening ? "음성 입력 중지" : "음성 입력"}
+      onClick={toggleVoice}
+      disabled={voiceTranscribing}
       className={`${btnBase} relative ${
-        sttTranscribing
+        voiceTranscribing
           ? "border-blue-500/60 text-blue-400 bg-blue-500/15 animate-pulse"
-          : sttActive
+          : voiceListening
             ? "border-red-500/60 text-red-400 bg-red-500/15 animate-pulse"
             : "border-border/40 text-text-dim/60 bg-transparent hover:border-border/60 hover:text-text-dim/80"
       }`}
-      title={sttTranscribing ? "변환 중..." : sttActive ? "음성 입력 중지" : "음성 입력"}
+      title={voiceTranscribing ? "변환 중..." : voiceListening ? "음성 입력 중지" : "음성 입력"}
     >
       {/* Auto-send countdown ring */}
-      {autoSendCountdown && (
+      {voice.countdown && (
         <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 36 36">
           <circle
             cx="18" cy="18" r="15"
@@ -873,12 +553,12 @@ function ChatInput({ disabled, isStreaming, onSend, onCancel, sessionId, choices
             strokeDashoffset="0"
             strokeLinecap="round"
             style={{
-              animation: `stt-countdown ${AUTO_SEND_DELAY}ms linear forwards`,
+              animation: `stt-countdown ${autoSendDelay}ms linear forwards`,
             }}
           />
         </svg>
       )}
-      {sttTranscribing ? (
+      {voiceTranscribing ? (
         <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
           <circle cx="12" cy="12" r="3"/>
         </svg>

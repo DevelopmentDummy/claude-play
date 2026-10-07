@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ComfyUIClient } from "@/lib/comfyui-client";
-import { getSttContext, transcribeWithQwenAsr, warmupQwenAsr } from "@/lib/stt";
+import { getSttContext, looksLikeContextEcho, transcribeWithQwenAsr, warmupQwenAsr } from "@/lib/stt";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
@@ -42,8 +42,16 @@ export async function POST(req: NextRequest) {
 
     const buffer = Buffer.from(await audio.arrayBuffer());
 
-    const qwen = await transcribeWithQwenAsr(buffer, { language, context: getSttContext(sessionId) });
-    if (qwen.ok) return NextResponse.json({ text: qwen.text, engine: "qwen3-asr" });
+    const context = getSttContext(sessionId);
+    const qwen = await transcribeWithQwenAsr(buffer, { language, context });
+    if (qwen.ok) {
+      if (!looksLikeContextEcho(qwen.text, context)) return NextResponse.json({ text: qwen.text, engine: "qwen3-asr" });
+      // 문맥 누출 — context 없이 재인식. 실제 발화가 있으면 살리고, 없으면 빈 결과.
+      console.warn("[api/stt] context echo detected, retrying without context:", qwen.text.slice(0, 60));
+      const retry = await transcribeWithQwenAsr(buffer, { language, context: "" });
+      const text = retry.ok && !looksLikeContextEcho(retry.text, context) ? retry.text : "";
+      return NextResponse.json({ text, engine: "qwen3-asr", contextEcho: true });
+    }
     if (!qwen.unavailable) {
       return NextResponse.json({ error: qwen.error }, { status: 500 });
     }
