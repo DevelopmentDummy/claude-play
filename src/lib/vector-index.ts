@@ -7,7 +7,7 @@ import { getDataDir } from "./data-dir";
 import { embed, warmupEmbedder, EmbedError, type EmbedDim, type EmbedInput, type EmbedTask } from "./embedding-client";
 import {
   assertCompatible, chunkText, collectionPath, describeCollection, emptyCollection, listCollections,
-  loadCollection, removeItems, saveCollection, searchCollection, upsertItems, withCollectionLock,
+  loadCollection, pruneMissingSources, removeItems, saveCollection, searchCollection, upsertItems, withCollectionLock,
   VectorStoreError, type SearchOptions, type VectorCollection, type VectorItem,
 } from "./vector-store";
 
@@ -253,10 +253,9 @@ export async function runVectorAction(ctx: VectorContext, action: string, params
           }))));
         }
         if (col && prune) {
-          const prefix = toPosix(path.relative(base, dirAbs));
-          const alive = new Set(files.map((f) => f.rel));
-          pruned = removeItems(col, (it) => it.modality === "image" && !!it.source &&
-            path.posix.dirname(it.source) === (prefix || ".") && !alive.has(it.source));
+          // 이미지 벡터만이 아니라 같은 source의 캡션 텍스트까지 지운다 — 남으면 죽은 $IMAGE 경로가 검색에 뜬다.
+          pruned = pruneMissingSources(col, toPosix(path.relative(base, dirAbs)),
+            (src) => { try { return fs.existsSync(resolveInScope(base, src)); } catch { return false; } });
         }
         return {
           col,

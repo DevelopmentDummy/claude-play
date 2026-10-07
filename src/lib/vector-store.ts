@@ -150,6 +150,20 @@ export function removeItems(col: VectorCollection, pred: (it: Omit<VectorItem, "
   return before - col.items.length;
 }
 
+/**
+ * dir(스코프 기준 POSIX 상대 경로, 루트면 "") 바로 아래 source를 가진 항목 중 파일이 사라진 것을 모두 지운다.
+ * modality와 무관하다 — 이미지와 같은 source로 넣은 캡션 텍스트도 함께 지워야 죽은 경로가 검색에 남지 않는다.
+ */
+export function pruneMissingSources(col: VectorCollection, dir: string, exists: (source: string) => boolean): number {
+  const want = dir || ".";
+  const cache = new Map<string, boolean>();
+  return removeItems(col, (it) => {
+    if (!it.source || path.posix.dirname(it.source) !== want) return false;
+    if (!cache.has(it.source)) cache.set(it.source, exists(it.source));
+    return !cache.get(it.source);
+  });
+}
+
 function matchesFilter(meta: Record<string, unknown> | undefined, filter: Record<string, unknown>): boolean {
   for (const [k, v] of Object.entries(filter)) {
     if (!meta || meta[k] !== v) return false;

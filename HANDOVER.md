@@ -121,8 +121,8 @@
 
 ### 4-C. 임베딩·의미 검색 코어 (EmbeddingGemma 2, 브랜치 `feat/embedding-core`, 2026-10-07)
 `gpu-manager/embed_server.py`(전용 `venv-embed`, PORT+3) → `embedding-client`/`vector-store`/`vector-index` → `/api/sessions/[id]/vectors` + MCP `vector_search`/`vector_upsert`/`vector_manage` + `context.vectors` + `__panelBridge.vectors`. 지침: 공용 스킬 `data/skills/embedding`. 설계 `docs/specs/2026-10-07-embedding-core-design.md`, 함정 playbook §5.19.
-- 검증: 단위 14건 + `scratch/vector-live.ts`(실서버로 lib 전 액션). **남은 라이브**: 서버 재시작 후 spawn 로그 `[embed]` 확인, 세션 재open 후 MCP `vector_*` 1회, 패널 `vectors()` 1회.
-- 부수 변경: 안 쓰이는 `gpu-manager/venv`의 transformers 5.8→5.19 + sentence-transformers·accelerate·torchvision 추가(원복 기준 `scratch/gpu-venv-freeze-before-embed.txt`).
+- 검증: 단위 15건 + `scripts/smoke-embedding.ts`(실서버로 lib 전 액션). **남은 라이브** — 운영 서버가 `mode=start`라 새 API 라우트는 빌드 전엔 404: 머지 → `npm run build`(서빙 중 금지 — restart 스크립트 경유) → `scripts/restart.mjs` → 로그 `[embed] Embedding server on port 3343` → 세션 재open → MCP `vector_*` 1회 → 패널 `vectors()` 1회.
+- 부수 변경: 안 쓰이는 `gpu-manager/venv`의 transformers 5.8→5.19 + sentence-transformers·accelerate·torchvision 추가(원복 기준 `scratch/gpu-venv-freeze-before-embed.txt`, 머신 로컬).
 - 범위 밖(다음 후보): 이미지 생성 시 자동 인덱싱 훅, 기억 자동 주입, 오디오·영상 임베딩, 외부 MCP 노출.
 
 ## 5. 사용자 결정 대기

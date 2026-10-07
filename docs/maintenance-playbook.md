@@ -260,7 +260,7 @@ Next.js App Router의 `useParams()`는 라우트 세그먼트를 **URL 인코딩
 ### 5.19 EmbeddingGemma 2는 GPU Manager 환경에 넣지 마라 (transformers 5.19+ vs 4.57.x 정확 핀)
 `google/embeddinggemma-2`는 **transformers ≥ 5.19**(5.8은 `embedding_gemma2` 미인식)와 **torchvision**(없으면 `EmbeddingGemma2Processor` import 실패 — 에러 메시지가 원인을 숨긴다)이 필요하다. GPU Manager가 실제로 도는 인터프리터(이 머신은 `GPU_MANAGER_PYTHON` 미설정 → 시스템 Python 3.12)는 qwen-tts/qwen-asr 때문에 `transformers==4.57.x` 정확 핀이다(§5.10). **양립 불가** → 전용 `gpu-manager/venv-embed` + 별도 프로세스 `embed_server.py`(PORT+3)로 분리했다 (2026-10-07).
 - **규칙**: `requirements-embed.txt`를 GPU Manager 환경(`GPU_MANAGER_PYTHON`/`gpu-manager/venv`)에 설치하지 말 것. 반대로 venv-embed에 requirements-tts/asr을 넣지 말 것. `EMBED_PYTHON`을 GPU Manager 인터프리터로 돌리지 말 것.
-- **함정 — `gpu-manager/venv`는 이 머신에서 안 쓰인다**(GPU Manager는 시스템 Python). 2026-10-07 탐색 중 그 venv의 transformers를 5.8→5.19로 올리고 sentence-transformers·torchvision을 넣었다(실사용 영향 없음). 원복이 필요하면 `scratch/gpu-venv-freeze-before-embed.txt` 기준.
+- **함정 — `gpu-manager/venv`는 이 머신에서 안 쓰인다**(GPU Manager는 시스템 Python). 2026-10-07 탐색 중 그 venv의 transformers를 5.8→5.19로 올리고 sentence-transformers·torchvision을 넣었다(실사용 영향 없음). 원복이 필요하면 `scratch/gpu-venv-freeze-before-embed.txt`(머신 로컬, gitignore) 기준.
 - **설치**: torch/torchvision은 반드시 CUDA 인덱스에서 먼저(`--index-url https://download.pytorch.org/whl/cu128`), 그다음 requirements-embed. PyPI 기본 torch는 CPU 빌드라 조용히 느려진다.
 - **증상별**: 모든 `vector_*` 호출이 503 → venv-embed 미설치 또는 `EMBED_ENABLED=false`(서버 로그 `[embed] ... disabled`). 첫 호출만 느림 → 정상(콜드 로드 10~15초, 이후 `EMBED_IDLE_TIMEOUT` 300초 상주). 페르소나 도구에서만 타임아웃 → 도구 10초 제한 vs 콜드 로드 — `vectors("warmup")` 선행.
 - **VRAM**: bf16 상주 ~1.5GB, 직렬 큐 우회(ASR과 같은 정책). ComfyUI 대형 영상 작업에서 OOM이 보이면 `EMBED_IDLE_TIMEOUT`을 줄이거나 `POST :3343/unload`.

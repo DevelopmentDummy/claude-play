@@ -27,6 +27,7 @@ description: Use when you need to find things by meaning instead of exact words 
 
 네 경로 모두 `src/lib/vector-index.ts`의 같은 액션을 부른다. 액션은 `search`, `upsert`, `index_dir`, `index_file`, `list`, `info`, `delete`, `drop`, `embed`, `warmup`이다.
 빌더 세션에서는 MCP 도구가 동작하지 않는다(세션 전용).
+`embed` 액션은 768개 숫자 배열을 그대로 돌려준다. 도구와 패널 코드용이라 세션 AI가 직접 부를 일은 없다. 검색은 `vector_search`로 해라.
 
 ⚠️ **페르소나 도구는 10초 제한이 있다.** 모델이 내려가 있으면 첫 호출이 이 제한을 넘을 수 있다.
 - 패널이 열릴 때나 세션 시작 액션에서 `vectors("warmup")`을 먼저 불러 둬라. warmup은 기다리지 않고 바로 돌아온다.

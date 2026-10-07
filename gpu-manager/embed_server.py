@@ -55,6 +55,9 @@ class EmbedEngine:
     def _load_sync(self):
         import torch
         from sentence_transformers import SentenceTransformer
+        from transformers.utils import logging as hf_logging
+
+        hf_logging.disable_progress_bar()  # tqdm "Loading weights" floods the server log
 
         model = SentenceTransformer(
             MODEL_ID, device="cuda" if torch.cuda.is_available() else "cpu",

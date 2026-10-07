@@ -107,7 +107,7 @@
 
 - `src/lib/vector-store.test.ts` (9건)
 - `src/lib/embedding-client.test.ts` (5건)
-- 라이브 검증은 `scratch/vector-live.ts`로 했다. 임시 DATA_DIR에서 실제 서버로 index_file, 검색(한↔영), 필터, dim 충돌, index_dir 증분과 prune, 텍스트→이미지, 이미지→이미지, 경로 탈출 거부, list, drop을 확인했다.
+- 라이브 검증은 `scripts/smoke-embedding.ts`로 했다(`EMBED_PORT`로 대상 서버 지정). 임시 DATA_DIR에서 실제 서버로 index_file, 검색(한↔영), 필터, dim 충돌, index_dir 증분과 prune(같은 source의 캡션까지), 텍스트→이미지, 이미지→이미지, 경로 탈출 거부, list, drop을 확인했다.
 
 ## 범위 밖
 

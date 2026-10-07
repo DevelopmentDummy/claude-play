@@ -5,7 +5,7 @@ import * as os from "os";
 import * as path from "path";
 import {
   assertCompatible, chunkText, collectionPath, decodeVector, emptyCollection, encodeVector, listCollections,
-  loadCollection, removeItems, saveCollection, searchCollection, upsertItems, withCollectionLock, VectorStoreError,
+  loadCollection, pruneMissingSources, removeItems, saveCollection, searchCollection, upsertItems, withCollectionLock, VectorStoreError,
 } from "./vector-store";
 
 const unit = (v: number[]) => { const n = Math.hypot(...v); return v.map((x) => x / n); };
@@ -101,4 +101,19 @@ test("chunkText — 제목 문맥을 붙이고 상한을 지킨다", () => {
   assert.ok(chunks.every((c) => c.length <= 300 + 20));
   assert.ok(chunks.some((c) => c.includes("[관계]")));
   assert.deepEqual(chunkText("  \n\n "), []);
+});
+
+test("pruneMissingSources — 사라진 이미지의 캡션까지 지우고 다른 폴더는 건드리지 않는다", () => {
+  const col = emptyCollection("g", "m", 2);
+  upsertItems(col, [
+    { id: "images/a.png", vector: [1, 0], modality: "image", source: "images/a.png" },
+    { id: "images/a.png#caption", vector: [1, 0], modality: "text", source: "images/a.png", text: "유나, 옥상" },
+    { id: "images/b.png", vector: [0, 1], modality: "image", source: "images/b.png" },
+    { id: "images/sub/c.png", vector: [0, 1], modality: "image", source: "images/sub/c.png" },
+    { id: "note", vector: [0, 1], modality: "text" },
+  ]);
+  const alive = new Set(["images/b.png"]);
+  const removed = pruneMissingSources(col, "images", (s) => alive.has(s));
+  assert.equal(removed, 2);
+  assert.deepEqual(col.items.map((i) => i.id), ["images/b.png", "images/sub/c.png", "note"]);
 });
